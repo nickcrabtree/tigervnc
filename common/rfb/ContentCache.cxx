@@ -24,6 +24,7 @@
 #include <core/LogWriter.h>
 
 #include <time.h>
+#include <cstring>
 #include <algorithm>
 
 using namespace rfb;
