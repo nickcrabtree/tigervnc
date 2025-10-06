@@ -133,6 +133,7 @@ namespace rfb {
     core::Region pendingRefreshRegion;
 
     core::Timer recentChangeTimer;
+    core::Timer cacheStatsTimer;
 
     struct EncoderStats {
       unsigned rects;

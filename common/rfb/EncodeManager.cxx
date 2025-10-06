@@ -138,7 +138,7 @@ static const char *encoderTypeName(EncoderType type)
 }
 
 EncodeManager::EncodeManager(SConnection* conn_)
-  : conn(conn_), recentChangeTimer(this), contentCache(nullptr)
+  : conn(conn_), recentChangeTimer(this), cacheStatsTimer(this), contentCache(nullptr)
 {
   StatsVector::iterator iter;
 
@@ -173,6 +173,9 @@ EncodeManager::EncodeManager(SConnection* conn_)
               (int)Server::contentCacheSize,
               (int)Server::contentCacheMaxAge,
               (int)Server::contentCacheMinRectSize);
+    
+    // Start hourly stats logging timer (3600000ms = 1 hour)
+    cacheStatsTimer.start(3600000);
   }
 }
 
@@ -278,6 +281,10 @@ void EncodeManager::logStats()
     vlog.info("  ARC stats: T1=%zu, T2=%zu, B1=%zu, B2=%zu, target=%zu",
               cstats.t1Size, cstats.t2Size, cstats.b1Size,
               cstats.b2Size, cstats.targetT1Size);
+    
+    // Log detailed ARC statistics on shutdown
+    vlog.info(" ");
+    contentCache->logArcStats();
   }
 }
 
@@ -356,6 +363,12 @@ void EncodeManager::handleTimeout(core::Timer* t)
     // Will there be more to do? (i.e. do we need another round)
     if (!lossyRegion.subtract(pendingRefreshRegion).is_empty())
       t->repeat();
+  } else if (t == &cacheStatsTimer) {
+    // Log hourly ARC cache statistics
+    if (contentCache != nullptr) {
+      contentCache->logArcStats();
+    }
+    t->repeat();  // Continue hourly logging
   }
 }
 

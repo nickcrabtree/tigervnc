@@ -234,6 +234,20 @@ void DecodeManager::logStats()
             core::siPrefix(pixels, "pixels").c_str());
   vlog.info("         %s (1:%g ratio)",
             core::iecPrefix(bytes, "B").c_str(), ratio);
+  
+  // Log client-side ContentCache ARC statistics
+  if (contentCache != nullptr) {
+    vlog.info(" ");
+    vlog.info("Client-side cache statistics:");
+    vlog.info("  Lookups: %u, Hits: %u (%.1f%% hit rate)",
+              cacheStats.cache_lookups,
+              cacheStats.cache_hits,
+              cacheStats.cache_lookups > 0 ?
+                (100.0 * cacheStats.cache_hits / cacheStats.cache_lookups) : 0.0);
+    vlog.info("  Misses: %u", cacheStats.cache_misses);
+    vlog.info(" ");
+    contentCache->logArcStats();
+  }
 }
 
 void DecodeManager::setThreadException()

@@ -322,6 +322,39 @@ void ContentCache::resetStats()
   stats_.collisions = 0;
 }
 
+void ContentCache::logArcStats() const
+{
+  Stats s = getStats();
+  
+  uint64_t totalLookups = s.cacheHits + s.cacheMisses;
+  double hitRate = (totalLookups > 0) ? (100.0 * s.cacheHits / totalLookups) : 0.0;
+  
+  size_t usedMB = s.totalBytes / (1024 * 1024);
+  size_t maxMB = maxCacheSize_ / (1024 * 1024);
+  double utilization = (maxCacheSize_ > 0) ? (100.0 * s.totalBytes / maxCacheSize_) : 0.0;
+  
+  // ARC balance: p_ is target size for T1 in bytes
+  double t1Target = (maxCacheSize_ > 0) ? (100.0 * s.targetT1Size / maxCacheSize_) : 0.0;
+  double t1Actual = (maxCacheSize_ > 0) ? (100.0 * t1Size_ / maxCacheSize_) : 0.0;
+  double t2Actual = (maxCacheSize_ > 0) ? (100.0 * t2Size_ / maxCacheSize_) : 0.0;
+  
+  vlog.info("=== ARC Cache Statistics ===");
+  vlog.info("Hit rate: %.1f%% (%llu hits, %llu misses, %llu total)",
+            hitRate, (unsigned long long)s.cacheHits, 
+            (unsigned long long)s.cacheMisses, (unsigned long long)totalLookups);
+  vlog.info("Memory: %zuMB / %zuMB (%.1f%% used), %zu entries, %llu evictions",
+            usedMB, maxMB, utilization, s.totalEntries, 
+            (unsigned long long)s.evictions);
+  vlog.info("ARC balance: T1=%zu (%.1f%%, target %.1f%%), T2=%zu (%.1f%%)",
+            s.t1Size, t1Actual, t1Target, s.t2Size, t2Actual);
+  vlog.info("Ghost lists: B1=%zu, B2=%zu (adaptation hints)",
+            s.b1Size, s.b2Size);
+  
+  if (s.collisions > 0) {
+    vlog.info("Hash collisions: %llu", (unsigned long long)s.collisions);
+  }
+}
+
 void ContentCache::setMaxSize(size_t maxSizeMB)
 {
   maxCacheSize_ = maxSizeMB * 1024 * 1024;

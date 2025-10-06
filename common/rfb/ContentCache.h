@@ -112,6 +112,7 @@ namespace rfb {
     
     Stats getStats() const;
     void resetStats();
+    void logArcStats() const;  // Log concise ARC statistics
     
     // Configuration
     void setMaxSize(size_t maxSizeMB);
