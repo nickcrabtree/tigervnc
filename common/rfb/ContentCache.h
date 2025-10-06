@@ -29,7 +29,8 @@
 namespace rfb {
 
   // Content-addressable cache for historical framebuffer chunks
-  // Allows detection of repeated content even after significant time gaps
+  // Uses ARC (Adaptive Replacement Cache) algorithm for better eviction
+  // ARC combines recency (LRU) and frequency (LFU) with self-tuning
   class ContentCache {
   public:
     ContentCache(size_t maxSizeMB = 100, uint32_t maxAgeSec = 300);
@@ -45,6 +46,8 @@ namespace rfb {
       // Optional: Store actual data for verification on hash collision
       // Trade-off: More memory vs. zero false positives
       std::vector<uint8_t> data;      // Can be empty to save memory
+      
+      CacheEntry() : contentHash(0), lastSeenTime(0), dataSize(0), hitCount(0) {}
       
       CacheEntry(uint64_t hash, const core::Rect& bounds, uint32_t time)
         : contentHash(hash), lastBounds(bounds), lastSeenTime(time),
@@ -63,7 +66,7 @@ namespace rfb {
                       size_t dataLen = 0,
                       bool keepData = false);
     
-    // Mark entry as recently accessed (updates LRU)
+    // Mark entry as recently accessed (updates ARC lists)
     void touchEntry(uint64_t hash);
     
     // Remove old entries based on age and memory limits
@@ -80,6 +83,12 @@ namespace rfb {
       uint64_t cacheMisses;
       uint64_t evictions;
       uint64_t collisions;
+      // ARC-specific stats
+      size_t t1Size;        // Recently used once
+      size_t t2Size;        // Frequently used
+      size_t b1Size;        // Ghost entries from T1
+      size_t b2Size;        // Ghost entries from T2
+      size_t targetT1Size;  // Adaptive target for T1
     };
     
     Stats getStats() const;
@@ -90,27 +99,57 @@ namespace rfb {
     void setMaxAge(uint32_t maxAgeSec);
     
   private:
-    // Main cache storage: hash -> list of entries
-    // Multiple entries per hash possible (collision handling)
-    std::unordered_map<uint64_t, std::vector<CacheEntry>> cache_;
+    // Main cache storage: hash -> entry data
+    std::unordered_map<uint64_t, CacheEntry> cache_;
     
-    // LRU tracking: most recently used at front
-    std::list<uint64_t> lruList_;
-    std::unordered_map<uint64_t, std::list<uint64_t>::iterator> lruMap_;
+    // ARC list membership tracking
+    enum ListType {
+      LIST_NONE,  // Not in any list
+      LIST_T1,    // Recently used once (recency)
+      LIST_T2,    // Frequently used (frequency)
+      LIST_B1,    // Ghost: evicted from T1
+      LIST_B2     // Ghost: evicted from T2
+    };
+    
+    struct ListInfo {
+      ListType list;
+      std::list<uint64_t>::iterator iter;
+      
+      ListInfo() : list(LIST_NONE) {}
+    };
+    
+    // ARC lists (most recent at front)
+    std::list<uint64_t> t1_;  // Recently used once
+    std::list<uint64_t> t2_;  // Frequently used
+    std::list<uint64_t> b1_;  // Ghost entries from T1
+    std::list<uint64_t> b2_;  // Ghost entries from T2
+    
+    // Track which list each hash is in
+    std::unordered_map<uint64_t, ListInfo> listMap_;
+    
+    // ARC adaptive parameter: target size for T1 in bytes
+    size_t p_;
     
     // Configuration
-    size_t maxCacheSize_;      // In bytes
+    size_t maxCacheSize_;      // In bytes (total for T1+T2)
     uint32_t maxAge_;          // In seconds
     
     // Current state
-    size_t currentCacheSize_;  // In bytes
+    size_t t1Size_;            // Bytes in T1
+    size_t t2Size_;            // Bytes in T2
     
     // Statistics
     mutable Stats stats_;
     
-    // Helper methods
-    void evictEntry(uint64_t hash);
-    void updateLRU(uint64_t hash);
+    // ARC helper methods
+    void replace(uint64_t hash, size_t size);
+    void moveToT2(uint64_t hash);
+    void moveToB1(uint64_t hash);
+    void moveToB2(uint64_t hash);
+    void removeFromList(uint64_t hash);
+    size_t getEntrySize(uint64_t hash) const;
+    
+    // Common helpers
     uint32_t getCurrentTime() const;
     
     // Prevent copying

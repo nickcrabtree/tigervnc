@@ -86,23 +86,25 @@ uint64_t rfb::computeSampledHash(const uint8_t* data,
 }
 
 // ============================================================================
-// ContentCache Implementation
+// ContentCache Implementation - ARC Algorithm
 // ============================================================================
 
 ContentCache::ContentCache(size_t maxSizeMB, uint32_t maxAgeSec)
-  : maxCacheSize_(maxSizeMB * 1024 * 1024),
+  : p_(0),
+    maxCacheSize_(maxSizeMB * 1024 * 1024),
     maxAge_(maxAgeSec),
-    currentCacheSize_(0)
+    t1Size_(0),
+    t2Size_(0)
 {
   memset(&stats_, 0, sizeof(stats_));
-  vlog.debug("ContentCache created: maxSize=%zuMB, maxAge=%us",
+  vlog.debug("ContentCache created with ARC: maxSize=%zuMB, maxAge=%us",
              maxSizeMB, maxAgeSec);
 }
 
 ContentCache::~ContentCache()
 {
-  vlog.debug("ContentCache destroyed: %zu entries, %zu bytes",
-             stats_.totalEntries, stats_.totalBytes);
+  vlog.debug("ContentCache destroyed: %zu entries, T1=%zu T2=%zu",
+             cache_.size(), t1_.size(), t2_.size());
 }
 
 ContentCache::CacheEntry* ContentCache::findContent(uint64_t hash)
@@ -113,17 +115,17 @@ ContentCache::CacheEntry* ContentCache::findContent(uint64_t hash)
     return nullptr;
   }
   
-  // Return first entry for this hash
-  // In case of collision, we might have multiple entries
-  if (it->second.empty()) {
-    stats_.cacheMisses++;
-    return nullptr;
+  stats_.cacheHits++;
+  it->second.hitCount++;
+  it->second.lastSeenTime = getCurrentTime();
+  
+  // ARC policy: move from T1 to T2 on second access
+  auto listIt = listMap_.find(hash);
+  if (listIt != listMap_.end() && listIt->second.list == LIST_T1) {
+    moveToT2(hash);
   }
   
-  stats_.cacheHits++;
-  it->second[0].hitCount++;
-  
-  return &(it->second[0]);
+  return &(it->second);
 }
 
 void ContentCache::insertContent(uint64_t hash,
@@ -132,37 +134,54 @@ void ContentCache::insertContent(uint64_t hash,
                                 size_t dataLen,
                                 bool keepData)
 {
-  // Check if we need to make space
-  size_t targetSize = maxCacheSize_;
-  if (currentCacheSize_ + dataLen > targetSize) {
-    // Prune to make room for new entry
-    // Target size should allow for the new entry
-    while (currentCacheSize_ + dataLen > targetSize && !lruList_.empty()) {
-      uint64_t oldHash = lruList_.back();
-      evictEntry(oldHash);
-      stats_.evictions++;
-    }
-    
-    // If still not enough space, don't cache this entry
-    if (currentCacheSize_ + dataLen > targetSize) {
-      vlog.debug("Cache full, cannot insert %zu bytes", dataLen);
-      return;
-    }
-  }
-  
-  // Check if hash already exists (collision or duplicate)
-  auto it = cache_.find(hash);
-  if (it != cache_.end()) {
+  // Check if already in cache
+  auto cacheIt = cache_.find(hash);
+  if (cacheIt != cache_.end()) {
     // Update existing entry
-    if (!it->second.empty()) {
-      it->second[0].lastBounds = bounds;
-      it->second[0].lastSeenTime = getCurrentTime();
-      updateLRU(hash);
-      return;
+    cacheIt->second.lastBounds = bounds;
+    cacheIt->second.lastSeenTime = getCurrentTime();
+    
+    // Move to T2 if currently in T1
+    auto listIt = listMap_.find(hash);
+    if (listIt != listMap_.end() && listIt->second.list == LIST_T1) {
+      moveToT2(hash);
     }
+    return;
   }
   
-  // Create new entry
+  // Check ghost lists (recently evicted)
+  auto listIt = listMap_.find(hash);
+  
+  if (listIt != listMap_.end() && listIt->second.list == LIST_B1) {
+    // Cache hit in B1: adapt by increasing p (favor recency)
+    size_t delta = (b2_.size() >= b1_.size()) ? 1 : (b2_.size() / b1_.size());
+    p_ = std::min(maxCacheSize_, p_ + delta * dataLen);
+    
+    // Make room and insert into T2 (it's been accessed twice now)
+    replace(hash, dataLen);
+    
+    // Remove from B1
+    b1_.erase(listIt->second.iter);
+    listMap_.erase(listIt);
+    
+  } else if (listIt != listMap_.end() && listIt->second.list == LIST_B2) {
+    // Cache hit in B2: adapt by decreasing p (favor frequency)
+    size_t delta = (b1_.size() >= b2_.size()) ? 1 : (b1_.size() / b2_.size());
+    p_ = (delta * dataLen > p_) ? 0 : p_ - delta * dataLen;
+    
+    // Make room and insert into T2
+    replace(hash, dataLen);
+    
+    // Remove from B2
+    b2_.erase(listIt->second.iter);
+    listMap_.erase(listIt);
+    
+  } else {
+    // New entry: make room and insert into T1
+    replace(hash, dataLen);
+  }
+  
+  // Create the entry
   CacheEntry entry(hash, bounds, getCurrentTime());
   entry.dataSize = dataLen;
   
@@ -170,89 +189,103 @@ void ContentCache::insertContent(uint64_t hash,
     entry.data.assign(data, data + dataLen);
   }
   
-  cache_[hash].push_back(entry);
-  currentCacheSize_ += dataLen;
+  // Insert into cache and T2 (or T1 for new items)
+  cache_[hash] = entry;
+  
+  // Determine which list to add to
+  bool wasInGhost = (listIt != listMap_.end() && 
+                     (listIt->second.list == LIST_B1 || listIt->second.list == LIST_B2));
+  
+  if (wasInGhost) {
+    // Was in ghost list, add to T2
+    t2_.push_front(hash);
+    listMap_[hash].list = LIST_T2;
+    listMap_[hash].iter = t2_.begin();
+    t2Size_ += dataLen;
+  } else {
+    // New entry, add to T1
+    t1_.push_front(hash);
+    listMap_[hash].list = LIST_T1;
+    listMap_[hash].iter = t1_.begin();
+    t1Size_ += dataLen;
+  }
+  
   stats_.totalEntries++;
   stats_.totalBytes += dataLen;
   
-  // Add to LRU
-  lruList_.push_front(hash);
-  lruMap_[hash] = lruList_.begin();
-  
-  vlog.debug("Inserted content: hash=%016llx, size=%zu, total=%zu/%zu",
-             (unsigned long long)hash, dataLen,
-             currentCacheSize_, maxCacheSize_);
+  vlog.debug("Inserted: hash=%016llx size=%zu T1=%zu/%zu T2=%zu p=%zu",
+             (unsigned long long)hash, dataLen, 
+             t1Size_, t1_.size(), t2_.size(), p_);
 }
 
 void ContentCache::touchEntry(uint64_t hash)
 {
   auto it = cache_.find(hash);
-  if (it != cache_.end() && !it->second.empty()) {
-    it->second[0].lastSeenTime = getCurrentTime();
-    updateLRU(hash);
+  if (it != cache_.end()) {
+    it->second.lastSeenTime = getCurrentTime();
+    
+    // Move from T1 to T2 if accessed again
+    auto listIt = listMap_.find(hash);
+    if (listIt != listMap_.end() && listIt->second.list == LIST_T1) {
+      moveToT2(hash);
+    }
   }
 }
 
 void ContentCache::pruneCache()
 {
   uint32_t now = getCurrentTime();
-  size_t evictedBytes = 0;
-  size_t evictedEntries = 0;
+  size_t evictedCount = 0;
   
-  // First pass: Remove expired entries
-  for (auto it = cache_.begin(); it != cache_.end(); ) {
-    auto& entries = it->second;
-    
-    for (auto entryIt = entries.begin(); entryIt != entries.end(); ) {
-      if (now - entryIt->lastSeenTime > maxAge_) {
-        currentCacheSize_ -= entryIt->dataSize;
-        evictedBytes += entryIt->dataSize;
-        evictedEntries++;
-        entryIt = entries.erase(entryIt);
-      } else {
-        ++entryIt;
-      }
-    }
-    
-    // Remove empty hash buckets
-    if (entries.empty()) {
-      uint64_t hash = it->first;
-      it = cache_.erase(it);
+  // Remove aged entries from all lists
+  auto pruneList = [&](std::list<uint64_t>& list, size_t& listSize, 
+                       bool removeData) {
+    for (auto it = list.begin(); it != list.end(); ) {
+      auto cacheIt = cache_.find(*it);
       
-      // Remove from LRU
-      auto lruIt = lruMap_.find(hash);
-      if (lruIt != lruMap_.end()) {
-        lruList_.erase(lruIt->second);
-        lruMap_.erase(lruIt);
+      if (cacheIt != cache_.end() && 
+          now - cacheIt->second.lastSeenTime > maxAge_) {
+        
+        if (removeData) {
+          listSize -= cacheIt->second.dataSize;
+          cache_.erase(cacheIt);
+          stats_.totalEntries--;
+        }
+        
+        listMap_.erase(*it);
+        it = list.erase(it);
+        evictedCount++;
+      } else {
+        ++it;
       }
-    } else {
-      ++it;
     }
-  }
+  };
   
-  // Second pass: LRU eviction if still over limit
-  while (currentCacheSize_ > maxCacheSize_ && !lruList_.empty()) {
-    uint64_t hash = lruList_.back();
-    evictEntry(hash);
-    evictedEntries++;
-  }
+  pruneList(t1_, t1Size_, true);
+  pruneList(t2_, t2Size_, true);
+  pruneList(b1_, t1Size_, false);  // Ghost entries don't affect size
+  pruneList(b2_, t2Size_, false);
   
-  stats_.evictions += evictedEntries;
-  stats_.totalEntries -= evictedEntries;
-  stats_.totalBytes -= evictedBytes;
+  stats_.evictions += evictedCount;
   
-  if (evictedEntries > 0) {
-    vlog.debug("Pruned cache: evicted %zu entries, freed %zu bytes",
-               evictedEntries, evictedBytes);
+  if (evictedCount > 0) {
+    vlog.debug("Pruned %zu aged entries", evictedCount);
   }
 }
 
 void ContentCache::clear()
 {
   cache_.clear();
-  lruList_.clear();
-  lruMap_.clear();
-  currentCacheSize_ = 0;
+  t1_.clear();
+  t2_.clear();
+  b1_.clear();
+  b2_.clear();
+  listMap_.clear();
+  
+  t1Size_ = 0;
+  t2Size_ = 0;
+  p_ = 0;
+  
   stats_.totalEntries = 0;
   stats_.totalBytes = 0;
   
@@ -263,7 +296,12 @@ ContentCache::Stats ContentCache::getStats() const
 {
   Stats current = stats_;
   current.totalEntries = cache_.size();
-  current.totalBytes = currentCacheSize_;
+  current.totalBytes = t1Size_ + t2Size_;
+  current.t1Size = t1_.size();
+  current.t2Size = t2_.size();
+  current.b1Size = b1_.size();
+  current.b2Size = b2_.size();
+  current.targetT1Size = p_;
   return current;
 }
 
@@ -280,9 +318,13 @@ void ContentCache::setMaxSize(size_t maxSizeMB)
   maxCacheSize_ = maxSizeMB * 1024 * 1024;
   vlog.debug("Cache max size set to %zuMB", maxSizeMB);
   
-  // Prune if we're now over the limit
-  if (currentCacheSize_ > maxCacheSize_) {
-    pruneCache();
+  // Evict if we're now over the limit
+  while (t1Size_ + t2Size_ > maxCacheSize_) {
+    if (!t1_.empty() || !t2_.empty()) {
+      replace(0, 0);  // Force eviction
+    } else {
+      break;
+    }
   }
 }
 
@@ -293,41 +335,151 @@ void ContentCache::setMaxAge(uint32_t maxAgeSec)
 }
 
 // ============================================================================
-// Private Helper Methods
+// ARC Algorithm Implementation
 // ============================================================================
 
-void ContentCache::evictEntry(uint64_t hash)
+void ContentCache::replace(uint64_t, size_t size)
 {
-  auto it = cache_.find(hash);
-  if (it == cache_.end())
-    return;
-  
-  // Remove all entries for this hash
-  for (const auto& entry : it->second) {
-    currentCacheSize_ -= entry.dataSize;
+  // Make room for new entry of given size
+  while (t1Size_ + t2Size_ + size > maxCacheSize_) {
+    
+    // Case 1: T1 is larger than target p, evict from T1
+    if (!t1_.empty() && 
+        (t1Size_ > p_ || (t2_.empty() && t1Size_ == p_))) {
+      
+      uint64_t victim = t1_.back();
+      t1_.pop_back();
+      
+      auto cacheIt = cache_.find(victim);
+      if (cacheIt != cache_.end()) {
+        t1Size_ -= cacheIt->second.dataSize;
+        
+        // Move to B1 (ghost list) - keep metadata but remove data
+        b1_.push_front(victim);
+        listMap_[victim].list = LIST_B1;
+        listMap_[victim].iter = b1_.begin();
+        
+        cache_.erase(cacheIt);
+        stats_.totalEntries--;
+        stats_.evictions++;
+        
+        // Limit B1 size
+        while (b1_.size() > maxCacheSize_ / (1024 * 16)) {  // ~16KB ghost entries
+          uint64_t oldGhost = b1_.back();
+          b1_.pop_back();
+          listMap_.erase(oldGhost);
+        }
+      }
+      
+    } 
+    // Case 2: Evict from T2
+    else if (!t2_.empty()) {
+      
+      uint64_t victim = t2_.back();
+      t2_.pop_back();
+      
+      auto cacheIt = cache_.find(victim);
+      if (cacheIt != cache_.end()) {
+        t2Size_ -= cacheIt->second.dataSize;
+        
+        // Move to B2 (ghost list)
+        b2_.push_front(victim);
+        listMap_[victim].list = LIST_B2;
+        listMap_[victim].iter = b2_.begin();
+        
+        cache_.erase(cacheIt);
+        stats_.totalEntries--;
+        stats_.evictions++;
+        
+        // Limit B2 size
+        while (b2_.size() > maxCacheSize_ / (1024 * 16)) {
+          uint64_t oldGhost = b2_.back();
+          b2_.pop_back();
+          listMap_.erase(oldGhost);
+        }
+      }
+      
+    } else {
+      // Both lists empty, nothing to evict
+      break;
+    }
   }
-  
-  cache_.erase(it);
-  
-  // Remove from LRU
-  auto lruIt = lruMap_.find(hash);
-  if (lruIt != lruMap_.end()) {
-    lruList_.erase(lruIt->second);
-    lruMap_.erase(lruIt);
-  }
-  
-  vlog.debug("Evicted entry: hash=%016llx", (unsigned long long)hash);
 }
 
-void ContentCache::updateLRU(uint64_t hash)
+void ContentCache::moveToT2(uint64_t hash)
 {
-  auto it = lruMap_.find(hash);
-  if (it != lruMap_.end()) {
-    // Move to front
-    lruList_.erase(it->second);
-    lruList_.push_front(hash);
-    lruMap_[hash] = lruList_.begin();
+  auto listIt = listMap_.find(hash);
+  if (listIt == listMap_.end() || listIt->second.list != LIST_T1) {
+    return;
   }
+  
+  size_t size = getEntrySize(hash);
+  
+  // Remove from T1
+  t1_.erase(listIt->second.iter);
+  t1Size_ -= size;
+  
+  // Add to T2
+  t2_.push_front(hash);
+  t2Size_ += size;
+  
+  listMap_[hash].list = LIST_T2;
+  listMap_[hash].iter = t2_.begin();
+}
+
+void ContentCache::moveToB1(uint64_t hash)
+{
+  removeFromList(hash);
+  
+  b1_.push_front(hash);
+  listMap_[hash].list = LIST_B1;
+  listMap_[hash].iter = b1_.begin();
+}
+
+void ContentCache::moveToB2(uint64_t hash)
+{
+  removeFromList(hash);
+  
+  b2_.push_front(hash);
+  listMap_[hash].list = LIST_B2;
+  listMap_[hash].iter = b2_.begin();
+}
+
+void ContentCache::removeFromList(uint64_t hash)
+{
+  auto listIt = listMap_.find(hash);
+  if (listIt == listMap_.end()) {
+    return;
+  }
+  
+  size_t size = getEntrySize(hash);
+  
+  switch (listIt->second.list) {
+    case LIST_T1:
+      t1_.erase(listIt->second.iter);
+      t1Size_ -= size;
+      break;
+    case LIST_T2:
+      t2_.erase(listIt->second.iter);
+      t2Size_ -= size;
+      break;
+    case LIST_B1:
+      b1_.erase(listIt->second.iter);
+      break;
+    case LIST_B2:
+      b2_.erase(listIt->second.iter);
+      break;
+    case LIST_NONE:
+      break;
+  }
+  
+  listMap_.erase(listIt);
+}
+
+size_t ContentCache::getEntrySize(uint64_t hash) const
+{
+  auto it = cache_.find(hash);
+  return (it != cache_.end()) ? it->second.dataSize : 0;
 }
 
 uint32_t ContentCache::getCurrentTime() const
