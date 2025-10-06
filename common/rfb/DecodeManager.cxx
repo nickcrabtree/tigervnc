@@ -49,9 +49,10 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   memset(stats, 0, sizeof(stats));
   memset(&cacheStats, 0, sizeof(cacheStats));
   
-  // Initialize client-side content cache (256MB default)
-  contentCache = new ContentCache(256, 300);
-  vlog.info("Client ContentCache initialized: 256MB, 300s max age");
+  // Initialize client-side content cache (2GB default, unlimited age)
+  // Let ARC algorithm handle eviction without time-based constraints
+  contentCache = new ContentCache(2048, 0);
+  vlog.info("Client ContentCache initialized: 2048MB, unlimited age (ARC-managed)");
 
   cpuCount = std::thread::hardware_concurrency();
   if (cpuCount == 0) {
