@@ -13,3 +13,9 @@ config.h
 cmake_install.cmake
 cmake_uninstall.cmake
 install_manifest.txt
+
+# Build directory
+build/
+
+# Backup files (format: filename.ext_YYYY-MM-DD_HHMM.bak)
+*_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9][0-9][0-9].bak
