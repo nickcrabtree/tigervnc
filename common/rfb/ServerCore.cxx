@@ -106,7 +106,7 @@ core::BoolParameter rfb::Server::enableContentCache
 core::IntParameter rfb::Server::contentCacheSize
 ("ContentCacheSize",
  "Maximum size of content cache in MB",
- 256, 0, 8192);
+ 2048, 0, 8192);
 core::IntParameter rfb::Server::contentCacheMaxAge
 ("ContentCacheMaxAge",
  "Maximum age of cached content in seconds (0 = unlimited)",
