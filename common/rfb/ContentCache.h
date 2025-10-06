@@ -33,7 +33,7 @@ namespace rfb {
   // ARC combines recency (LRU) and frequency (LFU) with self-tuning
   class ContentCache {
   public:
-    ContentCache(size_t maxSizeMB = 100, uint32_t maxAgeSec = 300);
+    ContentCache(size_t maxSizeMB = 2048, uint32_t maxAgeSec = 300);
     ~ContentCache();
 
     struct CacheEntry {
