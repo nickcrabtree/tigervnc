@@ -11,6 +11,7 @@ add_library(rfb STATIC
   CSecurityVncAuth.cxx
   ClientParams.cxx
   ComparingUpdateTracker.cxx
+  ContentCache.cxx
   CopyRectDecoder.cxx
   Cursor.cxx
   DecodeManager.cxx
