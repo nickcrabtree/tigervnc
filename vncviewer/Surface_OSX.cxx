@@ -141,14 +141,25 @@ void Surface::draw(int src_x, int src_y, int dst_x, int dst_y,
                    int dst_w, int dst_h)
 {
   CGColorSpaceRef lut;
+  CGAffineTransform origTransform;
+  CGFloat scale;
 
   CGContextSaveGState(fl_gc);
 
-  // Reset the transformation matrix back to the default identity
-  // matrix as otherwise we get a massive performance hit
-  CGContextConcatCTM(fl_gc, CGAffineTransformInvert(CGContextGetCTM(fl_gc)));
+  // Get the current transformation matrix which includes Retina scaling
+  origTransform = CGContextGetCTM(fl_gc);
+  
+  // Extract scale factor (typically 2.0 for Retina)
+  scale = origTransform.a;
 
-  // macOS Coordinates are from bottom left, not top left
+  // Reset the transformation matrix to identity
+  CGContextConcatCTM(fl_gc, CGAffineTransformInvert(origTransform));
+  
+  // Build new transform: scale for Retina but keep top-left origin
+  CGAffineTransform transform = CGAffineTransformMakeScale(scale, scale);
+  CGContextConcatCTM(fl_gc, transform);
+
+  // macOS uses bottom-left origin, we need top-left, so flip Y coordinate
   dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
 
   lut = cocoa_win_color_space(Fl_Window::current());
@@ -179,14 +190,25 @@ void Surface::blend(int src_x, int src_y, int dst_x, int dst_y,
                     int dst_w, int dst_h, int a)
 {
   CGColorSpaceRef lut;
+  CGAffineTransform origTransform;
+  CGFloat scale;
 
   CGContextSaveGState(fl_gc);
 
-  // Reset the transformation matrix back to the default identity
-  // matrix as otherwise we get a massive performance hit
-  CGContextConcatCTM(fl_gc, CGAffineTransformInvert(CGContextGetCTM(fl_gc)));
+  // Get the current transformation matrix which includes Retina scaling
+  origTransform = CGContextGetCTM(fl_gc);
+  
+  // Extract scale factor (typically 2.0 for Retina)
+  scale = origTransform.a;
 
-  // macOS Coordinates are from bottom left, not top left
+  // Reset the transformation matrix to identity
+  CGContextConcatCTM(fl_gc, CGAffineTransformInvert(origTransform));
+  
+  // Build new transform: scale for Retina but keep top-left origin
+  CGAffineTransform transform = CGAffineTransformMakeScale(scale, scale);
+  CGContextConcatCTM(fl_gc, transform);
+
+  // macOS uses bottom-left origin, we need top-left, so flip Y coordinate
   dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
 
   lut = cocoa_win_color_space(Fl_Window::current());
