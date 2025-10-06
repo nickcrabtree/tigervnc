@@ -213,6 +213,12 @@ bool CMsgReader::readMsg()
       handler->supportsExtendedMouseButtons();
       ret = true;
       break;
+    case encodingCachedRect:
+      ret = readCachedRect(dataRect);
+      break;
+    case encodingCachedRectInit:
+      ret = readCachedRectInit(dataRect);
+      break;
     default:
       ret = readRect(dataRect, rectEncoding);
       break;
@@ -869,4 +875,55 @@ bool CMsgReader::readVMwareLEDState()
   handler->setLEDState(ledState);
 
   return true;
+}
+
+bool CMsgReader::readCachedRect(const core::Rect& r)
+{
+  // Read 64-bit cache ID (sent as two U32s, big-endian)
+  if (!is->hasData(8))
+    return false;
+
+  uint32_t hi = is->readU32();
+  uint32_t lo = is->readU32();
+  uint64_t cacheId = ((uint64_t)hi << 32) | lo;
+
+  vlog.debug("Received CachedRect: [%d,%d-%d,%d] cacheId=%llu",
+             r.tl.x, r.tl.y, r.br.x, r.br.y,
+             (unsigned long long)cacheId);
+
+  // Forward to handler to lookup and blit cached content
+  handler->handleCachedRect(r, cacheId);
+
+  return true;
+}
+
+bool CMsgReader::readCachedRectInit(const core::Rect& r)
+{
+  // Read 64-bit cache ID (sent as two U32s, big-endian)
+  if (!is->hasData(8 + 4))
+    return false;
+
+  is->setRestorePoint();
+
+  uint32_t hi = is->readU32();
+  uint32_t lo = is->readU32();
+  uint64_t cacheId = ((uint64_t)hi << 32) | lo;
+  int encoding = is->readS32();
+
+  vlog.debug("Received CachedRectInit: [%d,%d-%d,%d] cacheId=%llu encoding=%d",
+             r.tl.x, r.tl.y, r.br.x, r.br.y,
+             (unsigned long long)cacheId, encoding);
+
+  // Now read the actual encoded rectangle data using the specified encoding
+  bool ret = readRect(r, encoding);
+
+  if (ret) {
+    is->clearRestorePoint();
+    // Notify handler to store this decoded rect with cache ID
+    handler->storeCachedRect(r, cacheId);
+  } else {
+    is->gotoRestorePoint();
+  }
+
+  return ret;
 }

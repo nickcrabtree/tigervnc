@@ -417,6 +417,26 @@ void SMsgWriter::writeCopyRect(const core::Rect& r, int srcX, int srcY)
   endRect();
 }
 
+void SMsgWriter::writeCachedRect(const core::Rect& r, uint64_t cacheId)
+{
+  startRect(r, encodingCachedRect);
+  // Write 64-bit cache ID as two 32-bit values (big-endian)
+  os->writeU32((uint32_t)(cacheId >> 32));
+  os->writeU32((uint32_t)(cacheId & 0xFFFFFFFF));
+  endRect();
+}
+
+void SMsgWriter::writeCachedRectInit(const core::Rect& r, uint64_t cacheId, int encoding)
+{
+  startRect(r, encodingCachedRectInit);
+  // Write 64-bit cache ID as two 32-bit values (big-endian)
+  os->writeU32((uint32_t)(cacheId >> 32));
+  os->writeU32((uint32_t)(cacheId & 0xFFFFFFFF));
+  os->writeU32(encoding);
+  // Caller will write encoded pixel data after this
+  // Note: endRect() should be called by caller after writing pixel data
+}
+
 void SMsgWriter::startRect(const core::Rect& r, int encoding)
 {
   if (++nRectsInUpdate > nRectsInHeader && nRectsInHeader)

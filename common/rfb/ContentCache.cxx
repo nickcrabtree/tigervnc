@@ -90,7 +90,8 @@ uint64_t rfb::computeSampledHash(const uint8_t* data,
 // ============================================================================
 
 ContentCache::ContentCache(size_t maxSizeMB, uint32_t maxAgeSec)
-  : p_(0),
+  : nextCacheId_(1),  // Start from 1 (0 is reserved for "clear all")
+    p_(0),
     maxCacheSize_(maxSizeMB * 1024 * 1024),
     maxAge_(maxAgeSec),
     t1Size_(0),
@@ -128,11 +129,11 @@ ContentCache::CacheEntry* ContentCache::findContent(uint64_t hash)
   return &(it->second);
 }
 
-void ContentCache::insertContent(uint64_t hash,
-                                const core::Rect& bounds,
-                                const uint8_t* data,
-                                size_t dataLen,
-                                bool keepData)
+uint64_t ContentCache::insertContent(uint64_t hash,
+                                    const core::Rect& bounds,
+                                    const uint8_t* data,
+                                    size_t dataLen,
+                                    bool keepData)
 {
   // Check if already in cache
   auto cacheIt = cache_.find(hash);
@@ -146,7 +147,7 @@ void ContentCache::insertContent(uint64_t hash,
     if (listIt != listMap_.end() && listIt->second.list == LIST_T1) {
       moveToT2(hash);
     }
-    return;
+    return cacheIt->second.cacheId;
   }
   
   // Check ghost lists (recently evicted)
@@ -184,6 +185,7 @@ void ContentCache::insertContent(uint64_t hash,
   // Create the entry
   CacheEntry entry(hash, bounds, getCurrentTime());
   entry.dataSize = dataLen;
+  entry.cacheId = getNextCacheId();  // Assign new cache ID
   
   if (keepData && data != nullptr && dataLen > 0) {
     entry.data.assign(data, data + dataLen);
@@ -191,6 +193,10 @@ void ContentCache::insertContent(uint64_t hash,
   
   // Insert into cache and T2 (or T1 for new items)
   cache_[hash] = entry;
+  
+  // Register cache ID mappings
+  hashToCacheId_[hash] = entry.cacheId;
+  cacheIdToHash_[entry.cacheId] = hash;
   
   // Determine which list to add to
   bool wasInGhost = (listIt != listMap_.end() && 
@@ -213,9 +219,11 @@ void ContentCache::insertContent(uint64_t hash,
   stats_.totalEntries++;
   stats_.totalBytes += dataLen;
   
-  vlog.debug("Inserted: hash=%016llx size=%zu T1=%zu/%zu T2=%zu p=%zu",
-             (unsigned long long)hash, dataLen, 
+  vlog.debug("Inserted: hash=%016llx cacheId=%llu size=%zu T1=%zu/%zu T2=%zu p=%zu",
+             (unsigned long long)hash, (unsigned long long)entry.cacheId, dataLen, 
              t1Size_, t1_.size(), t2_.size(), p_);
+  
+  return entry.cacheId;
 }
 
 void ContentCache::touchEntry(uint64_t hash)
@@ -485,4 +493,126 @@ size_t ContentCache::getEntrySize(uint64_t hash) const
 uint32_t ContentCache::getCurrentTime() const
 {
   return (uint32_t)time(nullptr);
+}
+
+// ============================================================================
+// Cache ID Management Methods (for protocol extension)
+// ============================================================================
+
+uint64_t ContentCache::getNextCacheId()
+{
+  return nextCacheId_.fetch_add(1);
+}
+
+ContentCache::CacheEntry* ContentCache::findByCacheId(uint64_t cacheId)
+{
+  // Look up hash from cache ID
+  auto hashIt = cacheIdToHash_.find(cacheId);
+  if (hashIt == cacheIdToHash_.end()) {
+    return nullptr;
+  }
+  
+  return findContent(hashIt->second);
+}
+
+ContentCache::CacheEntry* ContentCache::findByHash(uint64_t hash, uint64_t* outCacheId)
+{
+  // Check if hash has a cache ID assigned
+  auto idIt = hashToCacheId_.find(hash);
+  if (idIt != hashToCacheId_.end() && outCacheId != nullptr) {
+    *outCacheId = idIt->second;
+  }
+  
+  return findContent(hash);
+}
+
+void ContentCache::insertWithId(uint64_t cacheId,
+                               uint64_t hash,
+                               const core::Rect& bounds,
+                               const uint8_t* data,
+                               size_t dataLen,
+                               bool keepData)
+{
+  // Use the standard insertion
+  insertContent(hash, bounds, data, dataLen, keepData);
+  
+  // Associate cache ID with this hash
+  auto cacheIt = cache_.find(hash);
+  if (cacheIt != cache_.end()) {
+    cacheIt->second.cacheId = cacheId;
+    hashToCacheId_[hash] = cacheId;
+    cacheIdToHash_[cacheId] = hash;
+    
+    vlog.debug("Assigned cache ID %llu to hash %016llx",
+               (unsigned long long)cacheId,
+               (unsigned long long)hash);
+  }
+}
+
+// ============================================================================
+// Client-Side Decoded Pixel Storage
+// ============================================================================
+
+void ContentCache::storeDecodedPixels(uint64_t cacheId,
+                                     const uint8_t* pixels,
+                                     const PixelFormat& pf,
+                                     int width, int height, int stride)
+{
+  if (pixels == nullptr || width <= 0 || height <= 0) {
+    return;
+  }
+  
+  CachedPixels& cached = pixelCache_[cacheId];
+  cached.cacheId = cacheId;
+  cached.format = pf;
+  cached.width = width;
+  cached.height = height;
+  cached.stride = stride;
+  cached.lastUsedTime = getCurrentTime();
+  
+  // Copy pixel data
+  size_t dataSize = height * stride * (pf.bpp / 8);
+  cached.pixels.resize(dataSize);
+  memcpy(cached.pixels.data(), pixels, dataSize);
+  
+  vlog.debug("Stored decoded pixels for cache ID %llu: %dx%d %dbpp (%zu bytes)",
+             (unsigned long long)cacheId, width, height, pf.bpp, dataSize);
+  
+  // Prune pixel cache if it gets too large
+  size_t totalPixelBytes = 0;
+  for (const auto& entry : pixelCache_) {
+    totalPixelBytes += entry.second.pixels.size();
+  }
+  
+  // If over max size, evict oldest entries
+  if (totalPixelBytes > maxCacheSize_) {
+    vlog.debug("Pixel cache size %zu exceeds limit %zu, pruning...",
+               totalPixelBytes, maxCacheSize_);
+    
+    // Find oldest entries
+    std::vector<uint64_t> idsToRemove;
+    for (const auto& entry : pixelCache_) {
+      if (getCurrentTime() - entry.second.lastUsedTime > maxAge_) {
+        idsToRemove.push_back(entry.first);
+      }
+    }
+    
+    // Remove old entries
+    for (uint64_t id : idsToRemove) {
+      pixelCache_.erase(id);
+    }
+  }
+}
+
+const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheId)
+{
+  auto it = pixelCache_.find(cacheId);
+  if (it == pixelCache_.end()) {
+    return nullptr;
+  }
+  
+  // Update access time
+  it->second.lastUsedTime = getCurrentTime();
+  
+  return &(it->second);
 }

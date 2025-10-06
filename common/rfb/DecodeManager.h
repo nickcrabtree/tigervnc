@@ -27,6 +27,7 @@
 
 #include <core/Region.h>
 
+#include <rfb/ContentCache.h>
 #include <rfb/encodings.h>
 
 namespace core {
@@ -52,6 +53,12 @@ namespace rfb {
                     ModifiablePixelBuffer* pb);
 
     void flush();
+    
+    // Cache protocol extension
+    void handleCachedRect(const core::Rect& r, uint64_t cacheId,
+                         ModifiablePixelBuffer* pb);
+    void storeCachedRect(const core::Rect& r, uint64_t cacheId,
+                        ModifiablePixelBuffer* pb);
 
   private:
     void logStats();
@@ -112,6 +119,15 @@ namespace rfb {
 
     std::list<DecodeThread*> threads;
     std::exception_ptr threadException;
+    
+    // Client-side content cache
+    ContentCache* contentCache;
+    struct CacheStats {
+      unsigned cache_hits;
+      unsigned cache_lookups;
+      unsigned cache_misses;
+    };
+    CacheStats cacheStats;
   };
 
 }

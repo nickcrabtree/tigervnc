@@ -28,11 +28,13 @@
 #include <core/LogWriter.h>
 #include <core/string.h>
 
+#include <rfb/ContentCache.h>
 #include <rfb/Cursor.h>
 #include <rfb/EncodeManager.h>
 #include <rfb/Encoder.h>
 #include <rfb/Palette.h>
 #include <rfb/SConnection.h>
+#include <rfb/ServerCore.h>
 #include <rfb/SMsgWriter.h>
 #include <rfb/UpdateTracker.h>
 #include <rfb/encodings.h>
@@ -136,7 +138,7 @@ static const char *encoderTypeName(EncoderType type)
 }
 
 EncodeManager::EncodeManager(SConnection* conn_)
-  : conn(conn_), recentChangeTimer(this)
+  : conn(conn_), recentChangeTimer(this), contentCache(nullptr)
 {
   StatsVector::iterator iter;
 
@@ -152,12 +154,25 @@ EncodeManager::EncodeManager(SConnection* conn_)
 
   updates = 0;
   memset(&copyStats, 0, sizeof(copyStats));
+  memset(&cacheStats, 0, sizeof(cacheStats));
   stats.resize(encoderClassMax);
   for (iter = stats.begin();iter != stats.end();++iter) {
     StatsVector::value_type::iterator iter2;
     iter->resize(encoderTypeMax);
     for (iter2 = iter->begin();iter2 != iter->end();++iter2)
       memset(&*iter2, 0, sizeof(EncoderStats));
+  }
+
+  // Initialize content cache if enabled
+  if (Server::enableContentCache) {
+    contentCache = new ContentCache(
+      Server::contentCacheSize,
+      Server::contentCacheMaxAge
+    );
+    vlog.info("ContentCache enabled: size=%dMB, maxAge=%ds, minRectSize=%d",
+              (int)Server::contentCacheSize,
+              (int)Server::contentCacheMaxAge,
+              (int)Server::contentCacheMinRectSize);
   }
 }
 
@@ -167,6 +182,8 @@ EncodeManager::~EncodeManager()
 
   for (Encoder* encoder : encoders)
     delete encoder;
+
+  delete contentCache;
 }
 
 void EncodeManager::logStats()
@@ -239,6 +256,29 @@ void EncodeManager::logStats()
             core::siPrefix(pixels, "pixels").c_str());
   vlog.info("         %s (1:%g ratio)",
             core::iecPrefix(bytes, "B").c_str(), ratio);
+
+  // Log ContentCache statistics
+  if (contentCache != nullptr) {
+    ContentCache::Stats cstats = contentCache->getStats();
+    vlog.info("ContentCache statistics:");
+    vlog.info("  Lookups: %u, Hits: %u (%.1f%% hit rate)",
+              cacheStats.cacheLookups,
+              cacheStats.cacheHits,
+              cacheStats.cacheLookups > 0 ?
+                (100.0 * cacheStats.cacheHits / cacheStats.cacheLookups) : 0.0);
+    vlog.info("  Estimated bytes saved: %s",
+              core::iecPrefix(cacheStats.bytesSaved, "B").c_str());
+    vlog.info("  Cache entries: %zu, Total size: %s",
+              cstats.totalEntries,
+              core::iecPrefix(cstats.totalBytes, "B").c_str());
+    vlog.info("  Cache hits: %llu, misses: %llu, evictions: %llu",
+              (unsigned long long)cstats.cacheHits,
+              (unsigned long long)cstats.cacheMisses,
+              (unsigned long long)cstats.evictions);
+    vlog.info("  ARC stats: T1=%zu, T2=%zu, B1=%zu, B2=%zu, target=%zu",
+              cstats.t1Size, cstats.t2Size, cstats.b1Size,
+              cstats.b2Size, cstats.targetT1Size);
+  }
 }
 
 bool EncodeManager::supported(int encoding)
@@ -330,6 +370,21 @@ void EncodeManager::doUpdate(bool allowLossy, const
     core::Region changed, cursorRegion;
 
     updates++;
+
+    // Check for resolution change and clear cache if needed
+    if (contentCache != nullptr && pb != nullptr) {
+      core::Rect fbRect = pb->getRect();
+      if (fbRect != lastFramebufferRect) {
+        if (!lastFramebufferRect.is_empty()) {
+          vlog.info("Framebuffer size changed from [%d,%d-%d,%d] to [%d,%d-%d,%d], clearing ContentCache",
+                    lastFramebufferRect.tl.x, lastFramebufferRect.tl.y,
+                    lastFramebufferRect.br.x, lastFramebufferRect.br.y,
+                    fbRect.tl.x, fbRect.tl.y, fbRect.br.x, fbRect.br.y);
+          contentCache->clear();
+        }
+        lastFramebufferRect = fbRect;
+      }
+    }
 
     prepareEncoders(allowLossy);
 
@@ -819,6 +874,10 @@ void EncodeManager::writeRects(const core::Region& changed,
 void EncodeManager::writeSubRect(const core::Rect& rect,
                                  const PixelBuffer* pb)
 {
+  // Try content cache lookup first
+  if (tryContentCacheLookup(rect, pb))
+    return;
+
   PixelBuffer *ppb;
 
   Encoder *encoder;
@@ -899,6 +958,9 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
   encoder->writeRect(ppb, info.palette);
 
   endRect();
+
+  // Insert into content cache for future lookups
+  insertIntoContentCache(rect, pb);
 }
 
 bool EncodeManager::checkSolidTile(const core::Rect& r,
@@ -1093,6 +1155,137 @@ void EncodeManager::OffsetPixelBuffer::update(const PixelFormat& pf,
 uint8_t* EncodeManager::OffsetPixelBuffer::getBufferRW(const core::Rect& /*r*/, int* /*stride*/)
 {
   throw std::logic_error("Invalid write attempt to OffsetPixelBuffer");
+}
+
+bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
+                                          const PixelBuffer* pb)
+{
+  if (contentCache == nullptr)
+    return false;
+
+  // Skip if below minimum size threshold
+  if (rect.area() < Server::contentCacheMinRectSize)
+    return false;
+
+  // Check if client supports cache protocol extension
+  bool supportsCacheProtocol = conn->client.supportsEncoding(pseudoEncodingContentCache);
+  
+  // Otherwise fall back to CopyRect
+  if (!supportsCacheProtocol && !conn->client.supportsEncoding(encodingCopyRect))
+    return false;
+
+  cacheStats.cacheLookups++;
+
+  // Get pixel data and compute hash
+  const uint8_t* buffer;
+  int stride;
+  buffer = pb->getBuffer(rect, &stride);
+  
+  uint64_t hash;
+  size_t bytesPerPixel = pb->getPF().bpp / 8;
+  
+  // For large rectangles, use sampled hash for speed
+  if (rect.area() > 262144) { // 512x512
+    hash = computeSampledHash(buffer, rect.width(), rect.height(),
+                              stride, bytesPerPixel, 4);
+  } else {
+    // Compute full hash for smaller rectangles
+    size_t dataLen = rect.height() * stride;
+    hash = computeContentHash(buffer, dataLen);
+  }
+
+  // Look up in cache by hash and get cache ID if exists
+  uint64_t cacheId = 0;
+  ContentCache::CacheEntry* entry = contentCache->findByHash(hash, &cacheId);
+  
+  if (entry != nullptr && cacheId != 0) {
+    // Cache hit!
+    cacheStats.cacheHits++;
+    
+    // Update statistics
+    int equiv = 12 + rect.area() * (conn->client.pf().bpp/8);
+    
+    if (supportsCacheProtocol) {
+      // Use new cache protocol: send cache ID reference
+      cacheStats.bytesSaved += equiv - 20; // CachedRect is 20 bytes
+      
+      copyStats.rects++;
+      copyStats.pixels += rect.area();
+      copyStats.equivalent += equiv;
+      
+      beforeLength = conn->getOutStream()->length();
+      conn->writer()->writeCachedRect(rect, cacheId);
+      copyStats.bytes += conn->getOutStream()->length() - beforeLength;
+      
+      vlog.debug("ContentCache protocol hit: rect [%d,%d-%d,%d] cacheId=%llu",
+                 rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
+                 (unsigned long long)cacheId);
+    } else {
+      // Fall back to CopyRect (content must be visible on screen)
+      cacheStats.bytesSaved += equiv - 12; // CopyRect is 12 bytes
+      
+      copyStats.rects++;
+      copyStats.pixels += rect.area();
+      copyStats.equivalent += equiv;
+      
+      beforeLength = conn->getOutStream()->length();
+      conn->writer()->writeCopyRect(rect, entry->lastBounds.tl.x,
+                                    entry->lastBounds.tl.y);
+      copyStats.bytes += conn->getOutStream()->length() - beforeLength;
+      
+      vlog.debug("ContentCache CopyRect hit: rect [%d,%d-%d,%d] -> [%d,%d]",
+                 rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
+                 entry->lastBounds.tl.x, entry->lastBounds.tl.y);
+    }
+    
+    // Mark region as recently changed
+    lossyRegion.assign_subtract(rect);
+    pendingRefreshRegion.assign_subtract(rect);
+    
+    // Update cache entry with new location
+    entry->lastBounds = rect;
+    contentCache->touchEntry(hash);
+    
+    return true;
+  }
+
+  return false;
+}
+
+void EncodeManager::insertIntoContentCache(const core::Rect& rect,
+                                           const PixelBuffer* pb)
+{
+  if (contentCache == nullptr)
+    return;
+
+  // Skip if below minimum size threshold
+  if (rect.area() < Server::contentCacheMinRectSize)
+    return;
+
+  // Get pixel data and compute hash
+  const uint8_t* buffer;
+  int stride;
+  buffer = pb->getBuffer(rect, &stride);
+  
+  uint64_t hash;
+  size_t bytesPerPixel = pb->getPF().bpp / 8;
+  
+  // For large rectangles, use sampled hash for speed
+  if (rect.area() > 262144) { // 512x512
+    hash = computeSampledHash(buffer, rect.width(), rect.height(),
+                              stride, bytesPerPixel, 4);
+  } else {
+    // Compute full hash for smaller rectangles
+    size_t dataLen = rect.height() * stride;
+    hash = computeContentHash(buffer, dataLen);
+  }
+
+  // Insert into cache and get assigned cache ID
+  uint64_t cacheId = contentCache->insertContent(hash, rect, nullptr, 0, false);
+  
+  vlog.debug("ContentCache insert: rect [%d,%d-%d,%d], hash=%llx, cacheId=%llu",
+             rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
+             (unsigned long long)hash, (unsigned long long)cacheId);
 }
 
 template<class T>

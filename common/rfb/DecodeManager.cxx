@@ -31,6 +31,7 @@
 #include <rfb/DecodeManager.h>
 #include <rfb/Decoder.h>
 #include <rfb/Exception.h>
+#include <rfb/PixelBuffer.h>
 
 #include <rdr/MemOutStream.h>
 
@@ -39,13 +40,18 @@ using namespace rfb;
 static core::LogWriter vlog("DecodeManager");
 
 DecodeManager::DecodeManager(CConnection *conn_) :
-  conn(conn_), threadException(nullptr)
+  conn(conn_), threadException(nullptr), contentCache(nullptr)
 {
   size_t cpuCount;
 
   memset(decoders, 0, sizeof(decoders));
 
   memset(stats, 0, sizeof(stats));
+  memset(&cacheStats, 0, sizeof(cacheStats));
+  
+  // Initialize client-side content cache (256MB default)
+  contentCache = new ContentCache(256, 300);
+  vlog.info("Client ContentCache initialized: 256MB, 300s max age");
 
   cpuCount = std::thread::hardware_concurrency();
   if (cpuCount == 0) {
@@ -87,6 +93,8 @@ DecodeManager::~DecodeManager()
 
   for (Decoder* decoder : decoders)
     delete decoder;
+    
+  delete contentCache;
 }
 
 bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
@@ -390,4 +398,57 @@ next:
   }
 
   return nullptr;
+}
+
+void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
+                                    ModifiablePixelBuffer* pb)
+{
+  if (contentCache == nullptr || pb == nullptr) {
+    vlog.error("handleCachedRect called but cache or framebuffer is null");
+    return;
+  }
+  
+  cacheStats.cache_lookups++;
+  
+  // Lookup cached pixels by cache ID
+  const ContentCache::CachedPixels* cached = contentCache->getDecodedPixels(cacheId);
+  
+  if (cached == nullptr) {
+    // Cache miss - request refresh from server
+    cacheStats.cache_misses++;
+    vlog.debug("Cache miss for ID %llu, requesting refresh",
+               (unsigned long long)cacheId);
+    // TODO: Implement refresh request mechanism
+    return;
+  }
+  
+  cacheStats.cache_hits++;
+  
+  vlog.debug("Cache hit for ID %llu: blitting %dx%d to [%d,%d-%d,%d]",
+             (unsigned long long)cacheId, cached->width, cached->height,
+             r.tl.x, r.tl.y, r.br.x, r.br.y);
+  
+  // Blit cached pixels to framebuffer at target position
+  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stride);
+}
+
+void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
+                                   ModifiablePixelBuffer* pb)
+{
+  if (contentCache == nullptr || pb == nullptr) {
+    vlog.error("storeCachedRect called but cache or framebuffer is null");
+    return;
+  }
+  
+  vlog.debug("Storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
+             r.tl.x, r.tl.y, r.br.x, r.br.y,
+             (unsigned long long)cacheId);
+  
+  // Get pixel data from framebuffer
+  int stride;
+  const uint8_t* pixels = pb->getBuffer(r, &stride);
+  
+  // Store in content cache with cache ID
+  contentCache->storeDecodedPixels(cacheId, pixels, pb->getPF(),
+                                  r.width(), r.height(), stride);
 }

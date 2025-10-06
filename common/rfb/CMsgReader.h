@@ -72,6 +72,10 @@ namespace rfb {
     bool readExtendedDesktopSize(int x, int y, int w, int h);
     bool readLEDState();
     bool readVMwareLEDState();
+    
+    // Cache protocol extension
+    bool readCachedRect(const core::Rect& r);
+    bool readCachedRectInit(const core::Rect& r);
 
   private:
     CMsgHandler* handler;

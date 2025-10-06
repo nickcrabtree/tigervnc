@@ -27,6 +27,7 @@
 #include <core/Region.h>
 #include <core/Timer.h>
 
+#include <rfb/ContentCache.h>
 #include <rfb/PixelBuffer.h>
 
 namespace rfb {
@@ -90,6 +91,9 @@ namespace rfb {
     void writeRects(const core::Region& changed, const PixelBuffer* pb);
 
     void writeSubRect(const core::Rect& rect, const PixelBuffer* pb);
+
+    bool tryContentCacheLookup(const core::Rect& rect, const PixelBuffer* pb);
+    void insertIntoContentCache(const core::Rect& rect, const PixelBuffer* pb);
 
     bool checkSolidTile(const core::Rect& r, const uint8_t* colourValue,
                         const PixelBuffer *pb);
@@ -158,6 +162,17 @@ namespace rfb {
 
     OffsetPixelBuffer offsetPixelBuffer;
     ManagedPixelBuffer convertedPixelBuffer;
+
+    // Content cache for automatic CopyRect detection
+    ContentCache* contentCache;
+    core::Rect lastFramebufferRect;
+
+    struct ContentCacheStats {
+      unsigned cacheHits;
+      unsigned cacheLookups;
+      unsigned long long bytesSaved;
+    };
+    ContentCacheStats cacheStats;
   };
 
 }

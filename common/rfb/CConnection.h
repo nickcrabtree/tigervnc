@@ -242,6 +242,9 @@ namespace rfb {
     void handleClipboardProvide(uint32_t flags, const size_t* lengths,
                                 const uint8_t* const* data) override;
 
+    // Cache protocol extension handlers
+    void handleCachedRect(const core::Rect& r, uint64_t cacheId) override;
+    void storeCachedRect(const core::Rect& r, uint64_t cacheId) override;
 
     // Methods to be overridden in a derived class
 

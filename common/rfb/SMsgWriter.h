@@ -118,6 +118,12 @@ namespace rfb {
     // There is no explicit encoder for CopyRect rects.
     void writeCopyRect(const core::Rect& r, int srcX, int srcY);
 
+    // Cache protocol extension: reference to cached content
+    void writeCachedRect(const core::Rect& r, uint64_t cacheId);
+    
+    // Cache protocol extension: initial transmission with cache ID
+    void writeCachedRectInit(const core::Rect& r, uint64_t cacheId, int encoding);
+
     // Encoders should call these to mark the start and stop of individual
     // rects.
     void startRect(const core::Rect& r, int enc);

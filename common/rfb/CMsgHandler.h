@@ -84,6 +84,10 @@ namespace rfb {
                                         const size_t* lengths,
                                         const uint8_t* const* data) = 0;
 
+    // Cache protocol extension handlers
+    virtual void handleCachedRect(const core::Rect& r, uint64_t cacheId) = 0;
+    virtual void storeCachedRect(const core::Rect& r, uint64_t cacheId) = 0;
+
     ServerParams server;
   };
 }

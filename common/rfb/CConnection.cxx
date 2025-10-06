@@ -1019,6 +1019,9 @@ void CConnection::updateEncodings()
   encodings.push_back(pseudoEncodingFence);
   encodings.push_back(pseudoEncodingQEMUKeyEvent);
   encodings.push_back(pseudoEncodingExtendedMouseButtons);
+  
+  // Cache protocol extension
+  encodings.push_back(pseudoEncodingContentCache);
 
   if (Decoder::supported(preferredEncoding)) {
     encodings.push_back(preferredEncoding);
@@ -1037,4 +1040,16 @@ void CConnection::updateEncodings()
       encodings.push_back(pseudoEncodingQualityLevel0 + qualityLevel);
 
   writer()->writeSetEncodings(encodings);
+}
+
+void CConnection::handleCachedRect(const core::Rect& r, uint64_t cacheId)
+{
+  // Forward to decoder manager to handle cache lookup and blit
+  decoder.handleCachedRect(r, cacheId, framebuffer);
+}
+
+void CConnection::storeCachedRect(const core::Rect& r, uint64_t cacheId)
+{
+  // Forward to decoder manager to store decoded content with cache ID
+  decoder.storeCachedRect(r, cacheId, framebuffer);
 }

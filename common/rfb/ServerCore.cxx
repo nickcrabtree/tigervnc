@@ -99,3 +99,19 @@ core::BoolParameter rfb::Server::queryConnect
 ("QueryConnect",
  "Prompt the local user to accept or reject incoming connections.",
  false);
+core::BoolParameter rfb::Server::enableContentCache
+("EnableContentCache",
+ "Enable content-addressable cache for automatic CopyRect detection",
+ true);
+core::IntParameter rfb::Server::contentCacheSize
+("ContentCacheSize",
+ "Maximum size of content cache in MB",
+ 256, 0, 8192);
+core::IntParameter rfb::Server::contentCacheMaxAge
+("ContentCacheMaxAge",
+ "Maximum age of cached content in seconds (0 = unlimited)",
+ 300, 0, INT_MAX);
+core::IntParameter rfb::Server::contentCacheMinRectSize
+("ContentCacheMinRectSize",
+ "Minimum rectangle size (pixels) to consider for caching",
+ 4096, 0, INT_MAX);

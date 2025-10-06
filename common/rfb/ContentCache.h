@@ -20,11 +20,13 @@
 #define __RFB_CONTENT_CACHE_H__
 
 #include <stdint.h>
+#include <atomic>
 #include <vector>
 #include <unordered_map>
 #include <list>
 
 #include <core/Rect.h>
+#include <rfb/PixelFormat.h>
 
 namespace rfb {
 
@@ -38,6 +40,7 @@ namespace rfb {
 
     struct CacheEntry {
       uint64_t contentHash;           // Hash of pixel data
+      uint64_t cacheId;               // Unique cache ID for protocol
       core::Rect lastBounds;          // Where this was last seen
       uint32_t lastSeenTime;          // Timestamp for LRU eviction
       size_t dataSize;                // Size in bytes
@@ -47,24 +50,40 @@ namespace rfb {
       // Trade-off: More memory vs. zero false positives
       std::vector<uint8_t> data;      // Can be empty to save memory
       
-      CacheEntry() : contentHash(0), lastSeenTime(0), dataSize(0), hitCount(0) {}
+      CacheEntry() : contentHash(0), cacheId(0), lastSeenTime(0), dataSize(0), hitCount(0) {}
       
       CacheEntry(uint64_t hash, const core::Rect& bounds, uint32_t time)
-        : contentHash(hash), lastBounds(bounds), lastSeenTime(time),
+        : contentHash(hash), cacheId(0), lastBounds(bounds), lastSeenTime(time),
           dataSize(0), hitCount(0) {}
     };
 
-    // Find if content exists in cache
+    // Find if content exists in cache by hash
     // Returns entry if found, nullptr otherwise
     CacheEntry* findContent(uint64_t hash);
     
+    // Find by cache ID (for protocol)
+    CacheEntry* findByCacheId(uint64_t cacheId);
+    
+    // Find by hash and return cache ID if exists
+    // Returns entry and sets outCacheId if found
+    CacheEntry* findByHash(uint64_t hash, uint64_t* outCacheId);
+    
     // Insert new content into cache
     // If keepData=true, stores full pixel data for verification
-    void insertContent(uint64_t hash, 
-                      const core::Rect& bounds,
-                      const uint8_t* data = nullptr,
-                      size_t dataLen = 0,
-                      bool keepData = false);
+    // Returns assigned cache ID
+    uint64_t insertContent(uint64_t hash, 
+                          const core::Rect& bounds,
+                          const uint8_t* data = nullptr,
+                          size_t dataLen = 0,
+                          bool keepData = false);
+    
+    // Insert with explicit cache ID (for client-side storage)
+    void insertWithId(uint64_t cacheId,
+                     uint64_t hash,
+                     const core::Rect& bounds,
+                     const uint8_t* data = nullptr,
+                     size_t dataLen = 0,
+                     bool keepData = false);
     
     // Mark entry as recently accessed (updates ARC lists)
     void touchEntry(uint64_t hash);
@@ -98,9 +117,37 @@ namespace rfb {
     void setMaxSize(size_t maxSizeMB);
     void setMaxAge(uint32_t maxAgeSec);
     
+    // Get next available cache ID (for server)
+    uint64_t getNextCacheId();
+    
+    // Client-side: Store decoded pixels by cache ID
+    struct CachedPixels {
+      uint64_t cacheId;
+      std::vector<uint8_t> pixels;
+      PixelFormat format;
+      int width;
+      int height;
+      int stride;
+      uint32_t lastUsedTime;
+      
+      CachedPixels() : cacheId(0), width(0), height(0), stride(0), lastUsedTime(0) {}
+    };
+    
+    void storeDecodedPixels(uint64_t cacheId, const uint8_t* pixels,
+                           const PixelFormat& pf, int width, int height, int stride);
+    const CachedPixels* getDecodedPixels(uint64_t cacheId);
+    
   private:
     // Main cache storage: hash -> entry data
     std::unordered_map<uint64_t, CacheEntry> cache_;
+    
+    // Cache ID management (for protocol)
+    std::atomic<uint64_t> nextCacheId_;
+    std::unordered_map<uint64_t, uint64_t> hashToCacheId_;  // hash -> cache ID
+    std::unordered_map<uint64_t, uint64_t> cacheIdToHash_;  // cache ID -> hash
+    
+    // Client-side: Decoded pixel storage
+    std::unordered_map<uint64_t, CachedPixels> pixelCache_;
     
     // ARC list membership tracking
     enum ListType {
