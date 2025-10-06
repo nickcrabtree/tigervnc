@@ -110,7 +110,7 @@ core::IntParameter rfb::Server::contentCacheSize
 core::IntParameter rfb::Server::contentCacheMaxAge
 ("ContentCacheMaxAge",
  "Maximum age of cached content in seconds (0 = unlimited)",
- 300, 0, INT_MAX);
+ 0, 0, INT_MAX);
 core::IntParameter rfb::Server::contentCacheMinRectSize
 ("ContentCacheMinRectSize",
  "Minimum rectangle size (pixels) to consider for caching",
