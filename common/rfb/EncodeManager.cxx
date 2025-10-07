@@ -1180,11 +1180,11 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
   if (rect.area() < Server::contentCacheMinRectSize)
     return false;
 
-  // Check if client supports cache protocol extension
-  bool supportsCacheProtocol = conn->client.supportsEncoding(pseudoEncodingContentCache);
-  
-  // Otherwise fall back to CopyRect
-  if (!supportsCacheProtocol && !conn->client.supportsEncoding(encodingCopyRect))
+  // Require client support for the ContentCache protocol.
+  // We do not fall back to CopyRect because the cache tracks historical positions,
+  // and CopyRect must only reference currently-visible content. Falling back here
+  // can copy stale content and cause window trails (especially when dragging up/left).
+  if (!conn->client.supportsEncoding(pseudoEncodingContentCache))
     return false;
 
   cacheStats.cacheLookups++;
@@ -1218,38 +1218,20 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
     // Update statistics
     int equiv = 12 + rect.area() * (conn->client.pf().bpp/8);
     
-    if (supportsCacheProtocol) {
-      // Use new cache protocol: send cache ID reference
-      cacheStats.bytesSaved += equiv - 20; // CachedRect is 20 bytes
-      
-      copyStats.rects++;
-      copyStats.pixels += rect.area();
-      copyStats.equivalent += equiv;
-      
-      beforeLength = conn->getOutStream()->length();
-      conn->writer()->writeCachedRect(rect, cacheId);
-      copyStats.bytes += conn->getOutStream()->length() - beforeLength;
-      
-      vlog.debug("ContentCache protocol hit: rect [%d,%d-%d,%d] cacheId=%llu",
-                 rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-                 (unsigned long long)cacheId);
-    } else {
-      // Fall back to CopyRect (content must be visible on screen)
-      cacheStats.bytesSaved += equiv - 12; // CopyRect is 12 bytes
-      
-      copyStats.rects++;
-      copyStats.pixels += rect.area();
-      copyStats.equivalent += equiv;
-      
-      beforeLength = conn->getOutStream()->length();
-      conn->writer()->writeCopyRect(rect, entry->lastBounds.tl.x,
-                                    entry->lastBounds.tl.y);
-      copyStats.bytes += conn->getOutStream()->length() - beforeLength;
-      
-      vlog.debug("ContentCache CopyRect hit: rect [%d,%d-%d,%d] -> [%d,%d]",
-                 rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-                 entry->lastBounds.tl.x, entry->lastBounds.tl.y);
-    }
+    // Use cache protocol: send cache ID reference
+    cacheStats.bytesSaved += equiv - 20; // CachedRect is 20 bytes
+    
+    copyStats.rects++;
+    copyStats.pixels += rect.area();
+    copyStats.equivalent += equiv;
+    
+    beforeLength = conn->getOutStream()->length();
+    conn->writer()->writeCachedRect(rect, cacheId);
+    copyStats.bytes += conn->getOutStream()->length() - beforeLength;
+    
+    vlog.debug("ContentCache protocol hit: rect [%d,%d-%d,%d] cacheId=%llu",
+               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
+               (unsigned long long)cacheId);
     
     // Mark region as recently changed
     lossyRegion.assign_subtract(rect);
