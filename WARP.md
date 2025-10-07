@@ -4,9 +4,26 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Build Commands
 
-TigerVNC uses CMake for building. Out-of-tree builds are recommended.
+TigerVNC uses CMake for configuration with a convenience Makefile for building.
+
+### Quick Start
+
+After initial CMake configuration (see below), use these simple commands:
+
+```bash
+# Build everything (viewer + server)
+make
+
+# Build viewer only
+make viewer
+
+# Build server (Xvnc) only
+make server
+```
 
 ### Initial Configuration
+
+**First time only** - configure the build directory with CMake:
 
 ```bash
 # Basic configuration (out-of-tree build)
@@ -27,61 +44,79 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 
 ### Building
 
+The top-level `Makefile` provides convenience targets:
+
 ```bash
-# Build all targets
-cmake --build build
+# Build both viewer and server (default)
+make
 
-# Build with parallel jobs
-cmake --build build -- -j$(sysctl -n hw.ncpu 2>/dev/null || nproc)
+# Build viewer only (vncviewer)
+make viewer
 
-# Build specific target
-cmake --build build --target vncviewer
+# Build server only (Xvnc)
+make server
 ```
 
-### Building Xvnc Server (Important!)
+**How it works:**
+- `make viewer`: Builds vncviewer via CMake, automatically rebuilding dependent libraries as needed
+- `make server`: Builds CMake libraries (rfb, rdr, network, core) then invokes the Xorg autotools build
+- `make` (or `make all`): Builds both viewer and server
 
-TigerVNC has **two separate build systems**:
+**Build timestamps:**
+- Viewer: Timestamp is generated at build time in `build/vncviewer/build_timestamp.h`
+- Server: Timestamp uses `__DATE__` and `__TIME__` macros in `buildtime.c`
+- Both are updated automatically on each build
+
+### Build System Architecture
+
+TigerVNC has **two separate build systems** working together:
 
 1. **CMake** (for common libraries, vncviewer, utilities)
 2. **Autotools** (for Xvnc server - integrates with Xorg source)
 
-To build the Xvnc server:
+The top-level Makefile coordinates both systems:
+- CMake builds: `build/vncviewer/vncviewer`
+- Xorg builds: `build/unix/xserver/hw/vnc/Xvnc`
+
+### Advanced: Direct CMake/Make Commands
+
+If you need more control, you can invoke the build systems directly:
 
 ```bash
-# 1. Build common libraries first (creates libvnc.la with RFB protocol)
-cd build
-cmake --build . -j$(nproc)
+# Build viewer with CMake directly
+cmake --build build --target vncviewer
 
-# 2. Build Xvnc server against patched Xorg source
-cd build/unix/xserver
-make -j$(nproc)
+# Build server manually
+cmake --build build --target rfb rdr network core
+make -C build/unix/xserver
 
-# Result: build/unix/xserver/hw/vnc/Xvnc (the actual binary)
+# Build everything via CMake (libraries + viewer, but not Xvnc server)
+cmake --build build
 ```
 
-**Important**: After changing code in `common/rfb/` (e.g., ContentCache, encoders, protocol), you must rebuild **both**:
-1. CMake libraries: `cmake --build build -j$(nproc)`
-2. Xvnc server: `cd build/unix/xserver && make -j$(nproc)`
+### Binary Locations
 
-#### Binary Location Confusion
-
-Multiple binaries/symlinks exist - verify you're using the right one:
+After building, executables are located at:
 
 ```bash
-# Source of truth (actual built binary)
+# Viewer
+build/vncviewer/vncviewer
+
+# Server (actual binary)
 build/unix/xserver/hw/vnc/Xvnc
 
-# Symlink (may be stale!)
-build/unix/vncserver/Xtigervnc
-
-# System binary (not your build)
-/usr/bin/Xtigervnc
+# Server (symlink for wrapper compatibility)
+build/unix/vncserver/Xtigervnc -> build/unix/xserver/hw/vnc/Xvnc
 ```
 
-**Fix stale symlink**:
+**Important**: Don't confuse your build with system binaries:
+
 ```bash
-ln -sf "$(pwd)/build/unix/xserver/hw/vnc/Xvnc" \
-       "$(pwd)/build/unix/vncserver/Xtigervnc"
+# Your build (what you want to test)
+build/unix/xserver/hw/vnc/Xvnc
+
+# System binary (not your build!)
+/usr/bin/Xtigervnc
 ```
 
 **Verify which binary is running**:
@@ -89,11 +124,11 @@ ln -sf "$(pwd)/build/unix/xserver/hw/vnc/Xvnc" \
 # Check running server
 ps aux | grep Xtigervnc
 
+# Verify it's your build
+ls -lh build/unix/xserver/hw/vnc/Xvnc
+
 # Check symlink target
 readlink -f build/unix/vncserver/Xtigervnc
-
-# Check build timestamp
-ls -lh build/unix/xserver/hw/vnc/Xvnc
 ```
 
 ### Running Tests
