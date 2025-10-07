@@ -427,7 +427,9 @@ void EncodeManager::doUpdate(bool allowLossy, const
 
     conn->writer()->writeFramebufferUpdateStart(nRects);
 
-    if (conn->client.supportsEncoding(encodingCopyRect))
+    // Allow disabling CopyRect via environment for diagnostics
+    const char* disableCopyRect = getenv("TIGERVNC_DISABLE_COPYRECT");
+    if (conn->client.supportsEncoding(encodingCopyRect) && !disableCopyRect)
       writeCopyRects(copied, copyDelta);
 
     /*
@@ -963,17 +965,67 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
       type = encoderIndexed;
   }
 
-  encoder = startRect(rect, type);
+  // If content cache is enabled and client supports it, send a CachedRectInit
+  // so the client can register this content ID and draw the pixels in one step.
+  bool usedCachedInit = false;
+  if (contentCache != nullptr &&
+      conn->client.supportsEncoding(pseudoEncodingContentCache) &&
+      rect.area() >= Server::contentCacheMinRectSize) {
 
-  if (encoder->flags & EncoderUseNativePF)
-    ppb = preparePixelBuffer(rect, pb, false);
+    // Compute hash for this rect
+    const uint8_t* buffer;
+    int stride;
+    buffer = pb->getBuffer(rect, &stride);
+    size_t bytesPerPixel = pb->getPF().bpp / 8;
+    size_t dataLen = rect.height() * stride * bytesPerPixel;
+    uint64_t hash = computeContentHash(buffer, dataLen);
 
-  encoder->writeRect(ppb, info.palette);
+    // Insert into cache and get assigned cache ID
+    uint64_t cacheId = contentCache->insertContent(hash, rect, nullptr, 0, false);
 
-  endRect();
+    // Choose encoder for pixel payload
+    Encoder* payloadEnc = encoders[activeEncoders[type]];
 
-  // Insert into content cache for future lookups
-  insertIntoContentCache(rect, pb);
+    // Emit CachedRectInit header (cacheId + encoding)
+    beforeLength = conn->getOutStream()->length();
+    conn->writer()->writeCachedRectInit(rect, cacheId, payloadEnc->encoding);
+
+    // Prepare pixel buffer respecting native-PF usage for the payload encoder
+    if (payloadEnc->flags & EncoderUseNativePF)
+      ppb = preparePixelBuffer(rect, pb, false);
+
+    // Write the encoded pixel payload
+    payloadEnc->writeRect(ppb, info.palette);
+
+    // Close the CachedRectInit rectangle
+    conn->writer()->endRect();
+
+    // Update lossy/pending refresh state consistent with normal startRect/endRect
+    if ((payloadEnc->flags & EncoderLossy) &&
+        ((payloadEnc->losslessQuality == -1) ||
+         (payloadEnc->getQualityLevel() < payloadEnc->losslessQuality)))
+      lossyRegion.assign_union(rect);
+    else
+      lossyRegion.assign_subtract(rect);
+    pendingRefreshRegion.assign_subtract(rect);
+
+    usedCachedInit = true;
+  }
+
+  if (!usedCachedInit) {
+    // Fallback: normal rectangle path
+    encoder = startRect(rect, type);
+
+    if (encoder->flags & EncoderUseNativePF)
+      ppb = preparePixelBuffer(rect, pb, false);
+
+    encoder->writeRect(ppb, info.palette);
+
+    endRect();
+
+    // Insert into content cache for future lookups
+    insertIntoContentCache(rect, pb);
+  }
 }
 
 bool EncodeManager::checkSolidTile(const core::Rect& r,
