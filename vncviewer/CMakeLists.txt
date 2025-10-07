@@ -2,6 +2,14 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   message(FATAL_ERROR "cmake must be invoked with the top level directory")
 endif()
 
+# Generate build timestamp header at build time (always runs)
+add_custom_target(generate_build_timestamp ALL
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/generate_timestamp.sh ${CMAKE_CURRENT_BINARY_DIR}/build_timestamp.h
+  COMMENT "Generating build timestamp"
+  BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/build_timestamp.h
+  VERBATIM
+)
+
 add_executable(vncviewer
   fltk/Fl_Monitor_Arrangement.cxx
   fltk/Fl_Navigation.cxx
@@ -48,6 +56,8 @@ else()
   target_sources(vncviewer PRIVATE Surface_X11.cxx)
 endif()
 
+add_dependencies(vncviewer generate_build_timestamp)
+target_include_directories(vncviewer PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(vncviewer SYSTEM PUBLIC ${FLTK_INCLUDE_DIR})
 target_include_directories(vncviewer SYSTEM PUBLIC ${Intl_INCLUDE_DIR})
 target_include_directories(vncviewer PUBLIC ${CMAKE_SOURCE_DIR}/common)

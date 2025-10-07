@@ -22,6 +22,8 @@
 #include <config.h>
 #endif
 
+#include <build_timestamp.h>
+
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
