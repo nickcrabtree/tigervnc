@@ -39,10 +39,6 @@ if(MSVC)
   message(FATAL_ERROR "TigerVNC cannot be built with Visual Studio.  Please use MinGW")
 endif()
 
-if(NOT BUILD_TIMESTAMP)
-  STRING(TIMESTAMP BUILD_TIMESTAMP "%Y-%m-%d %H:%M" UTC)
-endif()
-
 # Default to optimised builds instead of debug ones. Our code has no bugs ;)
 # (CMake makes it fairly easy to toggle this back to Debug if needed)
 if(NOT CMAKE_BUILD_TYPE)
@@ -50,10 +46,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 message(STATUS "CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
-
 message(STATUS "VERSION = ${VERSION}")
-message(STATUS "BUILD_TIMESTAMP = ${BUILD_TIMESTAMP}")
-add_definitions(-DBUILD_TIMESTAMP="${BUILD_TIMESTAMP}")
 
 # We want to keep our asserts even in release builds so remove NDEBUG
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -UNDEBUG")
