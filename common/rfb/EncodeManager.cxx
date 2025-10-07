@@ -1255,7 +1255,7 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
                               stride, bytesPerPixel, 4);
   } else {
     // Compute full hash for smaller rectangles
-    size_t dataLen = rect.height() * stride;
+    size_t dataLen = rect.height() * stride * bytesPerPixel;
     hash = computeContentHash(buffer, dataLen);
   }
 
@@ -1323,7 +1323,7 @@ void EncodeManager::insertIntoContentCache(const core::Rect& rect,
                               stride, bytesPerPixel, 4);
   } else {
     // Compute full hash for smaller rectangles
-    size_t dataLen = rect.height() * stride;
+    size_t dataLen = rect.height() * stride * bytesPerPixel;
     hash = computeContentHash(buffer, dataLen);
   }
 
