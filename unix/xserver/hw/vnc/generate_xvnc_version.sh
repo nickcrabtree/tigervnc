@@ -5,8 +5,12 @@
 OUTPUT="$1"
 BASE_VERSION="$2"
 
+# Find the TigerVNC git root (traverse up from this script's location)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TIGERVNC_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
+
 # Get git information if available (from tigervnc root, not xorg server)
-if cd ../../../../../ && git rev-parse --git-dir > /dev/null 2>&1; then
+if cd "$TIGERVNC_ROOT" && git rev-parse --git-dir > /dev/null 2>&1; then
     # Short commit hash
     GIT_HASH=$(git rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")
     
