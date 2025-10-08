@@ -1,5 +1,11 @@
 # ContentCache Protocol Bug Analysis
 
+## STATUS: RESOLVED ✅
+
+**Fixed in commit `d8aad8a0` (2025-10-08)**: Complete client request protocol implementation
+
+---
+
 ## Problem Summary
 
 The vncviewer crashes with a segfault immediately after connecting, specifically when receiving ContentCache messages from the server.

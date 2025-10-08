@@ -42,6 +42,70 @@ cmake -S . -B build \
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 ```
 
+### Xserver Setup (Required for Server Build)
+
+**IMPORTANT**: Building the Xnjcvnc server requires a one-time setup of the Xorg server source. This is separate from the CMake configuration.
+
+#### Ubuntu/Debian Setup
+
+```bash
+# 1. Install Xorg server source (if not already installed)
+sudo apt-get install xorg-server-source
+
+# 2. Set up xserver build directory
+mkdir -p build/unix
+cp -R unix/xserver build/unix/
+
+# 3. Extract Xorg source into build directory
+cd build/unix/xserver
+tar xf /usr/src/xorg-server.tar.xz --strip-components=1
+
+# 4. Apply TigerVNC patches (use appropriate patch for your Xorg version)
+# For Xorg 21.x:
+patch -p1 < ../../../unix/xserver21.patch
+# For Xorg 1.20.x:
+# patch -p1 < ../../../unix/xserver120.patch
+
+# 5. Run autotools
+autoreconf -fiv
+
+# 6. Configure xserver (adjust paths for your system)
+./configure --with-pic --without-dtrace --disable-static --disable-dri \
+  --disable-xinerama --disable-xvfb --disable-xnest --disable-xorg \
+  --disable-dmx --disable-xwin --disable-xephyr --disable-kdrive \
+  --disable-config-hal --disable-config-udev --disable-dri2 --enable-glx \
+  --with-default-font-path="catalogue:/etc/X11/fontpath.d,built-ins" \
+  --with-xkb-path=/usr/share/X11/xkb \
+  --with-xkb-output=/var/lib/xkb \
+  --with-xkb-bin-directory=/usr/bin \
+  --with-serverconfig-path=/usr/lib/xorg
+
+# 7. Return to project root
+cd ../../..
+
+# 8. Create symlink for wrapper compatibility
+mkdir -p build/unix/vncserver
+ln -sf ../xserver/hw/vnc/Xnjcvnc build/unix/vncserver/Xnjcvnc
+```
+
+**After this one-time setup**, the `make server` command will work correctly.
+
+#### Other Distributions
+
+- **RHEL/Fedora/CentOS**: Install `xorg-x11-server-source` package, source typically in `/usr/share/xorg-x11-server-source`
+- **Arch**: Install `xorg-server` source package
+- Adjust configure paths (especially `--with-serverconfig-path`) for your distribution
+
+#### Verifying Xserver Setup
+
+```bash
+# Check if xserver is configured
+ls -la build/unix/xserver/config.status
+
+# Check if Makefile exists
+ls -la build/unix/xserver/hw/vnc/Makefile
+```
+
 ### Building
 
 The top-level `Makefile` provides convenience targets:
@@ -59,8 +123,12 @@ make server
 
 **How it works:**
 - `make viewer`: Builds njcvncviewer via CMake, automatically rebuilding dependent libraries as needed
-- `make server`: Builds CMake libraries (rfb, rdr, network, core) then invokes the Xorg autotools build
+- `make server`: Builds CMake libraries (rfb, rdr, network, core, unixcommon) then invokes the Xorg autotools build
 - `make` (or `make all`): Builds both viewer and server
+
+**Prerequisites:**
+- Viewer: CMake configuration only
+- Server: CMake configuration + one-time xserver setup (see "Xserver Setup" above)
 
 **Build timestamps:**
 - Viewer: Timestamp is generated at build time in `build/vncviewer/build_timestamp.h`
@@ -76,7 +144,9 @@ TigerVNC has **two separate build systems** working together:
 
 The top-level Makefile coordinates both systems:
 - CMake builds: `build/vncviewer/njcvncviewer`
-- Xorg builds: `build/unix/xserver/hw/vnc/Xvnc`
+- Xorg builds: `build/unix/xserver/hw/vnc/Xnjcvnc`
+
+**Critical**: The server build passes `TIGERVNC_SRCDIR` and `TIGERVNC_BUILDDIR` to the xserver Makefile, which are required for finding headers and libraries.
 
 ### Advanced: Direct CMake/Make Commands
 
@@ -86,9 +156,9 @@ If you need more control, you can invoke the build systems directly:
 # Build viewer with CMake directly
 cmake --build build --target njcvncviewer
 
-# Build server manually
-cmake --build build --target rfb rdr network core
-make -C build/unix/xserver
+# Build server manually (requires xserver setup first)
+cmake --build build --target rfb rdr network core unixcommon
+make -C build/unix/xserver TIGERVNC_SRCDIR=$(pwd) TIGERVNC_BUILDDIR=$(pwd)/build
 
 # Build everything via CMake (libraries + viewer, but not Xnjcvnc server)
 cmake --build build
@@ -103,20 +173,21 @@ After building, executables are located at:
 build/vncviewer/njcvncviewer
 
 # Server (actual binary)
-build/unix/xserver/hw/vnc/Xvnc
+build/unix/xserver/hw/vnc/Xnjcvnc
 
 # Server (symlink for wrapper compatibility)
-build/unix/vncserver/Xnjcvnc -> build/unix/xserver/hw/vnc/Xvnc
+build/unix/vncserver/Xnjcvnc -> build/unix/xserver/hw/vnc/Xnjcvnc
 ```
 
 **Important**: Don't confuse your build with system binaries:
 
 ```bash
 # Your build (what you want to test)
-build/unix/xserver/hw/vnc/Xvnc
+build/unix/xserver/hw/vnc/Xnjcvnc
 
 # System binary (not your build!)
 /usr/bin/Xnjcvnc
+/usr/bin/Xtigervnc  # Old name, may still be installed
 ```
 
 **Verify which binary is running**:
@@ -125,7 +196,7 @@ build/unix/xserver/hw/vnc/Xvnc
 ps aux | grep Xnjcvnc
 
 # Verify it's your build
-ls -lh build/unix/xserver/hw/vnc/Xvnc
+ls -lh build/unix/xserver/hw/vnc/Xnjcvnc
 
 # Check symlink target
 readlink -f build/unix/vncserver/Xnjcvnc
@@ -389,7 +460,7 @@ ContentCacheMinRectSize=4096  # Min pixels to cache (default: 4096)
 
 ```bash
 # Enable verbose logging
-Xtigervnc :2 -Log *:stderr:100
+Xnjcvnc :2 -Log *:stderr:100
 
 # Monitor cache statistics (logged hourly)
 tail -f ~/.vnc/quartz:2.log | grep -i contentcache
