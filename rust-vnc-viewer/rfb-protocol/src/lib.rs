@@ -24,14 +24,15 @@
 //! # }
 //! ```
 
-pub mod socket;
-pub mod io;
 pub mod connection;
+pub mod io;
+pub mod messages;
+pub mod socket;
 
 // Re-export commonly used types
-pub use socket::{VncSocket, TcpSocket};
-pub use io::{RfbInStream, RfbOutStream};
 pub use connection::{ConnectionState, RfbConnection};
+pub use io::{RfbInStream, RfbOutStream};
+pub use socket::{TcpSocket, VncSocket};
 
 #[cfg(unix)]
 pub use socket::UnixSocket;
