@@ -246,10 +246,19 @@ void vncExtensionInit(void)
 
         rfb::PixelFormat pf = vncGetPixelFormat(scr);
 
+        // Ensure desktop name includes TigerVNC version for debugging
+        const char* name = desktopName;
+        std::string nameWithVersion;
+        // If the desktop name doesn't already contain "TigerVNC", append version
+        if (name && strstr(name, "TigerVNC") == nullptr) {
+          nameWithVersion = std::string(name) + " - TigerVNC " + XVNC_VERSION;
+          name = nameWithVersion.c_str();
+        }
+
         vncSetGlueContext(scr);
         desktop[scr] = new XserverDesktop(scr,
                                           listeners,
-                                          desktopName,
+                                          name,
                                           pf,
                                           vncGetScreenWidth(),
                                           vncGetScreenHeight(),
