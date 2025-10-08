@@ -612,6 +612,18 @@ void VNCServerST::handleClipboardData(VNCSConnectionST* client,
   desktop->handleClipboardData(data);
 }
 
+void VNCServerST::handleRequestCachedData(VNCSConnectionST* client,
+                                         uint64_t cacheId)
+{
+  slog.debug("Client requested cached data for ID %llu",
+             (unsigned long long)cacheId);
+  
+  // TODO: Look up the content in the cache and re-send as CachedRectInit
+  // For now, the request will cause the server to re-encode and send
+  // the data in the next framebuffer update
+  slog.info("Cache request mechanism is in place but content lookup not yet implemented");
+}
+
 unsigned int VNCServerST::setDesktopSize(VNCSConnectionST* requester,
                                          int fb_width, int fb_height,
                                          const ScreenSet& layout)

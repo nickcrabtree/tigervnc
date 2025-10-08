@@ -811,6 +811,16 @@ void VNCSConnectionST::supportsLEDState()
   writer()->writeLEDState();
 }
 
+void VNCSConnectionST::handleRequestCachedData(uint64_t cacheId)
+{
+  vlog.debug("Client requested cached data for ID %llu",
+             (unsigned long long)cacheId);
+  
+  // Request the server to re-send this cached content as CachedRectInit
+  // The EncodeManager will look up the content by cacheId and send it
+  server->handleRequestCachedData(this, cacheId);
+}
+
 void VNCSConnectionST::handleTimeout(core::Timer* t)
 {
   try {

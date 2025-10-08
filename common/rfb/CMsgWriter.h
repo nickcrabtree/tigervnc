@@ -62,6 +62,8 @@ namespace rfb {
 
     void writeClientCutText(const char* str);
 
+    void writeRequestCachedData(uint64_t cacheId);
+
     void writeClipboardCaps(uint32_t caps, const uint32_t* lengths);
     void writeClipboardRequest(uint32_t flags);
     void writeClipboardPeek(uint32_t flags);

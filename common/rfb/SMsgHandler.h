@@ -67,6 +67,8 @@ namespace rfb {
                                         const size_t* lengths,
                                         const uint8_t* const* data) = 0;
 
+    virtual void handleRequestCachedData(uint64_t cacheId) = 0;
+
     ClientParams client;
   };
 }
