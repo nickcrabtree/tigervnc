@@ -8,6 +8,7 @@
 //!
 //! - [`socket`] - Socket abstractions (TCP, Unix domain)
 //! - [`io`] - Buffered I/O streams (RfbInStream, RfbOutStream)
+//! - [`connection`] - Connection state machine and lifecycle management
 //! - More modules coming in Phase 2 implementation...
 //!
 //! # Examples
@@ -25,10 +26,12 @@
 
 pub mod socket;
 pub mod io;
+pub mod connection;
 
 // Re-export commonly used types
 pub use socket::{VncSocket, TcpSocket};
 pub use io::{RfbInStream, RfbOutStream};
+pub use connection::{ConnectionState, RfbConnection};
 
 #[cfg(unix)]
 pub use socket::UnixSocket;
