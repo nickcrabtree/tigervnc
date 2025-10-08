@@ -502,9 +502,10 @@ void EncodeManager::doUpdate(bool allowLossy, const
           payloadEnc->writeRect(ppb, info.palette);
           // Close the CachedRectInit rectangle
           conn->writer()->endRect();
+          // Mark this cacheId as known to this client
+          conn->markCacheIdKnown(cacheId);
         }
       }
-    }
 
     conn->writer()->writeFramebufferUpdateEnd();
 }
@@ -1282,38 +1283,38 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
   ContentCache::CacheEntry* entry = contentCache->findByHash(hash, &cacheId);
   
   if (entry != nullptr && cacheId != 0) {
-    // Cache hit!
+    // Cache hit in server content cache, but we must ensure the client
+    // actually knows this cacheId. If not, schedule a CachedRectInit and
+    // skip sending a reference right now.
+    if (!conn->knowsCacheId(cacheId)) {
+      conn->queueCachedInit(cacheId, rect);
+      // Do not treat as copyrect stats as we will send full data
+      // Mark freshly updated region accordingly
+      lossyRegion.assign_subtract(rect);
+      pendingRefreshRegion.assign_subtract(rect);
+      // Update server-side cache entry location and touch
+      entry->lastBounds = rect;
+      contentCache->touchEntry(hash);
+      return true; // handled via pending init
+    }
+
+    // Client knows this cacheId: send a reference
     cacheStats.cacheHits++;
-    
-    // Update statistics
     int equiv = 12 + rect.area() * (conn->client.pf().bpp/8);
-    
-    // Use cache protocol: send cache ID reference
     cacheStats.bytesSaved += equiv - 20; // CachedRect is 20 bytes
-    
     copyStats.rects++;
     copyStats.pixels += rect.area();
     copyStats.equivalent += equiv;
-    
     beforeLength = conn->getOutStream()->length();
     conn->writer()->writeCachedRect(rect, cacheId);
     copyStats.bytes += conn->getOutStream()->length() - beforeLength;
-    
-    // Remember this reference on the connection so we can target refreshes on misses
-    conn->onCachedRectRef(cacheId, rect);
-    
     vlog.debug("ContentCache protocol hit: rect [%d,%d-%d,%d] cacheId=%llu",
                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
                (unsigned long long)cacheId);
-    
-    // Mark region as recently changed
     lossyRegion.assign_subtract(rect);
     pendingRefreshRegion.assign_subtract(rect);
-    
-    // Update cache entry with new location
     entry->lastBounds = rect;
     contentCache->touchEntry(hash);
-    
     return true;
   }
 
