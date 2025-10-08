@@ -126,6 +126,7 @@ namespace rfb {
     void handleClipboardRequest(VNCSConnectionST* client);
     void handleClipboardAnnounce(VNCSConnectionST* client, bool available);
     void handleClipboardData(VNCSConnectionST* client, const char* data);
+    void handleRequestCachedData(VNCSConnectionST* client, uint64_t cacheId);
 
     unsigned int setDesktopSize(VNCSConnectionST* requester,
                                 int fb_width, int fb_height,

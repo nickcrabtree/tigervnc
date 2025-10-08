@@ -144,6 +144,7 @@ namespace rfb {
     void supportsFence() override;
     void supportsContinuousUpdates() override;
     void supportsLEDState() override;
+    void handleRequestCachedData(uint64_t cacheId) override;
 
     // Timer callbacks
     void handleTimeout(core::Timer* t) override;

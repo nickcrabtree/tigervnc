@@ -55,6 +55,7 @@ namespace rfb {
     bool readPointerEvent();
     bool readClientCutText();
     bool readExtendedClipboard(int32_t len);
+    bool readRequestCachedData();
 
     bool readQEMUMessage();
     bool readQEMUKeyEvent();

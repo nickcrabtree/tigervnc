@@ -28,6 +28,7 @@
 #include <core/string.h>
 
 #include <rfb/CConnection.h>
+#include <rfb/CMsgWriter.h>
 #include <rfb/DecodeManager.h>
 #include <rfb/Decoder.h>
 #include <rfb/Exception.h>
@@ -429,11 +430,13 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
   const ContentCache::CachedPixels* cached = contentCache->getDecodedPixels(cacheId);
   
   if (cached == nullptr) {
-    // Cache miss - request refresh from server
+    // Cache miss - request data from server
     cacheStats.cache_misses++;
-    vlog.debug("Cache miss for ID %llu, requesting refresh",
+    vlog.debug("Cache miss for ID %llu, requesting from server",
                (unsigned long long)cacheId);
-    // TODO: Implement refresh request mechanism
+    
+    // Send request to server for this cached data
+    conn->writer()->writeRequestCachedData(cacheId);
     return;
   }
   

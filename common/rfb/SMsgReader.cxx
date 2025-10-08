@@ -108,6 +108,9 @@ bool SMsgReader::readMsg()
   case msgTypeClientCutText:
     ret = readClientCutText();
     break;
+  case msgTypeRequestCachedData:
+    ret = readRequestCachedData();
+    break;
   case msgTypeQEMUClientMessage:
     ret = readQEMUMessage();
     break;
@@ -515,5 +518,21 @@ bool SMsgReader::readQEMUKeyEvent()
     return true;
   }
   handler->keyEvent(keysym, keycode, down);
+  return true;
+}
+
+bool SMsgReader::readRequestCachedData()
+{
+  if (!is->hasData(8))
+    return false;
+
+  uint32_t hi = is->readU32();
+  uint32_t lo = is->readU32();
+  uint64_t cacheId = ((uint64_t)hi << 32) | lo;
+
+  vlog.debug("Client requested cached data for ID %llu",
+             (unsigned long long)cacheId);
+
+  handler->handleRequestCachedData(cacheId);
   return true;
 }

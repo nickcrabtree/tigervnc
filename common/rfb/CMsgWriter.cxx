@@ -236,6 +236,14 @@ void CMsgWriter::writeClientCutText(const char* str)
   endMsg();
 }
 
+void CMsgWriter::writeRequestCachedData(uint64_t cacheId)
+{
+  startMsg(msgTypeRequestCachedData);
+  os->writeU32((uint32_t)(cacheId >> 32));  // High 32 bits
+  os->writeU32((uint32_t)(cacheId & 0xFFFFFFFF));  // Low 32 bits
+  endMsg();
+}
+
 void CMsgWriter::writeClipboardCaps(uint32_t caps,
                                     const uint32_t* lengths)
 {
