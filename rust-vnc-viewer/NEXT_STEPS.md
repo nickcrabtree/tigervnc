@@ -1,15 +1,114 @@
 # Next Steps - Rust VNC Viewer Development
 
-**Current Phase**: Phase 1 In Progress - Tasks 1.1-1.2 Complete ✅  
-**Last Updated**: 2025-10-08 12:01 UTC
+**Current Phase**: Phase 2 Starting - Network & Protocol Layer  
+**Last Updated**: 2025-10-08 12:35 UTC
 
 ---
 
 ## 🎯 IMMEDIATE NEXT STEP
 
-**Continue `rfb-pixelbuffer` crate - ManagedPixelBuffer implementation**
+**Start `rfb-protocol` crate - Task 2.1: Socket Abstractions**
 
-Tasks 1.1-1.2 (PixelFormat and traits) are complete! Now we need the concrete implementation.
+Phase 1 is 100% complete! Now we're moving to Phase 2: Network & Protocol Layer.
+
+---
+
+## ✅ PHASE 1 COMPLETE!
+
+**Phase 1: Core Types** - rfb-pixelbuffer crate  
+**Status**: All tasks complete (1.1-1.6) ✅  
+**LOC Written**: 1,416 lines (code + docs + tests)  
+**Tests**: 37 passing (19 unit + 18 doctests)  
+**Time Taken**: ~3 hours (estimated 4 hours)  
+**Commits**: c54a69e7, f3e58499, d0da5f2c
+
+---
+
+## 🚀 PHASE 2: Network & Protocol Layer (rfb-protocol crate)
+
+**Target**: Core networking and RFB protocol implementation  
+**Estimated Time**: 2 weeks (13 days)  
+**Estimated LOC**: ~1,700
+
+---
+
+## 🔄 NEXT: Task 2.1 - Socket Abstractions
+
+**File**: `rfb-protocol/src/socket.rs`
+
+**What to implement**:
+```rust
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::net::{TcpStream, UnixStream};
+use std::net::SocketAddr;
+use std::path::Path;
+
+/// Core trait for VNC socket connections
+pub trait VncSocket: AsyncRead + AsyncWrite + Send + Unpin {
+    /// Get peer address information
+    fn peer_address(&self) -> String;
+    
+    /// Get peer endpoint (for logging)
+    fn peer_endpoint(&self) -> String;
+    
+    /// Get raw file descriptor (platform-specific)
+    fn as_raw_fd(&self) -> Option<std::os::unix::io::RawFd>;
+}
+
+/// TCP socket implementation
+pub struct TcpSocket {
+    stream: TcpStream,
+    peer_addr: SocketAddr,
+}
+
+impl TcpSocket {
+    pub async fn connect(host: &str, port: u16) -> anyhow::Result<Self> {
+        // Connect to TCP socket
+        // Set TCP_NODELAY for low latency
+        // Store peer address
+    }
+}
+
+/// Unix domain socket implementation
+#[cfg(unix)]
+pub struct UnixSocket {
+    stream: UnixStream,
+    path: std::path::PathBuf,
+}
+
+#[cfg(unix)]
+impl UnixSocket {
+    pub async fn connect(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        // Connect to Unix domain socket
+        // Store socket path
+    }
+}
+```
+
+**Dependencies to add to rfb-protocol/Cargo.toml**:
+```toml
+[dependencies]
+tokio = { workspace = true, features = ["net", "io-util"] }
+anyhow = { workspace = true }
+```
+
+**Implementation steps**:
+1. Update `rfb-protocol/Cargo.toml` with dependencies
+2. Create `rfb-protocol/src/socket.rs`
+3. Implement `VncSocket` trait
+4. Implement `TcpSocket` with `AsyncRead`/`AsyncWrite`
+5. Implement `UnixSocket` (Unix only) with `AsyncRead`/`AsyncWrite`
+6. Add comprehensive tests
+7. Update `rfb-protocol/src/lib.rs` to export socket module
+
+**Testing**:
+- Unit tests for trait implementations
+- Mock socket tests
+- Error handling tests (connection refused, timeout, etc.)
+
+**Reference**: See RUST_VIEWER.md lines 228-353  
+**Estimated time**: 2 days  
+**LOC**: ~200
 
 ---
 
@@ -57,7 +156,25 @@ Tasks 1.1-1.2 (PixelFormat and traits) are complete! Now we need the concrete im
 
 ---
 
-### Task 1.3: Implement ManagedPixelBuffer 🔄 NEXT
+## ✅ COMPLETED: Task 1.3 - ManagedPixelBuffer
+
+**File**: `rfb-pixelbuffer/src/managed.rs` (✅ 542 lines)
+
+**What was implemented**:
+- Complete `ManagedPixelBuffer` struct with owned data
+- `new()` and `resize()` methods
+- Full `PixelBuffer` trait implementation
+- Full `MutablePixelBuffer` trait implementation
+- Overlap detection for `copy_rect()`
+- 10 comprehensive unit tests
+- 4 doctests with real-world examples
+
+**Time taken**: ~1h 20m (estimated 1.5 hours)  
+**Commit**: `d0da5f2c`
+
+---
+
+### Task 1.3: Implement ManagedPixelBuffer (COMPLETED)
 
 
 **File**: `rfb-pixelbuffer/src/managed.rs`
