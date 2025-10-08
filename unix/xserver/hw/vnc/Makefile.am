@@ -27,7 +27,7 @@ BUILT_SOURCES = xvnc_version.h
 CLEANFILES = xvnc_version.h
 
 xvnc_version.h: $(TIGERVNC_SRCDIR)/.git/HEAD $(TIGERVNC_SRCDIR)/.git/index
-	$(srcdir)/generate_xvnc_version.sh $@ $(PACKAGE_VERSION)
+	TIGERVNC_SRCDIR=$(TIGERVNC_SRCDIR) $(srcdir)/generate_xvnc_version.sh $@ $(PACKAGE_VERSION)
 
 libvnccommon_la_SOURCES = $(HDRS) \
 	vncExt.c vncExtInit.cc vncHooks.c vncPresent.c vncSelection.c \

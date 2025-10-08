@@ -5,9 +5,33 @@
 OUTPUT="$1"
 BASE_VERSION="$2"
 
-# Find the TigerVNC git root (traverse up from this script's location)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TIGERVNC_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
+# Save current directory and convert OUTPUT to absolute path if relative
+ORIG_DIR="$(pwd)"
+case "$OUTPUT" in
+    /*) OUTPUT_ABS="$OUTPUT" ;;
+    *)  OUTPUT_ABS="$ORIG_DIR/$OUTPUT" ;;
+esac
+
+# Find the TigerVNC git root
+# Prefer TIGERVNC_SRCDIR if set by Makefile, otherwise traverse up from script location
+if [ -n "$TIGERVNC_SRCDIR" ]; then
+    TIGERVNC_ROOT="$TIGERVNC_SRCDIR"
+else
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    TIGERVNC_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
+fi
+
+# If base version looks like Xorg version (e.g. 21.x.x), try to get TigerVNC version from CMakeLists.txt
+case "$BASE_VERSION" in
+    2[0-9].*)
+        if [ -f "$TIGERVNC_ROOT/CMakeLists.txt" ]; then
+            CMAKE_VERSION=$(grep -E '^set\(VERSION' "$TIGERVNC_ROOT/CMakeLists.txt" | sed -E 's/set\(VERSION ([0-9.]+)\)/\1/')
+            if [ -n "$CMAKE_VERSION" ]; then
+                BASE_VERSION="$CMAKE_VERSION"
+            fi
+        fi
+        ;;
+esac
 
 # Get git information if available (from tigervnc root, not xorg server)
 if cd "$TIGERVNC_ROOT" && git rev-parse --git-dir > /dev/null 2>&1; then
@@ -30,7 +54,7 @@ else
 fi
 
 # Generate header
-cat > "$OUTPUT" << EOF
+cat > "$OUTPUT_ABS" << EOF
 /* Auto-generated version header - do not edit */
 #ifndef __XVNC_VERSION_H__
 #define __XVNC_VERSION_H__
