@@ -72,8 +72,9 @@ from the X Consortium.
 extern char buildtime[];
 
 #include "version-config.h"
+#include "xvnc_version.h"
 
-#define XVNCVERSION "TigerVNC 1.15.80"
+#define XVNCVERSION "TigerVNC " XVNC_VERSION
 #define XVNCCOPYRIGHT ("Copyright (C) 1999-2025 TigerVNC team and many others (see README.rst)\n" \
                        "See https://www.tigervnc.org for information on TigerVNC.\n")
 

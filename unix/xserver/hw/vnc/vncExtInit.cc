@@ -42,12 +42,13 @@
 #include <network/UnixSocket.h>
 
 #include "XserverDesktop.h"
+#include "vncBlockHandler.h"
 #include "vncExtInit.h"
 #include "vncHooks.h"
-#include "vncBlockHandler.h"
 #include "vncSelection.h"
 #include "XorgGlue.h"
-#include "RandrGlue.h"
+#include "vncInput.h"
+#include "xvnc_version.h"
 #include "xorg-version.h"
 
 extern "C" {
@@ -121,14 +122,14 @@ static const char* defaultDesktopName()
 
   // Include TigerVNC version in desktop name for debugging
   size_t len = snprintf(nullptr, 0, "%s@%s (TigerVNC %s)", 
-                       pwent->pw_name, hostname.data(), PACKAGE_VERSION);
+                       pwent->pw_name, hostname.data(), XVNC_VERSION);
   if (len < 0)
     return "";
 
   char* name = new char[len + 1];
 
   snprintf(name, len + 1, "%s@%s (TigerVNC %s)", 
-          pwent->pw_name, hostname.data(), PACKAGE_VERSION);
+          pwent->pw_name, hostname.data(), XVNC_VERSION);
 
   return name;
 }

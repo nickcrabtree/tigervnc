@@ -23,6 +23,12 @@ HDRS = vncExtInit.h vncHooks.h \
 	XorgGlue.h XserverDesktop.h xorg-version.h \
 	vncInput.h RFBGlue.h
 
+BUILT_SOURCES = xvnc_version.h
+CLEANFILES = xvnc_version.h
+
+xvnc_version.h: $(TIGERVNC_SRCDIR)/.git/HEAD $(TIGERVNC_SRCDIR)/.git/index
+	$(srcdir)/generate_xvnc_version.sh $@ $(PACKAGE_VERSION)
+
 libvnccommon_la_SOURCES = $(HDRS) \
 	vncExt.c vncExtInit.cc vncHooks.c vncPresent.c vncSelection.c \
 	vncBlockHandler.c XorgGlue.c RandrGlue.c RFBGlue.cc XserverDesktop.cc \
