@@ -151,6 +151,11 @@ namespace rfb {
     // Record that we just referenced a CachedRect with this ID for this rect
     void recordCachedRectRef(uint64_t cacheId, const core::Rect& r);
 
+    // Queue a CachedRectInit to be sent at the next update for a cache miss
+    void queueCachedInit(uint64_t cacheId, const core::Rect& r) { pendingCacheInit_.emplace_back(cacheId, r); }
+    // Drain pending cache init requests (EncodeManager will send them)
+    void drainPendingCachedInits(std::vector<std::pair<uint64_t, core::Rect>>& out) override { out.swap(pendingCacheInit_); }
+
     // Timer callbacks
     void handleTimeout(core::Timer* t) override;
 
@@ -204,6 +209,7 @@ namespace rfb {
 
     // Track last referenced rectangle per cacheId for targeted refresh on miss
     std::unordered_map<uint64_t, core::Rect> lastCachedRectRef_;
+    std::vector<std::pair<uint64_t, core::Rect>> pendingCacheInit_;
 
     std::map<uint32_t, uint32_t> pressedKeys;
 

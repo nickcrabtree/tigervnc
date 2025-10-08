@@ -442,6 +442,70 @@ void EncodeManager::doUpdate(bool allowLossy, const
     writeRects(changed, pb);
     writeRects(cursorRegion, renderedCursor);
 
+    // Respond to any pending CachedRectInit requests for this connection
+    if (conn->client.supportsEncoding(pseudoEncodingLastRect)) {
+      std::vector<std::pair<uint64_t, core::Rect>> pend;
+      conn->drainPendingCachedInits(pend);
+      for (const auto& item : pend) {
+          const uint64_t cacheId = item.first;
+          const core::Rect& r = item.second;
+
+          // Encode this rect now and send as CachedRectInit
+          // Reuse the same selection logic as normal rectangles
+          PixelBuffer *ppb;
+          Encoder *encoder;
+          struct RectInfo info;
+          unsigned int divisor, maxColours;
+          bool useRLE;
+          EncoderType type;
+
+          if (conn->client.compressLevel == -1)
+            divisor = 2 * 8;
+          else
+            divisor = conn->client.compressLevel * 8;
+          if (divisor < 4)
+            divisor = 4;
+          maxColours = r.area()/divisor;
+          if (activeEncoders[encoderFullColour] == encoderTightJPEG) {
+            if ((conn->client.compressLevel != -1) && (conn->client.compressLevel < 2))
+              maxColours = 24;
+            else
+              maxColours = 96;
+          }
+          if (maxColours < 2)
+            maxColours = 2;
+          encoder = encoders[activeEncoders[encoderIndexedRLE]];
+          if (maxColours > encoder->maxPaletteSize)
+            maxColours = encoder->maxPaletteSize;
+          encoder = encoders[activeEncoders[encoderIndexed]];
+          if (maxColours > encoder->maxPaletteSize)
+            maxColours = encoder->maxPaletteSize;
+
+          ppb = preparePixelBuffer(r, pb, true);
+          if (!analyseRect(ppb, &info, maxColours))
+            info.palette.clear();
+          useRLE = info.rleRuns <= (r.area() * 2);
+          switch (info.palette.size()) {
+          case 0: type = encoderFullColour; break;
+          case 1: type = encoderSolid; break;
+          case 2: type = useRLE ? encoderBitmapRLE : encoderBitmap; break;
+          default: type = useRLE ? encoderIndexedRLE : encoderIndexed; break;
+          }
+
+          Encoder* payloadEnc = encoders[activeEncoders[type]];
+          // Emit CachedRectInit header (cacheId + encoding)
+          conn->writer()->writeCachedRectInit(r, cacheId, payloadEnc->encoding);
+          // Prepare pixel buffer respecting native-PF usage for the payload encoder
+          if (payloadEnc->flags & EncoderUseNativePF)
+            ppb = preparePixelBuffer(r, pb, false);
+          // Write the encoded pixel payload
+          payloadEnc->writeRect(ppb, info.palette);
+          // Close the CachedRectInit rectangle
+          conn->writer()->endRect();
+        }
+      }
+    }
+
     conn->writer()->writeFramebufferUpdateEnd();
 }
 

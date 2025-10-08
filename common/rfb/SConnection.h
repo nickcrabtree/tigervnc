@@ -25,6 +25,7 @@
 #define __RFB_SCONNECTION_H__
 
 #include <string>
+#include <vector>
 
 #include <core/Timer.h>
 #include <core/Rect.h>
@@ -148,6 +149,8 @@ namespace rfb {
 
     // Hook for content cache references (default: no-op)
     virtual void onCachedRectRef(uint64_t cacheId, const core::Rect& r) {}
+    // Hook to drain pending CachedRectInit requests (default: no-op)
+    virtual void drainPendingCachedInits(std::vector<std::pair<uint64_t, core::Rect>>& out) {}
 
   protected:
 
