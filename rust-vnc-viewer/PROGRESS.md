@@ -60,14 +60,14 @@ Last Updated: 2025-10-08 12:15 UTC
 
 ### Phase 2: Network & Protocol (Weeks 2-5) 🔄 IN PROGRESS
 ```
-[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+[██████░░░░░░░░░░░░░░░░░░░░░░░░░░] 20%
 ```
 
 **Target**: rfb-protocol implementation
 
 || Task | Status | Est. Time | Actual Time | File |
 ||------|--------|-----------|-------------|------|
-|| 2.1 | 🔄 NEXT | 2 days | - | `rfb-protocol/src/socket.rs` |
+|| 2.1 | ✅ DONE | 2 days | ~45 min | `rfb-protocol/src/socket.rs` |
 || 2.2 | ⬜ TODO | 2 days | - | `rfb-protocol/src/io/` |
 || 2.3 | ⬜ TODO | 2 days | - | `rfb-protocol/src/connection/` |
 || 2.4 | ⬜ TODO | 4 days | - | `rfb-protocol/src/messages/` |
@@ -125,6 +125,17 @@ Last Updated: 2025-10-08 12:15 UTC
 ---
 
 ## Recent Activity
+
+### 2025-10-08 13:00 UTC
+- ✅ **Task 2.1 COMPLETE**: Socket abstractions (TCP and Unix domain)
+- ✅ Implemented `VncSocket` trait for unified socket interface
+- ✅ `TcpSocket` with TCP_NODELAY for low latency
+- ✅ `UnixSocket` for local connections (macOS/Linux)
+- ✅ 6 unit tests + 7 doctests, all passing
+- ✅ Zero clippy warnings
+- ✅ ~430 LOC (code + docs + tests)
+- ✅ Committed: 231e4370
+- 🎯 Next: Task 2.2 - RFB I/O streams
 
 ### 2025-10-08 12:35 UTC
 - 🚀 **Phase 2 STARTED**: Network & Protocol Layer
