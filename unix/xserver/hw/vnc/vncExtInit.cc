@@ -47,6 +47,7 @@
 #include "vncHooks.h"
 #include "vncSelection.h"
 #include "XorgGlue.h"
+#include "RandrGlue.h"
 #include "vncInput.h"
 #include "xvnc_version.h"
 #include "xorg-version.h"
