@@ -1,15 +1,15 @@
 # Next Steps - Rust VNC Viewer Development
 
-**Current Phase**: Phase 2 - Network & Protocol Layer (60% complete)  
-**Last Updated**: 2025-10-08 14:23 Local
+**Current Phase**: Phase 2 - COMPLETE ✅ | Phase 3 - Ready to Start  
+**Last Updated**: 2025-10-08 22:58 Local
 
 ---
 
 ## 🎯 IMMEDIATE NEXT STEP
 
-**Task 2.4: RFB Message Types** in `rfb-protocol/src/messages/`
+**Phase 3: Encodings Implementation** - `rfb-encodings` crate
 
-Phase 1 is 100% complete! Phase 2 Tasks 2.1-2.3 done (60%). Ready for message types implementation.
+Phases 1 & 2 are 100% complete! Ready to begin Phase 3 with Raw encoding decoder.
 
 ---
 
@@ -24,130 +24,193 @@ Phase 1 is 100% complete! Phase 2 Tasks 2.1-2.3 done (60%). Ready for message ty
 
 ---
 
-## 🚀 PHASE 2: Network & Protocol Layer (rfb-protocol crate)
+## ✅ PHASE 2 COMPLETE!
 
-**Target**: Core networking and RFB protocol implementation  
-**Estimated Time**: 2 weeks (13 days)  
-**Estimated LOC**: ~1,700  
-**Current Status**: 60% complete (Tasks 2.1-2.3 done)
+**Phase 2: Network & Protocol Layer** - rfb-protocol crate  
+**Status**: All tasks complete (2.1-2.5) ✅  
+**LOC Written**: 3,502 lines (206% of 1,700 target - comprehensive!)  
+**Tests**: 118 passing (56 unit + 24 messages + 38 doctests)  
+**Time Taken**: ~2.5 hours (estimated 2 weeks - way ahead!)  
+**Commits**: 231e4370, f407506c, 2a4758f0, b1b6e088, 15658cbb
 
-### ✅ Completed Tasks
-- ✅ **Task 2.1**: Socket abstractions (TCP, Unix domain) - ~430 LOC
-- ✅ **Task 2.2**: RFB I/O streams (buffered read/write) - ~680 LOC
-- ✅ **Task 2.3**: Connection state machine - ~545 LOC
+### Phase 2 Highlights
+- [x] **Task 2.1**: Socket abstractions (TCP, Unix domain)
+- [x] **Task 2.2**: RFB I/O streams (buffered read/write)  
+- [x] **Task 2.3**: Connection state machine
+- [x] **Task 2.4**: RFB message types (all server/client messages)
+- [x] **Task 2.5**: Protocol handshake (RFB 3.3/3.8, security, init)
 
 ---
 
-## 🔄 NEXT: Task 2.4 - RFB Message Types
+## 🚀 PHASE 3: Encodings (rfb-encodings crate) - NEXT!
 
-**Files**: `rfb-protocol/src/messages/` directory
+**Target**: Implement VNC encoding/decoding for framebuffer updates  
+**Estimated Time**: 4 weeks  
+**Estimated LOC**: ~3,500  
+**Crate**: `rfb-encodings`
+
+### Overview
+
+Phase 3 implements the various encoding schemes VNC uses to efficiently transmit screen updates from server to client. Each encoding provides different tradeoffs between compression ratio, CPU usage, and visual quality.
+
+### Task 3.1: Crate Setup & Decoder Trait (Week 1, Day 1)
+
+**Files**: `rfb-encodings/src/lib.rs`, `rfb-encodings/Cargo.toml`
+
+**What to implement**:
+```rust
+pub trait Decoder {
+    /// Returns the encoding type this decoder handles
+    fn encoding_type(&self) -> i32;
+    
+    /// Decode a rectangle from the input stream into the pixel buffer
+    async fn decode<R: AsyncRead + Unpin>(
+        &self,
+        stream: &mut RfbInStream<R>,
+        rect: &Rectangle,
+        pixel_format: &PixelFormat,
+        buffer: &mut dyn MutablePixelBuffer,
+    ) -> Result<()>;
+}
+```
+
+**Dependencies**:
+- rfb-common (workspace)
+- rfb-pixelbuffer (workspace)
+- rfb-protocol (workspace - for Rectangle, PixelFormat)
+- anyhow, tokio
+
+**Target LOC**: ~100  
+**Tests**: 5 (trait compile tests, basic structure)
+
+### Task 3.2: Raw Encoding (Week 1, Days 2-3)
+
+**File**: `rfb-encodings/src/raw.rs`
+
+**What to implement**:
+- `RawDecoder` struct implementing `Decoder` trait
+- Simplest encoding: uncompressed pixel data
+- Read `width * height * bytes_per_pixel` bytes
+- Copy directly to pixel buffer
+- Handle different pixel formats (RGB888, RGB565, etc.)
+
+**Testing**:
+- Decode 10x10 rectangle with RGB888
+- Decode rectangle with RGB565
+- Handle stride correctly
+- Error on EOF
+- Performance: should handle 1920x1080 in < 100ms
+
+**Target LOC**: ~300  
+**Tests**: 10-12
+
+### Task 3.3: CopyRect Encoding (Week 1, Days 4-5)
+
+**File**: `rfb-encodings/src/copyrect.rs`
+
+**What to implement**:
+- `CopyRectDecoder` struct
+- Encoding type 1: copy from (src_x, src_y) to (dst_x, dst_y)
+- Wire format: just src_x (u16), src_y (u16)
+- Use `MutablePixelBuffer::copy_rect()`
+
+**Testing**:
+- Copy non-overlapping rectangles
+- Copy overlapping rectangles (handled by buffer)
+- Error on source out of bounds
+
+**Target LOC**: ~200  
+**Tests**: 8-10
+
+### Task 3.4: RRE Encoding (Week 2)
+
+**File**: `rfb-encodings/src/rre.rs`
+
+**What to implement**:
+- Rise-and-Run-length Encoding
+- Background color + N sub-rectangles
+- Good for screens with large solid regions
+- Wire format: num_subrects (u32), bg_pixel, then for each: pixel + x,y,w,h
+
+**Target LOC**: ~400  
+**Tests**: 12-15
+
+### Task 3.5: Hextile Encoding (Week 3)
+
+**File**: `rfb-encodings/src/hextile.rs`
+
+**What to implement**:
+- Complex tiled encoding (16x16 tiles)
+- Multiple sub-encodings per tile
+- Background, foreground, subrects
+- Most commonly used encoding
+
+**Target LOC**: ~800  
+**Tests**: 20-25
+
+### Task 3.6: Tight Encoding (Week 4, Days 1-3)
+
+**Files**: `rfb-encodings/src/tight.rs`, `rfb-encodings/src/tight/jpeg.rs`, `rfb-encodings/src/tight/zlib.rs`
+
+**What to implement**:
+- JPEG compression for photo-like regions
+- Zlib compression for other regions
+- Palette mode for indexed color
+- Requires `jpeg-decoder` and `flate2` crates
+
+**Dependencies to add**:
+- jpeg-decoder = "0.3"
+- flate2 = "1.0"
+
+**Target LOC**: ~1,200  
+**Tests**: 15-20
+
+### Task 3.7: ZRLE Encoding (Week 4, Days 4-5)
+
+**File**: `rfb-encodings/src/zrle.rs`
+
+**What to implement**:
+- Zlib + RLE combination
+- 64x64 tiles
+- Multiple sub-encodings
+
+**Target LOC**: ~600  
+**Tests**: 15-18
 
 ### Module Structure
 
-Create the following files:
-- `mod.rs` - Module declarations and shared traits
-- `types.rs` - PixelFormat, Rectangle, encoding constants, security types
-- `server.rs` - Server-to-client messages
-- `client.rs` - Client-to-server messages
-
-### Core Types to Implement (types.rs)
-
-**PixelFormat** struct:
-```rust
-pub struct PixelFormat {
-    pub bits_per_pixel: u8,
-    pub depth: u8,
-    pub big_endian: u8,      // Boolean: 0 or 1 only
-    pub true_color: u8,      // Boolean: 0 or 1 only
-    pub red_max: u16,
-    pub green_max: u16,
-    pub blue_max: u16,
-    pub red_shift: u8,
-    pub green_shift: u8,
-    pub blue_shift: u8,
-    // 3 bytes padding (must be zero)
-}
-
-impl PixelFormat {
-    pub fn bytes_per_pixel(&self) -> u8 { /* ... */ }
-    pub fn read_from<R: AsyncRead + Unpin>(reader: &mut RfbInStream<R>) -> Result<Self>;
-    pub fn write_to<W: AsyncWrite + Unpin>(&self, writer: &mut RfbOutStream<W>) -> Result<()>;
-}
 ```
-
-**Rectangle** header:
-```rust
-pub struct Rectangle {
-    pub x: u16,
-    pub y: u16,
-    pub width: u16,
-    pub height: u16,
-    pub encoding: i32,
-}
+rfb-encodings/
+├── Cargo.toml
+└── src/
+    ├── lib.rs          (Decoder trait + re-exports)
+    ├── raw.rs          (Raw encoding - Task 3.2)
+    ├── copyrect.rs     (CopyRect - Task 3.3)
+    ├── rre.rs          (RRE - Task 3.4)
+    ├── hextile.rs      (Hextile - Task 3.5)
+    ├── tight/
+    │   ├── mod.rs
+    │   ├── jpeg.rs
+    │   └── zlib.rs
+    └── zrle.rs         (ZRLE - Task 3.7)
 ```
-
-**Encoding constants**:
-```rust
-pub const ENCODING_RAW: i32 = 0;
-pub const ENCODING_COPYRECT: i32 = 1;
-pub const ENCODING_RRE: i32 = 2;
-pub const ENCODING_HEXTILE: i32 = 5;
-pub const ENCODING_TIGHT: i32 = 7;
-pub const ENCODING_ZRLE: i32 = 16;
-```
-
-### Server Messages (server.rs)
-
-1. **ServerInit** - framebuffer_width, framebuffer_height, pixel_format, name
-2. **FramebufferUpdate** - rectangle headers only (payloads in Phase 3)
-3. **SetColorMapEntries** - color map updates
-4. **Bell** - simple notification
-5. **ServerCutText** - clipboard data
-
-### Client Messages (client.rs)
-
-1. **ClientInit** - shared flag
-2. **SetPixelFormat** - change pixel format
-3. **SetEncodings** - list of supported encodings
-4. **FramebufferUpdateRequest** - request screen updates
-5. **KeyEvent** - keyboard input
-6. **PointerEvent** - mouse input
-7. **ClientCutText** - clipboard data
-
-### Parsing Rules (CRITICAL)
-
-1. **All multi-byte integers are big-endian** (network byte order)
-2. **Booleans are strictly 0 or 1** - reject any other value with error
-3. **Padding bytes must be zero** - validate or error
-4. **For FramebufferUpdate**: Parse rectangle headers fully, but do NOT consume encoding-specific payloads in Task 2.4 (those depend on decoders in Phase 3)
-5. **Variable-length messages**: Only parse those with explicit length fields (e.g., ServerCutText, ClientCutText)
-
-### Implementation Steps
-
-1. Create `rfb-protocol/src/messages/` directory
-2. Implement `mod.rs` with module declarations and shared traits
-3. Implement `types.rs` with PixelFormat, Rectangle, constants
-4. Implement `server.rs` with all server messages
-5. Implement `client.rs` with all client messages
-6. Add 20-25 unit tests covering:
-   - PixelFormat round-trip with padding validation
-   - All message types parse/serialize correctly
-   - Boolean validation (reject values != 0 or 1)
-   - Error cases (invalid padding, mismatched counts, etc.)
-7. Add rustdoc documentation with examples
-8. Export from `rfb-protocol/src/lib.rs`
 
 ### Testing Strategy
 
-- Minimal, deterministic test fixtures
-- Round-trip tests (write then read)
-- Error case validation (invalid booleans, padding, etc.)
-- Edge cases (empty strings, zero-length arrays)
+1. **Unit tests**: Each encoding in its own module
+2. **Integration tests**: `tests/encoding_roundtrip.rs`
+3. **Test vectors**: Create known good encoded data
+4. **Property tests**: Random data should decode without errors
+5. **Performance benchmarks**: `benches/decode_speed.rs`
 
-**Reference**: RUST_VIEWER.md lines 698-768  
-**Estimated time**: 3-4 days  
-**Target LOC**: 400-500  
-**Target tests**: 20-25
+### Success Criteria
+
+- [ ] All 7 encodings implemented
+- [ ] 100+ tests passing
+- [ ] Zero clippy warnings
+- [ ] Comprehensive documentation
+- [ ] Can decode real VNC server output
+- [ ] Performance acceptable (1080p @ 30fps)
 
 ---
 

@@ -1,8 +1,8 @@
 # Rust VNC Viewer - Current Status
 
-**Date**: 2025-10-08 14:23 Local  
-**Status**: Phase 2 in progress - 60% complete (Tasks 2.1-2.3 done) ✅  
-**Last Updated**: Documentation refresh + Ready for Task 2.4 (Message Types)
+**Date**: 2025-10-08 22:58 Local  
+**Status**: Phase 2 COMPLETE ✅ - Ready for Phase 3 (Encodings)  
+**Last Updated**: Phase 2 completion (handshake + messages) - All networking & protocol done!
 
 ## What Has Been Created
 
@@ -59,9 +59,9 @@ Files:
 - ✅ `src/lib.rs` (21 lines) - Module exports with docs
 - ✅ `Cargo.toml` - Dependencies (rfb-common, anyhow)
 
-#### `rfb-protocol` - **PARTIAL (60% complete)**
-**Status**: Core networking done, messages in progress  
-**LOC**: ~1,655
+#### `rfb-protocol` - **COMPLETE ✅**
+**Status**: Fully implemented (Phase 2 COMPLETE)  
+**LOC**: ~3,502
 
 **Completed** (✅):
 - **Socket abstractions** (Task 2.1) - TCP and Unix domain sockets
@@ -76,17 +76,29 @@ Files:
   - `ConnectionState` enum with 10 states
   - `RfbConnection<R, W>` lifecycle management
   - State transition validation
-- 32 unit tests - all passing ✅
+- **RFB message types** (Task 2.4) - All protocol messages
+  - `PixelFormat`, `Rectangle`, encoding constants
+  - Server messages: ServerInit, FramebufferUpdate, SetColorMapEntries, Bell, ServerCutText
+  - Client messages: ClientInit, SetPixelFormat, SetEncodings, FramebufferUpdateRequest, KeyEvent, PointerEvent, ClientCutText
+  - Strict validation (booleans, padding)
+- **Protocol handshake** (Task 2.5) - Version & security negotiation
+  - Version negotiation (RFB 3.3/3.8)
+  - Security negotiation (None type)
+  - ClientInit/ServerInit exchange
+- **Tests**: 118 tests (56 unit + 24 messages + 38 doctests) - all passing ✅
+- **Zero clippy warnings** ✅
 
-**Needs** (Task 2.4+):
-- Message types (PixelFormat, Rectangle, server/client messages)
-- Protocol handshake implementation
-- Full message parsing/serialization
+**Note**: Phase 2 exceeded LOC target (3,502 vs 1,700 estimated) due to comprehensive documentation and test coverage.
 
 Files:
 - ✅ `src/socket.rs` (~430 lines) - Socket abstractions
 - ✅ `src/io.rs` (~680 lines) - I/O streams
 - ✅ `src/connection.rs` (~545 lines) - State machine
+- ✅ `src/messages/mod.rs` (~54 lines) - Message module
+- ✅ `src/messages/types.rs` (~407 lines) - Core types
+- ✅ `src/messages/server.rs` (~407 lines) - Server messages
+- ✅ `src/messages/client.rs` (~550 lines) - Client messages
+- ✅ `src/handshake.rs` (~378 lines) - Protocol handshake
 - ✅ `src/lib.rs` - Module exports
 
 #### `rfb-encodings` - **STUB**
@@ -137,41 +149,58 @@ $ cargo build
 
 ## Statistics
 
-- **Total Lines of Code**: ~3,258 (functional code + documentation + tests)
+- **Total Lines of Code**: ~5,013 (functional code + documentation + tests)
   - rfb-common: ~150 LOC
   - rfb-pixelbuffer: ~1,416 LOC (Phase 1 complete)
-  - rfb-protocol: ~1,655 LOC (Phase 2 partial - 60%)
-  - Other crates: ~37 LOC (stubs)
-- **Crates**: 6 (1 complete, 1 in progress, 4 stubs)
+  - rfb-protocol: ~3,502 LOC (Phase 2 complete - exceeded target!)
+  - Other crates: ~40 LOC (stubs)
+- **Crates**: 6 (2 complete, 0 in progress, 4 stubs)
 - **Dependencies Configured**: 20+ (workspace-level)
-- **Completion**: ~26% (Phase 1 complete, Phase 2 at 60%)
+- **Completion**: ~40% (Phases 1-2 complete, Phase 3 ready to start)
 - **Build Status**: ✅ All crates compile
-- **Test Status**: ✅ 52 tests passing
+- **Test Status**: ✅ 140 tests passing
+  - rfb-common: 3 tests
   - rfb-pixelbuffer: 19 tests
-  - rfb-protocol: 32 tests
-  - stubs: 1 test
+  - rfb-protocol: 118 tests (56 unit + 24 messages + 38 doctests)
+  - stubs: 0 tests
 
 ## Next Immediate Steps
 
-### Priority 1: Message Types (Task 2.4 - THIS WEEK)
-1. **Implement RFB message types** in `rfb-protocol/src/messages/`
-   - Module structure: mod.rs, types.rs, server.rs, client.rs
-   - Core types: PixelFormat, Rectangle, encoding constants
-   - Server messages: ServerInit, FramebufferUpdate, SetColorMapEntries, Bell, ServerCutText
-   - Client messages: ClientInit, SetPixelFormat, SetEncodings, FramebufferUpdateRequest, KeyEvent, PointerEvent, ClientCutText
-   - **Important**: FramebufferUpdate will only parse rectangle headers in this task, not encoding payloads
-   - Target: ~400-500 LOC, 20-25 unit tests
-   - **Risk mitigation**: Encoding-specific payloads depend on decoder implementations (Phase 3). For now, we parse headers only and document this limitation clearly.
+### Priority 1: Phase 3 - Encodings (rfb-encodings crate)
 
-### Priority 2: Protocol Handshake (Task 2.5 - NEXT WEEK)
-2. Complete RFB handshake implementation
-3. Version negotiation (RFB 3.8)
-4. Security type negotiation
-5. ClientInit/ServerInit exchange
+**Goal**: Implement encoding/decoding for VNC framebuffer updates
 
-### Priority 3: First Encoding (Week 3)
-6. Raw encoding decoder
-7. Simple test program to decode Raw rectangles
+1. **Create rfb-encodings crate structure**
+   - Define `Decoder` trait
+   - Set up module organization
+   - Add workspace dependencies
+
+2. **Task 3.1: Raw Encoding** (Week 1)
+   - Simplest encoding - uncompressed pixels
+   - Direct pixel-by-pixel transfer
+   - Target: ~300 LOC, comprehensive tests
+   - Build integration tests
+
+3. **Task 3.2: CopyRect Encoding** (Week 1)
+   - Copy rectangle from one position to another
+   - Target: ~200 LOC
+
+4. **Task 3.3: RRE Encoding** (Week 2)
+   - Rise-and-Run-length Encoding
+   - Solid rectangles compression
+   - Target: ~400 LOC
+
+5. **Task 3.4-3.7**: Hextile, Tight, ZRLE, ContentCache (Weeks 3-4)
+   - More complex encodings with compression
+   - Target: ~2,600 LOC combined
+
+**Estimated Time**: 4 weeks  
+**Target LOC**: ~3,500
+
+### After Phase 3
+- Phase 4: Additional pixel buffer improvements
+- Phase 5: Input handling
+- Phase 6: GUI integration
 
 ## Development Environment
 
@@ -217,14 +246,25 @@ rust-vnc-viewer/
 │       ├── config.rs
 │       └── cursor.rs
 ├── rfb-pixelbuffer/
-│   ├── Cargo.toml  (✅ Task 1.5)
+│   ├── Cargo.toml
 │   └── src/
-│       ├── lib.rs  (✅ Task 1.4)
-│       ├── format.rs  (✅ Task 1.1)
-│       └── buffer.rs  (✅ Task 1.2)
+│       ├── lib.rs
+│       ├── format.rs
+│       ├── buffer.rs
+│       └── managed.rs
 ├── rfb-protocol/
 │   ├── Cargo.toml
-│   └── src/lib.rs
+│   └── src/
+│       ├── lib.rs
+│       ├── socket.rs
+│       ├── io.rs
+│       ├── connection.rs
+│       ├── handshake.rs
+│       └── messages/
+│           ├── mod.rs
+│           ├── types.rs
+│           ├── server.rs
+│           └── client.rs
 ├── rfb-encodings/
 │   ├── Cargo.toml
 │   └── src/lib.rs
