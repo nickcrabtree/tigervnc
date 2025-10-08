@@ -151,6 +151,9 @@ namespace rfb {
     virtual void onCachedRectRef(uint64_t cacheId, const core::Rect& r) {}
     // Hook to drain pending CachedRectInit requests (default: no-op)
     virtual void drainPendingCachedInits(std::vector<std::pair<uint64_t, core::Rect>>& out) {}
+    virtual bool knowsCacheId(uint64_t) const { return false; }
+    virtual void queueCachedInit(uint64_t, const core::Rect&) {}
+    virtual void markCacheIdKnown(uint64_t) {}
 
   protected:
 
@@ -169,6 +172,7 @@ namespace rfb {
     void handleClipboardNotify(uint32_t flags) override;
     void handleClipboardProvide(uint32_t flags, const size_t* lengths,
                                 const uint8_t* const* data) override;
+    void handleRequestCachedData(uint64_t cacheId) override;
 
     // Methods to be overridden in a derived class
 

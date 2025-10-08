@@ -521,6 +521,11 @@ void SConnection::handleClipboardProvide(uint32_t flags,
   handleClipboardData(clientClipboard.c_str());
 }
 
+void SConnection::handleRequestCachedData(uint64_t /*cacheId*/)
+{
+  // Default no-op: servers that care (e.g., VNCSConnectionST) override this.
+}
+
 void SConnection::supportsLocalCursor()
 {
 }
