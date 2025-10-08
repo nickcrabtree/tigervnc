@@ -30,9 +30,9 @@ cargo run --release
 
 🚧 **Under Development** - This is a work in progress.
 
-**Current Phase**: Phase 2 - Network & Protocol (60% complete)  
-**Last Updated**: 2025-10-08 14:23 Local  
-**Overall Progress**: ~26% (3,258 / 12,500 LOC)
+**Current Phase**: Phase 3 - Encodings (5% complete)  
+**Last Updated**: 2025-10-08 15:22 Local  
+**Overall Progress**: ~28% (3,500 / 12,500 LOC)
 
 ### Completed ✅
 - [x] **Phase 0**: Workspace structure with 6 crates
@@ -47,8 +47,8 @@ cargo run --release
 - [x] **Phase 2**: rfb-protocol crate (~1,655 LOC, 32 tests passing)
 
 ### In Progress 🔄
-- [ ] **NEXT**: Message types (PixelFormat, Rectangle, server/client messages) - Task 2.4
-- [ ] Protocol handshake (version negotiation, security) - Task 2.5
+- [x] **Phase 3**: rfb-encodings crate with Decoder trait - Task 3.1 ✅
+- [ ] **NEXT**: Raw encoding decoder implementation - Task 3.2
 
 ### Planned 📋
 - [ ] All standard VNC encodings (Tight, ZRLE, etc.)

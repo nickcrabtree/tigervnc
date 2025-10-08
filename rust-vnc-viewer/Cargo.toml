@@ -3,6 +3,7 @@ members = [
     "rfb-common",
     "rfb-protocol",
     "rfb-pixelbuffer",
+    "rfb-encodings",
 ]
 resolver = "2"
 

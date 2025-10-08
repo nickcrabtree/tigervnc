@@ -101,16 +101,29 @@ Files:
 - ✅ `src/handshake.rs` (~378 lines) - Protocol handshake
 - ✅ `src/lib.rs` - Module exports
 
-#### `rfb-encodings` - **STUB**
-**Status**: Needs implementation  
-**LOC**: ~10 (stub)
+#### `rfb-encodings` - **PHASE 3 STARTED ✅**
+**Status**: Foundation implemented (Task 3.1 complete)  
+**LOC**: ~260 (docs + trait + tests)
 
-Needs:
-- Decoder trait
-- Raw encoding
-- CopyRect encoding
-- Tight encoding (JPEG + zlib)
-- Other encodings (RRE, Hextile, ZRLE)
+**Completed** (✅):
+- **Decoder trait** - Core async trait for all encoding implementations
+- Encoding constants (RAW, COPY_RECT, RRE, HEXTILE, TIGHT, ZRLE, etc.)
+- Re-exports of RfbInStream, PixelFormat, Rectangle, MutablePixelBuffer
+- 2 unit tests + 4 doctests - all passing ✅
+- Zero clippy warnings ✅
+- Comprehensive module documentation
+
+**Needs** (Phase 3 Tasks 3.2-3.7):
+- Raw encoding decoder (Task 3.2) - NEXT
+- CopyRect encoding (Task 3.3)
+- RRE encoding (Task 3.4)
+- Hextile encoding (Task 3.5)
+- Tight encoding (Task 3.6 - JPEG + zlib)
+- ZRLE encoding (Task 3.7)
+
+Files:
+- ✅ `src/lib.rs` (260 lines) - Decoder trait, constants, docs
+- ✅ `Cargo.toml` - Dependencies configured
 
 #### `platform-input` - **STUB**
 **Status**: Needs implementation  
