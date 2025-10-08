@@ -60,7 +60,7 @@ Last Updated: 2025-10-08 12:15 UTC
 
 ### Phase 2: Network & Protocol (Weeks 2-5) 🔄 IN PROGRESS
 ```
-[██████░░░░░░░░░░░░░░░░░░░░░░░░░░] 20%
+[████████████░░░░░░░░░░░░░░░░░░░░] 40%
 ```
 
 **Target**: rfb-protocol implementation
@@ -68,7 +68,7 @@ Last Updated: 2025-10-08 12:15 UTC
 || Task | Status | Est. Time | Actual Time | File |
 ||------|--------|-----------|-------------|------|
 || 2.1 | ✅ DONE | 2 days | ~45 min | `rfb-protocol/src/socket.rs` |
-|| 2.2 | ⬜ TODO | 2 days | - | `rfb-protocol/src/io/` |
+|| 2.2 | ✅ DONE | 2 days | ~40 min | `rfb-protocol/src/io.rs` |
 || 2.3 | ⬜ TODO | 2 days | - | `rfb-protocol/src/connection/` |
 || 2.4 | ⬜ TODO | 4 days | - | `rfb-protocol/src/messages/` |
 || 2.5 | ⬜ TODO | 3 days | - | `rfb-protocol/src/handshake/` |
@@ -125,6 +125,18 @@ Last Updated: 2025-10-08 12:15 UTC
 ---
 
 ## Recent Activity
+
+### 2025-10-08 13:20 UTC
+- ✅ **Task 2.2 COMPLETE**: RFB I/O streams (buffered reading/writing)
+- ✅ Implemented `RfbInStream` for buffered reading
+- ✅ Implemented `RfbOutStream` for buffered writing
+- ✅ Type-safe methods for u8/u16/u32/i32 in network byte order
+- ✅ Efficient 8KB buffering (customizable)
+- ✅ 15 unit tests + 21 doctests (36 total)
+- ✅ Zero clippy warnings
+- ✅ ~680 LOC (code + docs + tests)
+- ✅ Committed: f407506c
+- 🎯 Next: Task 2.3 - Connection state machine
 
 ### 2025-10-08 13:00 UTC
 - ✅ **Task 2.1 COMPLETE**: Socket abstractions (TCP and Unix domain)
