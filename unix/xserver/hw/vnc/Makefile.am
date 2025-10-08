@@ -31,20 +31,20 @@ libvnccommon_la_SOURCES = $(HDRS) \
 libvnccommon_la_CPPFLAGS = $(AM_CPPFLAGS) \
 	-I$(TIGERVNC_SRCDIR)/unix/vncconfig
 
-bin_PROGRAMS = Xvnc
+bin_PROGRAMS = Xnjcvnc
 
-man1_MANS = Xvnc.man
+man1_MANS = Xnjcvnc.man
 
-Xvnc_SOURCES = xvnc.c \
+Xnjcvnc_SOURCES = xvnc.c \
 	$(top_srcdir)/Xi/stubs.c $(top_srcdir)/mi/miinitext.c \
 	buildtime.c
 
-# Xvnc contains no C++ sources so automake doesn't understand that we
+# Xnjcvnc contains no C++ sources so automake doesn't understand that we
 # need to use the C++ compiler to link things. This is the upstream
 # recommendation for coaxing automake.
-nodist_EXTRA_Xvnc_SOURCES = dummy.cxx
+nodist_EXTRA_Xnjcvnc_SOURCES = dummy.cxx
 
-Xvnc_CPPFLAGS = $(AM_CPPFLAGS)
+Xnjcvnc_CPPFLAGS = $(AM_CPPFLAGS)
 
 LOCAL_LIBS = \
 	$(XVNC_LIBS) \
@@ -52,21 +52,21 @@ LOCAL_LIBS = \
 	libvnccommon.la \
 	$(COMMON_LIBS)
 
-Xvnc_DEPENDENCIES = $(LOCAL_LIBS)
-Xvnc_LDADD = \
+Xnjcvnc_DEPENDENCIES = $(LOCAL_LIBS)
+Xnjcvnc_LDADD = \
 	$(LOCAL_LIBS) \
 	$(XSERVER_SYS_LIBS) \
 	$(XVNC_SYS_LIBS) \
 	$(LIBXCVT_LIBS)
 
-Xvnc_LDFLAGS = $(LD_EXPORT_SYMBOLS_FLAG)
+Xnjcvnc_LDFLAGS = $(LD_EXPORT_SYMBOLS_FLAG)
 
 if DRI3
-Xvnc_SOURCES += vncDRI3.h vncDRI3.c vncDRI3Draw.c
-Xvnc_CPPFLAGS += \
+Xnjcvnc_SOURCES += vncDRI3.h vncDRI3.c vncDRI3Draw.c
+Xnjcvnc_CPPFLAGS += \
 	-I$(top_srcdir)/dri3 \
 	$(GBM_CFLAGS)
-Xvnc_LDADD += $(GBM_LIBS)
+Xnjcvnc_LDADD += $(GBM_LIBS)
 endif
 
 libvnc_la_LTLIBRARIES = libvnc.la
@@ -74,7 +74,7 @@ libvnc_ladir = $(moduledir)/extensions
 
 libvnc_la_SOURCES = vncModule.c
 
-# See Xvnc magic above
+# See Xnjcvnc magic above
 nodist_EXTRA_libvnc_la_SOURCES = dummy.cxx
 
 libvnc_la_CPPFLAGS = $(AM_CPPFLAGS) \
@@ -86,4 +86,4 @@ libvnc_la_LDFLAGS = -module -avoid-version -Wl,-z,now
 
 libvnc_la_LIBADD = libvnccommon.la $(COMMON_LIBS)
 
-EXTRA_DIST = Xvnc.man
+EXTRA_DIST = Xnjcvnc.man

@@ -113,7 +113,7 @@ our %CMDS;
   my $binbase = dirname(File::Spec->rel2abs($0));
 
   foreach my $cmd (qw(
-    hostname xauth Xtigervnc X0tigervnc tigervncpasswd openssl xdpyinfo))
+    hostname xauth Xnjcvnc X0tigervnc tigervncpasswd openssl xdpyinfo))
   {
     foreach my $dir ($binbase, split(/:/,$ENV{PATH})) {
       my $fqcmd = File::Spec->catfile($dir, $cmd);
@@ -243,7 +243,7 @@ sub sanityCheck {
   getCommand('hostname');
   if (($options->{'wrapperMode'}//"undef") eq 'tigervncserver') {
     getCommand('xauth');
-    getCommand('Xtigervnc');
+    getCommand('Xnjcvnc');
   } elsif (($options->{'wrapperMode'}//"undef") eq 'x0tigervncserver') {
     getCommand('X0tigervnc');
   }
@@ -281,7 +281,7 @@ sub sanityCheck {
 
 Function that derives the absolute path for one of the following programs:
 B<hostname>, B<xauth>, B<xdpyinfo>, B<openssl>, B<tigervncpasswd>,
-B<Xtigervnc>, B<X0tigervnc>.
+B<Xnjcvnc>, B<X0tigervnc>.
 
 =cut
 

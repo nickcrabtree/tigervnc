@@ -33,7 +33,7 @@ TigerVNC::Wrapper - TigerVNC server management
 
 =head1 DESCRIPTION
 
-This module starts either a B<Xtigervnc> or B<X0tigervnc> server.
+This module starts either a B<Xnjcvnc> or B<X0tigervnc> server.
 
 =cut
 
@@ -376,7 +376,7 @@ sub cleanStale($$$) {
       print "Cleaning stale pidfile '$pidFile'!\n";
     }
   }
-  if ($server eq 'Xtigervnc') {
+  if ($server eq 'Xnjcvnc') {
     if (!$stale || !&checkTCPPortUsed(6000 + $usedDisplay)) {
       my @X11Locks = ("/tmp/.X$usedDisplay-lock", "/tmp/.X11-unix/X$usedDisplay");
       foreach my $entry (grep { -e $_ } @X11Locks) {
@@ -413,7 +413,7 @@ sub runningVncServers {
         $usedDisplay = $nr - 5900 if $nr >= 5900 && $nr <= 5999;
       }
       my $client  = undef;
-      my $server  = "Xtigervnc";
+      my $server  = "Xnjcvnc";
       my ($name, $DISPLAY) = (undef, undef);
       if (defined $usedDisplay) {
         $name    = "$HOSTFQDN:$usedDisplay";
@@ -438,7 +438,7 @@ sub runningVncServers {
              $usedDisplay = $1 if $DISPLAY =~ m/:(\d+)(?:\.\d+)?$/;
              last;
             } elsif ($line =~ m/^\Q$MAGIC\EUse (.*) to connect to the VNC server\.$/) {
-              # 3NI3X0 Use xtigervncviewer -SecurityTypes X509Plain -X509CA /home/joachim/.config/tigervnc/xerstin.jfalk.de-SrvCert.pem xerstin.jfalk.de:21 to connect to the VNC server.
+              # 3NI3X0 Use njcvncviewer -SecurityTypes X509Plain -X509CA /home/joachim/.config/tigervnc/xerstin.jfalk.de-SrvCert.pem xerstin.jfalk.de:21 to connect to the VNC server.
               $client = $1;
             }
           }
@@ -447,8 +447,8 @@ sub runningVncServers {
       unless (defined $client) {
         # Example client connection
         $client = $rfbport > 0
-          ? "xtigervncviewer $HOSTFQDN:$rfbport"
-          : "xtigervncviewer $rfbunixpath";
+          ? "njcvncviewer $HOSTFQDN:$rfbport"
+          : "njcvncviewer $rfbunixpath";
       }
       if ($rfbport > 0) {
         $stale = 1 if $stale || !&checkTCPPortUsed($rfbport);

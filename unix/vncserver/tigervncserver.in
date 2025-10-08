@@ -112,7 +112,7 @@ sub main {
     }
     if (!$options->{'kill'} && !$options->{'list'} && !$options->{'version'}) {
       # Feedback on how to connect to the remote tigervnc server.
-      print "Use xtigervncviewer -via $options->{'displayHost'} :n to connect!\n";
+      print "Use njcvncviewer -via $options->{'displayHost'} :n to connect!\n";
       print "The display number :n is given in the above startup message from tigervncserver.\n";
     }
     exit 0;
@@ -125,7 +125,7 @@ sub main {
     &listVncServers(\*STDOUT, $options);
     exit 0;
   } elsif ($options->{'version'}) {
-    my @cmd = (&getCommand("Xtigervnc"), "-version");
+    my @cmd = (&getCommand("Xnjcvnc"), "-version");
     if (system {$cmd[0]} (@cmd)) {
       exit 1;
     } else {

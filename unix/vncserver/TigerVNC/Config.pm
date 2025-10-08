@@ -19,7 +19,7 @@ TigerVNC::Config - Configuration reader
  
 =head1 DESCRIPTION
 
-This package reads the configuration for the B<Xtigervnc> and B<X0tigervnc> servers.
+This package reads the configuration for the B<Xnjcvnc> and B<X0tigervnc> servers.
 
 =cut
 
@@ -203,7 +203,7 @@ sub handleVNCStartupAuto {
 
   my $vncStartupAuto = $vncStartup;
   if (-f File::Spec->catfile($options->{'vncUserDir'}, "xstartup")) {
-    # A user provided Xtigervnc-session script exists => use it.
+    # A user provided Xnjcvnc-session script exists => use it.
     $vncStartupAuto =
       File::Spec->catfile($options->{'vncUserDir'}, "xstartup");
   }
@@ -275,14 +275,14 @@ sub getOptionParseTable($$) {
   };
 
   my $server = $options->{'wrapperMode'} eq 'tigervncserver'
-        ? 'Xtigervnc' : 'X0tigervnc';
+        ? 'Xnjcvnc' : 'X0tigervnc';
 
   # Flag field in $optionParseTable
   # 1  => Case insensitive
   # 2  => Config file parameter
   # 4  => Command line option for tigervncserver
   # 32 => Command line option for x0tigervncserver
-  # 8  => Command line option for Xtigervnc
+  # 8  => Command line option for Xnjcvnc
   # 16 => Command line option for X0tigervnc
 
   my $storeGeometry;
@@ -355,7 +355,7 @@ sub getOptionParseTable($$) {
       [36, 'pidfile=s'         => 'vncPidFile',
        "file to store the pid of the running $server server." ],
       [36, 'I-KNOW-THIS-IS-INSECURE' => 'I-KNOW-THIS-IS-INSECURE' ],
-      # Parameters for both Xtigervnc and X0tigervnc (case insensitive)
+      # Parameters for both Xnjcvnc and X0tigervnc (case insensitive)
       [63, 'ZlibLevel=i'       => 'ZlibLevel' ],
       [63, 'ImprovedHextile:b' => 'ImprovedHextile' ],
       [63, 'PAMService|pam_service=s' => 'PAMService',
@@ -443,10 +443,10 @@ sub getOptionParseTable($$) {
        "specifies the password file for security types VncAuth, TLSVnc, and X509Vnc. On default, ~/.vnc/passwd is used." ],
       [63, 'SecurityTypes=s'   => 'SecurityTypes',
        "specifies a comma list of security types to offer (None, VncAuth, Plain, TLSNone, TLSVnc, TLSPlain, X509None, X509Vnc, X509Plain, RA2, RA2ne, RA2_256, and RA2ne_256). On default, offer only VncAuth." ],
-      # Arguments from Xtigervnc (case sensitive)
+      # Arguments from Xnjcvnc (case sensitive)
       [14, 'auth=s'            => 'xauthorityFile' ],
       # -inetd is not handled
-      # Parameters for Xtigervnc (case insensitive)
+      # Parameters for Xnjcvnc (case insensitive)
       [15, 'SendCutText:b'     => 'SendCutText' ],
       [15, 'AcceptCutText:b'   => 'AcceptCutText' ],
       [15, 'MaxCutText=i'      => 'MaxCutText' ],
@@ -554,7 +554,7 @@ sub getOptionParseTable($$) {
             return $options->{'vncStartup'};
           }
         },
-       "specifies the script to start an X11 session for Xtigervnc." ],
+       "specifies the script to start an X11 session for Xnjcvnc." ],
       [ 4, 'noxstartup'        => sub {
           if (@_ == 2) {
             &{$override}('vncStartup', undef);
@@ -1217,12 +1217,12 @@ sub usage {
 #   @opts = (@optsHelp, sort { lc($a) cmp lc($b) } @optsNoHelp);
     @opts = grep { defined $opts{$_}->[0]->{'help'} } @opts;
     if ($options->{'wrapperMode'} eq 'tigervncserver') {
-      $opts{'Xtigervnc'} = [
-          { opt   => '[Xtigervnc options...]',
+      $opts{'Xnjcvnc'} = [
+          { opt   => '[Xnjcvnc options...]',
             flags => &OPT_XTIGERVNC | &OPT_TIGERVNCSERVER,
-            help  => 'For details, see Xtigervnc(1).' }
+            help  => 'For details, see Xnjcvnc(1).' }
         ];
-      push @opts, 'Xtigervnc';
+      push @opts, 'Xnjcvnc';
     } else {
       $opts{'X0tigervnc'} = [
           { opt   => '[X0tigervnc options...]',
@@ -1266,8 +1266,8 @@ sub usage {
         my $help = $entry->{'help'};
 #       unless (defined $help) {
 #         if ($options->{'wrapperMode'} eq 'tigervncserver') {
-#           if ($entry->{'flags'} & &OPT_XTIGERVNC) {
-#             $help = "is an Xtigervnc option. For details, see Xtigervnc(1)."
+#         if ($entry->{'flags'} & &OPT_XTIGERVNC) {
+#             $help = "is an Xnjcvnc option. For details, see Xnjcvnc(1)."
 #           }
 #         } else {
 #           if ($entry->{'flags'} & &OPT_X0TIGERVNC) {
@@ -1315,7 +1315,7 @@ sub usage {
     &{$usageOptionDumping}(qw(version));
   }
   if ($options->{'wrapperMode'} eq 'tigervncserver') {
-    &lineBreakText($fh, "  ", "\n\nFor further help, consult the $PROG(1) and Xtigervnc(1) manual pages.");
+    &lineBreakText($fh, "  ", "\n\nFor further help, consult the $PROG(1) and Xnjcvnc(1) manual pages.");
   } else {
     &lineBreakText($fh, "  ", "\n\nFor further help, consult the $PROG(1) and X0tigervnc(1) manual pages.");
   }
@@ -1375,7 +1375,7 @@ sub getConfig {
       vncPasswdFile             =>
         undef, # later derived from vncUserDir
       vncStartup                =>
-        "/etc/X11/Xtigervnc-session",
+        "/etc/X11/Xnjcvnc-session",
       xauthorityFile            =>
         $ENV{XAUTHORITY} ||
         File::Spec->catfile($ENV{HOME}, ".Xauthority"),
@@ -1457,13 +1457,13 @@ sub getConfig {
         }
       }
       if (!-f File::Spec->catfile($opts->{'vncUserDir'}, "xstartup")) {
-        if (-f File::Spec->catfile($opts->{'vncUserDir'}, "Xtigervnc-session")) {
+        if (-f File::Spec->catfile($opts->{'vncUserDir'}, "Xnjcvnc-session")) {
           # This is deprecated rename it to xstartup
           if (rename
-              File::Spec->catfile($opts->{'vncUserDir'}, "Xtigervnc-session")
+              File::Spec->catfile($opts->{'vncUserDir'}, "Xnjcvnc-session")
             , File::Spec->catfile($opts->{'vncUserDir'}, "xstartup")) {
             symlink "xstartup"
-              , File::Spec->catfile($opts->{'vncUserDir'}, "Xtigervnc-session");
+              , File::Spec->catfile($opts->{'vncUserDir'}, "Xnjcvnc-session");
           }
         } elsif (-f File::Spec->catfile($opts->{'vncUserDir'}, "Xvnc-session")) {
           # This is deprecated rename it to xstartup

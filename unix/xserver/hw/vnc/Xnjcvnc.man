@@ -1,30 +1,30 @@
-.TH Xvnc 1 "" "TigerVNC" "Virtual Network Computing"
+.TH Xnjcvnc 1 "" "TigerVNC" "Virtual Network Computing"
 .SH NAME
-Xvnc \- the X VNC server 
+Xnjcvnc \- the X VNC server 
 .SH SYNOPSIS
-.B Xvnc
+.B Xnjcvnc
 .RI [ options ] 
 .RI : display#
 .SH DESCRIPTION
-.B Xvnc
+.B Xnjcvnc
 is the X VNC (Virtual Network Computing) server.  It is based on a standard X
 server, but it has a "virtual" screen rather than a physical one.  X
 applications display themselves on it as if it were a normal X display, but
-they can only be accessed via a VNC viewer - see \fBvncviewer\fP(1).
+they can only be accessed via a VNC viewer - see \fBnjcvncviewer\fP(1).
 
-So Xvnc is really two servers in one. To the applications it is an X server,
+So Xnjcvnc is really two servers in one. To the applications it is an X server,
 and to the remote VNC users it is a VNC server. By convention we have arranged
 that the VNC server display number will be the same as the X server display
 number, which means you can use eg. snoopy:2 to refer to display 2 on machine
 "snoopy" in both the X world and the VNC world.
 
-The best way of starting \fBXvnc\fP is via \fBvncsession\fP.  This sets up the
+The best way of starting \fBXnjcvnc\fP is via \fBvncsession\fP.  This sets up the
 environment appropriately and starts a desktop environment. See the manual
 page for \fBvncsession\fP(8) for more information.
 
 .SH OPTIONS
-.B Xvnc
-takes lots of options - running \fBXvnc -help\fP gives a list.  Many of these
+.B Xnjcvnc
+takes lots of options - running \fBXnjcvnc -help\fP gives a list.  Many of these
 are standard X server options, which are described in the \fBXserver\fP(1)
 manual page.  In addition to options which can only be set via the
 command-line, there are also "parameters" which can be set both via the
@@ -46,7 +46,7 @@ List all the options and parameters
 .
 .TP
 .B \-inetd
-This significantly changes Xvnc's behaviour so that it can be launched from
+This significantly changes Xnjcvnc's behaviour so that it can be launched from
 inetd.  See the section below on usage with inetd.
 .
 .TP
@@ -57,7 +57,7 @@ depth 16 is RGB565 and for depth 24 and 32 is RGB888.
 .TP
 .B \-rendernode \fIpath\fP
 DRM render node to use for DRI3 GPU acceleration. Specify an empty path to
-disable DRI3. Default is \fBauto\fP which makes \fBXvnc\fP pick a suitable
+disable DRI3. Default is \fBauto\fP which makes \fBXnjcvnc\fP pick a suitable
 available render node.
 
 .SH PARAMETERS
@@ -160,7 +160,7 @@ on.
 .
 .TP
 .B \-interface \fIIP address\fP
-Listen on interface. By default Xvnc listens on all available interfaces.
+Listen on interface. By default Xnjcvnc listens on all available interfaces.
 .
 .TP
 .B \-localhost
@@ -271,7 +271,7 @@ Require username for the RSA-AES security types. Default is off.
 .
 .TP
 .B \-rfbport \fIport\fP
-Specifies the TCP port on which Xvnc listens for connections from viewers (the
+Specifies the TCP port on which Xnjcvnc listens for connections from viewers (the
 protocol used in VNC is called RFB - "remote framebuffer").  The default is
 5900 plus the display number. Specify \fB-1\fP to disable listening on a TCP
 port.
@@ -282,7 +282,7 @@ Specifies the mode of the Unix domain socket.  The default is 0600.
 .
 .TP
 .B \-rfbunixpath \fIpath\fP
-Specifies the path of a Unix domain socket on which Xvnc listens for
+Specifies the path of a Unix domain socket on which Xnjcvnc listens for
 connections from viewers.
 .
 .TP
@@ -336,7 +336,7 @@ Private key counter part to the certificate given in \fBX509Cert\fP. Must
 also be in PEM format.
 
 Allowing override of parameters such as \fBPAMService\fP or \fBPasswordFile\fP
-can negatively impact security if Xvnc runs under different user than the
+can negatively impact security if Xnjcvnc runs under different user than the
 programs allowed to override the parameters.
 
 When \fBNoClipboard\fP parameter is set, allowing override of \fBSendCutText\fP
@@ -345,40 +345,40 @@ and \fBAcceptCutText\fP has no effect.
 Default is \fBdesktop,AcceptPointerEvents,SendCutText,AcceptCutText,SendPrimary,SetPrimary\fP.
 
 .SH USAGE WITH INETD
-By configuring the \fBinetd\fP(1) service appropriately, Xvnc can be launched
+By configuring the \fBinetd\fP(1) service appropriately, Xnjcvnc can be launched
 on demand when a connection comes in, rather than having to be started
 manually.  When given the \fB-inetd\fP option, instead of listening for TCP
 connections on a given port it uses its standard input and standard output.
 There are two modes controlled by the wait/nowait entry in the inetd.conf file.
 
-In the nowait mode, Xvnc uses its standard input and output directly as the
+In the nowait mode, Xnjcvnc uses its standard input and output directly as the
 connection to a viewer.  It never has a listening socket, so cannot accept
 further connections from viewers (it can however connect out to listening
 viewers by use of the vncconfig program).  Further viewer connections to the
-same TCP port result in inetd spawning off a new Xvnc to deal with each
-connection.  When the connection to the viewer dies, the Xvnc and any
+same TCP port result in inetd spawning off a new Xnjcvnc to deal with each
+connection.  When the connection to the viewer dies, the Xnjcvnc and any
 associated X clients die.  This behaviour is most useful when combined with the
 XDMCP options -query and -once.  An typical example in inetd.conf might be (all
 on one line):
 
-5950   stream   tcp nowait nobody  /usr/local/bin/Xvnc Xvnc -inetd -query
+5950   stream   tcp nowait nobody  /usr/local/bin/Xnjcvnc Xnjcvnc -inetd -query
 localhost -once securitytypes=none
 
-In this example a viewer connection to :50 will result in a new Xvnc for that
+In this example a viewer connection to :50 will result in a new Xnjcvnc for that
 connection which should display the standard XDM login screen on that machine.
 It is usually OK to accept connections without a VNC password, since the user
 still needs to log in via XDM in this case.
 
 In the wait mode, when the first connection comes in, inetd gives the listening
-socket to Xvnc.  This means that for a given TCP port, there is only ever one
-Xvnc at a time.  Further viewer connections to the same port are accepted by
-the same Xvnc in the normal way.  Even when the original connection is broken,
-the Xvnc will continue to run.  If this is used with the XDMCP options -query
-and -once, the Xvnc and associated X clients will die when the user logs out of
+socket to Xnjcvnc.  This means that for a given TCP port, there is only ever one
+Xnjcvnc at a time.  Further viewer connections to the same port are accepted by
+the same Xnjcvnc in the normal way.  Even when the original connection is broken,
+the Xnjcvnc will continue to run.  If this is used with the XDMCP options -query
+and -once, the Xnjcvnc and associated X clients will die when the user logs out of
 the X session in the normal way.  It is important to use a VNC password in this
 case.  A typical entry in inetd.conf might be:
 
-5951   stream   tcp wait   james     /usr/local/bin/Xvnc Xvnc -inetd -query localhost -once passwordFile=/home/james/.config/tigervnc/passwd
+5951   stream   tcp wait   james     /usr/local/bin/Xnjcvnc Xnjcvnc -inetd -query localhost -once passwordFile=/home/james/.config/tigervnc/passwd
 
 In fact typically, you would have one entry for each user who uses VNC
 regularly, each of whom has their own dedicated TCP port which they use.  In
@@ -386,13 +386,13 @@ this example, when user "james" connects to :51, he enters his VNC password,
 then gets the XDM login screen where he logs in in the normal way.  However,
 unlike the previous example, if he disconnects, the session remains persistent,
 and when he reconnects he will get the same session back again.  When he logs
-out of the X session, the Xvnc will die, but of course a new one will be
+out of the X session, the Xnjcvnc will die, but of course a new one will be
 created automatically the next time he connects.
 
 .SH SEE ALSO
 .BR vncconfig (1),
 .BR vncpasswd (1),
-.BR vncviewer (1),
+.BR njcvncviewer (1),
 .BR vncsession (8),
 .BR Xserver (1),
 .BR inetd (1)
