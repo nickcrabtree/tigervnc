@@ -60,7 +60,7 @@ Last Updated: 2025-10-08 12:15 UTC
 
 ### Phase 2: Network & Protocol (Weeks 2-5) 🔄 IN PROGRESS
 ```
-[████████████░░░░░░░░░░░░░░░░░░░░] 40%
+[██████████████████░░░░░░░░░░░░░░] 60%
 ```
 
 **Target**: rfb-protocol implementation
@@ -69,7 +69,7 @@ Last Updated: 2025-10-08 12:15 UTC
 ||------|--------|-----------|-------------|------|
 || 2.1 | ✅ DONE | 2 days | ~45 min | `rfb-protocol/src/socket.rs` |
 || 2.2 | ✅ DONE | 2 days | ~40 min | `rfb-protocol/src/io.rs` |
-|| 2.3 | ⬜ TODO | 2 days | - | `rfb-protocol/src/connection/` |
+|| 2.3 | ✅ DONE | 2 days | ~50 min | `rfb-protocol/src/connection.rs` |
 || 2.4 | ⬜ TODO | 4 days | - | `rfb-protocol/src/messages/` |
 || 2.5 | ⬜ TODO | 3 days | - | `rfb-protocol/src/handshake/` |
 
@@ -125,6 +125,19 @@ Last Updated: 2025-10-08 12:15 UTC
 ---
 
 ## Recent Activity
+
+### 2025-10-08 13:45 UTC
+- ✅ **Task 2.3 COMPLETE**: Connection state machine
+- ✅ Implemented `ConnectionState` enum with 10 states
+- ✅ Implemented `RfbConnection<R, W>` for state management
+- ✅ State transition validation (prevents invalid transitions)
+- ✅ Connection lifecycle (Disconnected → ProtocolVersion → ... → Normal)
+- ✅ Convenience methods: `is_active()`, `is_ready()`, `is_state()`
+- ✅ 11 unit tests + 5 doctests (16 total)
+- ✅ Zero clippy warnings
+- ✅ ~545 LOC (code + docs + tests)
+- ✅ Committed: 2a4758f0
+- 🎯 Next: Task 2.4 - Message types (or pause)
 
 ### 2025-10-08 13:20 UTC
 - ✅ **Task 2.2 COMPLETE**: RFB I/O streams (buffered reading/writing)
