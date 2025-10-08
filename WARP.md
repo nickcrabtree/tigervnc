@@ -17,7 +17,7 @@ make
 # Build viewer only
 make viewer
 
-# Build server (Xvnc) only
+# Build server (Xnjcvnc) only
 make server
 ```
 
@@ -50,15 +50,15 @@ The top-level `Makefile` provides convenience targets:
 # Build both viewer and server (default)
 make
 
-# Build viewer only (vncviewer)
+# Build viewer only (njcvncviewer)
 make viewer
 
-# Build server only (Xvnc)
+# Build server only (Xnjcvnc)
 make server
 ```
 
 **How it works:**
-- `make viewer`: Builds vncviewer via CMake, automatically rebuilding dependent libraries as needed
+- `make viewer`: Builds njcvncviewer via CMake, automatically rebuilding dependent libraries as needed
 - `make server`: Builds CMake libraries (rfb, rdr, network, core) then invokes the Xorg autotools build
 - `make` (or `make all`): Builds both viewer and server
 
@@ -71,11 +71,11 @@ make server
 
 TigerVNC has **two separate build systems** working together:
 
-1. **CMake** (for common libraries, vncviewer, utilities)
-2. **Autotools** (for Xvnc server - integrates with Xorg source)
+1. **CMake** (for common libraries, njcvncviewer, utilities)
+2. **Autotools** (for Xnjcvnc server - integrates with Xorg source)
 
 The top-level Makefile coordinates both systems:
-- CMake builds: `build/vncviewer/vncviewer`
+- CMake builds: `build/vncviewer/njcvncviewer`
 - Xorg builds: `build/unix/xserver/hw/vnc/Xvnc`
 
 ### Advanced: Direct CMake/Make Commands
@@ -84,13 +84,13 @@ If you need more control, you can invoke the build systems directly:
 
 ```bash
 # Build viewer with CMake directly
-cmake --build build --target vncviewer
+cmake --build build --target njcvncviewer
 
 # Build server manually
 cmake --build build --target rfb rdr network core
 make -C build/unix/xserver
 
-# Build everything via CMake (libraries + viewer, but not Xvnc server)
+# Build everything via CMake (libraries + viewer, but not Xnjcvnc server)
 cmake --build build
 ```
 
@@ -100,13 +100,13 @@ After building, executables are located at:
 
 ```bash
 # Viewer
-build/vncviewer/vncviewer
+build/vncviewer/njcvncviewer
 
 # Server (actual binary)
 build/unix/xserver/hw/vnc/Xvnc
 
 # Server (symlink for wrapper compatibility)
-build/unix/vncserver/Xtigervnc -> build/unix/xserver/hw/vnc/Xvnc
+build/unix/vncserver/Xnjcvnc -> build/unix/xserver/hw/vnc/Xvnc
 ```
 
 **Important**: Don't confuse your build with system binaries:
@@ -116,19 +116,19 @@ build/unix/vncserver/Xtigervnc -> build/unix/xserver/hw/vnc/Xvnc
 build/unix/xserver/hw/vnc/Xvnc
 
 # System binary (not your build!)
-/usr/bin/Xtigervnc
+/usr/bin/Xnjcvnc
 ```
 
 **Verify which binary is running**:
 ```bash
 # Check running server
-ps aux | grep Xtigervnc
+ps aux | grep Xnjcvnc
 
 # Verify it's your build
 ls -lh build/unix/xserver/hw/vnc/Xvnc
 
 # Check symlink target
-readlink -f build/unix/vncserver/Xtigervnc
+readlink -f build/unix/vncserver/Xnjcvnc
 ```
 
 ### Running Tests
@@ -200,7 +200,7 @@ These are static libraries that provide the foundation for both viewers and serv
 
 ### Platform-Specific Components
 
-- **vncviewer/**: Cross-platform VNC viewer (FLTK-based GUI)
+- **vncviewer/**: Cross-platform VNC viewer (FLTK-based GUI, produces njcvncviewer)
   - Platform-specific keyboard handling (KeyboardMacOS, KeyboardWin32, KeyboardX11)
   - Platform-specific surface rendering (Surface_OSX, Surface_Win32, Surface_X11)
   - Touch handling (Win32TouchHandler, XInputTouchHandler)
@@ -209,10 +209,10 @@ These are static libraries that provide the foundation for both viewers and serv
 - **unix/**: Unix/Linux server components
   - `x0vncserver/`: Polls existing X11 display and serves it via VNC
   - `vncpasswd/`: Password management utility
-  - `vncconfig/`: Configuration tool for running Xvnc
+  - `vncconfig/`: Configuration tool for running Xnjcvnc
   - `vncserver/`: Service wrapper scripts
   - `w0vncserver/`: Wayland display server (requires Wayland libraries)
-  - `xserver/`: Contains patches for integrating with Xorg source to build Xvnc
+  - `xserver/`: Contains patches for integrating with Xorg source to build Xnjcvnc
 
 - **win/**: Windows server components
   - `winvnc/`: Windows VNC server (NOTE: currently unmaintained)
@@ -268,7 +268,7 @@ Use `AUTO` to build with the feature if dependencies are found, or `ON`/`OFF` to
 - libjpeg (libjpeg-turbo strongly recommended for performance)
 
 **Optional** (for full features):
-- FLTK 1.3.3+ (for vncviewer)
+- FLTK 1.3.3+ (for njcvncviewer)
 - GnuTLS 3.x (for TLS support)
 - Nettle 3.0+ (for RSA-AES)
 - PAM (Unix/Linux, for authentication)
@@ -279,7 +279,7 @@ Use `AUTO` to build with the feature if dependencies are found, or `ON`/`OFF` to
 ### Cross-Compilation Notes
 
 - See `BUILDING.txt` for detailed MinGW cross-compilation recipes (Cygwin, Windows native, Linux host)
-- When building Xvnc, you must patch Xorg server source (patches in `unix/xserver*.patch`)
+- When building Xnjcvnc, you must patch Xorg server source (patches in `unix/xserver*.patch`)
 
 ### Compiler Flags
 

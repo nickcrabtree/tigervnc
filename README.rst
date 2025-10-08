@@ -50,10 +50,10 @@ All Platforms
 
 All versions of TigerVNC contain the following programs:
 
-* vncviewer - the cross-platform TigerVNC Viewer, written using FLTK.
-              vncviewer connects to a VNC server and allows you to interact
-              with the remote desktop being displayed by the VNC server.  The
-              VNC server can be running on a Windows or a Unix/Linux machine.
+* njcvncviewer - the cross-platform TigerVNC Viewer, written using FLTK.
+                 njcvncviewer connects to a VNC server and allows you to interact
+                 with the remote desktop being displayed by the VNC server.  The
+                 VNC server can be running on a Windows or a Unix/Linux machine.
 
 
 Windows-specific
@@ -75,9 +75,9 @@ Unix/Linux-specific (not Mac)
 
 The Unix/Linux version of TigerVNC contains the following programs:
 
-* Xvnc - the TigerVNC server for Unix.  Xvnc is both a VNC server and an X
-         server with a "virtual" framebuffer.  You should normally use the
-         vncserver service to start Xvnc.
+* Xnjcvnc - the TigerVNC server for Unix.  Xnjcvnc is both a VNC server and an X
+            server with a "virtual" framebuffer.  You should normally use the
+            vncserver service to start Xnjcvnc.
 
 * vncpasswd - a program which allows you to change the VNC password used to
               access your VNC server sessions (assuming that VNC authentication
@@ -85,7 +85,7 @@ The Unix/Linux version of TigerVNC contains the following programs:
               using VNC authentication with any of the servers or services.
 
 * vncconfig - a program which is used to configure and control a running
-              instance of Xvnc.
+              instance of Xnjcvnc.
 
 * x0vncserver - an inefficient VNC server which continuously polls any X
                 display, allowing it to be controlled via VNC.  It is intended
@@ -93,7 +93,7 @@ The Unix/Linux version of TigerVNC contains the following programs:
 
 It also contains the following systemd service:
 
-* vncserver@.service - a service to start a user session with Xvnc and one of
+* vncserver@.service - a service to start a user session with Xnjcvnc and one of
                        the desktop environments available on the system.
 
 ACKNOWLEDGEMENTS
