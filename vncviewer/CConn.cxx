@@ -22,6 +22,8 @@
 #include <config.h>
 #endif
 
+#include <build_version.h>
+
 #include <assert.h>
 #ifndef _WIN32
 #include <unistd.h>
@@ -334,6 +336,11 @@ void CConn::getUserPasswd(bool secure, std::string *user,
 // server the pixel format and encodings to use and request the first update.
 void CConn::initDone()
 {
+  // Log client and server versions for debugging
+  vlog.info("Client version: %s", BUILD_VERSION);
+  vlog.info("Server name: %s", server.name());
+  vlog.info("Server protocol: %d.%d", server.majorVersion, server.minorVersion);
+
   // If using AutoSelect with old servers, start in FullColor
   // mode. See comment in autoSelectFormatAndEncoding. 
   if (server.beforeVersion(3, 8) && autoSelect)
