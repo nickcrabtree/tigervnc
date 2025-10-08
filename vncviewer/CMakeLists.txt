@@ -10,6 +10,14 @@ add_custom_target(generate_build_timestamp ALL
   VERBATIM
 )
 
+# Generate version header with git metadata at build time (always runs)
+add_custom_target(generate_build_version ALL
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/generate_version.sh ${CMAKE_CURRENT_BINARY_DIR}/build_version.h ${VERSION}
+  COMMENT "Generating build version"
+  BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/build_version.h
+  VERBATIM
+)
+
 add_executable(njcvncviewer
   fltk/Fl_Monitor_Arrangement.cxx
   fltk/Fl_Navigation.cxx
@@ -56,7 +64,7 @@ else()
   target_sources(njcvncviewer PRIVATE Surface_X11.cxx)
 endif()
 
-add_dependencies(njcvncviewer generate_build_timestamp)
+add_dependencies(njcvncviewer generate_build_timestamp generate_build_version)
 target_include_directories(njcvncviewer PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(njcvncviewer SYSTEM PUBLIC ${FLTK_INCLUDE_DIR})
 target_include_directories(njcvncviewer SYSTEM PUBLIC ${Intl_INCLUDE_DIR})
