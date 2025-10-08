@@ -180,14 +180,16 @@ tests/unit/
 ## Known Limitations
 
 ### Current Implementation
-1. **Fixed Client Cache Size**: Hardcoded to 256 MB (should be configurable)
-2. **No Cache Miss Recovery**: Client logs miss but doesn't request refresh
+1. **Fixed Client Cache Size**: Hardcoded to 2048 MB (client-side, configurable in future)
+2. **Inefficient Cache Miss Recovery**: Server responds to cache miss requests by
+   refreshing entire framebuffer instead of just the missing rectangle. This is
+   correct but wastes bandwidth. See `CONTENTCACHE_TODO.md` for optimization plan.
 3. **No Statistics Logging**: Cache stats tracked but not exposed to user
 4. **No Persistent Cache**: Memory-only, cleared on disconnect
 
 ### Future Enhancements (Not Required)
-1. Configuration parameters for client cache
-2. Active cache miss recovery protocol
+1. **Optimize cache miss recovery** - See `CONTENTCACHE_TODO.md` for detailed plan
+2. Configuration parameters for client cache
 3. Statistics and monitoring UI
 4. Persistent cache with disk storage
 5. Adaptive cache sizing based on memory pressure
