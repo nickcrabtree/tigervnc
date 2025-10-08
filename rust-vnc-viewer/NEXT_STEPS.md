@@ -1,15 +1,15 @@
 # Next Steps - Rust VNC Viewer Development
 
-**Current Phase**: Phase 3 - Encodings (Task 3.1 COMPLETE ✅)  
-**Last Updated**: 2025-10-08 15:22 Local
+**Current Phase**: Phase 3 - Encodings (Tasks 3.1-3.2 COMPLETE ✅)  
+**Last Updated**: 2025-10-08 16:11 Local
 
 ---
 
 ## 🎯 IMMEDIATE NEXT STEP
 
-**Task 3.2: Raw Encoding Decoder** - `rfb-encodings/src/raw.rs`
+**Task 3.3: CopyRect Encoding Decoder** - `rfb-encodings/src/copyrect.rs`
 
-Phases 1 & 2 are complete! Task 3.1 (Decoder trait) is done! Now implement the Raw encoding decoder.
+Phases 1 & 2 complete! Tasks 3.1-3.2 done! Now implement CopyRect encoding.
 
 ---
 
@@ -83,7 +83,7 @@ pub trait Decoder {
 **Target LOC**: ~100  
 **Tests**: 5 (trait compile tests, basic structure)
 
-### Task 3.2: Raw Encoding (Week 1, Days 2-3)
+### ✅ Task 3.2: Raw Encoding (COMPLETE)
 
 **File**: `rfb-encodings/src/raw.rs`
 

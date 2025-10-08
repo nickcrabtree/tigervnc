@@ -64,6 +64,10 @@ pub use rfb_pixelbuffer::MutablePixelBuffer;
 pub use rfb_protocol::io::RfbInStream;
 pub use rfb_protocol::messages::types::{PixelFormat, Rectangle};
 
+// Encoding implementations
+pub mod raw;
+pub use raw::RawDecoder;
+
 // Standard VNC encodings
 /// Raw encoding: uncompressed pixel data (simplest encoding).
 pub const ENCODING_RAW: i32 = 0;

@@ -30,9 +30,9 @@ cargo run --release
 
 🚧 **Under Development** - This is a work in progress.
 
-**Current Phase**: Phase 3 - Encodings (5% complete)  
-**Last Updated**: 2025-10-08 15:22 Local  
-**Overall Progress**: ~28% (3,500 / 12,500 LOC)
+**Current Phase**: Phase 3 - Encodings (15% complete)  
+**Last Updated**: 2025-10-08 16:11 Local  
+**Overall Progress**: ~30% (3,800 / 12,500 LOC)
 
 ### Completed ✅
 - [x] **Phase 0**: Workspace structure with 6 crates
@@ -48,7 +48,8 @@ cargo run --release
 
 ### In Progress 🔄
 - [x] **Phase 3**: rfb-encodings crate with Decoder trait - Task 3.1 ✅
-- [ ] **NEXT**: Raw encoding decoder implementation - Task 3.2
+- [x] **Phase 3**: Raw encoding decoder - Task 3.2 ✅
+- [ ] **NEXT**: CopyRect encoding decoder - Task 3.3
 
 ### Planned 📋
 - [ ] All standard VNC encodings (Tight, ZRLE, etc.)
