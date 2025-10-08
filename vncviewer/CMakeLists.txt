@@ -10,7 +10,7 @@ add_custom_target(generate_build_timestamp ALL
   VERBATIM
 )
 
-add_executable(vncviewer
+add_executable(njcvncviewer
   fltk/Fl_Monitor_Arrangement.cxx
   fltk/Fl_Navigation.cxx
   fltk/theme.cxx
@@ -31,56 +31,56 @@ add_executable(vncviewer
   vncviewer.cxx)
 
 if(WIN32 AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set_target_properties(vncviewer PROPERTIES WIN32_EXECUTABLE TRUE)
+  set_target_properties(njcvncviewer PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 
 if(WIN32)
   # Since vncviewer.rc is generated, local includes will be looking
   # in the wrong directory. We need to help it out.
-  target_include_directories(vncviewer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+  target_include_directories(njcvncviewer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
   configure_file(vncviewer.rc.in vncviewer.rc)
-  target_sources(vncviewer PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/vncviewer.rc)
+  target_sources(njcvncviewer PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/vncviewer.rc)
 endif()
 
 if(WIN32)
-  target_sources(vncviewer PRIVATE Win32TouchHandler.cxx win32.c)
-  target_sources(vncviewer PRIVATE KeyboardWin32.cxx keysym2ucs.c)
-  target_sources(vncviewer PRIVATE Surface_Win32.cxx)
+  target_sources(njcvncviewer PRIVATE Win32TouchHandler.cxx win32.c)
+  target_sources(njcvncviewer PRIVATE KeyboardWin32.cxx keysym2ucs.c)
+  target_sources(njcvncviewer PRIVATE Surface_Win32.cxx)
 elseif(APPLE)
-  target_sources(vncviewer PRIVATE cocoa.mm)
-  target_sources(vncviewer PRIVATE KeyboardMacOS.mm osx_to_qnum.c keysym2ucs.c)
-  target_sources(vncviewer PRIVATE Surface_OSX.cxx)
+  target_sources(njcvncviewer PRIVATE cocoa.mm)
+  target_sources(njcvncviewer PRIVATE KeyboardMacOS.mm osx_to_qnum.c keysym2ucs.c)
+  target_sources(njcvncviewer PRIVATE Surface_OSX.cxx)
 else()
-  target_sources(vncviewer PRIVATE GestureHandler.cxx XInputTouchHandler.cxx)
-  target_sources(vncviewer PRIVATE KeyboardX11.cxx xkb_to_qnum.c)
-  target_sources(vncviewer PRIVATE Surface_X11.cxx)
+  target_sources(njcvncviewer PRIVATE GestureHandler.cxx XInputTouchHandler.cxx)
+  target_sources(njcvncviewer PRIVATE KeyboardX11.cxx xkb_to_qnum.c)
+  target_sources(njcvncviewer PRIVATE Surface_X11.cxx)
 endif()
 
-add_dependencies(vncviewer generate_build_timestamp)
-target_include_directories(vncviewer PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_include_directories(vncviewer SYSTEM PUBLIC ${FLTK_INCLUDE_DIR})
-target_include_directories(vncviewer SYSTEM PUBLIC ${Intl_INCLUDE_DIR})
-target_include_directories(vncviewer PUBLIC ${CMAKE_SOURCE_DIR}/common)
-target_link_libraries(vncviewer core rfb network rdr)
-target_link_libraries(vncviewer ${FLTK_LIBRARIES} ${Intl_LIBRARIES})
+add_dependencies(njcvncviewer generate_build_timestamp)
+target_include_directories(njcvncviewer PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(njcvncviewer SYSTEM PUBLIC ${FLTK_INCLUDE_DIR})
+target_include_directories(njcvncviewer SYSTEM PUBLIC ${Intl_INCLUDE_DIR})
+target_include_directories(njcvncviewer PUBLIC ${CMAKE_SOURCE_DIR}/common)
+target_link_libraries(njcvncviewer core rfb network rdr)
+target_link_libraries(njcvncviewer ${FLTK_LIBRARIES} ${Intl_LIBRARIES})
 
 if(WIN32)
-  target_link_libraries(vncviewer msimg32)
+  target_link_libraries(njcvncviewer msimg32)
 elseif(APPLE)
-  target_link_libraries(vncviewer "-framework Cocoa")
-  target_link_libraries(vncviewer "-framework Carbon")
-  target_link_libraries(vncviewer "-framework IOKit")
+  target_link_libraries(njcvncviewer "-framework Cocoa")
+  target_link_libraries(njcvncviewer "-framework Carbon")
+  target_link_libraries(njcvncviewer "-framework IOKit")
 else()
-  target_link_libraries(vncviewer ${X11_Xi_LIB})
+  target_link_libraries(njcvncviewer ${X11_Xi_LIB})
 
   if(X11_Xrandr_LIB)
-    target_link_libraries(vncviewer ${X11_Xrandr_LIB})
+    target_link_libraries(njcvncviewer ${X11_Xrandr_LIB})
   endif()
 endif()
 
-install(TARGETS vncviewer DESTINATION ${CMAKE_INSTALL_FULL_BINDIR})
+install(TARGETS njcvncviewer DESTINATION ${CMAKE_INSTALL_FULL_BINDIR})
 if(UNIX)
-  install(FILES vncviewer.man DESTINATION ${CMAKE_INSTALL_FULL_MANDIR}/man1 RENAME vncviewer.1)
+  install(FILES njcvncviewer.man DESTINATION ${CMAKE_INSTALL_FULL_MANDIR}/man1 RENAME njcvncviewer.1)
 
   file(STRINGS ${CMAKE_SOURCE_DIR}/po/LINGUAS LINGUAS)
   set(po_FILES "")

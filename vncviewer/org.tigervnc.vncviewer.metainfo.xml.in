@@ -28,6 +28,9 @@
   </description>
 
   <launchable type="desktop-id">vncviewer.desktop</launchable>
+  <provides>
+    <binary>njcvncviewer</binary>
+  </provides>
   <screenshots>
     <screenshot type="default">
       <caption>TigerVNC connection to a CentOS machine</caption>

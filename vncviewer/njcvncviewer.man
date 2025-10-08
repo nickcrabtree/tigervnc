@@ -1,29 +1,29 @@
-.TH vncviewer 1 "" "TigerVNC" "Virtual Network Computing"
+.TH njcvncviewer 1 "" "TigerVNC" "Virtual Network Computing"
 .SH NAME
-vncviewer \- VNC viewer for X
+njcvncviewer \- VNC viewer for X
 .SH SYNOPSIS
-.B vncviewer
+.B njcvncviewer
 .RI [ options ] 
 .RI [ host ][: display# ]
 .br
-.B vncviewer
+.B njcvncviewer
 .RI [ options ] 
 .RI [ host ][:: port ]
 .br
-.B vncviewer
+.B njcvncviewer
 .RI [ options ]
 .RI [ unix\ socket ]
 .br
-.B vncviewer
+.B njcvncviewer
 .RI [ options ] 
 .B \-listen
 .RI [ port ]
 .br
-.B vncviewer
+.B njcvncviewer
 .RI [ options ]
 .RI [ .tigervnc\ file ]
 .SH DESCRIPTION
-.B vncviewer
+.B njcvncviewer
 is a viewer (client) for Virtual Network Computing.  This manual page documents
 version 4 for the X window system.
 
@@ -31,7 +31,7 @@ If you run the viewer with no arguments it will prompt you for a VNC server to
 connect to.  Alternatively, specify the VNC server as an argument, e.g.:
 
 .RS
-vncviewer snoopy:2
+njcvncviewer snoopy:2
 .RE
 
 where 'snoopy' is the name of the machine, and '2' is the display number of the
@@ -43,7 +43,7 @@ As another quick way to start a connection to a VNC server, specify a .tigervnc
 configuration file as an argument to the viewer, e.g.:
 
 .RS
-vncviewer ./some.tigervnc
+njcvncviewer ./some.tigervnc
 .RE
 
 where './some.tigervnc' is an existing and valid TigerVNC configuration file.
@@ -120,7 +120,7 @@ screen.
 
 .SH OPTIONS (PARAMETERS)
 You can get a list of parameters by giving \fB\-h\fP as a command-line option
-to vncviewer.  Parameters can be turned on with -\fIparam\fP or off with
+to njcvncviewer.  Parameters can be turned on with -\fIparam\fP or off with
 -\fIparam\fP=0.  Parameters which take a value can be specified as
 -\fIparam\fP \fIvalue\fP.  Other valid forms are \fIparam\fP\fB=\fP\fIvalue\fP
 -\fIparam\fP=\fIvalue\fP --\fIparam\fP=\fIvalue\fP.  Parameter names are
