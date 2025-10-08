@@ -855,7 +855,7 @@ sub TouchTmpVncDir {
 
 =item startVncServer
 
-Start an I<Xtigervnc> or I<X0tigervnc> server.
+Start an I<Xnjcvnc> or I<X0tigervnc> server.
 
   &startVncServer($options);
 
@@ -1019,7 +1019,7 @@ sub startVncServer {
     my @vncs = ();
     foreach my $vnc (keys %{$runningVncServers}) {
       next unless $runningVncServers->{$vnc}->{'usedDisplay'} eq $dn;
-      next unless $runningVncServers->{$vnc}->{'server'} eq 'Xtigervnc';
+      next unless $runningVncServers->{$vnc}->{'server'} eq 'Xnjcvnc';
       if ($runningVncServers->{$vnc}->{'stale'}) {
         &cleanStale($options, $runningVncServers, $vnc);
       } else {
@@ -1027,7 +1027,7 @@ sub startVncServer {
       }
     }
     if (@vncs > 0) {
-      print STDERR "A Xtigervnc server is already running for display :$dn on machine $HOSTFQDN.\n";
+      print STDERR "A Xnjcvnc server is already running for display :$dn on machine $HOSTFQDN.\n";
       return 1;
     } elsif (!&checkDisplayNumberAvailable($dn)) {
       print STDERR "A X11 server is already running for display :$dn on machine $HOSTFQDN.\n";
@@ -1109,7 +1109,7 @@ sub startVncServer {
         }
       };
 
-    # PID of the Xtigervnc or X0tigervnc server.
+    # PID of the Xnjcvnc or X0tigervnc server.
     my $xvncServerPid;
     # PID of the script starting the applications running in the VNC session.
     my $vncSessionPid;
@@ -1120,11 +1120,11 @@ sub startVncServer {
 
     my $tmpVncDir = CreateTmpVncDir($options);
 
-    # Starting up the Xtigervnc or X0tigervnc server.
+    # Starting up the Xnjcvnc or X0tigervnc server.
     {
       my @cmd;
       if ($options->{'wrapperMode'} eq 'tigervncserver') {
-        push @cmd, getCommand("Xtigervnc");
+        push @cmd, getCommand("Xnjcvnc");
         push @cmd, ":".$options->{'displayNumber'};
       } else {
         push @cmd, getCommand("X0tigervnc");
@@ -1191,7 +1191,7 @@ sub startVncServer {
           $options->{'uniqueID'} => {
               'name'        => "$HOSTFQDN:".$options->{'displayNumber'},
               'server'      => $options->{'wrapperMode'} eq 'tigervncserver'
-                                 ? "Xtigervnc" : "X0tigervnc",
+                                 ? "Xnjcvnc" : "X0tigervnc",
               'stale'       => 0,
               'pid'         => $xvncServerPid,
               'rfbport'     => $options->{'rfbport'},
@@ -1199,7 +1199,7 @@ sub startVncServer {
               'usedDisplay' => $options->{'displayNumber'},
             }
         };
-      # Wait for Xtigervnc/X0tigervnc to start up
+      # Wait for Xnjcvnc/X0tigervnc to start up
       unless ($options->{'dry-run'}) {
         my $i = 300;
         if (defined($options->{'rfbport'}) && $options->{'rfbport'} > 0) {
@@ -1271,9 +1271,9 @@ sub startVncServer {
           $runningVncServers = {};
         }
       }
-      # Check if Xtigervnc/X0tigervnc has been started up successfully.
+      # Check if Xnjcvnc/X0tigervnc has been started up successfully.
       if (defined $xvncServerPid) {
-        # Xtigervnc/X0tigervnc is running. Thus, report some connection information.
+        # Xnjcvnc/X0tigervnc is running. Thus, report some connection information.
 
         # If the unix domain socket exists then use that (DISPLAY=:n) otherwise use
         # TCP (DISPLAY=host:n)
@@ -1283,7 +1283,7 @@ sub startVncServer {
         my @status;
         {
           my $server = $options->{'wrapperMode'} eq 'tigervncserver'
-            ? 'Xtigervnc' : 'X0tigervnc';
+            ? 'Xnjcvnc' : 'X0tigervnc';
           my $desc = "";
           if (defined($options->{'rfbport'}) && $options->{'rfbport'} > 0) {
             $desc .= "port $options->{'rfbport'}";
@@ -1420,7 +1420,7 @@ sub startVncServer {
           $error = 1;
         }
       } else { # !defined $vncStartup
-        # Nothing to start. Check if autokill is enabled. Then, the Xtigervnc
+        # Nothing to start. Check if autokill is enabled. Then, the Xnjcvnc
         # server must be terminated.
         $terminate = 2 if $options->{'autokill'};
       }
