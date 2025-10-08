@@ -119,13 +119,16 @@ static const char* defaultDesktopName()
   if (pwent == nullptr)
     return "";
 
-  size_t len = snprintf(nullptr, 0, "%s@%s", pwent->pw_name, hostname.data());
+  // Include TigerVNC version in desktop name for debugging
+  size_t len = snprintf(nullptr, 0, "%s@%s (TigerVNC %s)", 
+                       pwent->pw_name, hostname.data(), PACKAGE_VERSION);
   if (len < 0)
     return "";
 
   char* name = new char[len + 1];
 
-  snprintf(name, len + 1, "%s@%s", pwent->pw_name, hostname.data());
+  snprintf(name, len + 1, "%s@%s (TigerVNC %s)", 
+          pwent->pw_name, hostname.data(), PACKAGE_VERSION);
 
   return name;
 }
