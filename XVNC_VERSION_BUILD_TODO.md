@@ -1,11 +1,32 @@
-# Xvnc Version String Build System TODO
+# Xvnc Version String Build System
 
-**Status**: Code changes complete, build system integration pending  
+**Status**: ✅ RESOLVED - Automatic source sync implemented  
 **Last Updated**: 2025-10-08
 
 ---
 
-## Current Situation
+## ✅ Solution Implemented
+
+The top-level `Makefile` now automatically syncs TigerVNC source files from `unix/xserver/hw/vnc/` to the build directory before compiling. This uses `rsync --checksum` to detect content changes regardless of timestamps.
+
+**How it works:**
+- Before each server build, `rsync -a --checksum` compares source and build files
+- Files with different content are automatically copied to build directory
+- The xserver build system then detects the updated timestamps and recompiles
+- No manual intervention needed!
+
+**Example output:**
+```
+$ make server
+Syncing TigerVNC source files to xserver build directory...
+>fcst...... vncExtInit.cc
+  CXX      libvnccommon_la-vncExtInit.lo
+  CXXLD    Xnjcvnc
+```
+
+---
+
+## Historical Context
 
 ### ✅ What's Done
 - `generate_xvnc_version.sh` script created and working

@@ -266,6 +266,8 @@ void vncExtensionInit(void)
                                           vncFbptr[scr],
                                           vncFbstride[scr]);
         vlog.info("Created VNC server for screen %d", scr);
+        // Desktop name includes version info for debugging
+        vlog.info("Using desktop name: %s", name ? name : "(null)");
 
         if (scr == 0 && vncInetdSock != -1 && listeners.empty()) {
           network::Socket* sock = new network::TcpSocket(vncInetdSock);

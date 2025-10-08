@@ -1004,10 +1004,10 @@ sub startVncServer {
   } else {
     $options->{'rfbport'} = 5900 + $options->{'displayNumber'};
   }
-  unless (defined $options->{'desktopName'}) {
-    my $displayNumber = $options->{'displayNumber'};
-    $options->{'desktopName'} = "${HOSTFQDN}:$displayNumber ($USER)";
-  }
+  # If desktopName is undefined, do not synthesize a default here.
+  # Let the Xnjcvnc server compute its own default (which includes version info).
+  # The wrapper will therefore avoid passing -desktop in this case.
+  # (If a user explicitly sets desktop/desktopName in config or CLI, we still pass it.)
   if (defined $haveOld) {
     my $DISPLAY = $haveOld->{'DISPLAY'};
     print "\nReusing old VNC server '$options->{desktopName}' for display $DISPLAY.\n";
@@ -1126,6 +1126,11 @@ sub startVncServer {
       if ($options->{'wrapperMode'} eq 'tigervncserver') {
         push @cmd, getCommand("Xnjcvnc");
         push @cmd, ":".$options->{'displayNumber'};
+        # Only pass -desktop if explicitly set by user/config; otherwise
+        # let the server use its compiled-in default (which includes version)
+        if (defined $options->{'desktopName'}) {
+          push @cmd, '-desktop', $options->{'desktopName'};
+        }
       } else {
         push @cmd, getCommand("X0tigervnc");
       }
@@ -1292,7 +1297,10 @@ sub startVncServer {
             $desc .= " and " if $desc ne "";
             $desc .= "unix socket $options->{'rfbunixpath'}";
           }
-          push @status, "New $server server '$options->{desktopName}' on $desc for display $DISPLAY.";
+          my $desktop_msg = defined($options->{'desktopName'})
+            ? "'$options->{desktopName}'"
+            : "(server default)";
+          push @status, "New $server server $desktop_msg on $desc for display $DISPLAY.";
         }
         {
           my @cmd = ("xtigervncviewer");
@@ -1360,7 +1368,7 @@ sub startVncServer {
             print STDERR "$PROG: Oops, setting close on exec failed: $!\n";
 
           $ENV{DISPLAY}    = $DISPLAY;
-          $ENV{VNCDESKTOP} = $options->{'desktopName'};
+          $ENV{VNCDESKTOP} = $options->{'desktopName'} if defined $options->{'desktopName'};
 
           # Environment cleanup
           delete $ENV{XDG_MENU_PREFIX};
