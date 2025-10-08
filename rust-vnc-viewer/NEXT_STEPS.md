@@ -1,15 +1,15 @@
 # Next Steps - Rust VNC Viewer Development
 
-**Current Phase**: Phase 2 Starting - Network & Protocol Layer  
-**Last Updated**: 2025-10-08 12:35 UTC
+**Current Phase**: Phase 2 - Network & Protocol Layer (60% complete)  
+**Last Updated**: 2025-10-08 14:23 Local
 
 ---
 
 ## 🎯 IMMEDIATE NEXT STEP
 
-**Start `rfb-protocol` crate - Task 2.1: Socket Abstractions**
+**Task 2.4: RFB Message Types** in `rfb-protocol/src/messages/`
 
-Phase 1 is 100% complete! Now we're moving to Phase 2: Network & Protocol Layer.
+Phase 1 is 100% complete! Phase 2 Tasks 2.1-2.3 done (60%). Ready for message types implementation.
 
 ---
 
@@ -28,87 +28,126 @@ Phase 1 is 100% complete! Now we're moving to Phase 2: Network & Protocol Layer.
 
 **Target**: Core networking and RFB protocol implementation  
 **Estimated Time**: 2 weeks (13 days)  
-**Estimated LOC**: ~1,700
+**Estimated LOC**: ~1,700  
+**Current Status**: 60% complete (Tasks 2.1-2.3 done)
+
+### ✅ Completed Tasks
+- ✅ **Task 2.1**: Socket abstractions (TCP, Unix domain) - ~430 LOC
+- ✅ **Task 2.2**: RFB I/O streams (buffered read/write) - ~680 LOC
+- ✅ **Task 2.3**: Connection state machine - ~545 LOC
 
 ---
 
-## 🔄 NEXT: Task 2.1 - Socket Abstractions
+## 🔄 NEXT: Task 2.4 - RFB Message Types
 
-**File**: `rfb-protocol/src/socket.rs`
+**Files**: `rfb-protocol/src/messages/` directory
 
-**What to implement**:
+### Module Structure
+
+Create the following files:
+- `mod.rs` - Module declarations and shared traits
+- `types.rs` - PixelFormat, Rectangle, encoding constants, security types
+- `server.rs` - Server-to-client messages
+- `client.rs` - Client-to-server messages
+
+### Core Types to Implement (types.rs)
+
+**PixelFormat** struct:
 ```rust
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::net::{TcpStream, UnixStream};
-use std::net::SocketAddr;
-use std::path::Path;
-
-/// Core trait for VNC socket connections
-pub trait VncSocket: AsyncRead + AsyncWrite + Send + Unpin {
-    /// Get peer address information
-    fn peer_address(&self) -> String;
-    
-    /// Get peer endpoint (for logging)
-    fn peer_endpoint(&self) -> String;
-    
-    /// Get raw file descriptor (platform-specific)
-    fn as_raw_fd(&self) -> Option<std::os::unix::io::RawFd>;
+pub struct PixelFormat {
+    pub bits_per_pixel: u8,
+    pub depth: u8,
+    pub big_endian: u8,      // Boolean: 0 or 1 only
+    pub true_color: u8,      // Boolean: 0 or 1 only
+    pub red_max: u16,
+    pub green_max: u16,
+    pub blue_max: u16,
+    pub red_shift: u8,
+    pub green_shift: u8,
+    pub blue_shift: u8,
+    // 3 bytes padding (must be zero)
 }
 
-/// TCP socket implementation
-pub struct TcpSocket {
-    stream: TcpStream,
-    peer_addr: SocketAddr,
-}
-
-impl TcpSocket {
-    pub async fn connect(host: &str, port: u16) -> anyhow::Result<Self> {
-        // Connect to TCP socket
-        // Set TCP_NODELAY for low latency
-        // Store peer address
-    }
-}
-
-/// Unix domain socket implementation
-#[cfg(unix)]
-pub struct UnixSocket {
-    stream: UnixStream,
-    path: std::path::PathBuf,
-}
-
-#[cfg(unix)]
-impl UnixSocket {
-    pub async fn connect(path: impl AsRef<Path>) -> anyhow::Result<Self> {
-        // Connect to Unix domain socket
-        // Store socket path
-    }
+impl PixelFormat {
+    pub fn bytes_per_pixel(&self) -> u8 { /* ... */ }
+    pub fn read_from<R: AsyncRead + Unpin>(reader: &mut RfbInStream<R>) -> Result<Self>;
+    pub fn write_to<W: AsyncWrite + Unpin>(&self, writer: &mut RfbOutStream<W>) -> Result<()>;
 }
 ```
 
-**Dependencies to add to rfb-protocol/Cargo.toml**:
-```toml
-[dependencies]
-tokio = { workspace = true, features = ["net", "io-util"] }
-anyhow = { workspace = true }
+**Rectangle** header:
+```rust
+pub struct Rectangle {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+    pub encoding: i32,
+}
 ```
 
-**Implementation steps**:
-1. Update `rfb-protocol/Cargo.toml` with dependencies
-2. Create `rfb-protocol/src/socket.rs`
-3. Implement `VncSocket` trait
-4. Implement `TcpSocket` with `AsyncRead`/`AsyncWrite`
-5. Implement `UnixSocket` (Unix only) with `AsyncRead`/`AsyncWrite`
-6. Add comprehensive tests
-7. Update `rfb-protocol/src/lib.rs` to export socket module
+**Encoding constants**:
+```rust
+pub const ENCODING_RAW: i32 = 0;
+pub const ENCODING_COPYRECT: i32 = 1;
+pub const ENCODING_RRE: i32 = 2;
+pub const ENCODING_HEXTILE: i32 = 5;
+pub const ENCODING_TIGHT: i32 = 7;
+pub const ENCODING_ZRLE: i32 = 16;
+```
 
-**Testing**:
-- Unit tests for trait implementations
-- Mock socket tests
-- Error handling tests (connection refused, timeout, etc.)
+### Server Messages (server.rs)
 
-**Reference**: See RUST_VIEWER.md lines 228-353  
-**Estimated time**: 2 days  
-**LOC**: ~200
+1. **ServerInit** - framebuffer_width, framebuffer_height, pixel_format, name
+2. **FramebufferUpdate** - rectangle headers only (payloads in Phase 3)
+3. **SetColorMapEntries** - color map updates
+4. **Bell** - simple notification
+5. **ServerCutText** - clipboard data
+
+### Client Messages (client.rs)
+
+1. **ClientInit** - shared flag
+2. **SetPixelFormat** - change pixel format
+3. **SetEncodings** - list of supported encodings
+4. **FramebufferUpdateRequest** - request screen updates
+5. **KeyEvent** - keyboard input
+6. **PointerEvent** - mouse input
+7. **ClientCutText** - clipboard data
+
+### Parsing Rules (CRITICAL)
+
+1. **All multi-byte integers are big-endian** (network byte order)
+2. **Booleans are strictly 0 or 1** - reject any other value with error
+3. **Padding bytes must be zero** - validate or error
+4. **For FramebufferUpdate**: Parse rectangle headers fully, but do NOT consume encoding-specific payloads in Task 2.4 (those depend on decoders in Phase 3)
+5. **Variable-length messages**: Only parse those with explicit length fields (e.g., ServerCutText, ClientCutText)
+
+### Implementation Steps
+
+1. Create `rfb-protocol/src/messages/` directory
+2. Implement `mod.rs` with module declarations and shared traits
+3. Implement `types.rs` with PixelFormat, Rectangle, constants
+4. Implement `server.rs` with all server messages
+5. Implement `client.rs` with all client messages
+6. Add 20-25 unit tests covering:
+   - PixelFormat round-trip with padding validation
+   - All message types parse/serialize correctly
+   - Boolean validation (reject values != 0 or 1)
+   - Error cases (invalid padding, mismatched counts, etc.)
+7. Add rustdoc documentation with examples
+8. Export from `rfb-protocol/src/lib.rs`
+
+### Testing Strategy
+
+- Minimal, deterministic test fixtures
+- Round-trip tests (write then read)
+- Error case validation (invalid booleans, padding, etc.)
+- Edge cases (empty strings, zero-length arrays)
+
+**Reference**: RUST_VIEWER.md lines 698-768  
+**Estimated time**: 3-4 days  
+**Target LOC**: 400-500  
+**Target tests**: 20-25
 
 ---
 

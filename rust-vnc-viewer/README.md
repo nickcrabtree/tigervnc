@@ -30,23 +30,25 @@ cargo run --release
 
 🚧 **Under Development** - This is a work in progress.
 
-**Current Phase**: Phase 2 starting - Network & Protocol Layer  
-**Last Updated**: 2025-10-08 12:35 UTC
+**Current Phase**: Phase 2 - Network & Protocol (60% complete)  
+**Last Updated**: 2025-10-08 14:23 Local  
+**Overall Progress**: ~26% (3,258 / 12,500 LOC)
 
 ### Completed ✅
 - [x] **Phase 0**: Workspace structure with 6 crates
 - [x] **Phase 0**: Core types (Point, Rect, Cursor, Config)
 - [x] **Phase 0**: Build system verified
 - [x] **Phase 0**: Documentation structure
-- [x] **Phase 1**: rfb-pixelbuffer crate (1,416 LOC, 37 tests passing)
+- [x] **Phase 1**: rfb-pixelbuffer crate (1,416 LOC, 19 tests passing)
 - [x] **Phase 1**: PixelFormat, PixelBuffer traits, ManagedPixelBuffer
+- [x] **Phase 2**: Socket abstractions (TCP, Unix domain) - Task 2.1 ✅
+- [x] **Phase 2**: RFB I/O streams (buffered reading/writing) - Task 2.2 ✅
+- [x] **Phase 2**: Connection state machine - Task 2.3 ✅
+- [x] **Phase 2**: rfb-protocol crate (~1,655 LOC, 32 tests passing)
 
 ### In Progress 🔄
-- [ ] **NEXT**: Socket abstractions (TCP, Unix domain) - Task 2.1
-- [ ] RFB I/O streams (buffered reading/writing)
-- [ ] Protocol state machine
-- [ ] Message types (ServerInit, FramebufferUpdate, etc.)
-- [ ] Protocol handshake (version negotiation, security)
+- [ ] **NEXT**: Message types (PixelFormat, Rectangle, server/client messages) - Task 2.4
+- [ ] Protocol handshake (version negotiation, security) - Task 2.5
 
 ### Planned 📋
 - [ ] All standard VNC encodings (Tight, ZRLE, etc.)

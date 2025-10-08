@@ -1,8 +1,8 @@
 # Rust VNC Viewer - Current Status
 
-**Date**: 2025-10-08 12:01 UTC  
-**Status**: Phase 1 in progress - Buffer traits complete ✅  
-**Last Updated**: Task 1.2 - PixelBuffer traits implemented
+**Date**: 2025-10-08 14:23 Local  
+**Status**: Phase 2 in progress - 60% complete (Tasks 2.1-2.3 done) ✅  
+**Last Updated**: Documentation refresh + Ready for Task 2.4 (Message Types)
 
 ## What Has Been Created
 
@@ -35,9 +35,9 @@ Features:
 - Cursor image representation with RGBA pixels
 - Configuration struct for VNC settings
 
-#### `rfb-pixelbuffer` - **IN PROGRESS**
-**Status**: Partial implementation  
-**LOC**: ~917 (Tasks 1.1-1.2, 1.4-1.5 complete)
+#### `rfb-pixelbuffer` - **COMPLETE**
+**Status**: Fully implemented  
+**LOC**: ~1,416
 
 **Completed** (✅):
 - **PixelFormat** struct with RGB888, arbitrary bit depths, endianness support
@@ -47,30 +47,47 @@ Features:
 - **MutablePixelBuffer** trait for read-write access and rendering
 - Trait methods: `get_buffer()`, `get_buffer_rw()`, `commit_buffer()`
 - Rendering operations: `fill_rect()`, `copy_rect()`, `image_rect()`
+- **ManagedPixelBuffer** - Complete heap-allocated buffer implementation
 - Critical "stride is in pixels" documentation throughout
-- Comprehensive documentation with 18 doctests in traits alone
-- 27 tests total (9 unit + 18 doc) - all passing
-
-**Needs**:
-- ManagedPixelBuffer implementation (concrete type)
-- Additional integration tests
+- Comprehensive documentation with doctests
+- 19 unit tests - all passing ✅
 
 Files:
 - ✅ `src/format.rs` (448 lines) - PixelFormat implementation
 - ✅ `src/buffer.rs` (401 lines) - PixelBuffer traits
+- ✅ `src/managed.rs` (542 lines) - ManagedPixelBuffer  
 - ✅ `src/lib.rs` (21 lines) - Module exports with docs
 - ✅ `Cargo.toml` - Dependencies (rfb-common, anyhow)
 
-#### `rfb-protocol` - **STUB**
-**Status**: Needs implementation  
-**LOC**: ~10 (stub)
+#### `rfb-protocol` - **PARTIAL (60% complete)**
+**Status**: Core networking done, messages in progress  
+**LOC**: ~1,655
 
-Needs:
-- Network socket abstractions (TCP, Unix)
-- RFB stream I/O (Reader, Writer)
-- Message types (ClientInit, ServerInit, etc.)
-- Connection state machine
-- Protocol handshake logic
+**Completed** (✅):
+- **Socket abstractions** (Task 2.1) - TCP and Unix domain sockets
+  - `VncSocket` trait with peer address info
+  - `TcpSocket` with TCP_NODELAY for low latency
+  - `UnixSocket` for local connections
+- **RFB I/O streams** (Task 2.2) - Buffered reading/writing
+  - `RfbInStream` with type-safe reads (u8, u16, u32, i32)
+  - `RfbOutStream` with buffered writes
+  - Network byte order (big-endian) handling
+- **Connection state machine** (Task 2.3)
+  - `ConnectionState` enum with 10 states
+  - `RfbConnection<R, W>` lifecycle management
+  - State transition validation
+- 32 unit tests - all passing ✅
+
+**Needs** (Task 2.4+):
+- Message types (PixelFormat, Rectangle, server/client messages)
+- Protocol handshake implementation
+- Full message parsing/serialization
+
+Files:
+- ✅ `src/socket.rs` (~430 lines) - Socket abstractions
+- ✅ `src/io.rs` (~680 lines) - I/O streams
+- ✅ `src/connection.rs` (~545 lines) - State machine
+- ✅ `src/lib.rs` - Module exports
 
 #### `rfb-encodings` - **STUB**
 **Status**: Needs implementation  
@@ -120,32 +137,37 @@ $ cargo build
 
 ## Statistics
 
-- **Total Lines of Code**: ~1,067 (functional code + documentation + tests)
+- **Total Lines of Code**: ~3,258 (functional code + documentation + tests)
   - rfb-common: ~150 LOC
-  - rfb-pixelbuffer: ~917 LOC (Tasks 1.1-1.2, 1.4-1.5)
+  - rfb-pixelbuffer: ~1,416 LOC (Phase 1 complete)
+  - rfb-protocol: ~1,655 LOC (Phase 2 partial - 60%)
+  - Other crates: ~37 LOC (stubs)
 - **Crates**: 6 (1 complete, 1 in progress, 4 stubs)
 - **Dependencies Configured**: 20+ (workspace-level)
-- **Completion**: ~8.5% (Phase 1 at 29%)
+- **Completion**: ~26% (Phase 1 complete, Phase 2 at 60%)
 - **Build Status**: ✅ All crates compile
-- **Test Status**: ✅ 27 tests passing (all in rfb-pixelbuffer)
+- **Test Status**: ✅ 52 tests passing
+  - rfb-pixelbuffer: 19 tests
+  - rfb-protocol: 32 tests
+  - stubs: 1 test
 
 ## Next Immediate Steps
 
-### Priority 1: Core Foundation (This Week)
-1. Complete `rfb-pixelbuffer` implementation
-   - ✅ ~~PixelFormat with RGB888 support~~ (Task 1.1 done)
-   - ✅ ~~Buffer traits~~ (Task 1.2 done)
-   - 🔄 ManagedPixelBuffer (Task 1.3 - next)
+### Priority 1: Message Types (Task 2.4 - THIS WEEK)
+1. **Implement RFB message types** in `rfb-protocol/src/messages/`
+   - Module structure: mod.rs, types.rs, server.rs, client.rs
+   - Core types: PixelFormat, Rectangle, encoding constants
+   - Server messages: ServerInit, FramebufferUpdate, SetColorMapEntries, Bell, ServerCutText
+   - Client messages: ClientInit, SetPixelFormat, SetEncodings, FramebufferUpdateRequest, KeyEvent, PointerEvent, ClientCutText
+   - **Important**: FramebufferUpdate will only parse rectangle headers in this task, not encoding payloads
+   - Target: ~400-500 LOC, 20-25 unit tests
+   - **Risk mitigation**: Encoding-specific payloads depend on decoder implementations (Phase 3). For now, we parse headers only and document this limitation clearly.
 
-2. Implement `rfb-protocol` basics
-   - TCP socket wrapper
-   - RFB Reader/Writer
-   - Basic message types
-
-### Priority 2: Protocol (Next Week)
-3. RFB handshake implementation
-4. Version negotiation (RFB 3.8)
-5. ClientInit/ServerInit messages
+### Priority 2: Protocol Handshake (Task 2.5 - NEXT WEEK)
+2. Complete RFB handshake implementation
+3. Version negotiation (RFB 3.8)
+4. Security type negotiation
+5. ClientInit/ServerInit exchange
 
 ### Priority 3: First Encoding (Week 3)
 6. Raw encoding decoder
@@ -224,10 +246,14 @@ rust-vnc-viewer/
 - [x] Zero clippy warnings ✅
 - [x] Comprehensive documentation ✅
 
-## Git History
+## Git History (Recent)
 
+- `32c6ec29` - Update PROGRESS.md: Task 2.3 complete (connection state machine)
+- `2a4758f0` - Task 2.3 complete: Connection state machine
+- `f407506c` - Task 2.2 complete: RFB I/O streams (buffered reading/writing)
+- `231e4370` - Task 2.1 complete: Socket abstractions (TCP and Unix domain)
+- `d0da5f2c` - rfb-pixelbuffer: implement ManagedPixelBuffer (Task 1.3)
 - `f3e58499` - rfb-pixelbuffer: add PixelBuffer and MutablePixelBuffer traits (Task 1.2)
-- `a58fdbb6` - docs: update progress tracking after Task 1.1
 - `c54a69e7` - rfb-pixelbuffer: add PixelFormat with RGB888 conversions (Task 1.1)
 
 ---
