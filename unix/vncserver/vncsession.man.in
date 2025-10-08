@@ -78,10 +78,10 @@ The VNC password file.
 The log file for Xvnc and the session.
 
 .SH SEE ALSO
-.BR vncviewer (1),
+.BR njcvncviewer (1),
 .BR vncpasswd (1),
 .BR vncconfig (1),
-.BR Xvnc (1)
+.BR Xnjcvnc (1)
 .br
 https://www.tigervnc.org
 
