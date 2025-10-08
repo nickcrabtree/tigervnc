@@ -178,8 +178,8 @@ impl ManagedPixelBuffer {
     /// - `Ok(())` if the rectangle is valid
     /// - `Err` if the rectangle is out of bounds
     fn validate_rect(&self, rect: Rect) -> Result<()> {
-        if rect.x as u32 + rect.width as u32 > self.width
-            || rect.y as u32 + rect.height as u32 > self.height
+        if rect.x as u32 + rect.width > self.width
+            || rect.y as u32 + rect.height > self.height
         {
             return Err(anyhow!(
                 "Rectangle out of bounds: {:?} (buffer size: {}x{})",
