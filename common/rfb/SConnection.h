@@ -27,6 +27,7 @@
 #include <string>
 
 #include <core/Timer.h>
+#include <core/Rect.h>
 
 #include <rfb/AccessRights.h>
 #include <rfb/SMsgHandler.h>
@@ -144,6 +145,9 @@ namespace rfb {
     stateEnum state() { return state_; }
 
     int32_t getPreferredEncoding() { return preferredEncoding; }
+
+    // Hook for content cache references (default: no-op)
+    virtual void onCachedRectRef(uint64_t cacheId, const core::Rect& r) {}
 
   protected:
 

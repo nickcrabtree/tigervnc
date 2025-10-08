@@ -1235,6 +1235,9 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
     conn->writer()->writeCachedRect(rect, cacheId);
     copyStats.bytes += conn->getOutStream()->length() - beforeLength;
     
+    // Remember this reference on the connection so we can target refreshes on misses
+    conn->onCachedRectRef(cacheId, rect);
+    
     vlog.debug("ContentCache protocol hit: rect [%d,%d-%d,%d] cacheId=%llu",
                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
                (unsigned long long)cacheId);

@@ -815,9 +815,21 @@ void VNCSConnectionST::handleRequestCachedData(uint64_t cacheId)
 {
   vlog.debug("Client requested cached data for ID %llu",
              (unsigned long long)cacheId);
-  
-  // Request the server to re-send this cached content as CachedRectInit
-  // The EncodeManager will look up the content by cacheId and send it
+
+  // If we know the specific rectangle that referenced this cacheId last,
+  // request a targeted refresh of exactly that region for this connection.
+  auto it = lastCachedRectRef_.find(cacheId);
+  if (it != lastCachedRectRef_.end()) {
+    const core::Rect& r = it->second;
+    core::Region rr(r);
+    add_changed(rr);
+    vlog.info("Targeted refresh for cacheId=%llu at [%d,%d-%d,%d]",
+              (unsigned long long)cacheId, r.tl.x, r.tl.y, r.br.x, r.br.y);
+    // Do not erase immediately; keep mapping in case multiple references arrive
+    return;
+  }
+
+  // Fallback to server-level handling (full refresh workaround)
   server->handleRequestCachedData(this, cacheId);
 }
 
@@ -833,6 +845,16 @@ void VNCSConnectionST::handleTimeout(core::Timer* t)
 
   if (t == &idleTimer)
     close("Idle timeout");
+}
+
+void VNCSConnectionST::recordCachedRectRef(uint64_t cacheId, const core::Rect& r)
+{
+  lastCachedRectRef_[cacheId] = r;
+}
+
+void VNCSConnectionST::onCachedRectRef(uint64_t cacheId, const core::Rect& r)
+{
+  recordCachedRectRef(cacheId, r);
 }
 
 bool VNCSConnectionST::isShiftPressed()

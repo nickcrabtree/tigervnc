@@ -28,6 +28,7 @@
 #define __RFB_VNCSCONNECTIONST_H__
 
 #include <map>
+#include <unordered_map>
 
 #include <core/Timer.h>
 
@@ -145,6 +146,10 @@ namespace rfb {
     void supportsContinuousUpdates() override;
     void supportsLEDState() override;
     void handleRequestCachedData(uint64_t cacheId) override;
+    void onCachedRectRef(uint64_t cacheId, const core::Rect& r) override;
+
+    // Record that we just referenced a CachedRect with this ID for this rect
+    void recordCachedRectRef(uint64_t cacheId, const core::Rect& r);
 
     // Timer callbacks
     void handleTimeout(core::Timer* t) override;
@@ -196,6 +201,9 @@ namespace rfb {
     bool continuousUpdates;
     core::Region cuRegion;
     EncodeManager encodeManager;
+
+    // Track last referenced rectangle per cacheId for targeted refresh on miss
+    std::unordered_map<uint64_t, core::Rect> lastCachedRectRef_;
 
     std::map<uint32_t, uint32_t> pressedKeys;
 
