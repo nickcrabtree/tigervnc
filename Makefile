@@ -22,4 +22,5 @@ server:
 	cmake --build $(BUILD_DIR) --target rdr
 	cmake --build $(BUILD_DIR) --target network
 	cmake --build $(BUILD_DIR) --target core
-	$(MAKE) -C $(XSERVER_BUILD_DIR)
+	cmake --build $(BUILD_DIR) --target unixcommon
+	$(MAKE) -C $(XSERVER_BUILD_DIR) TIGERVNC_SRCDIR=$(CURDIR) TIGERVNC_BUILDDIR=$(CURDIR)/$(BUILD_DIR)
