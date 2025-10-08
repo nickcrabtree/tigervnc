@@ -264,8 +264,8 @@ impl MutablePixelBuffer for ManagedPixelBuffer {
         // Calculate source rectangle
         // src_offset is the offset FROM destination TO source
         // So source = dest + src_offset
-        let src_x = (dest.x as i32 + src_offset.x) as u16;
-        let src_y = (dest.y as i32 + src_offset.y) as u16;
+        let src_x = dest.x + src_offset.x;
+        let src_y = dest.y + src_offset.y;
         let src_rect = Rect::new(src_x, src_y, dest.width, dest.height);
         self.validate_rect(src_rect)?;
 

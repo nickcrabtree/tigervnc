@@ -193,10 +193,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b3cff922bd51709b605d9ead9aa71031d81447142d828eb4a6eba76fe619f9b"
 
 [[package]]
-name = "platform-input"
-version = "0.1.0"
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -231,10 +227,6 @@ dependencies = [
 
 [[package]]
 name = "rfb-common"
-version = "0.1.0"
-
-[[package]]
-name = "rfb-encodings"
 version = "0.1.0"
 
 [[package]]
@@ -273,10 +265,6 @@ dependencies = [
  "linux-raw-sys",
  "windows-sys 0.61.2",
 ]
-
-[[package]]
-name = "rvncviewer"
-version = "0.1.0"
 
 [[package]]
 name = "scopeguard"

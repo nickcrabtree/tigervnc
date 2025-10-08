@@ -575,7 +575,10 @@ mod tests {
         // Should fail with UnexpectedEof
         let result = stream.read_u8().await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::UnexpectedEof);
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::UnexpectedEof
+        );
     }
 
     #[tokio::test]

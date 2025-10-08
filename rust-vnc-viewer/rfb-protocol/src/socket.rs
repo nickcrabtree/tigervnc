@@ -29,12 +29,12 @@
 //! # }
 //! ```
 
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::net::{TcpStream, UnixStream};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::net::{TcpStream, UnixStream};
 
 /// Core trait for VNC socket connections.
 ///
@@ -53,13 +53,13 @@ pub trait VncSocket: AsyncRead + AsyncWrite + Send + Unpin {
     /// For TCP sockets, this returns the IP address (e.g., "192.168.1.100").
     /// For Unix domain sockets, this returns the socket path.
     fn peer_address(&self) -> String;
-    
+
     /// Get the peer endpoint including port/path information.
     ///
     /// For TCP sockets, this returns "address:port" (e.g., "192.168.1.100:5900").
     /// For Unix domain sockets, this returns "unix:path" (e.g., "unix:/tmp/vnc.sock").
     fn peer_endpoint(&self) -> String;
-    
+
     /// Get the raw file descriptor for platform-specific operations.
     ///
     /// Returns `Some(fd)` on Unix-like systems, `None` on other platforms.
@@ -131,11 +131,11 @@ impl TcpSocket {
         let addr = format!("{}:{}", host, port);
         let stream = TcpStream::connect(&addr).await?;
         let peer_addr = stream.peer_addr()?;
-        
+
         // Disable Nagle's algorithm for low latency
         // This ensures small packets (like mouse movements) are sent immediately
         stream.set_nodelay(true)?;
-        
+
         Ok(Self { stream, peer_addr })
     }
 
@@ -152,11 +152,11 @@ impl VncSocket for TcpSocket {
     fn peer_address(&self) -> String {
         self.peer_addr.ip().to_string()
     }
-    
+
     fn peer_endpoint(&self) -> String {
         self.peer_addr.to_string()
     }
-    
+
     #[cfg(unix)]
     fn as_raw_fd(&self) -> Option<std::os::unix::io::RawFd> {
         use std::os::unix::io::AsRawFd;
@@ -182,18 +182,12 @@ impl AsyncWrite for TcpSocket {
     ) -> Poll<std::io::Result<usize>> {
         Pin::new(&mut self.stream).poll_write(cx, buf)
     }
-    
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<std::io::Result<()>> {
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         Pin::new(&mut self.stream).poll_flush(cx)
     }
-    
-    fn poll_shutdown(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<std::io::Result<()>> {
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         Pin::new(&mut self.stream).poll_shutdown(cx)
     }
 }
@@ -276,11 +270,11 @@ impl VncSocket for UnixSocket {
     fn peer_address(&self) -> String {
         self.path.display().to_string()
     }
-    
+
     fn peer_endpoint(&self) -> String {
         format!("unix:{}", self.path.display())
     }
-    
+
     fn as_raw_fd(&self) -> Option<std::os::unix::io::RawFd> {
         use std::os::unix::io::AsRawFd;
         Some(self.stream.as_raw_fd())
@@ -307,18 +301,12 @@ impl AsyncWrite for UnixSocket {
     ) -> Poll<std::io::Result<usize>> {
         Pin::new(&mut self.stream).poll_write(cx, buf)
     }
-    
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<std::io::Result<()>> {
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         Pin::new(&mut self.stream).poll_flush(cx)
     }
-    
-    fn poll_shutdown(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<std::io::Result<()>> {
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         Pin::new(&mut self.stream).poll_shutdown(cx)
     }
 }
@@ -327,79 +315,82 @@ impl AsyncWrite for UnixSocket {
 mod tests {
     use super::*;
     use tokio::net::TcpListener;
-    
+
     #[tokio::test]
     async fn test_tcp_socket_connection() {
         // Start a test server
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        
+
         // Spawn server task
         tokio::spawn(async move {
             let (_socket, _addr) = listener.accept().await.unwrap();
             // Server accepts connection and immediately closes
         });
-        
+
         // Connect client
         let socket = TcpSocket::connect("127.0.0.1", addr.port()).await.unwrap();
-        
+
         // Verify peer address
         assert_eq!(socket.peer_address(), "127.0.0.1");
         assert!(socket.peer_endpoint().starts_with("127.0.0.1:"));
     }
-    
+
     #[tokio::test]
     async fn test_tcp_socket_nodelay() {
         // Start a test server
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        
+
         tokio::spawn(async move {
             let (_socket, _addr) = listener.accept().await.unwrap();
         });
-        
+
         // Connect and verify TCP_NODELAY is set
         let socket = TcpSocket::connect("127.0.0.1", addr.port()).await.unwrap();
         let stream = socket.into_inner();
         assert!(stream.nodelay().unwrap());
     }
-    
+
     #[tokio::test]
     async fn test_tcp_socket_connection_refused() {
         // Try to connect to a port that's not listening
         let result = TcpSocket::connect("127.0.0.1", 1).await;
         assert!(result.is_err());
     }
-    
+
     #[cfg(unix)]
     #[tokio::test]
     async fn test_unix_socket_connection() {
-        use tokio::net::UnixListener;
         use tempfile::TempDir;
-        
+        use tokio::net::UnixListener;
+
         // Create temporary directory for socket
         let temp_dir = TempDir::new().unwrap();
         let socket_path = temp_dir.path().join("test.sock");
-        
+
         // Start a test server
         let listener = UnixListener::bind(&socket_path).unwrap();
         let socket_path_clone = socket_path.clone();
-        
+
         tokio::spawn(async move {
             let (_socket, _addr) = listener.accept().await.unwrap();
         });
-        
+
         // Connect client
         let socket = UnixSocket::connect(&socket_path_clone).await.unwrap();
-        
+
         // Verify peer address
-        assert_eq!(socket.peer_address(), socket_path_clone.display().to_string());
+        assert_eq!(
+            socket.peer_address(),
+            socket_path_clone.display().to_string()
+        );
         assert_eq!(
             socket.peer_endpoint(),
             format!("unix:{}", socket_path_clone.display())
         );
     }
-    
+
     #[cfg(unix)]
     #[tokio::test]
     async fn test_unix_socket_nonexistent() {
@@ -407,25 +398,25 @@ mod tests {
         let result = UnixSocket::connect("/tmp/nonexistent-socket-12345.sock").await;
         assert!(result.is_err());
     }
-    
+
     #[cfg(unix)]
     #[tokio::test]
     async fn test_raw_fd() {
-        use tokio::net::UnixListener;
         use tempfile::TempDir;
-        
+        use tokio::net::UnixListener;
+
         let temp_dir = TempDir::new().unwrap();
         let socket_path = temp_dir.path().join("test.sock");
-        
+
         let listener = UnixListener::bind(&socket_path).unwrap();
         let socket_path_clone = socket_path.clone();
-        
+
         tokio::spawn(async move {
             let (_socket, _addr) = listener.accept().await.unwrap();
         });
-        
+
         let socket = UnixSocket::connect(&socket_path_clone).await.unwrap();
-        
+
         // Verify we can get a raw file descriptor
         let fd = socket.as_raw_fd();
         assert!(fd.is_some());

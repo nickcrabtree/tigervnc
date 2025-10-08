@@ -122,7 +122,7 @@ use rfb_common::{Point, Rect};
 ///     println!("Buffer: {}x{}, format: {:?}", width, height, format);
 ///     
 ///     // Access entire buffer
-///     let rect = Rect::new(0, 0, width as u16, height as u16);
+///     let rect = Rect::new(0, 0, width, height);
 ///     let mut stride = 0;
 ///     if let Some(pixels) = buffer.get_buffer(rect, &mut stride) {
 ///         println!("Got {} bytes with stride {} pixels", pixels.len(), stride);
@@ -227,7 +227,7 @@ pub trait PixelBuffer {
 ///
 /// fn clear_screen<B: MutablePixelBuffer>(buffer: &mut B) -> anyhow::Result<()> {
 ///     let (width, height) = buffer.dimensions();
-///     let rect = Rect::new(0, 0, width as u16, height as u16);
+///     let rect = Rect::new(0, 0, width, height);
 ///     
 ///     // Fill with black (all zeros)
 ///     let black = vec![0u8; buffer.pixel_format().bytes_per_pixel() as usize];

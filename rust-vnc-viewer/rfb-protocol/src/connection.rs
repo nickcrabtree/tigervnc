@@ -38,8 +38,8 @@
 //! ```
 
 use crate::io::{RfbInStream, RfbOutStream};
-use tokio::io::{AsyncRead, AsyncWrite};
 use std::fmt;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 /// Connection state for the RFB protocol state machine.
 ///
@@ -50,31 +50,31 @@ use std::fmt;
 pub enum ConnectionState {
     /// No connection established yet.
     Disconnected,
-    
+
     /// Negotiating protocol version (ProtocolVersion handshake).
     ProtocolVersion,
-    
+
     /// Negotiating security type.
     Security,
-    
+
     /// Waiting for security handshake result.
     SecurityResult,
-    
+
     /// Sending ClientInit message.
     ClientInit,
-    
+
     /// Receiving ServerInit message.
     ServerInit,
-    
+
     /// Normal operation - exchanging client/server messages.
     Normal,
-    
+
     /// Connection is being closed gracefully.
     Closing,
-    
+
     /// Connection is fully closed.
     Closed,
-    
+
     /// Invalid state (error condition).
     Invalid,
 }
@@ -115,7 +115,7 @@ impl fmt::Display for ConnectionState {
 /// let socket = TcpSocket::connect("192.168.1.100", 5900).await?;
 /// let (reader, writer) = tokio::io::split(socket);
 /// let conn = RfbConnection::new(reader, writer);
-/// 
+///
 /// println!("Connected to: {}", conn.peer_address());
 /// # Ok(())
 /// # }
@@ -123,22 +123,22 @@ impl fmt::Display for ConnectionState {
 pub struct RfbConnection<R, W> {
     /// Input stream for reading from the server.
     instream: RfbInStream<R>,
-    
+
     /// Output stream for writing to the server.
     outstream: RfbOutStream<W>,
-    
+
     /// Current connection state.
     state: ConnectionState,
-    
+
     /// Peer address (for logging/display).
     peer_address: String,
-    
+
     /// Server name/description.
     server_name: Option<String>,
-    
+
     /// Framebuffer width (set after ServerInit).
     width: Option<u16>,
-    
+
     /// Framebuffer height (set after ServerInit).
     height: Option<u16>,
 }
@@ -173,7 +173,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> RfbConnection<R, W> {
             height: None,
         }
     }
-    
+
     /// Set the peer address (for display purposes).
     pub fn set_peer_address(&mut self, address: String) {
         self.peer_address = address;
@@ -280,12 +280,9 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> RfbConnection<R, W> {
     /// ```
     pub fn begin_handshake(&mut self) -> anyhow::Result<()> {
         if self.state != ConnectionState::Disconnected {
-            anyhow::bail!(
-                "Cannot begin handshake from state: {}",
-                self.state
-            );
+            anyhow::bail!("Cannot begin handshake from state: {}", self.state);
         }
-        
+
         self.state = ConnectionState::ProtocolVersion;
         Ok(())
     }
@@ -321,31 +318,27 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> RfbConnection<R, W> {
             (ConnectionState::Invalid, _) => {
                 anyhow::bail!("Cannot transition from Invalid state");
             }
-            
+
             // Can always close
-            (_, ConnectionState::Closing | ConnectionState::Closed | ConnectionState::Invalid) => {},
-            
+            (_, ConnectionState::Closing | ConnectionState::Closed | ConnectionState::Invalid) => {}
+
             // Normal forward progression
-            (ConnectionState::Disconnected, ConnectionState::ProtocolVersion) => {},
-            (ConnectionState::ProtocolVersion, ConnectionState::Security) => {},
-            (ConnectionState::Security, ConnectionState::SecurityResult) => {},
-            (ConnectionState::SecurityResult, ConnectionState::ClientInit) => {},
-            (ConnectionState::ClientInit, ConnectionState::ServerInit) => {},
-            (ConnectionState::ServerInit, ConnectionState::Normal) => {},
-            
+            (ConnectionState::Disconnected, ConnectionState::ProtocolVersion) => {}
+            (ConnectionState::ProtocolVersion, ConnectionState::Security) => {}
+            (ConnectionState::Security, ConnectionState::SecurityResult) => {}
+            (ConnectionState::SecurityResult, ConnectionState::ClientInit) => {}
+            (ConnectionState::ClientInit, ConnectionState::ServerInit) => {}
+            (ConnectionState::ServerInit, ConnectionState::Normal) => {}
+
             // Stay in Normal state
-            (ConnectionState::Normal, ConnectionState::Normal) => {},
-            
+            (ConnectionState::Normal, ConnectionState::Normal) => {}
+
             // Invalid transition
             _ => {
-                anyhow::bail!(
-                    "Invalid state transition: {} -> {}",
-                    self.state,
-                    new_state
-                );
+                anyhow::bail!("Invalid state transition: {} -> {}", self.state, new_state);
             }
         }
-        
+
         self.state = new_state;
         Ok(())
     }
@@ -403,25 +396,28 @@ mod tests {
     use crate::{TcpSocket, VncSocket};
     use tokio::net::TcpListener;
 
-    async fn create_test_connection() -> (RfbConnection<tokio::io::ReadHalf<TcpSocket>, tokio::io::WriteHalf<TcpSocket>>, u16) {
+    async fn create_test_connection() -> (
+        RfbConnection<tokio::io::ReadHalf<TcpSocket>, tokio::io::WriteHalf<TcpSocket>>,
+        u16,
+    ) {
         // Start a test server
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        
+
         // Spawn server task that just accepts and holds the connection
         tokio::spawn(async move {
             let (_socket, _addr) = listener.accept().await.unwrap();
             // Hold connection open
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         });
-        
+
         // Connect client
         let socket = TcpSocket::connect("127.0.0.1", port).await.unwrap();
         let peer_addr = socket.peer_endpoint();
         let (reader, writer) = tokio::io::split(socket);
         let mut conn = RfbConnection::new(reader, writer);
         conn.set_peer_address(peer_addr);
-        
+
         (conn, port)
     }
 
@@ -436,10 +432,10 @@ mod tests {
     #[tokio::test]
     async fn test_begin_handshake() {
         let (mut conn, _port) = create_test_connection().await;
-        
+
         conn.begin_handshake().unwrap();
         assert_eq!(conn.state(), ConnectionState::ProtocolVersion);
-        
+
         // Can't begin handshake twice
         assert!(conn.begin_handshake().is_err());
     }
@@ -447,7 +443,7 @@ mod tests {
     #[tokio::test]
     async fn test_state_transitions() {
         let (mut conn, _port) = create_test_connection().await;
-        
+
         // Valid progression
         assert!(conn.transition_to(ConnectionState::ProtocolVersion).is_ok());
         assert!(conn.transition_to(ConnectionState::Security).is_ok());
@@ -455,38 +451,40 @@ mod tests {
         assert!(conn.transition_to(ConnectionState::ClientInit).is_ok());
         assert!(conn.transition_to(ConnectionState::ServerInit).is_ok());
         assert!(conn.transition_to(ConnectionState::Normal).is_ok());
-        
+
         assert!(conn.is_ready());
     }
 
     #[tokio::test]
     async fn test_invalid_transitions() {
         let (mut conn, _port) = create_test_connection().await;
-        
+
         // Can't skip states
         assert!(conn.transition_to(ConnectionState::Normal).is_err());
-        
+
         // Can't go backwards
-        conn.transition_to(ConnectionState::ProtocolVersion).unwrap();
+        conn.transition_to(ConnectionState::ProtocolVersion)
+            .unwrap();
         assert!(conn.transition_to(ConnectionState::Disconnected).is_err());
     }
 
     #[tokio::test]
     async fn test_close_from_any_state() {
         let (mut conn, _port) = create_test_connection().await;
-        
+
         // Can close from initial state
         assert!(conn.transition_to(ConnectionState::Closing).is_ok());
-        
+
         // Reset for another test - progress through states to Normal
         let (mut conn, _port) = create_test_connection().await;
-        conn.transition_to(ConnectionState::ProtocolVersion).unwrap();
+        conn.transition_to(ConnectionState::ProtocolVersion)
+            .unwrap();
         conn.transition_to(ConnectionState::Security).unwrap();
         conn.transition_to(ConnectionState::SecurityResult).unwrap();
         conn.transition_to(ConnectionState::ClientInit).unwrap();
         conn.transition_to(ConnectionState::ServerInit).unwrap();
         conn.transition_to(ConnectionState::Normal).unwrap();
-        
+
         // Can close from Normal
         assert!(conn.transition_to(ConnectionState::Closing).is_ok());
     }
@@ -494,20 +492,22 @@ mod tests {
     #[tokio::test]
     async fn test_closed_state_is_final() {
         let (mut conn, _port) = create_test_connection().await;
-        
+
         conn.transition_to(ConnectionState::Closed).unwrap();
-        
+
         // Can't transition from Closed
         assert!(conn.transition_to(ConnectionState::Normal).is_err());
-        assert!(conn.transition_to(ConnectionState::ProtocolVersion).is_err());
-        
+        assert!(conn
+            .transition_to(ConnectionState::ProtocolVersion)
+            .is_err());
+
         assert!(!conn.is_active());
     }
 
     #[tokio::test]
     async fn test_peer_address() {
         let (conn, port) = create_test_connection().await;
-        
+
         let addr = conn.peer_address();
         assert!(addr.contains("127.0.0.1"));
         assert!(addr.contains(&port.to_string()));
@@ -516,9 +516,9 @@ mod tests {
     #[tokio::test]
     async fn test_server_name() {
         let (mut conn, _port) = create_test_connection().await;
-        
+
         assert_eq!(conn.server_name(), None);
-        
+
         conn.set_server_name("Test Server".to_string());
         assert_eq!(conn.server_name(), Some("Test Server"));
     }
@@ -526,9 +526,9 @@ mod tests {
     #[tokio::test]
     async fn test_dimensions() {
         let (mut conn, _port) = create_test_connection().await;
-        
+
         assert_eq!(conn.dimensions(), None);
-        
+
         conn.set_dimensions(1920, 1080);
         assert_eq!(conn.dimensions(), Some((1920, 1080)));
     }
@@ -536,11 +536,12 @@ mod tests {
     #[tokio::test]
     async fn test_is_state() {
         let (mut conn, _port) = create_test_connection().await;
-        
+
         assert!(conn.is_state(ConnectionState::Disconnected));
         assert!(!conn.is_state(ConnectionState::Normal));
-        
-        conn.transition_to(ConnectionState::ProtocolVersion).unwrap();
+
+        conn.transition_to(ConnectionState::ProtocolVersion)
+            .unwrap();
         assert!(conn.is_state(ConnectionState::ProtocolVersion));
         assert!(!conn.is_state(ConnectionState::Disconnected));
     }
@@ -548,11 +549,11 @@ mod tests {
     #[tokio::test]
     async fn test_close_methods() {
         let (mut conn, _port) = create_test_connection().await;
-        
+
         conn.close();
         assert_eq!(conn.state(), ConnectionState::Closing);
         assert!(!conn.is_active());
-        
+
         conn.mark_closed();
         assert_eq!(conn.state(), ConnectionState::Closed);
     }
