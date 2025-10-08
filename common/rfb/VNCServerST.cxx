@@ -612,31 +612,29 @@ void VNCServerST::handleClipboardData(VNCSConnectionST* client,
   desktop->handleClipboardData(data);
 }
 
-void VNCServerST::handleRequestCachedData(VNCSConnectionST* /*client*/,
+void VNCServerST::handleRequestCachedData(VNCSConnectionST* client,
                                          uint64_t cacheId)
 {
   slog.debug("Client requested cached data for ID %llu",
              (unsigned long long)cacheId);
   
   // Look up the cache entry to get the rectangle bounds where this content
-  // was last seen. Since the content is content-addressed by hash, the same
-  // pixels may appear at different locations. We use lastBounds to know what
-  // region to re-send.
+  // was last seen. The cache is content-addressed (by hash), so we need to
+  // find where this cacheId was last seen to know what region to re-send.
   
-  // Note: For now, we trigger a refresh of that region rather than storing
-  // and re-sending the encoded data. This matches the design doc's intent:
-  // the cache is content-addressable for detecting duplicates, not a
-  // full data store.
+  // Get the ContentCache from the EncodeManager (it's shared across all connections)
+  // For now, we don't have access to it here. The simplest workaround is to
+  // request a full framebuffer update which will re-send everything including
+  // the missing cached rectangles.
   
-  // TODO: Full implementation would store encoded data and send CachedRectInit.
-  // For now, trigger re-encode by marking the region as changed.
-  
-  slog.info("Cache miss recovery for cacheId=%llu - region will be re-sent on next update",
+  slog.info("Client cache miss for ID %llu - requesting refresh",
             (unsigned long long)cacheId);
   
-  // Trigger client update to re-send the region
-  // The normal encoding path will send it as a regular encoded rectangle
-  // and it will be re-inserted into the cache
+  // Mark the entire framebuffer as changed to force a re-send
+  // This is inefficient but ensures the client gets the data
+  // TODO: Look up specific rect bounds from cache and only mark that region
+  core::Region fullRegion({0, 0, pb->width(), pb->height()});
+  client->add_changed(fullRegion);
 }
 
 unsigned int VNCServerST::setDesktopSize(VNCSConnectionST* requester,
