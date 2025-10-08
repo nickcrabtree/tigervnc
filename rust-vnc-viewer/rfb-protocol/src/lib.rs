@@ -7,6 +7,7 @@
 //! # Modules
 //!
 //! - [`socket`] - Socket abstractions (TCP, Unix domain)
+//! - [`io`] - Buffered I/O streams (RfbInStream, RfbOutStream)
 //! - More modules coming in Phase 2 implementation...
 //!
 //! # Examples
@@ -23,9 +24,11 @@
 //! ```
 
 pub mod socket;
+pub mod io;
 
 // Re-export commonly used types
 pub use socket::{VncSocket, TcpSocket};
+pub use io::{RfbInStream, RfbOutStream};
 
 #[cfg(unix)]
 pub use socket::UnixSocket;

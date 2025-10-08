@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 tokio = { workspace = true, features = ["net", "io-util"] }
 anyhow = { workspace = true }
+bytes = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.8"
