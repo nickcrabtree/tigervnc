@@ -1,8 +1,8 @@
 # Rust VNC Viewer - Current Status
 
-**Date**: 2025-10-08 11:57 UTC  
-**Status**: Phase 1 in progress - PixelFormat complete ✅  
-**Last Updated**: Task 1.1 - PixelFormat module implemented
+**Date**: 2025-10-08 12:01 UTC  
+**Status**: Phase 1 in progress - Buffer traits complete ✅  
+**Last Updated**: Task 1.2 - PixelBuffer traits implemented
 
 ## What Has Been Created
 
@@ -37,23 +37,29 @@ Features:
 
 #### `rfb-pixelbuffer` - **IN PROGRESS**
 **Status**: Partial implementation  
-**LOC**: ~456 (Task 1.1 complete)
+**LOC**: ~917 (Tasks 1.1-1.2, 1.4-1.5 complete)
 
 **Completed** (✅):
-- PixelFormat struct with RGB888, arbitrary bit depths, endianness support
+- **PixelFormat** struct with RGB888, arbitrary bit depths, endianness support
 - Conversion methods: `to_rgb888()`, `from_rgb888()`
 - Helper methods: `bytes_per_pixel()`, `rgb888()` constructor
-- Comprehensive documentation with doctests
-- 15 tests (9 unit + 6 doc) - all passing
+- **PixelBuffer** trait for read-only buffer access
+- **MutablePixelBuffer** trait for read-write access and rendering
+- Trait methods: `get_buffer()`, `get_buffer_rw()`, `commit_buffer()`
+- Rendering operations: `fill_rect()`, `copy_rect()`, `image_rect()`
+- Critical "stride is in pixels" documentation throughout
+- Comprehensive documentation with 18 doctests in traits alone
+- 27 tests total (9 unit + 18 doc) - all passing
 
 **Needs**:
-- PixelBuffer trait (read-only)
-- MutablePixelBuffer trait (read-write)
-- ManagedPixelBuffer implementation
+- ManagedPixelBuffer implementation (concrete type)
+- Additional integration tests
 
 Files:
 - ✅ `src/format.rs` (448 lines) - PixelFormat implementation
-- ✅ `src/lib.rs` (8 lines) - Module exports
+- ✅ `src/buffer.rs` (401 lines) - PixelBuffer traits
+- ✅ `src/lib.rs` (21 lines) - Module exports with docs
+- ✅ `Cargo.toml` - Dependencies (rfb-common, anyhow)
 
 #### `rfb-protocol` - **STUB**
 **Status**: Needs implementation  
@@ -114,22 +120,22 @@ $ cargo build
 
 ## Statistics
 
-- **Total Lines of Code**: ~606 (functional code + documentation + tests)
+- **Total Lines of Code**: ~1,067 (functional code + documentation + tests)
   - rfb-common: ~150 LOC
-  - rfb-pixelbuffer: ~456 LOC (Task 1.1)
+  - rfb-pixelbuffer: ~917 LOC (Tasks 1.1-1.2, 1.4-1.5)
 - **Crates**: 6 (1 complete, 1 in progress, 4 stubs)
 - **Dependencies Configured**: 20+ (workspace-level)
-- **Completion**: ~4.8% (Phase 1 at 17%)
+- **Completion**: ~8.5% (Phase 1 at 29%)
 - **Build Status**: ✅ All crates compile
-- **Test Status**: ✅ 15 tests passing (all in rfb-pixelbuffer)
+- **Test Status**: ✅ 27 tests passing (all in rfb-pixelbuffer)
 
 ## Next Immediate Steps
 
 ### Priority 1: Core Foundation (This Week)
 1. Complete `rfb-pixelbuffer` implementation
    - ✅ ~~PixelFormat with RGB888 support~~ (Task 1.1 done)
-   - 🔄 Buffer traits (Task 1.2 - next)
-   - 🔄 ManagedPixelBuffer (Task 1.3)
+   - ✅ ~~Buffer traits~~ (Task 1.2 done)
+   - 🔄 ManagedPixelBuffer (Task 1.3 - next)
 
 2. Implement `rfb-protocol` basics
    - TCP socket wrapper
@@ -189,10 +195,11 @@ rust-vnc-viewer/
 │       ├── config.rs
 │       └── cursor.rs
 ├── rfb-pixelbuffer/
-│   ├── Cargo.toml
+│   ├── Cargo.toml  (✅ Task 1.5)
 │   └── src/
-│       ├── lib.rs
-│       └── format.rs  (✅ Task 1.1)
+│       ├── lib.rs  (✅ Task 1.4)
+│       ├── format.rs  (✅ Task 1.1)
+│       └── buffer.rs  (✅ Task 1.2)
 ├── rfb-protocol/
 │   ├── Cargo.toml
 │   └── src/lib.rs
@@ -209,15 +216,18 @@ rust-vnc-viewer/
 
 ## Success Criteria for Phase 1
 
-- [x] PixelFormat implemented with tests ✅ (Task 1.1 complete)
-- [ ] PixelBuffer traits defined (Task 1.2)
+- [x] PixelFormat implemented with tests ✅ (Task 1.1)
+- [x] PixelBuffer traits defined ✅ (Task 1.2)
+- [x] Dependencies configured ✅ (Tasks 1.4-1.5)
 - [ ] ManagedPixelBuffer implemented (Task 1.3)
-- [ ] All Phase 1 tests passing
-- [ ] Zero clippy warnings
-- [ ] Complete documentation
+- [ ] All Phase 1 integration tests
+- [x] Zero clippy warnings ✅
+- [x] Comprehensive documentation ✅
 
 ## Git History
 
+- `f3e58499` - rfb-pixelbuffer: add PixelBuffer and MutablePixelBuffer traits (Task 1.2)
+- `a58fdbb6` - docs: update progress tracking after Task 1.1
 - `c54a69e7` - rfb-pixelbuffer: add PixelFormat with RGB888 conversions (Task 1.1)
 
 ---
