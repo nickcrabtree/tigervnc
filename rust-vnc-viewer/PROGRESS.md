@@ -5,11 +5,12 @@ Last Updated: 2025-10-08 12:15 UTC
 ## Overall Progress
 
 ```
-[██████░░░░░░░░░░░░░░░░░░░░░░░░] 5% Complete
+[████████░░░░░░░░░░░░░░░░░░░░░░] 12% Complete
 ```
 
 **Phase 0**: ✅ Complete (Scaffolding)  
-**Phase 1**: 🎉 NEARLY COMPLETE (PixelBuffer - Tasks 1.1-1.3 ✅ / Testing next)
+**Phase 1**: ✅ COMPLETE (PixelBuffer - All tasks done!)  
+**Phase 2**: 🔄 STARTING (Network & Protocol Layer)
 **Estimated Completion**: 24 weeks from start
 
 ---
@@ -31,9 +32,9 @@ Last Updated: 2025-10-08 12:15 UTC
 
 ---
 
-### Phase 1: Core Types (Week 1) 🔄 IN PROGRESS
+### Phase 1: Core Types (Week 1) ✅ COMPLETE
 ```
-[███████████████████████████████░] 97%
+[████████████████████████████████] 100%
 ```
 
 **Target**: rfb-pixelbuffer implementation
@@ -52,26 +53,29 @@ Last Updated: 2025-10-08 12:15 UTC
 **LOC Target**: ~800  
 **LOC Written**: ~1,416 (code + docs + tests)
 
-**Phase 1 Status**: 🎉 NEARLY COMPLETE - All major tasks done!
-**Next**: Consider adding integration tests or proceed to Phase 2
+**Phase 1 Status**: ✅ COMPLETE - All tasks finished ahead of schedule!
+**Completed**: 2025-10-08 12:15 UTC
 
 ---
 
-### Phase 2: Network & Protocol (Weeks 2-5) ⏳ UPCOMING
+### Phase 2: Network & Protocol (Weeks 2-5) 🔄 IN PROGRESS
 ```
-[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+[██████████████████░░░░░░░░░░░░░░] 60%
 ```
 
 **Target**: rfb-protocol implementation
 
-- Socket abstractions (TCP, Unix)
-- RFB Reader/Writer
-- Message types
-- Connection state machine
-- Protocol handshake
+|| Task | Status | Est. Time | Actual Time | File |
+||------|--------|-----------|-------------|------|
+|| 2.1 | ✅ DONE | 2 days | ~45 min | `rfb-protocol/src/socket.rs` |
+|| 2.2 | ✅ DONE | 2 days | ~40 min | `rfb-protocol/src/io.rs` |
+|| 2.3 | ✅ DONE | 2 days | ~50 min | `rfb-protocol/src/connection.rs` |
+|| 2.4 | ⬜ TODO | 4 days | - | `rfb-protocol/src/messages/` |
+|| 2.5 | ⬜ TODO | 3 days | - | `rfb-protocol/src/handshake/` |
 
-**Est. Time**: 2 weeks  
-**LOC Target**: ~1,700
+**Est. Time**: 2 weeks (13 days)  
+**LOC Target**: ~1,700  
+**Started**: 2025-10-08 12:35 UTC
 
 ---
 
@@ -121,6 +125,48 @@ Last Updated: 2025-10-08 12:15 UTC
 ---
 
 ## Recent Activity
+
+### 2025-10-08 13:45 UTC
+- ✅ **Task 2.3 COMPLETE**: Connection state machine
+- ✅ Implemented `ConnectionState` enum with 10 states
+- ✅ Implemented `RfbConnection<R, W>` for state management
+- ✅ State transition validation (prevents invalid transitions)
+- ✅ Connection lifecycle (Disconnected → ProtocolVersion → ... → Normal)
+- ✅ Convenience methods: `is_active()`, `is_ready()`, `is_state()`
+- ✅ 11 unit tests + 5 doctests (16 total)
+- ✅ Zero clippy warnings
+- ✅ ~545 LOC (code + docs + tests)
+- ✅ Committed: 2a4758f0
+- 🎯 Next: Task 2.4 - Message types (or pause)
+
+### 2025-10-08 13:20 UTC
+- ✅ **Task 2.2 COMPLETE**: RFB I/O streams (buffered reading/writing)
+- ✅ Implemented `RfbInStream` for buffered reading
+- ✅ Implemented `RfbOutStream` for buffered writing
+- ✅ Type-safe methods for u8/u16/u32/i32 in network byte order
+- ✅ Efficient 8KB buffering (customizable)
+- ✅ 15 unit tests + 21 doctests (36 total)
+- ✅ Zero clippy warnings
+- ✅ ~680 LOC (code + docs + tests)
+- ✅ Committed: f407506c
+- 🎯 Next: Task 2.3 - Connection state machine
+
+### 2025-10-08 13:00 UTC
+- ✅ **Task 2.1 COMPLETE**: Socket abstractions (TCP and Unix domain)
+- ✅ Implemented `VncSocket` trait for unified socket interface
+- ✅ `TcpSocket` with TCP_NODELAY for low latency
+- ✅ `UnixSocket` for local connections (macOS/Linux)
+- ✅ 6 unit tests + 7 doctests, all passing
+- ✅ Zero clippy warnings
+- ✅ ~430 LOC (code + docs + tests)
+- ✅ Committed: 231e4370
+- 🎯 Next: Task 2.2 - RFB I/O streams
+
+### 2025-10-08 12:35 UTC
+- 🚀 **Phase 2 STARTED**: Network & Protocol Layer
+- 📋 Created implementation plan for tasks 2.1-2.5
+- 🎯 Next: Task 2.1 - Socket abstractions (TCP, Unix domain sockets)
+- 📊 Phase 1 fully complete with 37/37 tests passing
 
 ### 2025-10-08 12:15 UTC
 - ✅ **Task 1.3 COMPLETE**: ManagedPixelBuffer implementation
