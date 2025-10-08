@@ -7,15 +7,19 @@
 //!
 //! - [`format`]: Pixel format definitions and conversions
 //! - [`buffer`]: Pixel buffer traits for read and write access
+//! - [`managed`]: Concrete pixel buffer implementation
 //!
 //! # Key Types
 //!
 //! - [`PixelFormat`]: Describes how pixels are encoded (bit depth, endianness, etc.)
 //! - [`PixelBuffer`]: Trait for read-only buffer access
 //! - [`MutablePixelBuffer`]: Trait for read-write buffer access with rendering operations
+//! - [`ManagedPixelBuffer`]: Concrete implementation that owns its pixel data
 
 pub mod buffer;
 pub mod format;
+pub mod managed;
 
 pub use buffer::{MutablePixelBuffer, PixelBuffer};
 pub use format::PixelFormat;
+pub use managed::ManagedPixelBuffer;
