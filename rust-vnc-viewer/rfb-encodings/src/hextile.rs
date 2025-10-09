@@ -137,9 +137,13 @@ impl Decoder for HextileDecoder {
 
                 // RAW tile: uncompressed pixel data
                 if (tile_type & TILE_RAW) != 0 {
-                    let abs_x = rect.x.checked_add(tx)
+                    let abs_x = rect
+                        .x
+                        .checked_add(tx)
                         .ok_or_else(|| anyhow!("Hextile RAW tile absolute x overflows"))?;
-                    let abs_y = rect.y.checked_add(ty)
+                    let abs_y = rect
+                        .y
+                        .checked_add(ty)
                         .ok_or_else(|| anyhow!("Hextile RAW tile absolute y overflows"))?;
                     decode_raw_tile(
                         stream,
@@ -301,12 +305,8 @@ impl Decoder for HextileDecoder {
                         let sr_abs_y = abs_y
                             .checked_add(y_off as u16)
                             .ok_or_else(|| anyhow!("Hextile subrect absolute y overflows"))?;
-                        let subrect = Rect::new(
-                            sr_abs_x as i32,
-                            sr_abs_y as i32,
-                            w as u32,
-                            h as u32,
-                        );
+                        let subrect =
+                            Rect::new(sr_abs_x as i32, sr_abs_y as i32, w as u32, h as u32);
                         buffer.fill_rect(subrect, &color).with_context(|| {
                             format!(
                                 "Failed to fill Hextile subrect {} at ({}, {}) size {}x{} in tile ({}, {})",
@@ -329,8 +329,8 @@ impl Decoder for HextileDecoder {
 async fn decode_raw_tile<R: AsyncRead + Unpin>(
     stream: &mut RfbInStream<R>,
     buffer: &mut dyn MutablePixelBuffer,
-    abs_pos: (u16, u16),    // Absolute (x, y) position in framebuffer
-    tile_size: (u16, u16),  // (width, height) of tile
+    abs_pos: (u16, u16),   // Absolute (x, y) position in framebuffer
+    tile_size: (u16, u16), // (width, height) of tile
     bytes_per_pixel: u8,
     tile_offset: (u16, u16), // (tx, ty) for error reporting
 ) -> Result<()> {
@@ -348,15 +348,12 @@ async fn decode_raw_tile<R: AsyncRead + Unpin>(
 
     // Read all raw pixel data
     let mut raw_data = vec![0u8; total_bytes];
-    stream
-        .read_bytes(&mut raw_data)
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to read {} bytes of RAW data for Hextile tile at ({}, {})",
-                total_bytes, tx, ty
-            )
-        })?;
+    stream.read_bytes(&mut raw_data).await.with_context(|| {
+        format!(
+            "Failed to read {} bytes of RAW data for Hextile tile at ({}, {})",
+            total_bytes, tx, ty
+        )
+    })?;
 
     // Write row-by-row into the framebuffer (stride may differ from tile width)
     for row in 0..tile_h {
@@ -368,12 +365,14 @@ async fn decode_raw_tile<R: AsyncRead + Unpin>(
             .ok_or_else(|| anyhow!("Hextile RAW tile row y overflows"))?;
         let row_rect = Rect::new(abs_x as i32, row_y as i32, tile_w as u32, 1);
 
-        buffer.image_rect(row_rect, src_row, tile_w as usize).with_context(|| {
-            format!(
-                "Failed to write RAW tile row {} at ({}, {}) for tile at ({}, {})",
-                row, abs_x, row_y, tx, ty
-            )
-        })?;
+        buffer
+            .image_rect(row_rect, src_row, tile_w as usize)
+            .with_context(|| {
+                format!(
+                    "Failed to write RAW tile row {} at ({}, {}) for tile at ({}, {})",
+                    row, abs_x, row_y, tx, ty
+                )
+            })?;
     }
 
     Ok(())
@@ -401,20 +400,6 @@ mod tests {
         }
     }
 
-    fn pf_rgb565() -> crate::PixelFormat {
-        PixelFormat {
-            bits_per_pixel: 16,
-            depth: 16,
-            big_endian: 0,
-            true_color: 1,
-            red_max: 31,
-            green_max: 63,
-            blue_max: 31,
-            red_shift: 11,
-            green_shift: 5,
-            blue_shift: 0,
-        }
-    }
 
     // Buffer format (rfb_pixelbuffer)
     fn buffer_format() -> rfb_pixelbuffer::PixelFormat {
@@ -467,11 +452,11 @@ mod tests {
         // Tile type: RAW
         // 2x2 pixels RGB888 (32bpp = 4 bytes per pixel): R, G, B, W
         let data = vec![
-            TILE_RAW,              // tile type
-            0, 0, 255, 0,          // red pixel (BGRA: 0x00FF0000)
-            0, 255, 0, 0,          // green pixel
-            255, 0, 0, 0,          // blue pixel  
-            255, 255, 255, 0,      // white pixel
+            TILE_RAW, // tile type
+            0, 0, 255, 0, // red pixel (BGRA: 0x00FF0000)
+            0, 255, 0, 0, // green pixel
+            255, 0, 0, 0, // blue pixel
+            255, 255, 255, 0, // white pixel
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -494,7 +479,10 @@ mod tests {
         // Tile type: BACKGROUND_SPECIFIED, then background color (red)
         let data = vec![
             TILE_BACKGROUND_SPECIFIED, // tile type
-            0, 0, 255, 0, // red background (32bpp BGRA little-endian)
+            0,
+            0,
+            255,
+            0, // red background (32bpp BGRA little-endian)
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -525,7 +513,10 @@ mod tests {
         // Two tiles in a 17x1 rectangle: first tile sets background, second uses it
         let data = vec![
             TILE_BACKGROUND_SPECIFIED, // tile 1 type
-            32, 64, 128, 0, // bg color (32bpp BGRA)
+            32,
+            64,
+            128,
+            0, // bg color (32bpp BGRA)
             0, // tile 2 type: use previous bg
         ];
         let mut stream = make_stream(data);
@@ -553,11 +544,17 @@ mod tests {
         // Tile: background + foreground + one monochrome subrect at (2,2) size 3x3
         let data = vec![
             TILE_BACKGROUND_SPECIFIED | TILE_FOREGROUND_SPECIFIED | TILE_ANY_SUBRECTS,
-            0, 0, 0, 0,      // black bg (32bpp)
-            255, 255, 255, 0, // white fg (32bpp)
-            1,            // 1 subrect
-            0x22,         // xy: x=2, y=2
-            0x22,         // wh: (w-1)=2, (h-1)=2 -> 3x3
+            0,
+            0,
+            0,
+            0, // black bg (32bpp)
+            255,
+            255,
+            255,
+            0,    // white fg (32bpp)
+            1,    // 1 subrect
+            0x22, // xy: x=2, y=2
+            0x22, // wh: (w-1)=2, (h-1)=2 -> 3x3
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -580,14 +577,23 @@ mod tests {
         // Tile: background + two colored subrects
         let data = vec![
             TILE_BACKGROUND_SPECIFIED | TILE_ANY_SUBRECTS | TILE_SUBRECTS_COLOURED,
-            100, 100, 100, 0, // gray bg (32bpp)
-            2,             // 2 subrects
-            0, 0, 255, 0,     // red color (32bpp BGRA)
-            0x00,          // xy: (0,0)
-            0x00,          // wh: 1x1
-            0, 255, 0, 0,     // green color (32bpp BGRA)
-            0x11,          // xy: (1,1)
-            0x00,          // wh: 1x1
+            100,
+            100,
+            100,
+            0, // gray bg (32bpp)
+            2, // 2 subrects
+            0,
+            0,
+            255,
+            0,    // red color (32bpp BGRA)
+            0x00, // xy: (0,0)
+            0x00, // wh: 1x1
+            0,
+            255,
+            0,
+            0,    // green color (32bpp BGRA)
+            0x11, // xy: (1,1)
+            0x00, // wh: 1x1
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -610,8 +616,11 @@ mod tests {
         // Tile: background + ANY_SUBRECTS but count=0
         let data = vec![
             TILE_BACKGROUND_SPECIFIED | TILE_ANY_SUBRECTS,
-            50, 50, 50, 0, // bg (32bpp)
-            0,          // 0 subrects
+            50,
+            50,
+            50,
+            0, // bg (32bpp)
+            0, // 0 subrects
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -625,7 +634,11 @@ mod tests {
         let mut fb = ManagedPixelBuffer::new(10, 10, buffer_format());
 
         let result = decoder.decode(&mut stream, &rect, &pf, &mut fb).await;
-        assert!(result.is_ok(), "Zero subrects should be valid: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Zero subrects should be valid: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]
@@ -634,9 +647,15 @@ mod tests {
         // Rectangle 17x10: last tile is 1x10
         let data = vec![
             TILE_BACKGROUND_SPECIFIED, // tile 1
-            0, 0, 0, 0, // tile 1 bg
+            0,
+            0,
+            0,
+            0,                         // tile 1 bg
             TILE_BACKGROUND_SPECIFIED, // tile 2 (1x10)
-            255, 255, 255, 0, // tile 2 bg
+            255,
+            255,
+            255,
+            0, // tile 2 bg
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -659,11 +678,20 @@ mod tests {
         // Rectangle 10x31: last row tile is 10x15
         let data = vec![
             TILE_BACKGROUND_SPECIFIED, // tile row 1
-            0, 0, 0, 0,
+            0,
+            0,
+            0,
+            0,
             TILE_BACKGROUND_SPECIFIED, // tile row 2
-            255, 255, 255, 0,
+            255,
+            255,
+            255,
+            0,
             TILE_BACKGROUND_SPECIFIED, // tile row 3 (10x15)
-            128, 128, 128, 0,
+            128,
+            128,
+            128,
+            0,
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -685,10 +713,26 @@ mod tests {
         let decoder = HextileDecoder;
         // Rectangle 17x31: corner tile is 1x15
         let data = vec![
-            TILE_BACKGROUND_SPECIFIED, 0, 0, 0, 0, // (0,0) 16x16
-            TILE_BACKGROUND_SPECIFIED, 0, 0, 0, 0, // (16,0) 1x16
-            TILE_BACKGROUND_SPECIFIED, 0, 0, 0, 0, // (0,16) 16x15
-            TILE_BACKGROUND_SPECIFIED, 0, 0, 0, 0, // (16,16) 1x15 corner
+            TILE_BACKGROUND_SPECIFIED,
+            0,
+            0,
+            0,
+            0, // (0,0) 16x16
+            TILE_BACKGROUND_SPECIFIED,
+            0,
+            0,
+            0,
+            0, // (16,0) 1x16
+            TILE_BACKGROUND_SPECIFIED,
+            0,
+            0,
+            0,
+            0, // (0,16) 16x15
+            TILE_BACKGROUND_SPECIFIED,
+            0,
+            0,
+            0,
+            0, // (16,16) 1x15 corner
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -738,9 +782,12 @@ mod tests {
         // Tile: background + monochrome subrects but no foreground
         let data = vec![
             TILE_BACKGROUND_SPECIFIED | TILE_ANY_SUBRECTS,
-            0, 0, 0, 0, // bg (32bpp)
-            1,       // 1 subrect
-            // But no foreground specified
+            0,
+            0,
+            0,
+            0, // bg (32bpp)
+            1, // 1 subrect
+               // But no foreground specified
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -770,11 +817,17 @@ mod tests {
         // Tile 4x4: subrect at x=3, w=3 -> out of bounds
         let data = vec![
             TILE_BACKGROUND_SPECIFIED | TILE_FOREGROUND_SPECIFIED | TILE_ANY_SUBRECTS,
-            0, 0, 0, 0,      // bg (32bpp)
-            255, 255, 255, 0, // fg (32bpp)
-            1,            // 1 subrect
-            0x30,         // xy: x=3, y=0
-            0x20,         // wh: w=3, h=1
+            0,
+            0,
+            0,
+            0, // bg (32bpp)
+            255,
+            255,
+            255,
+            0,    // fg (32bpp)
+            1,    // 1 subrect
+            0x30, // xy: x=3, y=0
+            0x20, // wh: w=3, h=1
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -788,7 +841,10 @@ mod tests {
         let mut fb = ManagedPixelBuffer::new(10, 10, buffer_format());
 
         let result = decoder.decode(&mut stream, &rect, &pf, &mut fb).await;
-        assert!(result.is_err(), "Should fail when subrect exceeds tile width");
+        assert!(
+            result.is_err(),
+            "Should fail when subrect exceeds tile width"
+        );
         assert!(result
             .unwrap_err()
             .to_string()
@@ -801,11 +857,17 @@ mod tests {
         // Tile 4x4: subrect at y=3, h=3 -> out of bounds
         let data = vec![
             TILE_BACKGROUND_SPECIFIED | TILE_FOREGROUND_SPECIFIED | TILE_ANY_SUBRECTS,
-            0, 0, 0, 0,      // bg (32bpp)
-            255, 255, 255, 0, // fg (32bpp)
-            1,            // 1 subrect
-            0x03,         // xy: x=0, y=3
-            0x02,         // wh: w=1, h=3
+            0,
+            0,
+            0,
+            0, // bg (32bpp)
+            255,
+            255,
+            255,
+            0,    // fg (32bpp)
+            1,    // 1 subrect
+            0x03, // xy: x=0, y=3
+            0x02, // wh: w=1, h=3
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -835,10 +897,22 @@ mod tests {
         // Tile type has RAW + other flags; should treat as RAW only
         let data = vec![
             TILE_RAW | TILE_BACKGROUND_SPECIFIED | TILE_FOREGROUND_SPECIFIED,
-            0, 0, 255, 0,   // pixel 1 (32bpp BGRA)
-            0, 255, 0, 0,   // pixel 2
-            255, 0, 0, 0,   // pixel 3
-            0, 255, 255, 0, // pixel 4
+            0,
+            0,
+            255,
+            0, // pixel 1 (32bpp BGRA)
+            0,
+            255,
+            0,
+            0, // pixel 2
+            255,
+            0,
+            0,
+            0, // pixel 3
+            0,
+            255,
+            255,
+            0, // pixel 4
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -884,7 +958,8 @@ mod tests {
         let decoder = HextileDecoder;
         let data = vec![
             TILE_BACKGROUND_SPECIFIED, // tile type
-            255, 0, // only 2 bytes of 4
+            255,
+            0, // only 2 bytes of 4
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -907,8 +982,11 @@ mod tests {
         let decoder = HextileDecoder;
         let data = vec![
             TILE_BACKGROUND_SPECIFIED | TILE_ANY_SUBRECTS,
-            255, 255, 255, 0, // bg (32bpp)
-                           // missing subrect count
+            255,
+            255,
+            255,
+            0, // bg (32bpp)
+               // missing subrect count
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -931,10 +1009,16 @@ mod tests {
         let decoder = HextileDecoder;
         let data = vec![
             TILE_BACKGROUND_SPECIFIED | TILE_FOREGROUND_SPECIFIED | TILE_ANY_SUBRECTS,
-            0, 0, 0, 0,      // bg (32bpp)
-            255, 255, 255, 0, // fg (32bpp)
-            1,            // 1 subrect
-                          // missing xy
+            0,
+            0,
+            0,
+            0, // bg (32bpp)
+            255,
+            255,
+            255,
+            0, // fg (32bpp)
+            1, // 1 subrect
+               // missing xy
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -987,12 +1071,18 @@ mod tests {
         // Two tiles: first sets bg+fg, second uses persisted fg for monochrome subrects
         let data = vec![
             TILE_BACKGROUND_SPECIFIED | TILE_FOREGROUND_SPECIFIED,
-            0, 0, 0, 0,      // bg (32bpp)
-            255, 255, 255, 0, // fg (32bpp)
+            0,
+            0,
+            0,
+            0, // bg (32bpp)
+            255,
+            255,
+            255,
+            0,                 // fg (32bpp)
             TILE_ANY_SUBRECTS, // second tile: uses persisted bg and fg
-            1,            // 1 monochrome subrect
-            0x00,         // xy: (0,0)
-            0x00,         // wh: 1x1
+            1,                 // 1 monochrome subrect
+            0x00,              // xy: (0,0)
+            0x00,              // wh: 1x1
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {
@@ -1015,11 +1105,17 @@ mod tests {
         // Tile 16x16: subrect at (15,15) size 1x1 (maximum valid position)
         let data = vec![
             TILE_BACKGROUND_SPECIFIED | TILE_FOREGROUND_SPECIFIED | TILE_ANY_SUBRECTS,
-            0, 0, 0, 0,      // bg (32bpp)
-            255, 255, 255, 0, // fg (32bpp)
-            1,            // 1 subrect
-            0xFF,         // xy: x=15, y=15
-            0x00,         // wh: w=1, h=1
+            0,
+            0,
+            0,
+            0, // bg (32bpp)
+            255,
+            255,
+            255,
+            0,    // fg (32bpp)
+            1,    // 1 subrect
+            0xFF, // xy: x=15, y=15
+            0x00, // wh: w=1, h=1
         ];
         let mut stream = make_stream(data);
         let rect = Rectangle {

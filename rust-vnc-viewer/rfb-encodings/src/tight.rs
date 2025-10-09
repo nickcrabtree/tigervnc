@@ -796,7 +796,7 @@ mod tests {
     use super::*;
     use flate2::write::ZlibEncoder;
     use flate2::Compression;
-    use rfb_pixelbuffer::{ManagedPixelBuffer, PixelBuffer};
+    use rfb_pixelbuffer::ManagedPixelBuffer;
     use std::io::{Cursor, Write};
 
     fn test_pixel_format() -> PixelFormat {
