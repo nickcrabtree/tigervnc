@@ -1308,6 +1308,8 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
     beforeLength = conn->getOutStream()->length();
     conn->writer()->writeCachedRect(rect, cacheId);
     copyStats.bytes += conn->getOutStream()->length() - beforeLength;
+    // Record this cacheId->rect mapping so we can respond to RequestCachedData
+    conn->onCachedRectRef(cacheId, rect);
     vlog.debug("ContentCache protocol hit: rect [%d,%d-%d,%d] cacheId=%llu",
                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
                (unsigned long long)cacheId);

@@ -359,6 +359,160 @@ Use `AUTO` to build with the feature if dependencies are found, or `ON`/`OFF` to
 - Debug builds treated as errors: `-Werror` in debug mode
 - Assertions active in all build types (release builds have `-UNDEBUG`)
 
+## Test Environment and Production Servers
+
+### Server Infrastructure
+
+The development and testing environment uses a remote server at `nickc@birdsurvey.hopto.org` (hostname: `quartz`).
+
+**Server Code Location**: `/home/nickc/code/tigervnc`
+
+### VNC Server Processes
+
+There are **two different VNC server binaries** running on the same machine:
+
+#### Production Servers (DO NOT MODIFY)
+
+```bash
+# Standard TigerVNC (system-installed)
+Xtigervnc :1  # Display :1, port 5901
+Xtigervnc :3  # Display :3, port 5903
+```
+
+**CRITICAL**: These are **production servers** for unrelated work. DO NOT:
+- Stop or restart these processes
+- Modify their configuration
+- Kill these processes
+- Send them test traffic
+
+#### Test/Development Server (Safe to Modify)
+
+```bash
+# Custom fork with ContentCache
+Xnjcvnc :2    # Display :2, port 5902
+```
+
+This is the **test server** built from `/home/nickc/code/tigervnc`. Safe to:
+- Stop and restart for testing
+- Modify configuration
+- Test ContentCache features
+- Debug with verbose logging
+
+**Location**: `/home/nickc/code/tigervnc/build/unix/vncserver/Xnjcvnc`
+
+### SSH Tunnels
+
+Local Mac connects to the remote test server via SSH tunnels:
+
+```bash
+# Active tunnels (from local Mac)
+localhost:5902 -> 192.168.86.7:5902  # Test server (Xnjcvnc :2)
+localhost:5903 -> 192.168.86.7:5903  # Production (Xtigervnc :3)
+```
+
+**Connect to test server**:
+```bash
+# From local Mac
+~/scripts/njcvncviewer_start.sh localhost:2
+```
+
+### Safely Identifying Processes
+
+**ALWAYS verify before killing any process**:
+
+```bash
+# List all VNC servers
+ssh nickc@birdsurvey.hopto.org "ps aux | grep -E 'Xnjcvnc|Xtigervnc' | grep -v grep"
+
+# Check specific process working directory
+ssh nickc@birdsurvey.hopto.org "pwdx <PID>"
+
+# Example output:
+# nickc 2039996  Xnjcvnc :2        <- TEST SERVER (safe to modify)
+# nickc  515252  Xtigervnc :3      <- PRODUCTION (do not touch)
+# nickc  900511  Xtigervnc :1      <- PRODUCTION (do not touch)
+```
+
+### Test Server Management
+
+#### Stopping Test Server Safely
+
+```bash
+# Find the test server PID
+ssh nickc@birdsurvey.hopto.org "ps aux | grep Xnjcvnc | grep ':2' | grep -v grep"
+
+# Verify it's display :2 before killing
+ssh nickc@birdsurvey.hopto.org "kill -TERM <PID>"
+```
+
+#### Restarting with Verbose Logging
+
+```bash
+# SSH to server
+ssh nickc@birdsurvey.hopto.org
+
+# Navigate to VNC config directory
+cd /home/nickc/.vnc
+
+# Start with verbose ContentCache logging
+vncserver :2 -Log *:stderr:100
+
+# Or manually with full control
+/home/nickc/code/tigervnc/build/unix/vncserver/Xnjcvnc :2 \
+  -localhost=0 \
+  -rfbport 5902 \
+  -Log ContentCache:stderr:100,EncodeManager:stderr:100,DecodeManager:stderr:100 \
+  -geometry 3840x2100 \
+  -depth 24
+```
+
+#### Log Locations
+
+```bash
+# Server logs
+/home/nickc/.vnc/quartz:2.log          # Test server (Xnjcvnc)
+/home/nickc/.vnc/quartz:1.log          # Production (do not read/modify)
+/home/nickc/.vnc/quartz:3.log          # Production (do not read/modify)
+
+# View test server logs
+ssh nickc@birdsurvey.hopto.org "tail -f /home/nickc/.vnc/quartz:2.log"
+
+# Client logs (on local Mac)
+/tmp/vncviewer_*.log   # Created by njcvncviewer_start.sh
+```
+
+### ContentCache Debugging
+
+When debugging rectangle corruption issues:
+
+1. **Capture synchronized logs**:
+   ```bash
+   # Terminal 1: Server logs
+   ssh nickc@birdsurvey.hopto.org "tail -f /home/nickc/.vnc/quartz:2.log"
+   
+   # Terminal 2: Client logs  
+   ~/scripts/njcvncviewer_start.sh localhost:2 2>&1 | tee /tmp/client_debug.log
+   ```
+
+2. **Check ContentCache message flow**:
+   - Server sends `CachedRect` (reference) or `CachedRectInit` (full data)
+   - Client receives and checks local cache
+   - Client sends `RequestCachedData` on cache miss
+   - Server queues `CachedRectInit` response
+   
+3. **Key log patterns to look for**:
+   ```
+   # Server side
+   "ContentCache protocol hit: rect [x,y-x,y] cacheId=N"
+   "Client requested cached data for ID N"
+   "Targeted refresh for cacheId=N"
+   
+   # Client side  
+   "Received CachedRect: [x,y-x,y] cacheId=N"
+   "Cache miss for ID N, requesting from server"
+   "Storing decoded rect [x,y-x,y] with cache ID N"
+   ```
+
 ## Important Code Patterns and Gotchas
 
 ### Stride is in Pixels, Not Bytes!
