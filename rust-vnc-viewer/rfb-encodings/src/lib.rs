@@ -74,6 +74,9 @@ pub use copyrect::CopyRectDecoder;
 pub mod rre;
 pub use rre::RREDecoder;
 
+pub mod hextile;
+pub use hextile::HextileDecoder;
+
 // Standard VNC encodings
 /// Raw encoding: uncompressed pixel data (simplest encoding).
 pub const ENCODING_RAW: i32 = 0;

@@ -1,17 +1,17 @@
 # Rust VNC Viewer - Progress Tracker
 
-Last Updated: 2025-10-09 13:16 UTC
+Last Updated: 2025-10-09 15:37 UTC
 
 ## Overall Progress
 
 ```
-[██████████████████░░░░░░░░░░░░] 50% Complete
+[████████████████████░░░░░░░░░░] 57% Complete
 ```
 
 **Phase 0**: ✅ Complete (Scaffolding)  
 **Phase 1**: ✅ COMPLETE (PixelBuffer - All tasks done!)  
 **Phase 2**: ✅ COMPLETE (Network & Protocol - All 5 tasks done!)  
-**Phase 3**: 🔄 IN PROGRESS (Encodings - 4 of 7 tasks done!)  
+**Phase 3**: 🔄 IN PROGRESS (Encodings - 5 of 7 tasks done!)  
 **Estimated Completion**: 24 weeks from start
 
 ---
@@ -85,7 +85,7 @@ Last Updated: 2025-10-09 13:16 UTC
 
 ### Phase 3: Encodings (Weeks 6-9) 🔄 IN PROGRESS
 ```
-[████████████████░░░░░░░░░░░░░░░░] 57%
+[████████████████████░░░░░░░░░░░░] 71%
 ```
 
 **Target**: rfb-encodings implementation
@@ -96,14 +96,14 @@ Last Updated: 2025-10-09 13:16 UTC
 || 3.2 | ✅ DONE | 2 hours | ~45 min | `rfb-encodings/src/raw.rs` |
 || 3.3 | ✅ DONE | 2 hours | ~35 min | `rfb-encodings/src/copyrect.rs` |
 || 3.4 | ✅ DONE | 3 hours | ~1 hour | `rfb-encodings/src/rre.rs` |
-| 3.5 | ⬜ TODO | 6 hours | - | `rfb-encodings/src/hextile.rs` |
+|| 3.5 | ✅ DONE | 6 hours | ~2 hours | `rfb-encodings/src/hextile.rs` |
 | 3.6 | ⬜ TODO | 8 hours | - | `rfb-encodings/src/tight.rs` |
 | 3.7 | ⬜ TODO | 5 hours | - | `rfb-encodings/src/zrle.rs` |
 
 **Est. Time**: 4 weeks (26 hours)  
-**Actual Time**: ~2h 50m (4 tasks complete)  
+**Actual Time**: ~4h 50m (5 tasks complete)  
 **LOC Target**: ~3,500  
-**LOC Written**: ~1,723 (49% of target)
+**LOC Written**: ~2,767 (79% of target)
 
 ---
 
@@ -121,22 +121,34 @@ Last Updated: 2025-10-09 13:16 UTC
 
 | Metric | Value |
 |--------|-------|
-| **Total LOC Written** | 6,136 |
+| **Total LOC Written** | 7,180 |
 | **Total LOC Target** | 12,500 |
-| **Completion %** | 49% |
+| **Completion %** | 57% |
 | **Crates Complete** | 2 of 6 |
 | **Crates In Progress** | 1 (rfb-encodings - Phase 3) |
 | **Phases Complete** | 2 of 8 |
 | **Tests Written** | 180 (unit + doc) |
-| **Tests Passing** | 180 ✅ (3 common + 19 pixelbuffer + 118 protocol + 40 encodings) |
-| **Phase 3 LOC** | 1,723 (49% of 3,500 target, 4 of 7 tasks done) |
+| **Tests Passing** | 203 ✅ (3 common + 19 pixelbuffer + 118 protocol + 63 encodings) |
+| **Phase 3 LOC** | 2,767 (79% of 3,500 target, 5 of 7 tasks done) |
 
 ---
 
 ## Recent Activity
 
-### 2025-10-08 16:18 UTC (Local Time)
-### 2025-10-09 13:16 UTC (Local Time)
+### 2025-10-09 15:37 UTC (Local Time)
+- ✅ **Task 3.5 COMPLETE**: Hextile encoding decoder
+- ✅ Implemented most commonly used VNC encoding with 16x16 tiled decoding
+- ✅ Five sub-encoding modes: RAW, background-only, foreground+subrects, colored subrects, mixed
+- ✅ Background/foreground color persistence across tiles within rectangles
+- ✅ Proper edge tile handling (tiles < 16x16 at rectangle boundaries)
+- ✅ Subrect position/size nibble encoding (x,y in high/low nibbles, w-1,h-1 encoding)
+- ✅ 23 comprehensive unit tests covering all scenarios and edge cases
+- ✅ Zero clippy warnings with refactored helper function
+- ✅ ~1,044 LOC (code + docs + tests) - 130% of target!
+- 📈 **Statistics Updated**: 7,180 LOC written, 203 tests passing (57% complete)
+- 🎯 **Next**: Task 3.6 - Tight encoding decoder (JPEG/zlib compression)
+
+### 2025-10-09 13:16 UTC (Earlier)
 - ✅ **Task 3.4 COMPLETE**: RRE encoding decoder
 - ✅ Implemented Rise-and-Run-length encoding (background + sub-rectangles)
 - ✅ Handles arbitrary pixel formats (RGB888, RGB565, etc.)

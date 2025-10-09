@@ -7,9 +7,9 @@
 
 ## 🎯 IMMEDIATE NEXT STEP
 
-**Task 3.4: RRE Encoding Decoder** - `rfb-encodings/src/rre.rs`
+**Task 3.6: Tight Encoding Decoder** - `rfb-encodings/src/tight.rs`
 
-Phases 1 & 2 complete! Tasks 3.1-3.3 done! Now implement RRE (Rise-and-Run-length Encoding).
+Phases 1 & 2 complete! Tasks 3.1-3.5 done! Now implement Tight encoding (JPEG/zlib compression).
 
 ---
 
@@ -116,31 +116,42 @@ pub trait Decoder {
 **Time taken**: ~35 minutes  
 **Commit**: 40512429
 
-### Task 3.4: RRE Encoding (Week 2)
+### ✅ Task 3.4: RRE Encoding (COMPLETE)
 
-**File**: `rfb-encodings/src/rre.rs`
+**File**: `rfb-encodings/src/rre.rs` (✅ 720 lines)
 
-**What to implement**:
+**What was implemented**:
 - Rise-and-Run-length Encoding
 - Background color + N sub-rectangles
 - Good for screens with large solid regions
 - Wire format: num_subrects (u32), bg_pixel, then for each: pixel + x,y,w,h
+- 15 unit tests + 2 doctests
+- Zero clippy warnings
 
-**Target LOC**: ~400  
-**Tests**: 12-15
+**Time taken**: ~1 hour  
+**Commit**: 688a9520
 
-### Task 3.5: Hextile Encoding (Week 3)
+### ✅ Task 3.5: Hextile Encoding (COMPLETE)
 
-**File**: `rfb-encodings/src/hextile.rs`
+**File**: `rfb-encodings/src/hextile.rs` (✅ 1,044 lines)
 
-**What to implement**:
-- Complex tiled encoding (16x16 tiles)
-- Multiple sub-encodings per tile
-- Background, foreground, subrects
-- Most commonly used encoding
+**What was implemented**:
+- Tiled encoding with 16x16 tiles (smaller at edges)
+- Five sub-encoding modes per tile:
+  - RAW: uncompressed pixel data
+  - Background-only fills
+  - Foreground + monochrome subrects
+  - Colored subrects
+  - Mixed combinations
+- Background/foreground persistence across tiles within rectangles
+- Tile type flags: RAW, BACKGROUND_SPECIFIED, FOREGROUND_SPECIFIED, ANY_SUBRECTS, SUBRECTS_COLOURED
+- Subrect position/size nibble encoding
+- Comprehensive error handling with context
+- 23 unit tests covering all scenarios
+- Zero clippy warnings
 
-**Target LOC**: ~800  
-**Tests**: 20-25
+**Time taken**: ~2 hours  
+**Commit**: (pending)
 
 ### Task 3.6: Tight Encoding (Week 4, Days 1-3)
 
