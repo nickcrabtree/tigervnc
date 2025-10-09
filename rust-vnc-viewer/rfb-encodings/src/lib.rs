@@ -68,6 +68,9 @@ pub use rfb_protocol::messages::types::{PixelFormat, Rectangle};
 pub mod raw;
 pub use raw::RawDecoder;
 
+pub mod copyrect;
+pub use copyrect::CopyRectDecoder;
+
 // Standard VNC encodings
 /// Raw encoding: uncompressed pixel data (simplest encoding).
 pub const ENCODING_RAW: i32 = 0;

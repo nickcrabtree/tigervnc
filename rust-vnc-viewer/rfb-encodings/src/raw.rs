@@ -183,7 +183,7 @@ mod tests {
         // stride is in pixels, and buffer is 100 pixels wide
         // So we get 1 row * 100 pixels * 4 bytes = 400 bytes
         assert_eq!(stride, 100); // Buffer width
-        let bytes_per_pixel = 4;
+        let _bytes_per_pixel = 4;
         // First pixel is at offset 0
         assert_eq!(pixels[0], 0x00); // B
         assert_eq!(pixels[1], 0x00); // G
