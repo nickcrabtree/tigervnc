@@ -823,6 +823,8 @@ void VNCSConnectionST::handleRequestCachedData(uint64_t cacheId)
     const core::Rect& r = it->second;
     core::Region rr(r);
     add_changed(rr);
+    // Also queue a CachedRectInit for this region in the next update
+    queueCachedInit(cacheId, r);
     vlog.info("Targeted refresh for cacheId=%llu at [%d,%d-%d,%d]",
               (unsigned long long)cacheId, r.tl.x, r.tl.y, r.br.x, r.br.y);
     // Do not erase immediately; keep mapping in case multiple references arrive
