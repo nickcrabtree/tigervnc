@@ -1340,6 +1340,7 @@ void EncodeManager::insertIntoContentCache(const core::Rect& rect,
   
   uint64_t hash;
   size_t bytesPerPixel = pb->getPF().bpp / 8;
+  size_t dataLen = rect.height() * stride * bytesPerPixel;
   
   // For large rectangles, use sampled hash for speed
   if (rect.area() > 262144) { // 512x512
@@ -1347,12 +1348,13 @@ void EncodeManager::insertIntoContentCache(const core::Rect& rect,
                               stride, bytesPerPixel, 4);
   } else {
     // Compute full hash for smaller rectangles
-    size_t dataLen = rect.height() * stride * bytesPerPixel;
     hash = computeContentHash(buffer, dataLen);
   }
-
+  
   // Insert into cache and get assigned cache ID
-  uint64_t cacheId = contentCache->insertContent(hash, rect, nullptr, 0, false);
+  // Pass dataLen so ARC algorithm can track memory usage properly,
+  // even though we're not storing the actual pixel data (keepData=false)
+  uint64_t cacheId = contentCache->insertContent(hash, rect, nullptr, dataLen, false);
   
   vlog.debug("ContentCache insert: rect [%d,%d-%d,%d], hash=%llx, cacheId=%llu",
              rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
