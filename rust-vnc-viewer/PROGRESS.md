@@ -1,17 +1,17 @@
 # Rust VNC Viewer - Progress Tracker
 
-Last Updated: 2025-10-08 16:18 UTC
+Last Updated: 2025-10-09 13:16 UTC
 
 ## Overall Progress
 
 ```
-[██████████████░░░░░░░░░░░░░░░░] 43% Complete
+[██████████████████░░░░░░░░░░░░] 50% Complete
 ```
 
 **Phase 0**: ✅ Complete (Scaffolding)  
 **Phase 1**: ✅ COMPLETE (PixelBuffer - All tasks done!)  
 **Phase 2**: ✅ COMPLETE (Network & Protocol - All 5 tasks done!)  
-**Phase 3**: 🔄 IN PROGRESS (Encodings - 3 of 7 tasks done!)  
+**Phase 3**: 🔄 IN PROGRESS (Encodings - 4 of 7 tasks done!)  
 **Estimated Completion**: 24 weeks from start
 
 ---
@@ -85,25 +85,25 @@ Last Updated: 2025-10-08 16:18 UTC
 
 ### Phase 3: Encodings (Weeks 6-9) 🔄 IN PROGRESS
 ```
-[█████████████░░░░░░░░░░░░░░░░░░░] 43%
+[████████████████░░░░░░░░░░░░░░░░] 57%
 ```
 
 **Target**: rfb-encodings implementation
 
-| Task | Status | Est. Time | Actual Time | File |
-|------|--------|-----------|-------------|------|
-| 3.1 | ✅ DONE | 2 hours | ~30 min | `rfb-encodings/src/lib.rs` (Decoder trait) |
-| 3.2 | ✅ DONE | 2 hours | ~45 min | `rfb-encodings/src/raw.rs` |
-| 3.3 | ✅ DONE | 2 hours | ~35 min | `rfb-encodings/src/copyrect.rs` |
-| 3.4 | ⬜ TODO | 3 hours | - | `rfb-encodings/src/rre.rs` |
+|| Task | Status | Est. Time | Actual Time | File |
+||------|--------|-----------|-------------|------|
+|| 3.1 | ✅ DONE | 2 hours | ~30 min | `rfb-encodings/src/lib.rs` (Decoder trait) |
+|| 3.2 | ✅ DONE | 2 hours | ~45 min | `rfb-encodings/src/raw.rs` |
+|| 3.3 | ✅ DONE | 2 hours | ~35 min | `rfb-encodings/src/copyrect.rs` |
+|| 3.4 | ✅ DONE | 3 hours | ~1 hour | `rfb-encodings/src/rre.rs` |
 | 3.5 | ⬜ TODO | 6 hours | - | `rfb-encodings/src/hextile.rs` |
 | 3.6 | ⬜ TODO | 8 hours | - | `rfb-encodings/src/tight.rs` |
 | 3.7 | ⬜ TODO | 5 hours | - | `rfb-encodings/src/zrle.rs` |
 
 **Est. Time**: 4 weeks (26 hours)  
-**Actual Time**: ~1h 50m (3 tasks complete)  
+**Actual Time**: ~2h 50m (4 tasks complete)  
 **LOC Target**: ~3,500  
-**LOC Written**: ~1,003 (29% of target)
+**LOC Written**: ~1,723 (49% of target)
 
 ---
 
@@ -121,21 +121,34 @@ Last Updated: 2025-10-08 16:18 UTC
 
 | Metric | Value |
 |--------|-------|
-| **Total LOC Written** | 5,416 |
+| **Total LOC Written** | 6,136 |
 | **Total LOC Target** | 12,500 |
-| **Completion %** | 43% |
+| **Completion %** | 49% |
 | **Crates Complete** | 2 of 6 |
 | **Crates In Progress** | 1 (rfb-encodings - Phase 3) |
 | **Phases Complete** | 2 of 8 |
-| **Tests Written** | 165 (unit + doc) |
-| **Tests Passing** | 165 ✅ (3 common + 19 pixelbuffer + 118 protocol + 25 encodings) |
-| **Phase 3 LOC** | 1,003 (29% of 3,500 target, 3 of 7 tasks done) |
+| **Tests Written** | 180 (unit + doc) |
+| **Tests Passing** | 180 ✅ (3 common + 19 pixelbuffer + 118 protocol + 40 encodings) |
+| **Phase 3 LOC** | 1,723 (49% of 3,500 target, 4 of 7 tasks done) |
 
 ---
 
 ## Recent Activity
 
 ### 2025-10-08 16:18 UTC (Local Time)
+### 2025-10-09 13:16 UTC (Local Time)
+- ✅ **Task 3.4 COMPLETE**: RRE encoding decoder
+- ✅ Implemented Rise-and-Run-length encoding (background + sub-rectangles)
+- ✅ Handles arbitrary pixel formats (RGB888, RGB565, etc.)
+- ✅ Strict validation with checked arithmetic for overflow prevention
+- ✅ Comprehensive fail-fast error messages with context
+- ✅ 15 unit tests covering all cases (empty, background-only, multiple subrects, EOF, overflow, bounds)
+- ✅ 2 doctests for documentation examples
+- ✅ Zero clippy warnings
+- ✅ ~720 LOC (code + docs + tests) - 180% of target!
+- 📈 **Statistics Updated**: 6,136 LOC written, 180 tests passing
+- 🎯 **Next**: Task 3.5 - Hextile encoding decoder
+
 - ✅ **Task 3.3 COMPLETE**: CopyRect encoding decoder
 - ✅ Implemented efficient copy-within-framebuffer operation
 - ✅ Handles overlapping source/destination rectangles correctly
