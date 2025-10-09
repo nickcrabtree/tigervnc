@@ -12,3 +12,5 @@ tokio.workspace = true
 rfb-common.workspace = true
 rfb-pixelbuffer.workspace = true
 rfb-protocol.workspace = true
+flate2.workspace = true
+jpeg-decoder.workspace = true

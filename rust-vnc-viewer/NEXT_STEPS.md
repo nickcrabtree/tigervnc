@@ -7,9 +7,9 @@
 
 ## 🎯 IMMEDIATE NEXT STEP
 
-**Task 3.6: Tight Encoding Decoder** - `rfb-encodings/src/tight.rs`
+**Task 3.7: ZRLE Encoding Decoder** - `rfb-encodings/src/tight.rs`
 
-Phases 1 & 2 complete! Tasks 3.1-3.5 done! Now implement Tight encoding (JPEG/zlib compression).
+Phases 1 & 2 complete! Tasks 3.1-3.6 done! Now implement ZRLE encoding (FINAL encoding task!).
 
 ---
 
