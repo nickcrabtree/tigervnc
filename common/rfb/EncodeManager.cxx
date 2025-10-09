@@ -264,21 +264,23 @@ void EncodeManager::logStats()
   if (contentCache != nullptr) {
     ContentCache::Stats cstats = contentCache->getStats();
     vlog.info("ContentCache statistics:");
-    vlog.info("  Lookups: %u, Hits: %u (%.1f%% hit rate)",
+    vlog.info("  Protocol efficiency (CachedRect usage):");
+    vlog.info("    Lookups: %u, References sent: %u (%.1f%%)",
               cacheStats.cacheLookups,
               cacheStats.cacheHits,
               cacheStats.cacheLookups > 0 ?
                 (100.0 * cacheStats.cacheHits / cacheStats.cacheLookups) : 0.0);
-    vlog.info("  Estimated bytes saved: %s",
+    vlog.info("    Estimated bytes saved: %s",
               core::iecPrefix(cacheStats.bytesSaved, "B").c_str());
-    vlog.info("  Cache entries: %zu, Total size: %s",
+    vlog.info("  ARC cache performance:");
+    vlog.info("    Cache entries: %zu, Total size: %s",
               cstats.totalEntries,
               core::iecPrefix(cstats.totalBytes, "B").c_str());
-    vlog.info("  Cache hits: %llu, misses: %llu, evictions: %llu",
+    vlog.info("    Cache hits: %llu, misses: %llu, evictions: %llu",
               (unsigned long long)cstats.cacheHits,
               (unsigned long long)cstats.cacheMisses,
               (unsigned long long)cstats.evictions);
-    vlog.info("  ARC stats: T1=%zu, T2=%zu, B1=%zu, B2=%zu, target=%zu",
+    vlog.info("    ARC stats: T1=%zu, T2=%zu, B1=%zu, B2=%zu, target=%zu",
               cstats.t1Size, cstats.t2Size, cstats.b1Size,
               cstats.b2Size, cstats.targetT1Size);
     

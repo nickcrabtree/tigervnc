@@ -239,14 +239,15 @@ void DecodeManager::logStats()
   // Log client-side ContentCache ARC statistics
   if (contentCache != nullptr) {
     vlog.info(" ");
-    vlog.info("Client-side cache statistics:");
-    vlog.info("  Lookups: %u, Hits: %u (%.1f%% hit rate)",
+    vlog.info("Client-side ContentCache statistics:");
+    vlog.info("  Protocol operations (CachedRect received):");
+    vlog.info("    Lookups: %u, Hits: %u (%.1f%%)",
               cacheStats.cache_lookups,
               cacheStats.cache_hits,
               cacheStats.cache_lookups > 0 ?
                 (100.0 * cacheStats.cache_hits / cacheStats.cache_lookups) : 0.0);
-    vlog.info("  Misses: %u", cacheStats.cache_misses);
-    vlog.info(" ");
+    vlog.info("    Misses: %u", cacheStats.cache_misses);
+    vlog.info("  ARC cache performance:");
     contentCache->logArcStats();
   }
 }
