@@ -1,16 +1,17 @@
 # Rust VNC Viewer - Progress Tracker
 
-Last Updated: 2025-10-08 14:58 UTC
+Last Updated: 2025-10-08 16:18 UTC
 
 ## Overall Progress
 
 ```
-[█████████████░░░░░░░░░░░░░░░░] 40% Complete
+[██████████████░░░░░░░░░░░░░░░░] 43% Complete
 ```
 
 **Phase 0**: ✅ Complete (Scaffolding)  
 **Phase 1**: ✅ COMPLETE (PixelBuffer - All tasks done!)  
 **Phase 2**: ✅ COMPLETE (Network & Protocol - All 5 tasks done!)  
+**Phase 3**: 🔄 IN PROGRESS (Encodings - 3 of 7 tasks done!)  
 **Estimated Completion**: 24 weeks from start
 
 ---
@@ -82,23 +83,27 @@ Last Updated: 2025-10-08 14:58 UTC
 
 ---
 
-### Phase 3: Encodings (Weeks 6-9) ⏳ UPCOMING
+### Phase 3: Encodings (Weeks 6-9) 🔄 IN PROGRESS
 ```
-[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+[█████████████░░░░░░░░░░░░░░░░░░░] 43%
 ```
 
 **Target**: rfb-encodings implementation
 
-- Raw decoder
-- CopyRect decoder
-- RRE decoder
-- Hextile decoder
-- Tight decoder (JPEG + zlib)
-- ZRLE decoder
-- ContentCache
+| Task | Status | Est. Time | Actual Time | File |
+|------|--------|-----------|-------------|------|
+| 3.1 | ✅ DONE | 2 hours | ~30 min | `rfb-encodings/src/lib.rs` (Decoder trait) |
+| 3.2 | ✅ DONE | 2 hours | ~45 min | `rfb-encodings/src/raw.rs` |
+| 3.3 | ✅ DONE | 2 hours | ~35 min | `rfb-encodings/src/copyrect.rs` |
+| 3.4 | ⬜ TODO | 3 hours | - | `rfb-encodings/src/rre.rs` |
+| 3.5 | ⬜ TODO | 6 hours | - | `rfb-encodings/src/hextile.rs` |
+| 3.6 | ⬜ TODO | 8 hours | - | `rfb-encodings/src/tight.rs` |
+| 3.7 | ⬜ TODO | 5 hours | - | `rfb-encodings/src/zrle.rs` |
 
-**Est. Time**: 4 weeks  
-**LOC Target**: ~3,500
+**Est. Time**: 4 weeks (26 hours)  
+**Actual Time**: ~1h 50m (3 tasks complete)  
+**LOC Target**: ~3,500  
+**LOC Written**: ~1,003 (29% of target)
 
 ---
 
@@ -116,19 +121,31 @@ Last Updated: 2025-10-08 14:58 UTC
 
 | Metric | Value |
 |--------|-------|
-| **Total LOC Written** | 5,013 |
+| **Total LOC Written** | 5,416 |
 | **Total LOC Target** | 12,500 |
-| **Completion %** | 40% |
+| **Completion %** | 43% |
 | **Crates Complete** | 2 of 6 |
-| **Crates In Progress** | 0 (Phase 3 about to start) |
+| **Crates In Progress** | 1 (rfb-encodings - Phase 3) |
 | **Phases Complete** | 2 of 8 |
-| **Tests Written** | 140 (unit + doc) |
-| **Tests Passing** | 140 ✅ (3 common + 19 pixelbuffer + 56 protocol unit + 24 messages + 38 doctests) |
-| **Phase 2 LOC** | 3,502 (exceeded target of 1,700 by 106%) |
+| **Tests Written** | 165 (unit + doc) |
+| **Tests Passing** | 165 ✅ (3 common + 19 pixelbuffer + 118 protocol + 25 encodings) |
+| **Phase 3 LOC** | 1,003 (29% of 3,500 target, 3 of 7 tasks done) |
 
 ---
 
 ## Recent Activity
+
+### 2025-10-08 16:18 UTC (Local Time)
+- ✅ **Task 3.3 COMPLETE**: CopyRect encoding decoder
+- ✅ Implemented efficient copy-within-framebuffer operation
+- ✅ Handles overlapping source/destination rectangles correctly
+- ✅ Only 4 bytes transmitted (src_x, src_y) regardless of rectangle size
+- ✅ 10 comprehensive unit tests (empty, single pixel, non-overlapping, overlapping, error cases)
+- ✅ 2 doctests for documentation examples
+- ✅ Zero clippy warnings
+- ✅ ~403 LOC (code + docs + tests)
+- 📈 **Statistics Updated**: 5,416 LOC written, 165 tests passing
+- 🎯 **Next**: Task 3.4 - RRE encoding decoder
 
 ### 2025-10-08 14:58 UTC (22:58 Local)
 - ✅ **Task 2.5 COMPLETE**: RFB protocol handshake
@@ -140,7 +157,6 @@ Last Updated: 2025-10-08 14:58 UTC
 - ✅ ~378 LOC (code + docs + tests)
 - 🎉 **Phase 2 COMPLETE**: All 5 tasks finished!
 - 📈 **Statistics Updated**: 5,013 LOC written, 140 tests passing
-- 🎯 **Next**: Phase 3 - Encodings implementation
 
 ### 2025-10-08 14:45 Local (13:45 UTC)
 - ✅ **Task 2.4 COMPLETE**: RFB message types

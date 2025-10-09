@@ -102,28 +102,29 @@ Files:
 - ✅ `src/lib.rs` - Module exports
 
 #### `rfb-encodings` - **PHASE 3 IN PROGRESS 🔄**
-**Status**: Foundation + Raw encoding complete (Tasks 3.1-3.2 ✅)  
-**LOC**: ~600 (docs + trait + raw decoder + tests)
+**Status**: Foundation + Raw + CopyRect complete (Tasks 3.1-3.3 ✅)  
+**LOC**: ~1,003 (docs + trait + 2 decoders + tests)
 
 **Completed** (✅):
 - **Decoder trait** - Core async trait for all encoding implementations
 - **Raw encoding** (Task 3.2) - Uncompressed pixel data decoder
+- **CopyRect encoding** (Task 3.3) - Copy rectangle within framebuffer
 - Encoding constants (RAW, COPY_RECT, RRE, HEXTILE, TIGHT, ZRLE, etc.)
 - Re-exports of RfbInStream, PixelFormat, Rectangle, MutablePixelBuffer
-- 9 unit tests + 6 doctests = **15 tests** - all passing ✅
+- 10 unit tests + 8 doctests = **25 tests total** - all passing ✅
 - Zero clippy warnings ✅
 - Comprehensive module and API documentation
 
-**Needs** (Phase 3 Tasks 3.3-3.7):
-- CopyRect encoding (Task 3.3) - NEXT
-- RRE encoding (Task 3.4)
+**Needs** (Phase 3 Tasks 3.4-3.7):
+- RRE encoding (Task 3.4) - NEXT
 - Hextile encoding (Task 3.5)
 - Tight encoding (Task 3.6 - JPEG + zlib)
 - ZRLE encoding (Task 3.7)
 
 Files:
-- ✅ `src/lib.rs` (264 lines) - Decoder trait, constants, re-exports, docs
+- ✅ `src/lib.rs` (268 lines) - Decoder trait, constants, re-exports, docs
 - ✅ `src/raw.rs` (369 lines) - Raw encoding decoder with 9 tests
+- ✅ `src/copyrect.rs` (403 lines) - CopyRect decoder with 10 tests
 - ✅ `Cargo.toml` - Dependencies configured
 
 #### `platform-input` - **STUB**

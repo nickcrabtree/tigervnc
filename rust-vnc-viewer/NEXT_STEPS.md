@@ -1,15 +1,15 @@
 # Next Steps - Rust VNC Viewer Development
 
-**Current Phase**: Phase 3 - Encodings (Tasks 3.1-3.2 COMPLETE ✅)  
-**Last Updated**: 2025-10-08 16:11 Local
+**Current Phase**: Phase 3 - Encodings (Tasks 3.1-3.3 COMPLETE ✅)  
+**Last Updated**: 2025-10-08 16:18 Local
 
 ---
 
 ## 🎯 IMMEDIATE NEXT STEP
 
-**Task 3.3: CopyRect Encoding Decoder** - `rfb-encodings/src/copyrect.rs`
+**Task 3.4: RRE Encoding Decoder** - `rfb-encodings/src/rre.rs`
 
-Phases 1 & 2 complete! Tasks 3.1-3.2 done! Now implement CopyRect encoding.
+Phases 1 & 2 complete! Tasks 3.1-3.3 done! Now implement RRE (Rise-and-Run-length Encoding).
 
 ---
 
@@ -85,42 +85,36 @@ pub trait Decoder {
 
 ### ✅ Task 3.2: Raw Encoding (COMPLETE)
 
-**File**: `rfb-encodings/src/raw.rs`
+**File**: `rfb-encodings/src/raw.rs` (✅ 369 lines)
 
-**What to implement**:
+**What was implemented**:
 - `RawDecoder` struct implementing `Decoder` trait
 - Simplest encoding: uncompressed pixel data
 - Read `width * height * bytes_per_pixel` bytes
 - Copy directly to pixel buffer
 - Handle different pixel formats (RGB888, RGB565, etc.)
+- 9 unit tests covering all scenarios
+- Zero clippy warnings
 
-**Testing**:
-- Decode 10x10 rectangle with RGB888
-- Decode rectangle with RGB565
-- Handle stride correctly
-- Error on EOF
-- Performance: should handle 1920x1080 in < 100ms
+**Time taken**: ~45 minutes  
+**Commit**: 40512429
 
-**Target LOC**: ~300  
-**Tests**: 10-12
+### ✅ Task 3.3: CopyRect Encoding (COMPLETE)
 
-### Task 3.3: CopyRect Encoding (Week 1, Days 4-5)
+**File**: `rfb-encodings/src/copyrect.rs` (✅ 403 lines)
 
-**File**: `rfb-encodings/src/copyrect.rs`
-
-**What to implement**:
-- `CopyRectDecoder` struct
+**What was implemented**:
+- `CopyRectDecoder` struct implementing `Decoder` trait
 - Encoding type 1: copy from (src_x, src_y) to (dst_x, dst_y)
-- Wire format: just src_x (u16), src_y (u16)
-- Use `MutablePixelBuffer::copy_rect()`
+- Wire format: just src_x (u16), src_y (u16) - only 4 bytes!
+- Uses `MutablePixelBuffer::copy_rect()` with proper offset calculation
+- Handles overlapping rectangles correctly
+- 10 comprehensive unit tests (empty, single pixel, non-overlapping, overlapping, error cases)
+- 2 doctests for API examples
+- Zero clippy warnings
 
-**Testing**:
-- Copy non-overlapping rectangles
-- Copy overlapping rectangles (handled by buffer)
-- Error on source out of bounds
-
-**Target LOC**: ~200  
-**Tests**: 8-10
+**Time taken**: ~35 minutes  
+**Commit**: 40512429
 
 ### Task 3.4: RRE Encoding (Week 2)
 
