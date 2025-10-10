@@ -1,6 +1,6 @@
 # Rust VNC Viewer - Progress Tracker
 
-Last Updated: 2025-10-10 07:06 UTC
+Last Updated: 2025-10-10 07:28 UTC
 
 ## Overall Progress
 
@@ -110,7 +110,7 @@ Last Updated: 2025-10-10 07:06 UTC
 
 ### Phase 4: Core Connection & Event Loop ⏳ IN PROGRESS
 ```
-[███░░░░░░░░░░░░░░░░░░░░░░░░░░░] 10%
+[██████░░░░░░░░░░░░░░░░░░░░░░░░] 20%
 ```
 
 **Target**: rfb-client crate implementation
@@ -118,7 +118,7 @@ Last Updated: 2025-10-10 07:06 UTC
 || Task | Status | Est. Time | Actual Time | Description |
 ||------|--------|-----------|-------------|-------------|
 || 4.1 | ✅ DONE | 1 hour | ~45 min | Crate scaffolding & public API |
-|| 4.2 | ⬜ TODO | 2 hours | - | Transport (TCP + TLS) |
+|| 4.2 | ✅ DONE | 2 hours | ~1 hour | Transport (TCP + TLS) |
 || 4.3 | ⬜ TODO | 2 hours | - | Protocol helpers |
 || 4.4 | ⬜ TODO | 3 hours | - | Connection & handshake |
 || 4.5 | ⬜ TODO | 2 hours | - | Framebuffer & decoders |
@@ -137,6 +137,18 @@ Last Updated: 2025-10-10 07:06 UTC
 - Public API defined: ClientBuilder, Client, ClientHandle
 - 11 unit tests passing, 2 doctests passing
 - Wired into workspace, builds successfully
+
+**Task 4.2 Completed** ✅:
+- Implemented complete transport layer with TCP and TLS support
+- TlsConfig with certificate verification and custom roots
+- Transport enum (Plain/Tls) with unified API
+- TransportRead/TransportWrite with AsyncRead/AsyncWrite traits
+- split() method for separating read/write streams
+- Integration with RfbInStream/RfbOutStream from rfb-protocol
+- Comprehensive documentation with examples
+- 3 unit tests + 7 doctests passing
+- Zero clippy warnings
+- ~472 LOC (code + docs + tests)
 
 ### Phase 5+: Remaining Phases (Weeks 12-24) ⏳ UPCOMING
 
@@ -158,13 +170,32 @@ Last Updated: 2025-10-10 07:06 UTC
 || **Crates In Progress** | 1 (rfb-client - scaffolding done) |
 || **Crates Remaining** | 2 (platform-input, rvncviewer binary) |
 || **Phases Complete** | 3 of 8 (Foundation complete, app phases remain) |
-|| **Tests Written** | 244 total (233 from Phases 1-3, 11 new in rfb-client) |
-|| **Tests Passing** | 244 ✅ (all tests passing) |
-|| **Phase 4 LOC So Far** | ~600 (scaffolding + config + errors + messages) |
+|| **Tests Written** | 257 total (233 from Phases 1-3, 24 new in rfb-client) |
+|| **Tests Passing** | 257 ✅ (all tests passing) |
+|| **Phase 4 LOC So Far** | ~1,072 (scaffolding + config + errors + messages + transport) |
 
 ---
 
 ## Recent Activity
+
+### 2025-10-10 07:28 UTC
+- ✅ **Task 4.2 COMPLETE**: Transport layer (TCP + TLS)
+- ✅ Implemented complete transport abstraction:
+  - TlsConfig with certificate verification controls (~472 LOC total)
+  - Transport enum supporting Plain TCP and TLS connections
+  - TransportRead/TransportWrite implementing AsyncRead/AsyncWrite
+  - System certificate loading via rustls-native-certs
+  - Custom certificate support for private CAs
+  - Insecure mode for development (with warnings)
+  - TCP_NODELAY enabled for low-latency VNC protocol
+  - Integration with RfbInStream/RfbOutStream
+- ✅ Comprehensive documentation with 7 doctests
+- ✅ 3 unit tests for TlsConfig builder patterns
+- ✅ Zero clippy warnings
+- ✅ Made transport module public for API access
+- ✅ Added missing error variants (ConnectionFailed, TlsError)
+- 📈 **Statistics Updated**: 11,872 LOC, 257 tests passing
+- 🎯 **Next**: Task 4.3 - Protocol helpers (message reading/writing)
 
 ### 2025-10-10 07:06 UTC
 - 🚀 **Phase 4 STARTED!** Core Connection & Event Loop (rfb-client crate)
@@ -179,7 +210,6 @@ Last Updated: 2025-10-10 07:06 UTC
 - ✅ Zero clippy warnings (2 expected dead_code warnings for stubs)
 - ✅ Fail-fast policy maintained throughout
 - 📈 **Statistics Updated**: 11,400 LOC, 244 tests passing
-- 🎯 **Next**: Task 4.2 - Transport layer (TCP + TLS)
 
 ### 2025-10-09 19:59 UTC
 - ✅ **Phase 3 COMPLETE!** All 7 encoding tasks finished

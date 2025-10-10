@@ -89,13 +89,13 @@
 pub mod config;
 pub mod errors;
 pub mod messages;
+pub mod transport;
 
 // Private implementation modules
 mod connection;
 mod event_loop;
 mod framebuffer;
 mod protocol;
-mod transport;
 
 // Optional CLI support
 #[cfg(feature = "cli")]
@@ -105,6 +105,7 @@ pub mod args;
 pub use config::Config;
 pub use errors::RfbClientError;
 pub use messages::{ClientCommand, ServerEvent};
+pub use transport::TlsConfig;
 
 use std::sync::Arc;
 use tokio::task::JoinHandle;

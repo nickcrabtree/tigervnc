@@ -10,9 +10,13 @@ pub enum RfbClientError {
     #[error("Transport error: {0}")]
     Transport(#[from] io::Error),
 
+    /// Connection failed (TCP connection establishment failed).
+    #[error("Connection failed: {0}")]
+    ConnectionFailed(String),
+
     /// TLS/SSL error.
     #[error("TLS error: {0}")]
-    Tls(String),
+    TlsError(String),
 
     /// RFB handshake failed.
     #[error("Handshake failed: {0}")]
@@ -69,7 +73,11 @@ impl RfbClientError {
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
-            Self::Transport(_) | Self::Timeout(_) | Self::Handshake(_) | Self::Tls(_)
+            Self::Transport(_)
+                | Self::Timeout(_)
+                | Self::Handshake(_)
+                | Self::TlsError(_)
+                | Self::ConnectionFailed(_)
         )
     }
 
