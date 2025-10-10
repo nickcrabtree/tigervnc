@@ -110,7 +110,7 @@ Last Updated: 2025-10-10 07:28 UTC
 
 ### Phase 4: Core Connection & Event Loop ⏳ IN PROGRESS
 ```
-[██████░░░░░░░░░░░░░░░░░░░░░░░░] 20%
+[████████░░░░░░░░░░░░░░░░░░░░░] 35%
 ```
 
 **Target**: rfb-client crate implementation
@@ -119,7 +119,7 @@ Last Updated: 2025-10-10 07:28 UTC
 ||------|--------|-----------|-------------|-------------|
 || 4.1 | ✅ DONE | 1 hour | ~45 min | Crate scaffolding & public API |
 || 4.2 | ✅ DONE | 2 hours | ~1 hour | Transport (TCP + TLS) |
-|| 4.3 | ⬜ TODO | 2 hours | - | Protocol helpers |
+|| 4.3 | ✅ DONE | 2 hours | ~50 min | Protocol helpers |
 || 4.4 | ⬜ TODO | 3 hours | - | Connection & handshake |
 || 4.5 | ⬜ TODO | 2 hours | - | Framebuffer & decoders |
 || 4.6 | ⬜ TODO | 4 hours | - | Event loop & tasks |
@@ -163,7 +163,7 @@ Last Updated: 2025-10-10 07:28 UTC
 
 || Metric | Value |
 ||--------|-------|
-|| **Total LOC Written** | ~11,400 (code + docs + tests) |
+|| **Total LOC Written** | ~11,500 (code + docs + tests) |
 || **Total LOC Target (Phases 1-3)** | ~11,000 |
 || **Core Protocol Completion** | 98% (Phases 1-3 complete, foundation ready) |
 || **Crates Complete** | 4 of 7 (rfb-common, rfb-pixelbuffer, rfb-protocol, rfb-encodings) |
@@ -172,11 +172,20 @@ Last Updated: 2025-10-10 07:28 UTC
 || **Phases Complete** | 3 of 8 (Foundation complete, app phases remain) |
 || **Tests Written** | 257 total (233 from Phases 1-3, 24 new in rfb-client) |
 || **Tests Passing** | 257 ✅ (all tests passing) |
-|| **Phase 4 LOC So Far** | ~1,072 (scaffolding + config + errors + messages + transport) |
+|| **Phase 4 LOC So Far** | ~1,160 (scaffolding + config + errors + messages + transport + protocol) |
 
 ---
 
 ## Recent Activity
+
+### 2025-10-10 07:44 UTC
+- ✅ **Task 4.3 COMPLETE**: Protocol helpers (message reading/writing)
+- ✅ Implemented helpers to read server messages (FramebufferUpdate, SetColorMapEntries, Bell, ServerCutText)
+- ✅ Implemented helpers to write client messages (ClientInit, SetPixelFormat, SetEncodings, UpdateRequest, KeyEvent, PointerEvent, ClientCutText)
+- ✅ Enforced fail-fast error mapping to RfbClientError
+- ✅ Light, thin layer over rfb-protocol types; zero clippy warnings expected
+- 📈 **Statistics Updated**: ~11,500 LOC, Phase 4 at ~35%
+- 🎯 **Next**: Task 4.4 - Connection & handshake
 
 ### 2025-10-10 07:28 UTC
 - ✅ **Task 4.2 COMPLETE**: Transport layer (TCP + TLS)

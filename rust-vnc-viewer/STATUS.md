@@ -1,8 +1,8 @@
 # Rust VNC Viewer - Current Status
 
-**Date**: 2025-10-10 07:28 UTC  
-**Status**: Phase 4 IN PROGRESS ⏳ - rfb-client transport complete!  
-**Last Updated**: Task 4.2 done - TCP and TLS transport layer with full async support.
+**Date**: 2025-10-10 07:44 UTC  
+**Status**: Phase 4 IN PROGRESS ⏳ - protocol helpers complete  
+**Last Updated**: Task 4.3 done - message read/write helpers in rfb-client.
 
 ## What Has Been Created
 
@@ -130,8 +130,8 @@ Files:
 - ✅ `Cargo.toml` - Dependencies (includes flate2, jpeg-decoder)
 
 #### `rfb-client` - **IN PROGRESS ⏳**
-**Status**: Transport layer complete, protocol helpers next  
-**LOC**: ~1,072 (public API + transport + config + errors + messages)
+**Status**: Transport + protocol helpers complete; connection next  
+**LOC**: ~1,160 (public API + transport + config + errors + messages + protocol)
 
 **Completed** (✅):
 - **Public API** - ClientBuilder, Client, ClientHandle
@@ -156,7 +156,6 @@ Files:
 - **Tests** - 14 unit tests + 9 doctests passing (24 total)
 
 **Pending** (⬜):
-- Protocol message helpers
 - Connection & handshake logic
 - Framebuffer state & decoder registry
 - Event loop with read/write tasks
@@ -214,7 +213,7 @@ $ cargo build
 
 ## Statistics
 
-- **Total Lines of Code**: ~11,872 (functional code + documentation + tests)
+- **Total Lines of Code**: ~11,950 (functional code + documentation + tests)
   - rfb-common: ~150 LOC
   - rfb-pixelbuffer: ~1,416 LOC (Phase 1 complete)
   - rfb-protocol: ~3,502 LOC (Phase 2 complete)
