@@ -110,7 +110,7 @@ Last Updated: 2025-10-10 07:28 UTC
 
 ### Phase 4: Core Connection & Event Loop ⏳ IN PROGRESS
 ```
-[████████░░░░░░░░░░░░░░░░░░░░░] 35%
+[██████████░░░░░░░░░░░░░░░░░░] 45%
 ```
 
 **Target**: rfb-client crate implementation
@@ -120,7 +120,7 @@ Last Updated: 2025-10-10 07:28 UTC
 || 4.1 | ✅ DONE | 1 hour | ~45 min | Crate scaffolding & public API |
 || 4.2 | ✅ DONE | 2 hours | ~1 hour | Transport (TCP + TLS) |
 || 4.3 | ✅ DONE | 2 hours | ~50 min | Protocol helpers |
-|| 4.4 | ⬜ TODO | 3 hours | - | Connection & handshake |
+|| 4.4 | ✅ DONE | 3 hours | ~45 min | Connection & handshake |
 || 4.5 | ⬜ TODO | 2 hours | - | Framebuffer & decoders |
 || 4.6 | ⬜ TODO | 4 hours | - | Event loop & tasks |
 || 4.7 | ⬜ TODO | 1 hour | - | CLI args (feature-gated) |
@@ -177,6 +177,13 @@ Last Updated: 2025-10-10 07:28 UTC
 ---
 
 ## Recent Activity
+
+### 2025-10-10 07:57 UTC
+- ✅ **Task 4.4 COMPLETE**: Connection & handshake
+- ✅ Established TCP/TLS transport based on config and performed version + security handshake
+- ✅ Sent ClientInit (shared) and parsed ServerInit (width, height, pixel format, name)
+- ✅ Returned buffered RfbInStream/RfbOutStream ready for normal operation
+- 📈 **Progress**: Phase 4 ~45%
 
 ### 2025-10-10 07:44 UTC
 - ✅ **Task 4.3 COMPLETE**: Protocol helpers (message reading/writing)
