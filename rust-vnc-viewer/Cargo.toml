@@ -4,6 +4,7 @@ members = [
     "rfb-protocol",
     "rfb-pixelbuffer",
     "rfb-encodings",
+    "rfb-client",
 ]
 resolver = "2"
 
@@ -64,4 +65,5 @@ rfb-common = { path = "rfb-common" }
 rfb-pixelbuffer = { path = "rfb-pixelbuffer" }
 rfb-protocol = { path = "rfb-protocol" }
 rfb-encodings = { path = "rfb-encodings" }
+rfb-client = { path = "rfb-client" }
 platform-input = { path = "platform-input" }

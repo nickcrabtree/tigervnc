@@ -1,8 +1,8 @@
 # Rust VNC Viewer - Current Status
 
-**Date**: 2025-10-09 19:59 UTC  
-**Status**: Phase 3 COMPLETE ✅ - All foundation work done!  
-**Last Updated**: All 7 encodings complete. Ready for Phase 4 (connection/event loop).
+**Date**: 2025-10-10 07:06 UTC  
+**Status**: Phase 4 IN PROGRESS ⏳ - rfb-client scaffolding complete!  
+**Last Updated**: Task 4.1 done - crate structure, public API, config, errors, messages.
 
 ## What Has Been Created
 
@@ -129,6 +129,46 @@ Files:
 - ✅ `src/zrle.rs` (1,445 lines) - ZRLE decoder with 12 tests (zlib + 7 tile modes) ✨
 - ✅ `Cargo.toml` - Dependencies (includes flate2, jpeg-decoder)
 
+#### `rfb-client` - **IN PROGRESS ⏳**
+**Status**: Scaffolding complete, implementation in progress  
+**LOC**: ~600 (initial modules)
+
+**Completed** (✅):
+- **Public API** - ClientBuilder, Client, ClientHandle
+- **Error types** - RfbClientError with thiserror, categorization (retryable/fatal)
+- **Configuration** - Full Config with serde, validation, builder
+  - ConnectionConfig, DisplayConfig, SecurityConfig, TlsConfig
+  - InputConfig, ReconnectConfig
+  - TOML serialization support
+- **Messages** - ServerEvent and ClientCommand enums
+  - Connected, FramebufferUpdated, DesktopResized, Bell, ServerCutText, ConnectionClosed, Error
+  - RequestUpdate, Pointer, Key, ClientCutText, Close
+- **Module stubs** - transport, protocol, connection, framebuffer, event_loop
+- **Tests** - 11 unit tests + 2 doctests passing
+
+**Pending** (⬜):
+- Transport layer (TCP + TLS with rustls)
+- Protocol message helpers
+- Connection & handshake logic
+- Framebuffer state & decoder registry
+- Event loop with read/write tasks
+- Reconnection logic
+- CLI args (feature-gated)
+- Integration tests
+- Examples
+
+Files:
+- ✅ `src/lib.rs` (273 lines) - Public API
+- ✅ `src/errors.rs` (107 lines) - Error types
+- ✅ `src/config.rs` (313 lines) - Configuration
+- ✅ `src/messages.rs` (137 lines) - Event/Command types
+- ⬜ `src/transport.rs` (stub) - TCP/TLS transport
+- ⬜ `src/protocol.rs` (stub) - Protocol helpers
+- ⬜ `src/connection.rs` (stub) - Handshake
+- ⬜ `src/framebuffer.rs` (stub) - FB state
+- ⬜ `src/event_loop.rs` (stub) - Event loop
+- ✅ `Cargo.toml` - Dependencies configured
+
 #### `platform-input` - **STUB**
 **Status**: Needs implementation  
 **LOC**: ~10 (stub)
@@ -166,21 +206,23 @@ $ cargo build
 
 ## Statistics
 
-- **Total Lines of Code**: ~10,800 (functional code + documentation + tests)
+- **Total Lines of Code**: ~11,400 (functional code + documentation + tests)
   - rfb-common: ~150 LOC
   - rfb-pixelbuffer: ~1,416 LOC (Phase 1 complete)
   - rfb-protocol: ~3,502 LOC (Phase 2 complete)
   - rfb-encodings: ~5,437 LOC (Phase 3 complete - all 7 encodings!) ✅
+  - rfb-client: ~600 LOC (Phase 4 in progress - scaffolding complete) ⏳
   - Other crates: ~40 LOC (stubs)
-- **Crates**: 6 (4 complete, 2 stubs remaining)
-- **Dependencies Configured**: 22+ (workspace-level, includes flate2 & jpeg-decoder)
-- **Core Protocol Completion**: 98% (Phases 1-3 complete, foundation ready)
+- **Crates**: 7 (4 complete, 1 in progress, 2 stubs remaining)
+- **Dependencies Configured**: 30+ (workspace-level, includes tokio, rustls, flume, etc.)
+- **Core Protocol Completion**: 98% (Phases 1-3 complete, Phase 4 10%)
 - **Build Status**: ✅ All crates compile
-- **Test Status**: ✅ 233 tests passing
+- **Test Status**: ✅ 244 tests passing
   - rfb-common: 3 tests
   - rfb-pixelbuffer: 19 tests
   - rfb-protocol: 118 tests (56 unit + 24 messages + 38 doctests)
   - rfb-encodings: 93 tests (77 unit + 16 doctests) ✅
+  - rfb-client: 11 unit tests + 2 doctests ⏳
   - stubs: 0 tests
 
 ## Next Immediate Steps

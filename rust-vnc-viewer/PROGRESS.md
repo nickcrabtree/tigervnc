@@ -1,6 +1,6 @@
 # Rust VNC Viewer - Progress Tracker
 
-Last Updated: 2025-10-09 17:10 UTC
+Last Updated: 2025-10-10 07:06 UTC
 
 ## Overall Progress
 
@@ -12,7 +12,8 @@ Last Updated: 2025-10-09 17:10 UTC
 **Phase 1**: ✅ COMPLETE (PixelBuffer - All tasks done!)  
 **Phase 2**: ✅ COMPLETE (Network & Protocol - All 5 tasks done!)  
 **Phase 3**: ✅ COMPLETE (Encodings - All 7 tasks done!) 🎉  
-**Phase 4-8**: 📋 Planned (See NEXT_STEPS.md for implementation plan)
+**Phase 4**: ⏳ IN PROGRESS (Core Connection & Event Loop - Scaffolding complete!)  
+**Phase 5-8**: 📋 Planned (See NEXT_STEPS.md for implementation plan)
 
 ---
 
@@ -107,13 +108,42 @@ Last Updated: 2025-10-09 17:10 UTC
 
 ---
 
-### Phase 4: Remaining Phases (Weeks 10-24) ⏳ UPCOMING
+### Phase 4: Core Connection & Event Loop ⏳ IN PROGRESS
+```
+[███░░░░░░░░░░░░░░░░░░░░░░░░░░░] 10%
+```
 
-- **Phase 4**: Pixel Buffer improvements (~800 LOC)
-- **Phase 5**: Input handling (~1,200 LOC)
-- **Phase 6**: GUI integration (~3,000 LOC)
-- **Phase 7**: Polish & clipboard (~300 LOC)
-- **Phase 8**: Testing (~2,000 LOC)
+**Target**: rfb-client crate implementation
+
+|| Task | Status | Est. Time | Actual Time | Description |
+||------|--------|-----------|-------------|-------------|
+|| 4.1 | ✅ DONE | 1 hour | ~45 min | Crate scaffolding & public API |
+|| 4.2 | ⬜ TODO | 2 hours | - | Transport (TCP + TLS) |
+|| 4.3 | ⬜ TODO | 2 hours | - | Protocol helpers |
+|| 4.4 | ⬜ TODO | 3 hours | - | Connection & handshake |
+|| 4.5 | ⬜ TODO | 2 hours | - | Framebuffer & decoders |
+|| 4.6 | ⬜ TODO | 4 hours | - | Event loop & tasks |
+|| 4.7 | ⬜ TODO | 1 hour | - | CLI args (feature-gated) |
+|| 4.8 | ⬜ TODO | 2 hours | - | Tests & examples |
+
+**Total Estimated**: 17 hours  
+**LOC Target**: 1,200-1,800  
+**Started**: 2025-10-10 07:06 UTC
+
+**Task 4.1 Completed** ✅:
+- Created rfb-client crate with comprehensive module structure
+- Implemented errors, config, and messages modules with full functionality
+- Created stubs for transport, protocol, connection, framebuffer, event_loop
+- Public API defined: ClientBuilder, Client, ClientHandle
+- 11 unit tests passing, 2 doctests passing
+- Wired into workspace, builds successfully
+
+### Phase 5+: Remaining Phases (Weeks 12-24) ⏳ UPCOMING
+
+- **Phase 5**: Display & Rendering (~900-1,400 LOC)
+- **Phase 6**: Input handling (~600-900 LOC)
+- **Phase 7**: GUI integration (~700-1,100 LOC)
+- **Phase 8**: Advanced features (~1,200-2,000 LOC)
 
 ---
 
@@ -121,19 +151,35 @@ Last Updated: 2025-10-09 17:10 UTC
 
 || Metric | Value |
 ||--------|-------|
-|| **Total LOC Written** | ~10,800 (code + docs + tests) |
-|| **Total LOC Target (Core)** | ~11,000 (Phases 1-3) |
-|| **Core Protocol Completion** | 98% (Phases 1-3 complete) |
-|| **Crates Complete** | 4 of 6 (rfb-common, rfb-pixelbuffer, rfb-protocol, rfb-encodings) |
+|| **Total LOC Written** | ~11,400 (code + docs + tests) |
+|| **Total LOC Target (Phases 1-3)** | ~11,000 |
+|| **Core Protocol Completion** | 98% (Phases 1-3 complete, foundation ready) |
+|| **Crates Complete** | 4 of 7 (rfb-common, rfb-pixelbuffer, rfb-protocol, rfb-encodings) |
+|| **Crates In Progress** | 1 (rfb-client - scaffolding done) |
 || **Crates Remaining** | 2 (platform-input, rvncviewer binary) |
-|| **Phases Complete** | 3 of 8 (Foundation complete, GUI phases remain) |
-|| **Tests Written** | 233 total |
-|| **Tests Passing** | 233 ✅ (all tests passing) |
-|| **Phase 3 Final LOC** | 5,437 (155% of target - comprehensive!) |
+|| **Phases Complete** | 3 of 8 (Foundation complete, app phases remain) |
+|| **Tests Written** | 244 total (233 from Phases 1-3, 11 new in rfb-client) |
+|| **Tests Passing** | 244 ✅ (all tests passing) |
+|| **Phase 4 LOC So Far** | ~600 (scaffolding + config + errors + messages) |
 
 ---
 
 ## Recent Activity
+
+### 2025-10-10 07:06 UTC
+- 🚀 **Phase 4 STARTED!** Core Connection & Event Loop (rfb-client crate)
+- ✅ **Task 4.1 COMPLETE**: Crate scaffolding and public API
+- ✅ Created rfb-client crate with comprehensive structure:
+  - errors.rs: RfbClientError with thiserror, retryable/fatal categorization (~107 LOC)
+  - config.rs: Full Config with serde, validation, builder pattern (~313 LOC)
+  - messages.rs: ServerEvent and ClientCommand enums (~137 LOC)
+  - lib.rs: ClientBuilder, Client, ClientHandle public API (~273 LOC)
+- ✅ Added to workspace members and dependencies
+- ✅ 11 unit tests + 2 doctests passing
+- ✅ Zero clippy warnings (2 expected dead_code warnings for stubs)
+- ✅ Fail-fast policy maintained throughout
+- 📈 **Statistics Updated**: 11,400 LOC, 244 tests passing
+- 🎯 **Next**: Task 4.2 - Transport layer (TCP + TLS)
 
 ### 2025-10-09 19:59 UTC
 - ✅ **Phase 3 COMPLETE!** All 7 encoding tasks finished
