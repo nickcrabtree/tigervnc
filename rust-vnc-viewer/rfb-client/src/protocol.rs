@@ -74,9 +74,7 @@ pub async fn write_client_init<W: AsyncWrite + Unpin>(
     shared: bool,
 ) -> Result<(), RfbClientError> {
     let msg = msg::ClientInit { shared };
-    msg
-        .write_to(outstream)
-        .map_err(|e| RfbClientError::Protocol(format!("failed to write ClientInit: {}", e)))?;
+    msg.write_to(outstream);
     outstream
         .flush()
         .await
