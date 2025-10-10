@@ -110,7 +110,7 @@ Last Updated: 2025-10-10 07:28 UTC
 
 ### Phase 4: Core Connection & Event Loop ⏳ IN PROGRESS
 ```
-[██████████░░░░░░░░░░░░░░░░░░] 45%
+[████████████░░░░░░░░░░░░░░░] 60%
 ```
 
 **Target**: rfb-client crate implementation
@@ -121,7 +121,7 @@ Last Updated: 2025-10-10 07:28 UTC
 || 4.2 | ✅ DONE | 2 hours | ~1 hour | Transport (TCP + TLS) |
 || 4.3 | ✅ DONE | 2 hours | ~50 min | Protocol helpers |
 || 4.4 | ✅ DONE | 3 hours | ~45 min | Connection & handshake |
-|| 4.5 | ⬜ TODO | 2 hours | - | Framebuffer & decoders |
+|| 4.5 | ✅ DONE | 2 hours | ~50 min | Framebuffer & decoders |
 || 4.6 | ⬜ TODO | 4 hours | - | Event loop & tasks |
 || 4.7 | ⬜ TODO | 1 hour | - | CLI args (feature-gated) |
 || 4.8 | ⬜ TODO | 2 hours | - | Tests & examples |
@@ -177,6 +177,14 @@ Last Updated: 2025-10-10 07:28 UTC
 ---
 
 ## Recent Activity
+
+### 2025-10-10 08:01 UTC
+- ✅ **Task 4.5 COMPLETE**: Framebuffer state and decoder registry
+- ✅ Implemented ManagedPixelBuffer-backed framebuffer with RGB888 output
+- ✅ Added decoder registry covering Raw, CopyRect, RRE, Hextile, Tight, ZRLE
+- ✅ Applied pseudo-encodings: DesktopSize and LastRect handling
+- ✅ Provided apply_update() returning damage regions
+- 📈 **Progress**: Phase 4 ~60%
 
 ### 2025-10-10 07:57 UTC
 - ✅ **Task 4.4 COMPLETE**: Connection & handshake

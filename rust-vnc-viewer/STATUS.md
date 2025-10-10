@@ -1,8 +1,8 @@
 # Rust VNC Viewer - Current Status
 
 **Date**: 2025-10-10 07:57 UTC  
-**Status**: Phase 4 IN PROGRESS ⏳ - connection & handshake complete  
-**Last Updated**: Task 4.4 done - establish transport, negotiate, ClientInit/ServerInit.
+**Status**: Phase 4 IN PROGRESS ⏳ - framebuffer/decoders complete  
+**Last Updated**: Task 4.5 done - framebuffer state and decoder registry.
 
 ## What Has Been Created
 
@@ -130,8 +130,8 @@ Files:
 - ✅ `Cargo.toml` - Dependencies (includes flate2, jpeg-decoder)
 
 #### `rfb-client` - **IN PROGRESS ⏳**
-**Status**: Transport + protocol helpers + connection complete; framebuffer/event loop next  
-**LOC**: ~1,240 (public API + transport + config + errors + messages + protocol + connection)
+**Status**: Transport + protocol helpers + connection + framebuffer complete; event loop next  
+**LOC**: ~1,360 (public API + transport + config + errors + messages + protocol + connection + framebuffer)
 
 **Completed** (✅):
 - **Public API** - ClientBuilder, Client, ClientHandle
