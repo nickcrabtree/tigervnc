@@ -80,6 +80,9 @@ pub use hextile::HextileDecoder;
 pub mod tight;
 pub use tight::TightDecoder;
 
+pub mod zrle;
+pub use zrle::ZRLEDecoder;
+
 // Standard VNC encodings
 /// Raw encoding: uncompressed pixel data (simplest encoding).
 pub const ENCODING_RAW: i32 = 0;
