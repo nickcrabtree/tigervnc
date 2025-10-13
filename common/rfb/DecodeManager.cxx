@@ -448,7 +448,7 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
              r.tl.x, r.tl.y, r.br.x, r.br.y);
   
   // Blit cached pixels to framebuffer at target position
-  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stride);
+  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
 }
 
 void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
@@ -464,10 +464,11 @@ void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
              (unsigned long long)cacheId);
   
   // Get pixel data from framebuffer
-  int stride;
-  const uint8_t* pixels = pb->getBuffer(r, &stride);
+  // CRITICAL: stride from getBuffer() is in pixels, not bytes
+  int stridePixels;
+  const uint8_t* pixels = pb->getBuffer(r, &stridePixels);
   
   // Store in content cache with cache ID
   contentCache->storeDecodedPixels(cacheId, pixels, pb->getPF(),
-                                  r.width(), r.height(), stride);
+                                  r.width(), r.height(), stridePixels);
 }

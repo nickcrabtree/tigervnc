@@ -60,7 +60,7 @@ uint64_t rfb::computeContentHash(const uint8_t* data, size_t len)
 
 uint64_t rfb::computeSampledHash(const uint8_t* data,
                                   size_t width, size_t height,
-                                  size_t stride, size_t bytesPerPixel,
+                                  size_t stridePixels, size_t bytesPerPixel,
                                   size_t sampleRate)
 {
   if (data == nullptr || width == 0 || height == 0)
@@ -73,7 +73,7 @@ uint64_t rfb::computeSampledHash(const uint8_t* data,
   
   // Sample every Nth pixel
   for (size_t y = 0; y < height; y += sampleRate) {
-    const uint8_t* row = data + (y * stride * bytesPerPixel);
+    const uint8_t* row = data + (y * stridePixels * bytesPerPixel);
     for (size_t x = 0; x < width; x += sampleRate) {
       const uint8_t* pixel = row + (x * bytesPerPixel);
       for (size_t b = 0; b < bytesPerPixel; b++) {
@@ -590,7 +590,7 @@ void ContentCache::insertWithId(uint64_t cacheId,
 void ContentCache::storeDecodedPixels(uint64_t cacheId,
                                      const uint8_t* pixels,
                                      const PixelFormat& pf,
-                                     int width, int height, int stride)
+                                     int width, int height, int stridePixels)
 {
   if (pixels == nullptr || width <= 0 || height <= 0) {
     return;
@@ -601,11 +601,13 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
   cached.format = pf;
   cached.width = width;
   cached.height = height;
-  cached.stride = stride;
+  cached.stridePixels = stridePixels;
   cached.lastUsedTime = getCurrentTime();
   
   // Copy pixel data
-  size_t dataSize = height * stride * (pf.bpp / 8);
+  // CRITICAL: stridePixels is in pixels, not bytes - multiply by bytesPerPixel
+  size_t bytesPerPixel = pf.bpp / 8;
+  size_t dataSize = height * stridePixels * bytesPerPixel;
   cached.pixels.resize(dataSize);
   memcpy(cached.pixels.data(), pixels, dataSize);
   

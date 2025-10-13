@@ -128,14 +128,14 @@ namespace rfb {
       PixelFormat format;
       int width;
       int height;
-      int stride;
+      int stridePixels;  // Stride in pixels, NOT bytes
       uint32_t lastUsedTime;
       
-      CachedPixels() : cacheId(0), width(0), height(0), stride(0), lastUsedTime(0) {}
+      CachedPixels() : cacheId(0), width(0), height(0), stridePixels(0), lastUsedTime(0) {}
     };
     
     void storeDecodedPixels(uint64_t cacheId, const uint8_t* pixels,
-                           const PixelFormat& pf, int width, int height, int stride);
+                           const PixelFormat& pf, int width, int height, int stridePixels);
     const CachedPixels* getDecodedPixels(uint64_t cacheId);
     
   private:
@@ -213,7 +213,7 @@ namespace rfb {
   // Hashes only every Nth pixel for speed
   uint64_t computeSampledHash(const uint8_t* data, 
                               size_t width, size_t height,
-                              size_t stride, size_t bytesPerPixel,
+                              size_t stridePixels, size_t bytesPerPixel,
                               size_t sampleRate = 4);
 
 }
