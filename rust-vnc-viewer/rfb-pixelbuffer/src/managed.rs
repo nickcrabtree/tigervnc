@@ -171,6 +171,21 @@ impl ManagedPixelBuffer {
         &self.data
     }
 
+    /// Returns the buffer width in pixels.
+    pub fn width(&self) -> usize {
+        self.width as usize
+    }
+
+    /// Returns the buffer height in pixels.
+    pub fn height(&self) -> usize {
+        self.height as usize
+    }
+
+    /// Returns a reference to the pixel format.
+    pub fn format(&self) -> &PixelFormat {
+        &self.format
+    }
+
     /// Validates that a rectangle is within buffer bounds.
     ///
     /// # Returns

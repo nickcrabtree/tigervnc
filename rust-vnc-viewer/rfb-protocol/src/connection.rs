@@ -368,6 +368,14 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> RfbConnection<R, W> {
         &mut self.outstream
     }
 
+    /// Get mutable references to both streams simultaneously.
+    ///
+    /// This is useful when you need to pass both streams to a function
+    /// that requires separate mutable references.
+    pub fn streams(&mut self) -> (&mut RfbInStream<R>, &mut RfbOutStream<W>) {
+        (&mut self.instream, &mut self.outstream)
+    }
+
     /// Close the connection.
     ///
     /// Transitions to the `Closing` state. The actual socket close

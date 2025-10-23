@@ -7,4 +7,5 @@ license.workspace = true
 
 [dependencies]
 rfb-common = { workspace = true }
+rfb-protocol = { workspace = true }
 anyhow = { workspace = true }

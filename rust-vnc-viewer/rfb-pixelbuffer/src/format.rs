@@ -64,7 +64,7 @@
 ///
 /// Use [`PixelFormat::rgb888()`] for the most common format: 32-bit RGBA with
 /// 8 bits per channel, little-endian byte order.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub struct PixelFormat {
     /// Bits used per pixel (bpp), e.g., 32 for RGB888 in 32-bit storage.
     pub bits_per_pixel: u8,
@@ -292,6 +292,24 @@ impl PixelFormat {
         }
 
         result
+    }
+}
+
+/// Convert from protocol PixelFormat to pixelbuffer PixelFormat.
+impl From<rfb_protocol::messages::types::PixelFormat> for PixelFormat {
+    fn from(pf: rfb_protocol::messages::types::PixelFormat) -> Self {
+        Self {
+            bits_per_pixel: pf.bits_per_pixel,
+            depth: pf.depth,
+            big_endian: pf.big_endian != 0,
+            true_color: pf.true_color != 0,
+            red_max: pf.red_max,
+            green_max: pf.green_max,
+            blue_max: pf.blue_max,
+            red_shift: pf.red_shift,
+            green_shift: pf.green_shift,
+            blue_shift: pf.blue_shift,
+        }
     }
 }
 

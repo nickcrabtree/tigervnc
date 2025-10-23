@@ -4,6 +4,7 @@ members = [
     "rfb-protocol",
     "rfb-pixelbuffer",
     "rfb-encodings",
+    "njcvncviewer-rs",
 ]
 resolver = "2"
 

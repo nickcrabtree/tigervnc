@@ -28,57 +28,63 @@ cargo run --release
 
 ## Status
 
-🚧 **Under Development** - This is a work in progress.
+✅ **Working Viewer** - Basic functional VNC client implemented!
 
-**Current Phase**: Phase 3 - Encodings (15% complete)  
-**Last Updated**: 2025-10-08 16:11 Local  
-**Overall Progress**: ~30% (3,800 / 12,500 LOC)
+**Current Status**: Functional viewer with ContentCache integration planned  
+**Last Updated**: 2025-10-23  
+**Overall Progress**: ~55% (7,000+ / 12,500 LOC)
 
 ### Completed ✅
 - [x] **Phase 0**: Workspace structure with 6 crates
-- [x] **Phase 0**: Core types (Point, Rect, Cursor, Config)
-- [x] **Phase 0**: Build system verified
-- [x] **Phase 0**: Documentation structure
-- [x] **Phase 1**: rfb-pixelbuffer crate (1,416 LOC, 19 tests passing)
-- [x] **Phase 1**: PixelFormat, PixelBuffer traits, ManagedPixelBuffer
-- [x] **Phase 2**: Socket abstractions (TCP, Unix domain) - Task 2.1 ✅
-- [x] **Phase 2**: RFB I/O streams (buffered reading/writing) - Task 2.2 ✅
-- [x] **Phase 2**: Connection state machine - Task 2.3 ✅
-- [x] **Phase 2**: rfb-protocol crate (~1,655 LOC, 32 tests passing)
+- [x] **Phase 1**: rfb-pixelbuffer crate (complete, 19 tests)
+- [x] **Phase 2**: rfb-protocol crate (complete, 118 tests)
+- [x] **Phase 3**: Basic encodings (Raw, CopyRect)
+- [x] **Viewer**: njcvncviewer-rs application
+  - [x] RFB handshake and connection management
+  - [x] egui-based GUI with framebuffer rendering
+  - [x] Mouse and keyboard input forwarding
+  - [x] Zoom and scroll functionality
+  - [x] Connection state display
 
 ### In Progress 🔄
-- [x] **Phase 3**: rfb-encodings crate with Decoder trait - Task 3.1 ✅
-- [x] **Phase 3**: Raw encoding decoder - Task 3.2 ✅
-- [ ] **NEXT**: CopyRect encoding decoder - Task 3.3
+- [ ] **ContentCache protocol integration** (Weeks 1-4)
+  - [ ] Protocol message types
+  - [ ] Client-side cache with LRU eviction
+  - [ ] CachedRect/CachedRectInit decoders
+  - [ ] Integration and testing
 
 ### Planned 📋
-- [ ] All standard VNC encodings (Tight, ZRLE, etc.)
-- [ ] ContentCache implementation
-- [ ] GUI framework integration (egui)
+- [ ] Advanced encodings (Tight, ZRLE, Hextile, RRE)
+- [ ] ARC cache eviction algorithm
 - [ ] Touch gesture support
 - [ ] Clipboard integration
+- [ ] Connection profiles
 
 ## Documentation
 
-- **[NEXT_STEPS.md](NEXT_STEPS.md)** - 👈 **START HERE** - Detailed next tasks with code examples
-- **[STATUS.md](STATUS.md)** - Current progress and statistics
-- **[GETTING_STARTED.md](GETTING_STARTED.md)** - Development guide and workflow
-- **[../RUST_VIEWER.md](../RUST_VIEWER.md)** - Complete implementation plan (~12,500 LOC)
+- **[RUST_VIEWER_STATUS.md](RUST_VIEWER_STATUS.md)** - 👈 **START HERE** - Complete status and ContentCache implementation plan
+- **[STATUS.md](STATUS.md)** - Detailed progress tracking
+- **[PROGRESS.md](PROGRESS.md)** - Phase-by-phase completion metrics
+- **[../CONTENTCACHE_DESIGN_IMPLEMENTATION.md](../CONTENTCACHE_DESIGN_IMPLEMENTATION.md)** - C++ ContentCache reference
 
 ## Quick Start
 
 ```bash
-# Clone and enter directory (already done)
+# Build the viewer
 cd rust-vnc-viewer
+cargo build --package njcvncviewer-rs
 
-# Build workspace
-export TMPDIR=/tmp && cargo build
+# Run the viewer (connect to display :2)
+cargo run --package njcvncviewer-rs -- localhost:2
 
-# Run tests (when available)
+# Run with verbose logging
+cargo run --package njcvncviewer-rs -- -vv localhost:2
+
+# Run tests
 cargo test
 
-# See what to do next
-cat NEXT_STEPS.md
+# See implementation plan
+cat RUST_VIEWER_STATUS.md
 ```
 
 ## License

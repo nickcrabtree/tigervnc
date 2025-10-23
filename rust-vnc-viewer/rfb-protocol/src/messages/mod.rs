@@ -52,3 +52,83 @@ pub use client::{
     ClientCutText, ClientInit, FramebufferUpdateRequest, KeyEvent, PointerEvent, SetEncodings,
     SetPixelFormat,
 };
+
+use crate::io::{RfbInStream, RfbOutStream};
+use tokio::io::{AsyncRead, AsyncWrite};
+
+/// All client-to-server RFB message types.
+#[derive(Debug, Clone)]
+pub enum ClientMessage {
+    SetPixelFormat(SetPixelFormat),
+    SetEncodings(SetEncodings),
+    FramebufferUpdateRequest(FramebufferUpdateRequest),
+    KeyEvent(KeyEvent),
+    PointerEvent(PointerEvent),
+    ClientCutText(ClientCutText),
+}
+
+impl ClientMessage {
+    /// Write this message to an output stream.
+    pub fn write_to<W: AsyncWrite + Unpin>(
+        &self,
+        stream: &mut RfbOutStream<W>,
+    ) -> std::io::Result<()> {
+        match self {
+            ClientMessage::SetPixelFormat(msg) => msg.write_to(stream),
+            ClientMessage::SetEncodings(msg) => {
+                msg.write_to(stream);
+                Ok(())
+            }
+            ClientMessage::FramebufferUpdateRequest(msg) => {
+                msg.write_to(stream);
+                Ok(())
+            }
+            ClientMessage::KeyEvent(msg) => {
+                msg.write_to(stream);
+                Ok(())
+            }
+            ClientMessage::PointerEvent(msg) => {
+                msg.write_to(stream);
+                Ok(())
+            }
+            ClientMessage::ClientCutText(msg) => {
+                msg.write_to(stream);
+                Ok(())
+            }
+        }
+    }
+}
+
+/// All server-to-client RFB message types.
+#[derive(Debug, Clone)]
+pub enum ServerMessage {
+    FramebufferUpdate(FramebufferUpdate),
+    SetColorMapEntries(SetColorMapEntries),
+    Bell,
+    ServerCutText(ServerCutText),
+}
+
+impl ServerMessage {
+    /// Read a server message from an input stream.
+    pub async fn read_from<R: AsyncRead + Unpin>(
+        stream: &mut RfbInStream<R>,
+    ) -> std::io::Result<Self> {
+        let msg_type = stream.read_u8().await?;
+        match msg_type {
+            0 => Ok(ServerMessage::FramebufferUpdate(
+                FramebufferUpdate::read_from(stream).await?,
+            )),
+            1 => Ok(ServerMessage::SetColorMapEntries(
+                SetColorMapEntries::read_from(stream).await?,
+            )),
+            2 => Ok(ServerMessage::Bell),
+            3 => Ok(ServerMessage::ServerCutText(
+                ServerCutText::read_from(stream).await?,
+            )),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("unknown server message type: {}", msg_type),
+            )),
+        }
+    }
+}

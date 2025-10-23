@@ -25,6 +25,7 @@
 //! ```
 
 pub mod connection;
+pub mod handshake;
 pub mod io;
 pub mod messages;
 pub mod socket;
@@ -32,6 +33,7 @@ pub mod socket;
 // Re-export commonly used types
 pub use connection::{ConnectionState, RfbConnection};
 pub use io::{RfbInStream, RfbOutStream};
+pub use messages::{ClientMessage, ServerMessage};
 pub use socket::{TcpSocket, VncSocket};
 
 #[cfg(unix)]
