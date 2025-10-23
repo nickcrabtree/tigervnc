@@ -1044,8 +1044,17 @@ void CConnection::updateEncodings()
 
 void CConnection::handleCachedRect(const core::Rect& r, uint64_t cacheId)
 {
+  //DebugContentCache_2025-10-14
+  rfb::ContentCacheDebugLogger::getInstance().log("CConnection::handleCachedRect ENTER: rect=[" + std::to_string(r.tl.x) + "," + std::to_string(r.tl.y) + "-" + std::to_string(r.br.x) + "," + std::to_string(r.br.y) + "], cacheId=" + std::to_string(cacheId) + ", framebuffer=" + std::to_string(reinterpret_cast<uintptr_t>(framebuffer)));
+  
   // Forward to decoder manager to handle cache lookup and blit
+  //DebugContentCache_2025-10-14
+  rfb::ContentCacheDebugLogger::getInstance().log("CConnection::handleCachedRect: about to call decoder.handleCachedRect");
+  
   decoder.handleCachedRect(r, cacheId, framebuffer);
+  
+  //DebugContentCache_2025-10-14
+  rfb::ContentCacheDebugLogger::getInstance().log("CConnection::handleCachedRect EXIT: decoder.handleCachedRect completed successfully");
 }
 
 void CConnection::storeCachedRect(const core::Rect& r, uint64_t cacheId)

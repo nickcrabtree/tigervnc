@@ -29,12 +29,14 @@ pub mod handshake;
 pub mod io;
 pub mod messages;
 pub mod socket;
+pub mod handshake;
 
 // Re-export commonly used types
 pub use connection::{ConnectionState, RfbConnection};
 pub use io::{RfbInStream, RfbOutStream};
 pub use messages::{ClientMessage, ServerMessage};
 pub use socket::{TcpSocket, VncSocket};
+pub use handshake::NegotiatedVersion;
 
 #[cfg(unix)]
 pub use socket::UnixSocket;

@@ -1,528 +1,568 @@
-# Next Steps - Rust VNC Viewer Development
+# Implementation Plan: Feature-Complete rvncviewer (Phases 4–8)
 
-**Current Phase**: Phase 3 - Encodings (Tasks 3.1-3.3 COMPLETE ✅)  
-**Last Updated**: 2025-10-08 16:18 Local
-
----
-
-## 🎯 IMMEDIATE NEXT STEP
-
-**Task 3.4: RRE Encoding Decoder** - `rfb-encodings/src/rre.rs`
-
-Phases 1 & 2 complete! Tasks 3.1-3.3 done! Now implement RRE (Rise-and-Run-length Encoding).
+**Last Updated**: 2025-10-09 19:59 UTC  
+**Status**: Phase 3 COMPLETE ✅ - Foundation ready  
+**Goal**: Build a production-ready VNC viewer binary with full feature parity to C++ vncviewer
 
 ---
 
-## ✅ PHASE 1 COMPLETE!
+## 🎉 Phases 1-3: COMPLETE!
 
-**Phase 1: Core Types** - rfb-pixelbuffer crate  
-**Status**: All tasks complete (1.1-1.6) ✅  
-**LOC Written**: 1,416 lines (code + docs + tests)  
-**Tests**: 37 passing (19 unit + 18 doctests)  
-**Time Taken**: ~3 hours (estimated 4 hours)  
-**Commits**: c54a69e7, f3e58499, d0da5f2c
+### ✅ Phase 1: Core Types (rfb-pixelbuffer)
+- **LOC**: 1,416 (code + docs + tests)
+- **Tests**: 19 passing
+- **Features**: PixelFormat, PixelBuffer traits, ManagedPixelBuffer
 
----
+### ✅ Phase 2: Network & Protocol (rfb-protocol)
+- **LOC**: 3,502 (206% of target)
+- **Tests**: 118 passing
+- **Features**: Socket abstractions, RFB I/O streams, state machine, message types, handshake
 
-## ✅ PHASE 2 COMPLETE!
+### ✅ Phase 3: Encodings (rfb-encodings)
+- **LOC**: 5,437 (155% of target)
+- **Tests**: 93 passing
+- **Features**: All 7 encodings (Raw, CopyRect, RRE, Hextile, Tight, ZRLE)
 
-**Phase 2: Network & Protocol Layer** - rfb-protocol crate  
-**Status**: All tasks complete (2.1-2.5) ✅  
-**LOC Written**: 3,502 lines (206% of 1,700 target - comprehensive!)  
-**Tests**: 118 passing (56 unit + 24 messages + 38 doctests)  
-**Time Taken**: ~2.5 hours (estimated 2 weeks - way ahead!)  
-**Commits**: 231e4370, f407506c, 2a4758f0, b1b6e088, 15658cbb
-
-### Phase 2 Highlights
-- [x] **Task 2.1**: Socket abstractions (TCP, Unix domain)
-- [x] **Task 2.2**: RFB I/O streams (buffered read/write)  
-- [x] **Task 2.3**: Connection state machine
-- [x] **Task 2.4**: RFB message types (all server/client messages)
-- [x] **Task 2.5**: Protocol handshake (RFB 3.3/3.8, security, init)
+**Foundation Stats**:
+- Total LOC: ~10,800
+- Total Tests: 233 passing ✅
+- Core Protocol: 98% complete
+- Ready for application development!
 
 ---
 
-## 🚀 PHASE 3: Encodings (rfb-encodings crate) - IN PROGRESS!
+## 🚀 Phase 4: Core Connection & Event Loop (rfb-client crate)
 
-**Target**: Implement VNC encoding/decoding for framebuffer updates  
-**Estimated Time**: 4 weeks  
-**Estimated LOC**: ~3,500  
-**Crate**: `rfb-encodings`
+**Goal**: Create a high-level async VNC client library that handles connection lifecycle, framebuffer updates, and error recovery.
 
-### Overview
+### Scope
 
-Phase 3 implements the various encoding schemes VNC uses to efficiently transmit screen updates from server to client. Each encoding provides different tradeoffs between compression ratio, CPU usage, and visual quality.
+- **Async connection management** using existing rfb-protocol building blocks
+- **Tokio runtime-driven event loop** with proper task coordination
+- **Framebuffer update processing pipeline**: decode → compose → dispatch
+- **Robust error handling** with fail-fast policy (no defensive fallbacks)
+- **Reconnection logic** with configurable retry policies
+- **Command-line argument support** via clap (feature-gated for reusability)
+- **Configuration file support** (TOML format) for persistent preferences
+- **Security types**: None, VNC password, TLS (via rustls)
 
-### ✅ Task 3.1: Crate Setup & Decoder Trait (COMPLETE)
+### Estimated Effort
+- **LOC**: 1,200–1,800
+- **Time**: 6–10 dev days
+- **Dependencies**: tokio, bytes, futures, rustls, clap (optional), serde, toml, tracing
 
-**Files**: `rfb-encodings/src/lib.rs`, `rfb-encodings/Cargo.toml`
-
-**What to implement**:
-```rust
-pub trait Decoder {
-    /// Returns the encoding type this decoder handles
-    fn encoding_type(&self) -> i32;
-    
-    /// Decode a rectangle from the input stream into the pixel buffer
-    async fn decode<R: AsyncRead + Unpin>(
-        &self,
-        stream: &mut RfbInStream<R>,
-        rect: &Rectangle,
-        pixel_format: &PixelFormat,
-        buffer: &mut dyn MutablePixelBuffer,
-    ) -> Result<()>;
-}
-```
-
-**Dependencies**:
-- rfb-common (workspace)
-- rfb-pixelbuffer (workspace)
-- rfb-protocol (workspace - for Rectangle, PixelFormat)
-- anyhow, tokio
-
-**Target LOC**: ~100  
-**Tests**: 5 (trait compile tests, basic structure)
-
-### ✅ Task 3.2: Raw Encoding (COMPLETE)
-
-**File**: `rfb-encodings/src/raw.rs` (✅ 369 lines)
-
-**What was implemented**:
-- `RawDecoder` struct implementing `Decoder` trait
-- Simplest encoding: uncompressed pixel data
-- Read `width * height * bytes_per_pixel` bytes
-- Copy directly to pixel buffer
-- Handle different pixel formats (RGB888, RGB565, etc.)
-- 9 unit tests covering all scenarios
-- Zero clippy warnings
-
-**Time taken**: ~45 minutes  
-**Commit**: 40512429
-
-### ✅ Task 3.3: CopyRect Encoding (COMPLETE)
-
-**File**: `rfb-encodings/src/copyrect.rs` (✅ 403 lines)
-
-**What was implemented**:
-- `CopyRectDecoder` struct implementing `Decoder` trait
-- Encoding type 1: copy from (src_x, src_y) to (dst_x, dst_y)
-- Wire format: just src_x (u16), src_y (u16) - only 4 bytes!
-- Uses `MutablePixelBuffer::copy_rect()` with proper offset calculation
-- Handles overlapping rectangles correctly
-- 10 comprehensive unit tests (empty, single pixel, non-overlapping, overlapping, error cases)
-- 2 doctests for API examples
-- Zero clippy warnings
-
-**Time taken**: ~35 minutes  
-**Commit**: 40512429
-
-### Task 3.4: RRE Encoding (Week 2)
-
-**File**: `rfb-encodings/src/rre.rs`
-
-**What to implement**:
-- Rise-and-Run-length Encoding
-- Background color + N sub-rectangles
-- Good for screens with large solid regions
-- Wire format: num_subrects (u32), bg_pixel, then for each: pixel + x,y,w,h
-
-**Target LOC**: ~400  
-**Tests**: 12-15
-
-### Task 3.5: Hextile Encoding (Week 3)
-
-**File**: `rfb-encodings/src/hextile.rs`
-
-**What to implement**:
-- Complex tiled encoding (16x16 tiles)
-- Multiple sub-encodings per tile
-- Background, foreground, subrects
-- Most commonly used encoding
-
-**Target LOC**: ~800  
-**Tests**: 20-25
-
-### Task 3.6: Tight Encoding (Week 4, Days 1-3)
-
-**Files**: `rfb-encodings/src/tight.rs`, `rfb-encodings/src/tight/jpeg.rs`, `rfb-encodings/src/tight/zlib.rs`
-
-**What to implement**:
-- JPEG compression for photo-like regions
-- Zlib compression for other regions
-- Palette mode for indexed color
-- Requires `jpeg-decoder` and `flate2` crates
-
-**Dependencies to add**:
-- jpeg-decoder = "0.3"
-- flate2 = "1.0"
-
-**Target LOC**: ~1,200  
-**Tests**: 15-20
-
-### Task 3.7: ZRLE Encoding (Week 4, Days 4-5)
-
-**File**: `rfb-encodings/src/zrle.rs`
-
-**What to implement**:
-- Zlib + RLE combination
-- 64x64 tiles
-- Multiple sub-encodings
-
-**Target LOC**: ~600  
-**Tests**: 15-18
-
-### Module Structure
+### Files to Create
 
 ```
-rfb-encodings/
-├── Cargo.toml
-└── src/
-    ├── lib.rs          (Decoder trait + re-exports)
-    ├── raw.rs          (Raw encoding - Task 3.2)
-    ├── copyrect.rs     (CopyRect - Task 3.3)
-    ├── rre.rs          (RRE - Task 3.4)
-    ├── hextile.rs      (Hextile - Task 3.5)
-    ├── tight/
-    │   ├── mod.rs
-    │   ├── jpeg.rs
-    │   └── zlib.rs
-    └── zrle.rs         (ZRLE - Task 3.7)
+rfb-client/
+├── Cargo.toml                      # Dependencies and features
+├── src/
+│   ├── lib.rs                      # Public API, feature flags, re-exports
+│   ├── connection.rs               # RfbConnection: handshake, security negotiation
+│   ├── transport.rs                # TCP/TLS transport via tokio + rustls
+│   ├── protocol.rs                 # Message reading/writing (uses rfb-protocol)
+│   ├── event_loop.rs               # Tokio task coordination, channel plumbing
+│   ├── framebuffer.rs              # Framebuffer state management
+│   ├── messages.rs                 # Typed event enums (FramebufferUpdate, Bell, etc.)
+│   ├── errors.rs                   # Error types using thiserror
+│   ├── config.rs                   # Configuration model with serde
+│   └── args.rs                     # CLI argument parsing (feature = "cli")
+├── tests/
+│   └── integration.rs              # Handshake tests with local VNC server
+└── examples/
+    └── headless_connect.rs         # Debug tool: connect and log events
 ```
 
-### Testing Strategy
+### Key Dependencies
 
-1. **Unit tests**: Each encoding in its own module
-2. **Integration tests**: `tests/encoding_roundtrip.rs`
-3. **Test vectors**: Create known good encoded data
-4. **Property tests**: Random data should decode without errors
-5. **Performance benchmarks**: `benches/decode_speed.rs`
-
-### Success Criteria
-
-- [ ] All 7 encodings implemented
-- [ ] 100+ tests passing
-- [ ] Zero clippy warnings
-- [ ] Comprehensive documentation
-- [ ] Can decode real VNC server output
-- [ ] Performance acceptable (1080p @ 30fps)
-
----
-
-## ✅ COMPLETED: Task 1.1 - PixelFormat module
-
-**File**: `rfb-pixelbuffer/src/format.rs` (✅ 448 lines)
-
-**What was implemented**:
-- PixelFormat struct with full RFB format support
-- `bytes_per_pixel()`, `rgb888()` constructor
-- `to_rgb888()`, `from_rgb888()` conversion methods
-- Endianness-aware encoding/decoding
-- Support for arbitrary bit depths (RGB888, RGB565, etc.)
-- 75 lines of comprehensive documentation
-- 15 tests (9 unit + 6 doctests) - all passing ✅
-- Zero clippy warnings ✅
-
-**Time taken**: ~45 minutes (as estimated!)  
-**Commit**: `c54a69e7`
-
----
-
-## ✅ COMPLETED: Task 1.2 - PixelBuffer Traits
-
-**File**: `rfb-pixelbuffer/src/buffer.rs` (✅ 401 lines)
-
-**What was implemented**:
-- **PixelBuffer** trait for read-only buffer access
-  - `dimensions()` - Get buffer size
-  - `pixel_format()` - Get pixel format reference
-  - `get_buffer()` - Get read-only slice with stride
-- **MutablePixelBuffer** trait extending PixelBuffer
-  - `get_buffer_rw()` - Get mutable slice with stride
-  - `commit_buffer()` - Finalize changes
-  - `fill_rect()` - Fill rectangle with solid color
-  - `copy_rect()` - Copy within buffer (handles overlaps)
-  - `image_rect()` - Copy external image data
-- 96 lines of comprehensive module-level documentation
-- Critical "stride is in pixels" warnings throughout
-- 18 doctests with realistic usage examples
-- All tests passing ✅
-
-**Time taken**: ~50 minutes (estimated 1 hour)  
-**Commit**: `f3e58499`
-
----
-
-## ✅ COMPLETED: Task 1.3 - ManagedPixelBuffer
-
-**File**: `rfb-pixelbuffer/src/managed.rs` (✅ 542 lines)
-
-**What was implemented**:
-- Complete `ManagedPixelBuffer` struct with owned data
-- `new()` and `resize()` methods
-- Full `PixelBuffer` trait implementation
-- Full `MutablePixelBuffer` trait implementation
-- Overlap detection for `copy_rect()`
-- 10 comprehensive unit tests
-- 4 doctests with real-world examples
-
-**Time taken**: ~1h 20m (estimated 1.5 hours)  
-**Commit**: `d0da5f2c`
-
----
-
-### Task 1.3: Implement ManagedPixelBuffer (COMPLETED)
-
-
-**File**: `rfb-pixelbuffer/src/managed.rs`
-
-**What to implement**:
-```rust
-pub trait PixelBuffer {
-    fn dimensions(&self) -> (u32, u32);
-    fn pixel_format(&self) -> &PixelFormat;
-    fn get_buffer(&self, rect: Rect, stride: &mut usize) -> Option<&[u8]>;
-}
-
-pub trait MutablePixelBuffer: PixelBuffer {
-    fn get_buffer_mut(&mut self, rect: Rect, stride: &mut usize) -> Option<&mut [u8]>;
-    fn commit_buffer(&mut self, rect: Rect);
-    fn fill_rect(&mut self, rect: Rect, pixel: &[u8]) -> Result<()>;
-    fn copy_rect(&mut self, src: Rect, dst: Rect) -> Result<()>;
-    fn image_rect(&mut self, rect: Rect, data: &[u8], stride: usize) -> Result<()>;
-}
-```
-
-**Reference**: See RUST_VIEWER.md lines 1260-1287  
-**Estimated time**: 1 hour  
-**LOC**: ~100
-
----
-
-### Task 1.3: Implement ManagedPixelBuffer
-
-**File**: `rfb-pixelbuffer/src/managed.rs`
-
-**What to implement**:
-```rust
-pub struct ManagedPixelBuffer {
-    width: u32,
-    height: u32,
-    format: PixelFormat,
-    data: Vec<u8>,
-    stride: usize, // In pixels!
-}
-
-impl ManagedPixelBuffer {
-    pub fn new(width: u32, height: u32, format: PixelFormat) -> Self { ... }
-    pub fn resize(&mut self, width: u32, height: u32) { ... }
-    // Implement PixelBuffer trait
-    // Implement MutablePixelBuffer trait
-}
-```
-
-**Reference**: See RUST_VIEWER.md lines 1289-1430  
-**Estimated time**: 1.5 hours  
-**LOC**: ~250
-
----
-
-### Task 1.4: Update rfb-pixelbuffer/src/lib.rs
-
-**File**: `rfb-pixelbuffer/src/lib.rs`
-
-Replace stub with:
-```rust
-pub mod format;
-pub mod buffer;
-pub mod managed;
-
-pub use format::PixelFormat;
-pub use buffer::{PixelBuffer, MutablePixelBuffer};
-pub use managed::ManagedPixelBuffer;
-```
-
-**Estimated time**: 5 minutes
-
----
-
-### Task 1.5: Add dependencies to rfb-pixelbuffer
-
-**File**: `rfb-pixelbuffer/Cargo.toml`
-
-Add:
 ```toml
 [dependencies]
 rfb-common = { workspace = true }
-anyhow = { workspace = true }
+rfb-pixelbuffer = { workspace = true }
+rfb-protocol = { workspace = true }
+rfb-encodings = { workspace = true }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
+bytes = "1"
+futures = "0.3"
+tokio-util = { version = "0.7", features = ["codec"] }
+thiserror = "1"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+rustls = "0.23"
+tokio-rustls = "0.25"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+flume = "0.11"  # or crossbeam-channel
+
+# Optional CLI support
+clap = { version = "4", features = ["derive", "env"], optional = true }
+
+[features]
+cli = ["dep:clap"]
 ```
 
-**Estimated time**: 2 minutes
+### Test Requirements
+
+1. **Unit tests**:
+   - Protocol message serialization/deserialization round-trips
+   - Configuration validation (required fields, range checks)
+   - Reconnection policy edge cases
+   
+2. **Integration tests**:
+   - Connect to local TigerVNC or x11vnc server
+   - Complete handshake sequence
+   - Receive and decode framebuffer updates
+   - Error path validation (wrong password, server disconnect)
+   
+3. **Concurrency tests**:
+   - Event loop task cancellation
+   - Channel backpressure handling
+   - Graceful shutdown
+
+### Success Criteria
+
+- ✅ Connects to VNC servers (TigerVNC, RealVNC, x11vnc)
+- ✅ Completes RFB handshake with version negotiation
+- ✅ Security negotiation works (None, VNCAuth, TLS)
+- ✅ Sets encoding preferences and requests updates
+- ✅ Receives and dispatches framebuffer updates via channels
+- ✅ Clear, contextual error messages (no silent failures)
+- ✅ Reconnection logic works within fail-fast policy
+- ✅ Configuration loads from file and CLI args
+- ✅ No UI dependency (headless operation supported)
+- ✅ Zero clippy warnings
 
 ---
 
-### Task 1.6: Write unit tests
+## 🎨 Phase 5: Display & Rendering (rfb-display crate)
 
-**File**: `rfb-pixelbuffer/src/buffer.rs` (at bottom)
+**Goal**: Efficient framebuffer-to-screen rendering using modern graphics APIs with proper scaling, viewport, and cursor support.
 
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_pixel_format_conversion() {
-        let pf = PixelFormat::rgb888();
-        let rgb = [255, 128, 64, 255];
-        let encoded = pf.from_rgb888(rgb);
-        let decoded = pf.to_rgb888(&encoded);
-        assert_eq!(rgb, decoded);
-    }
-    
-    #[test]
-    fn test_managed_buffer_creation() {
-        let fb = ManagedPixelBuffer::new(100, 100, PixelFormat::rgb888());
-        assert_eq!(fb.dimensions(), (100, 100));
-    }
-    
-    #[test]
-    fn test_fill_rect() {
-        let mut fb = ManagedPixelBuffer::new(100, 100, PixelFormat::rgb888());
-        let rect = Rect::new(10, 10, 20, 20);
-        let red = [255, 0, 0, 255];
-        fb.fill_rect(rect, &red).unwrap();
-        // Verify the pixels
-    }
-}
+### Scope
+
+- **Efficient rendering** on macOS using winit + pixels (wgpu/Metal backend)
+- **Multiple scaling modes**: fit window, fill window, 1:1 native
+- **Viewport management**: pan, zoom, scroll
+- **Cursor rendering**: local cursor, remote cursor, dot cursor modes
+- **Multi-monitor support** via winit monitor APIs
+- **High DPI awareness** for Retina displays
+- **Performance target**: 60 fps for 1080p framebuffers
+
+### Estimated Effort
+- **LOC**: 900–1,400
+- **Time**: 5–8 dev days
+- **Dependencies**: winit, pixels, raw-window-handle, image
+
+### Files to Create
+
+```
+rfb-display/
+├── Cargo.toml
+├── src/
+│   ├── lib.rs                      # Renderer facade, public API
+│   ├── renderer.rs                 # pixels/wgpu context, present pipeline
+│   ├── viewport.rs                 # Pan/zoom/scroll logic, scale strategies
+│   ├── cursor.rs                   # Soft cursor composition (local, remote, dot)
+│   ├── scaling.rs                  # Nearest vs linear filtering, DPI handling
+│   └── monitor.rs                  # Multi-monitor layout, window placement
+└── tests/
+    └── render_smoke.rs             # Offscreen smoke tests (best-effort)
 ```
 
-**Estimated time**: 30 minutes
+### Key Dependencies
 
----
+```toml
+[dependencies]
+rfb-common = { workspace = true }
+rfb-pixelbuffer = { workspace = true }
 
-## Verification Steps
-
-After completing Task 1.1-1.6:
-
-```bash
-# 1. Build
-export TMPDIR=/tmp && cargo build -p rfb-pixelbuffer
-
-# 2. Run tests
-cargo test -p rfb-pixelbuffer
-
-# 3. Check for warnings
-cargo clippy -p rfb-pixelbuffer
-
-# 4. Format code
-cargo fmt -p rfb-pixelbuffer
-
-# 5. Generate docs
-cargo doc -p rfb-pixelbuffer --open
+winit = "0.29"
+pixels = "0.13"
+raw-window-handle = "0.6"
+image = "0.25"  # For cursor bitmaps, screenshots
 ```
 
-**Expected result**: All tests pass, no warnings, documentation looks good.
+### Test Requirements
+
+1. **Unit tests**:
+   - Scaling math (fit/fill/1:1 calculations)
+   - Viewport coordinate transforms
+   - Cursor composition logic
+   
+2. **Integration tests** (where feasible):
+   - Render synthetic framebuffers offscreen
+   - Verify dimension/scale changes
+   - Screenshot-based regression (best-effort on macOS)
+
+### Success Criteria
+
+- ✅ Smooth 60 fps rendering for 1080p frames on macOS Metal
+- ✅ Correct scaling: fit, fill, and 1:1 native modes
+- ✅ Viewport pan/zoom/scroll works smoothly
+- ✅ Window resizing updates without artifacts
+- ✅ Cursor modes switch correctly (local/remote/dot)
+- ✅ Multi-monitor window placement via configuration
+- ✅ High DPI/Retina display support
+- ✅ Zero clippy warnings
 
 ---
 
-## Phase 1 Completion Checklist
+## ⌨️ Phase 6: Input Handling (platform-input crate)
 
-- [x] Task 1.1: PixelFormat implemented ✅ (c54a69e7)
-- [x] Task 1.2: Buffer traits defined ✅ (f3e58499)
-- [ ] Task 1.3: ManagedPixelBuffer implemented 🔄 NEXT
-- [x] Task 1.4: lib.rs updated ✅
-- [x] Task 1.5: Dependencies added ✅
-- [ ] Task 1.6: Tests written and passing
-- [x] Verification: cargo test passes (15/15) ✅
-- [x] Verification: cargo clippy shows no warnings ✅
-- [x] Documentation: PixelFormat has comprehensive doc comments ✅
+**Goal**: Capture keyboard, mouse, and touch input from the local system and translate to RFB protocol events.
 
----
+### Scope
 
-## After Phase 1: What's Next?
+- **Keyboard capture** and translation to RFB keysyms
+- **Mouse/pointer events**: buttons, scroll wheel, motion
+- **Touch/gesture support** for macOS trackpads (via winit)
+- **Keyboard shortcuts**: toggle fullscreen, view-only, scaling, etc.
+- **Middle-button emulation**: left+right chord or configurable
+- **Pointer event throttling** to prevent network flooding
 
-### Phase 2: Network & Protocol (Tasks 2.1-2.6)
+### Estimated Effort
+- **LOC**: 600–900
+- **Time**: 4–6 dev days
+- **Dependencies**: winit, bitflags, phf (optional for static keymaps)
 
-1. **Task 2.1**: Implement TCP socket wrapper (`rfb-protocol/src/network/socket.rs`)
-2. **Task 2.2**: Implement RFB Reader/Writer (`rfb-protocol/src/io/`)
-3. **Task 2.3**: Define message types (`rfb-protocol/src/messages.rs`)
-4. **Task 2.4**: Implement connection state machine (`rfb-protocol/src/connection.rs`)
-5. **Task 2.5**: RFB version negotiation
-6. **Task 2.6**: ClientInit/ServerInit exchange
+### Files to Create
 
-**Reference**: RUST_VIEWER.md lines 466-1184  
-**Estimated time**: 1-2 weeks  
-**LOC**: ~1,700
-
----
-
-## Getting Help
-
-- **Stuck on pixel format conversions?** See the C++ code in:
-  - `../common/rfb/PixelFormat.cxx`
-  - `../common/rfb/PixelBuffer.cxx`
-
-- **Need examples?** Look at the existing TigerVNC tests:
-  - `../tests/unit/pixelformat.cxx`
-
-- **Rust questions?** 
-  - https://doc.rust-lang.org/book/
-  - https://doc.rust-lang.org/std/
-
----
-
-## Time Estimates
-
-| Task | Estimated Time | Cumulative |
-|------|----------------|------------|
-| 1.1 - PixelFormat | 45 min | 45 min |
-| 1.2 - Buffer traits | 1 hour | 1h 45m |
-| 1.3 - ManagedPixelBuffer | 1.5 hours | 3h 15m |
-| 1.4 - lib.rs update | 5 min | 3h 20m |
-| 1.5 - Dependencies | 2 min | 3h 22m |
-| 1.6 - Tests | 30 min | 3h 52m |
-| **Total Phase 1** | **~4 hours** | - |
-
----
-
-## Progress Tracking
-
-Update STATUS.md after completing each task:
-
-```bash
-# After Task 1.1
-echo "- [x] Task 1.1: PixelFormat implemented" >> progress.txt
-
-# After all tasks
-echo "Phase 1 complete!" >> STATUS.md
-cargo test --workspace
+```
+platform-input/
+├── Cargo.toml
+├── src/
+│   ├── lib.rs                      # InputDispatcher public API
+│   ├── keyboard.rs                 # Keycode → keysym mapping, modifiers, IME
+│   ├── mouse.rs                    # Button/scroll events, throttling
+│   ├── gestures.rs                 # Pinch-to-zoom, two-finger scroll
+│   └── shortcuts.rs                # Configurable shortcut mappings
+└── tests/
+    └── keymap.rs                   # Key mapping table tests
 ```
 
----
+### Key Dependencies
 
-## Quick Commands Reference
+```toml
+[dependencies]
+rfb-common = { workspace = true }
 
-```bash
-# Work on specific crate
-cd rfb-pixelbuffer
-
-# Build just this crate
-cargo build
-
-# Run tests for this crate
-cargo test
-
-# Watch for changes (requires cargo-watch)
-cargo watch -x test
-
-# Check without building
-cargo check
-
-# Back to workspace root
-cd ..
+winit = "0.29"
+bitflags = "2"
+phf = { version = "0.11", optional = true }  # For static key maps
 ```
 
+### Test Requirements
+
+1. **Unit tests**:
+   - Key mapping tables (ASCII, function keys, modifiers → RFB keysyms)
+   - Modifier state tracking (Shift, Ctrl, Alt, Cmd)
+   - Pointer throttling rate limiting
+   
+2. **Integration tests**:
+   - Simulate winit input events
+   - Assert correct RFB event sequences produced
+   - Verify rate-limit enforcement
+
+### Success Criteria
+
+- ✅ Correct key translations for common keyboard layouts
+- ✅ Accurate modifier key handling (Shift, Ctrl, Alt, Cmd)
+- ✅ Smooth pointer and scroll behavior with throttling
+- ✅ Gesture-based zoom/scroll integrated with viewport
+- ✅ Middle-button emulation works and is configurable
+- ✅ Keyboard shortcuts trigger correct actions
+- ✅ Zero clippy warnings
+
 ---
 
-**Start with Task 1.1!** 🚀
+## 🖥️ Phase 7: GUI Integration (rvncviewer binary)
 
-Create `rfb-pixelbuffer/src/format.rs` and implement the `PixelFormat` struct.
+**Goal**: Build the complete VNC viewer application with dialogs, menus, and desktop window using modern Rust GUI framework.
+
+### Scope
+
+- **GUI framework**: egui via eframe (replaces FLTK from C++ version)
+- **Connection dialog**: host, port, password, encoding options
+- **Options/preferences dialog**: scaling, input, reconnection settings
+- **Menu bar**: File, View, Options, Help
+- **Desktop window**: container hosting the rfb-display surface
+- **Status bar**: connection stats (FPS, latency, bandwidth, updates/sec)
+- **Fullscreen mode support**
+- **About dialog** with version info
+- **Persistent preferences** saved to user config directory
+
+### Estimated Effort
+- **LOC**: 700–1,100
+- **Time**: 5–9 dev days
+- **Dependencies**: eframe, egui, winit, clap, directories, serde, toml
+
+### Files to Create
+
+```
+rvncviewer/
+├── Cargo.toml
+├── src/
+│   ├── main.rs                     # Bootstrap: logging, args, runtime
+│   ├── app.rs                      # egui App trait implementation
+│   └── ui/
+│       ├── mod.rs
+│       ├── connection_dialog.rs    # Server connection UI
+│       ├── options_dialog.rs       # Preferences UI
+│       ├── about.rs                # About dialog
+│       ├── menubar.rs              # Application menu
+│       ├── statusbar.rs            # Connection statistics
+│       └── desktop.rs              # Desktop window container
+└── assets/
+    └── icon.png                    # Application icon
+```
+
+### Key Dependencies
+
+```toml
+[dependencies]
+rfb-client = { path = "../rfb-client", features = ["cli"] }
+rfb-display = { path = "../rfb-display" }
+platform-input = { path = "../platform-input" }
+
+eframe = "0.27"
+egui = "0.27"
+winit = "0.29"
+clap = { version = "4", features = ["derive", "env"] }
+directories = "5"  # For config directory paths
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+```
+
+### Test Requirements
+
+1. **UI smoke tests** (where feasible):
+   - Verify dialogs open and close
+   - Snapshot basic layouts
+   
+2. **Integration tests**:
+   - Connect via UI to local VNC server
+   - Exercise connection and options dialogs
+   - Verify scaling modes work
+   
+3. **CLI tests**:
+   - Verify clap args bridge to rfb-client config
+   - Test command-line connection flow
+
+### Success Criteria
+
+- ✅ Launch rvncviewer and display connection dialog
+- ✅ Connect to VNC servers via dialog or CLI arguments
+- ✅ Stable GUI rendering of remote desktop with smooth updates
+- ✅ Fullscreen mode works correctly
+- ✅ Scaling modes functional (fit, fill, 1:1)
+- ✅ Menus and dialogs responsive and functional
+- ✅ Status bar shows accurate connection statistics
+- ✅ Preferences persist across sessions
+- ✅ Keyboard shortcuts work
+- ✅ No regressions in rendering or input
+- ✅ Zero clippy warnings
+
+---
+
+## 🚀 Phase 8: Advanced Features
+
+**Goal**: Implement remaining features for full parity with C++ vncviewer: clipboard, file transfer, additional security types, and advanced options.
+
+### Scope
+
+#### Core Features
+- **Clipboard integration**: send/receive text between local and remote
+- **File transfer support**: ContentCache protocol extension (if available)
+- **Multiple security types**: VNC password, TLS/SSL encryption
+- **SSH tunneling**: integrate with external SSH process
+- **Listen mode**: accept reverse VNC connections
+- **View-only mode**: suppress all input events
+- **Shared/exclusive session modes**: multiple clients vs single
+
+#### Display Features
+- **Screen recording/screenshots**: save frames to disk
+- **Connection info overlay**: detailed statistics display
+- **LED state indicators**: Caps Lock, Num Lock, Scroll Lock (where supported)
+
+#### Performance Features
+- **Quality/compression level controls**: UI for adjusting bandwidth/CPU tradeoffs
+- **Encoding preference configuration**: order and enable/disable specific encodings
+- **Auto-select encoding**: dynamically choose based on network conditions
+
+### Estimated Effort
+- **LOC**: 1,200–2,000 (depends on feature subset)
+- **Time**: 10–20 dev days (modular delivery)
+- **Dependencies**: arboard, rustls, openssh, image, ffmpeg-sidecar (optional)
+
+### Files to Create/Extend
+
+```
+rfb-client/src/
+├── clipboard.rs                    # Clipboard message handlers
+├── file_transfer.rs                # ContentCache protocol support
+├── security/
+│   ├── mod.rs
+│   ├── vnc_auth.rs                 # VNC password authentication
+│   └── tls.rs                      # TLS encryption via rustls
+├── listen.rs                       # Reverse connection listener
+└── auto_select.rs                  # Automatic encoding selection
+
+rvncviewer/src/ui/
+├── clipboard_ui.rs                 # Clipboard transfer UI
+├── transfer_ui.rs                  # File transfer UI
+├── stats_overlay.rs                # Connection statistics overlay
+└── led_indicators.rs               # Keyboard LED state display
+
+rfb-display/src/
+└── screenshot.rs                   # Screenshot capture hooks
+```
+
+### Key Dependencies
+
+```toml
+# Add to rfb-client and rvncviewer as needed
+arboard = "3"                       # Cross-platform clipboard
+rustls = "0.23"                     # TLS support
+tokio-rustls = "0.25"
+image = "0.25"                      # Screenshots
+# openssh = "0.10" or use external SSH process (preferred)
+```
+
+### Test Requirements
+
+1. **Clipboard tests**:
+   - Round-trip ASCII and UTF-8 text
+   - Handle clipboard unavailable gracefully
+   
+2. **Security tests**:
+   - Negotiate each security type (None, VNCAuth, TLS)
+   - Verify TLS certificate validation
+   - Test authentication failure paths
+   
+3. **Listen mode tests**:
+   - Accept reverse connections
+   - Handle multiple connection attempts
+   
+4. **View-only tests**:
+   - Verify all input events suppressed
+   - Ensure view-only state persists
+   
+5. **Encoding preference tests**:
+   - Verify encoding order honored
+   - Test quality/compression controls affect bandwidth
+
+### Success Criteria
+
+- ✅ Clipboard send/receive works bidirectionally
+- ✅ File transfer functional (if server supports ContentCache)
+- ✅ TLS encryption available for secure connections
+- ✅ SSH tunneling integration documented and working
+- ✅ Listen mode accepts reverse connections
+- ✅ View-only mode suppresses all input
+- ✅ Shared/exclusive modes work correctly
+- ✅ Quality/compression controls affect performance as expected
+- ✅ Encoding preferences honored
+- ✅ Screenshots/recording capture frames correctly
+- ✅ Statistics overlay displays accurate data
+- ✅ LED indicators reflect remote state
+- ✅ All features match C++ vncviewer behavior
+- ✅ Clear configuration and error messages
+- ✅ No defensive fallbacks (fail-fast policy maintained)
+- ✅ Zero clippy warnings
+
+---
+
+## 📋 Cross-Cutting Concerns
+
+### Logging
+- **Framework**: tracing with tracing-subscriber
+- **Configuration**: env-configurable levels (RUST_LOG)
+- **Structured logs**: use spans for request/connection tracking
+- **Performance**: minimize allocations in hot paths
+
+### Configuration Precedence
+1. Command-line arguments (highest priority)
+2. User configuration file (`~/.config/rvncviewer/config.toml`)
+3. Built-in defaults (lowest priority)
+- **Validation**: fail-fast on invalid values (no silent fallbacks)
+
+### Error Handling
+- **Policy**: Fail fast with clear, actionable error messages
+- **No defensive fallbacks**: If something is wrong, exit with error
+- **Context**: Use anyhow::Context for error chain propagation
+- **User-facing**: Convert technical errors to user-friendly messages in GUI
+
+### Performance Optimization
+- **Hot path allocations**: Reuse buffers in rendering and decoding
+- **Zero-copy where possible**: Use bytes::Bytes for network data
+- **Profiling**: Use cargo-flamegraph to identify bottlenecks
+- **Target**: 60 fps for 1080p, sub-100ms latency on local network
+
+### Packaging (Post-Phase 8)
+- **macOS app bundle**: Create .app with icon and Info.plist
+- **CLI binary**: Install via cargo install or Homebrew
+- **Documentation**: User guide and man page
+- **Distribution**: GitHub releases with signed binaries
+
+---
+
+## 📅 Timeline Summary
+
+Estimated timeline for single developer (can parallelize by crate):
+
+| Phase | Description | Days | Cumulative |
+|-------|-------------|------|------------|
+| Phase 4 | Core Connection & Event Loop | 6-10 | 6-10 |
+| Phase 5 | Display & Rendering | 5-8 | 11-18 |
+| Phase 6 | Input Handling | 4-6 | 15-24 |
+| Phase 7 | GUI Integration | 5-9 | 20-33 |
+| Phase 8 | Advanced Features | 10-20 | 30-53 |
+
+**Total**: 30-53 dev days (~6-11 weeks for single developer)
+
+### Parallelization Opportunities
+- Phase 5 and 6 can be developed simultaneously
+- Phase 8 features can be implemented independently
+- Multiple developers can work on different crates concurrently
+
+---
+
+## ✅ Definition of Done
+
+The rvncviewer binary will be considered feature-complete when:
+
+1. ✅ All phases 4-8 complete with passing tests
+2. ✅ Feature parity with C++ vncviewer on macOS achieved
+3. ✅ All workspace tests passing (unit + integration)
+4. ✅ Zero clippy warnings across workspace
+5. ✅ Documentation complete (README, user guide, API docs)
+6. ✅ No defensive fallbacks (fail-fast policy maintained throughout)
+7. ✅ Clear, contextual error messages for all error paths
+8. ✅ Performance targets met (60 fps @ 1080p, <100ms latency)
+9. ✅ Packaging and distribution ready (macOS app bundle + CLI)
+10. ✅ Code review and security audit complete
+
+---
+
+## 📖 Reference Implementation
+
+The C++ vncviewer implementation can be found in:
+- `/Users/nickc/code/tigervnc/vncviewer/` - Main viewer code
+- `/Users/nickc/code/tigervnc/common/rfb/` - Protocol implementation
+
+Key files for reference:
+- `vncviewer/vncviewer.cxx` - Main application loop
+- `vncviewer/CConn.cxx` - Connection management
+- `vncviewer/DesktopWindow.cxx` - Desktop rendering
+- `vncviewer/Viewport.cxx` - Viewport handling
+- `vncviewer/parameters.cxx` - Configuration parameters
+
+---
+
+**Ready to begin Phase 4!** 🚀
+
+See PROGRESS.md for current status and completed phases.

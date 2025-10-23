@@ -54,6 +54,10 @@ CMsgReader::CMsgReader(CMsgHandler* handler_, rdr::InStream* is_)
   : imageBufIdealSize(0), handler(handler_), is(is_),
     state(MSGSTATE_IDLE), cursorEncoding(-1)
 {
+  // Initialize incremental CachedRectInit state
+  pendingCacheInitActive = false;
+  pendingCacheId = 0;
+  pendingCacheEncoding = 0;
 }
 
 CMsgReader::~CMsgReader()
@@ -899,30 +903,40 @@ bool CMsgReader::readCachedRect(const core::Rect& r)
 
 bool CMsgReader::readCachedRectInit(const core::Rect& r)
 {
-  // Read 64-bit cache ID (sent as two U32s, big-endian)
-  if (!is->hasData(8 + 4))
-    return false;
+  // Incremental decode without outer restore point to avoid nesting with decoder
+  if (!pendingCacheInitActive) {
+    // Need header: 64-bit cacheId (hi,lo) + 32-bit encoding
+    if (!is->hasData(8 + 4))
+      return false;
 
-  is->setRestorePoint();
+    uint32_t hi = is->readU32();
+    uint32_t lo = is->readU32();
+    pendingCacheId = ((uint64_t)hi << 32) | lo;
+    pendingCacheEncoding = is->readS32();
+    pendingCacheInitActive = true;
 
-  uint32_t hi = is->readU32();
-  uint32_t lo = is->readU32();
-  uint64_t cacheId = ((uint64_t)hi << 32) | lo;
-  int encoding = is->readS32();
+    vlog.debug("Received CachedRectInit: [%d,%d-%d,%d] cacheId=%llu encoding=%d",
+               r.tl.x, r.tl.y, r.br.x, r.br.y,
+               (unsigned long long)pendingCacheId, pendingCacheEncoding);
+  }
 
-  vlog.debug("Received CachedRectInit: [%d,%d-%d,%d] cacheId=%llu encoding=%d",
-             r.tl.x, r.tl.y, r.br.x, r.br.y,
-             (unsigned long long)cacheId, encoding);
+  // Attempt to decode the rect using the remembered encoding
+  vlog.debug("CCDBG: begin decode cacheId=%llu encoding=%d rect=[%d,%d-%d,%d]",
+             (unsigned long long)pendingCacheId, pendingCacheEncoding,
+             r.tl.x, r.tl.y, r.br.x, r.br.y);
 
-  // Now read the actual encoded rectangle data using the specified encoding
-  bool ret = readRect(r, encoding);
+  bool ret = readRect(r, pendingCacheEncoding);
+
+  vlog.debug("CCDBG: end decode cacheId=%llu encoding=%d ret=%d",
+             (unsigned long long)pendingCacheId, pendingCacheEncoding, (int)ret);
 
   if (ret) {
-    is->clearRestorePoint();
     // Notify handler to store this decoded rect with cache ID
-    handler->storeCachedRect(r, cacheId);
-  } else {
-    is->gotoRestorePoint();
+    handler->storeCachedRect(r, pendingCacheId);
+    // Clear pending state
+    pendingCacheInitActive = false;
+    pendingCacheId = 0;
+    pendingCacheEncoding = 0;
   }
 
   return ret;

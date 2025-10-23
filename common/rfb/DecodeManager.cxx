@@ -239,14 +239,15 @@ void DecodeManager::logStats()
   // Log client-side ContentCache ARC statistics
   if (contentCache != nullptr) {
     vlog.info(" ");
-    vlog.info("Client-side cache statistics:");
-    vlog.info("  Lookups: %u, Hits: %u (%.1f%% hit rate)",
+    vlog.info("Client-side ContentCache statistics:");
+    vlog.info("  Protocol operations (CachedRect received):");
+    vlog.info("    Lookups: %u, Hits: %u (%.1f%%)",
               cacheStats.cache_lookups,
               cacheStats.cache_hits,
               cacheStats.cache_lookups > 0 ?
                 (100.0 * cacheStats.cache_hits / cacheStats.cache_lookups) : 0.0);
-    vlog.info("  Misses: %u", cacheStats.cache_misses);
-    vlog.info(" ");
+    vlog.info("    Misses: %u", cacheStats.cache_misses);
+    vlog.info("  ARC cache performance:");
     contentCache->logArcStats();
   }
 }
@@ -419,15 +420,26 @@ next:
 void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
                                     ModifiablePixelBuffer* pb)
 {
+  //DebugContentCache_2025-10-14
+  rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect ENTER: rect=[" + std::to_string(r.tl.x) + "," + std::to_string(r.tl.y) + "-" + std::to_string(r.br.x) + "," + std::to_string(r.br.y) + "], cacheId=" + std::to_string(cacheId) + ", contentCache=" + std::to_string(reinterpret_cast<uintptr_t>(contentCache)) + ", pb=" + std::to_string(reinterpret_cast<uintptr_t>(pb)));
+  
   if (contentCache == nullptr || pb == nullptr) {
     vlog.error("handleCachedRect called but cache or framebuffer is null");
+    //DebugContentCache_2025-10-14
+    rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect EXIT: null pointers");
     return;
   }
   
   cacheStats.cache_lookups++;
   
+  //DebugContentCache_2025-10-14
+  rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect: about to call getDecodedPixels for cacheId=" + std::to_string(cacheId));
+  
   // Lookup cached pixels by cache ID
   const ContentCache::CachedPixels* cached = contentCache->getDecodedPixels(cacheId);
+  
+  //DebugContentCache_2025-10-14
+  rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect: getDecodedPixels returned cached=" + std::to_string(reinterpret_cast<uintptr_t>(cached)));
   
   if (cached == nullptr) {
     // Cache miss - request data from server
@@ -442,19 +454,47 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
   
   cacheStats.cache_hits++;
   
+  // Additional diagnostics for stride/bpp prior to blit
+  const int dstBpp = pb->getPF().bpp;
+  const int srcBpp = cached->format.bpp;
+  int dstStridePx = 0;
+  // Safe read-only peek at destination stride (pixels)
+  (void)pb->getBuffer(r, &dstStridePx);
+  size_t srcBytesPerPixel = (size_t)srcBpp / 8;
+  size_t dstBytesPerPixel = (size_t)dstBpp / 8;
+  size_t rowBytesSrc = (size_t)r.width() * srcBytesPerPixel;
+  size_t rowBytesDst = (size_t)r.width() * dstBytesPerPixel;
+  vlog.debug("CCDBG: blit cacheId=%llu rect=[%d,%d-%d,%d] srcBpp=%d dstBpp=%d srcStridePx=%d dstStridePx=%d rowBytesSrc=%zu rowBytesDst=%zu",
+             (unsigned long long)cacheId,
+             r.tl.x, r.tl.y, r.br.x, r.br.y,
+             srcBpp, dstBpp,
+             cached->stridePixels, dstStridePx,
+             rowBytesSrc, rowBytesDst);
+  
   vlog.debug("Cache hit for ID %llu: blitting %dx%d to [%d,%d-%d,%d]",
              (unsigned long long)cacheId, cached->width, cached->height,
              r.tl.x, r.tl.y, r.br.x, r.br.y);
   
+  //DebugContentCache_2025-10-14
+  rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect: about to call pb->imageRect with cached->pixels.data()=" + std::to_string(reinterpret_cast<uintptr_t>(cached->pixels.data())) + ", cached->pixels.size()=" + std::to_string(cached->pixels.size()) + ", cached->stridePixels=" + std::to_string(cached->stridePixels));
+  
   // Blit cached pixels to framebuffer at target position
-  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stride);
+  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
+  
+  //DebugContentCache_2025-10-14
+  rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect EXIT: imageRect completed successfully");
 }
 
 void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
                                    ModifiablePixelBuffer* pb)
 {
+  //DebugContentCache_2025-10-14
+  rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::storeCachedRect ENTER: rect=[" + std::to_string(r.tl.x) + "," + std::to_string(r.tl.y) + "-" + std::to_string(r.br.x) + "," + std::to_string(r.br.y) + "], cacheId=" + std::to_string(cacheId));
+  
   if (contentCache == nullptr || pb == nullptr) {
     vlog.error("storeCachedRect called but cache or framebuffer is null");
+    //DebugContentCache_2025-10-14
+    rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::storeCachedRect EXIT: null pointers");
     return;
   }
   
@@ -463,10 +503,24 @@ void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
              (unsigned long long)cacheId);
   
   // Get pixel data from framebuffer
-  int stride;
-  const uint8_t* pixels = pb->getBuffer(r, &stride);
+  // CRITICAL: stride from getBuffer() is in pixels, not bytes
+  int stridePixels;
+  const uint8_t* pixels = pb->getBuffer(r, &stridePixels);
+  
+  size_t bppBytes = (size_t)pb->getPF().bpp / 8;
+  size_t rowBytes = (size_t)r.width() * bppBytes;
+  vlog.debug("CCDBG: store cacheId=%llu rect=[%d,%d-%d,%d] bpp=%d stridePx=%d rowBytes=%zu",
+             (unsigned long long)cacheId,
+             r.tl.x, r.tl.y, r.br.x, r.br.y,
+             pb->getPF().bpp, stridePixels, rowBytes);
+  
+  //DebugContentCache_2025-10-14
+  rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::storeCachedRect: about to call storeDecodedPixels with pixels=" + std::to_string(reinterpret_cast<uintptr_t>(pixels)) + ", stridePixels=" + std::to_string(stridePixels));
   
   // Store in content cache with cache ID
   contentCache->storeDecodedPixels(cacheId, pixels, pb->getPF(),
-                                  r.width(), r.height(), stride);
+                                  r.width(), r.height(), stridePixels);
+                                  
+  //DebugContentCache_2025-10-14
+  rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::storeCachedRect EXIT: storeDecodedPixels completed successfully");
 }

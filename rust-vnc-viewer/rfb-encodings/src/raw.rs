@@ -82,7 +82,12 @@ impl Decoder for RawDecoder {
             .context("Failed to read raw pixel data from stream")?;
 
         // Get the destination rectangle in the buffer
-        let dest_rect = Rect::new(rect.x as i32, rect.y as i32, rect.width as u32, rect.height as u32);
+        let dest_rect = Rect::new(
+            rect.x as i32,
+            rect.y as i32,
+            rect.width as u32,
+            rect.height as u32,
+        );
 
         // Write pixel data to buffer using image_rect
         // Stride equals width since we have tightly packed data
@@ -360,7 +365,7 @@ mod tests {
         let mut stride = 0;
         let pixels = buffer.get_buffer(read_rect, &mut stride).unwrap();
         assert_eq!(stride, 100); // Buffer width
-        // First pixel is at offset 0
+                                 // First pixel is at offset 0
         assert_eq!(pixels[0], 0x00);
         assert_eq!(pixels[1], 0xF8);
     }

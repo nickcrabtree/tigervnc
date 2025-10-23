@@ -38,9 +38,7 @@
 //! `MutablePixelBuffer::copy_rect()` implementation is required to handle
 //! overlaps correctly (typically by using `memmove` semantics).
 
-use crate::{
-    Decoder, MutablePixelBuffer, PixelFormat, Rectangle, RfbInStream, ENCODING_COPY_RECT,
-};
+use crate::{Decoder, MutablePixelBuffer, PixelFormat, Rectangle, RfbInStream, ENCODING_COPY_RECT};
 use anyhow::{Context, Result};
 use rfb_common::{Point, Rect};
 use tokio::io::AsyncRead;
@@ -88,13 +86,15 @@ impl Decoder for CopyRectDecoder {
             .context("Failed to read CopyRect src_y")?;
 
         // Create destination rectangle
-        let dest = Rect::new(rect.x as i32, rect.y as i32, rect.width as u32, rect.height as u32);
-        
-        // Calculate offset from dest to source
-        let src_offset = Point::new(
-            src_x as i32 - rect.x as i32,
-            src_y as i32 - rect.y as i32,
+        let dest = Rect::new(
+            rect.x as i32,
+            rect.y as i32,
+            rect.width as u32,
+            rect.height as u32,
         );
+
+        // Calculate offset from dest to source
+        let src_offset = Point::new(src_x as i32 - rect.x as i32, src_y as i32 - rect.y as i32);
 
         // Use the buffer's copy_rect method which handles overlaps correctly
         buffer
@@ -258,7 +258,8 @@ mod tests {
                 let src_pixel = get_pixel(&buffer, 10 + x, 10 + y);
                 let dst_pixel = get_pixel(&buffer, 50 + x, 50 + y);
                 assert_eq!(
-                    src_pixel, dst_pixel,
+                    src_pixel,
+                    dst_pixel,
                     "Pixel at ({}, {}) should match source",
                     50 + x,
                     50 + y

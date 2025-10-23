@@ -24,11 +24,39 @@
 #include <vector>
 #include <unordered_map>
 #include <list>
+#include <fstream>     //DebugContentCache_2025-10-14
+#include <string>      //DebugContentCache_2025-10-14
+#include <chrono>      //DebugContentCache_2025-10-14
+#include <mutex>       //DebugContentCache_2025-10-14
+#include <iostream>    //DebugContentCache_2025-10-14
 
 #include <core/Rect.h>
 #include <rfb/PixelFormat.h>
 
 namespace rfb {
+
+  //DebugContentCache_2025-10-14 - Start debug logging class
+  class ContentCacheDebugLogger {
+  public:
+    static ContentCacheDebugLogger& getInstance() {
+      static ContentCacheDebugLogger instance;
+      return instance;
+    }
+    
+    void log(const std::string& message);
+    std::string getLogFilename() const { return logFilename_; }
+    
+  private:
+    ContentCacheDebugLogger();
+    ~ContentCacheDebugLogger();
+    std::string logFilename_;
+    std::ofstream logFile_;
+    std::mutex logMutex_;
+    
+    ContentCacheDebugLogger(const ContentCacheDebugLogger&) = delete;
+    ContentCacheDebugLogger& operator=(const ContentCacheDebugLogger&) = delete;
+  };
+  //DebugContentCache_2025-10-14 - End debug logging class
 
   // Content-addressable cache for historical framebuffer chunks
   // Uses ARC (Adaptive Replacement Cache) algorithm for better eviction
@@ -128,14 +156,14 @@ namespace rfb {
       PixelFormat format;
       int width;
       int height;
-      int stride;
+      int stridePixels;  // Stride in pixels, NOT bytes
       uint32_t lastUsedTime;
       
-      CachedPixels() : cacheId(0), width(0), height(0), stride(0), lastUsedTime(0) {}
+      CachedPixels() : cacheId(0), width(0), height(0), stridePixels(0), lastUsedTime(0) {}
     };
     
     void storeDecodedPixels(uint64_t cacheId, const uint8_t* pixels,
-                           const PixelFormat& pf, int width, int height, int stride);
+                           const PixelFormat& pf, int width, int height, int stridePixels);
     const CachedPixels* getDecodedPixels(uint64_t cacheId);
     
   private:
@@ -213,7 +241,7 @@ namespace rfb {
   // Hashes only every Nth pixel for speed
   uint64_t computeSampledHash(const uint8_t* data, 
                               size_t width, size_t height,
-                              size_t stride, size_t bytesPerPixel,
+                              size_t stridePixels, size_t bytesPerPixel,
                               size_t sampleRate = 4);
 
 }

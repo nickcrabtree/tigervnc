@@ -97,6 +97,11 @@ namespace rfb {
 
     int cursorEncoding;
 
+    // State for incremental CachedRectInit decode to avoid nested restore points
+    bool pendingCacheInitActive;
+    uint64_t pendingCacheId;
+    int pendingCacheEncoding;
+
     static const int maxCursorSize = 256;
   };
 
