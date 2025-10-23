@@ -202,6 +202,26 @@ impl<R: AsyncRead + Unpin> RfbInStream<R> {
         Ok(self.buffer.get_i32())
     }
 
+    /// Read a 64-bit unsigned integer in network byte order (big-endian).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if EOF is reached or an I/O error occurs.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use rfb_protocol::io::RfbInStream;
+    /// # async fn example<R: tokio::io::AsyncRead + Unpin>(mut stream: RfbInStream<R>) -> std::io::Result<()> {
+    /// let cache_id = stream.read_u64().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn read_u64(&mut self) -> std::io::Result<u64> {
+        self.ensure_bytes(8).await?;
+        Ok(self.buffer.get_u64())
+    }
+
     /// Read exactly `buf.len()` bytes into the provided buffer.
     ///
     /// # Errors
@@ -407,6 +427,20 @@ impl<W: AsyncWrite + Unpin> RfbOutStream<W> {
     /// ```
     pub fn write_i32(&mut self, value: i32) {
         self.buffer.put_i32(value);
+    }
+
+    /// Write a 64-bit unsigned integer in network byte order (big-endian).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use rfb_protocol::io::RfbOutStream;
+    /// # fn example<W: tokio::io::AsyncWrite + Unpin>(mut stream: RfbOutStream<W>) {
+    /// stream.write_u64(0x123456789ABCDEF0);
+    /// # }
+    /// ```
+    pub fn write_u64(&mut self, value: u64) {
+        self.buffer.put_u64(value);
     }
 
     /// Write a byte slice to the buffer.

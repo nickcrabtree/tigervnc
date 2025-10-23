@@ -267,6 +267,26 @@ pub const ENCODING_TIGHT: i32 = 7;
 pub const ENCODING_ZRLE: i32 = 16;
 
 //
+// ContentCache encoding types
+//
+
+/// CachedRect encoding - reference to cached content (20 bytes: cache_id only).
+/// Server sends this when content is already in client's cache.
+pub const ENCODING_CACHED_RECT: i32 = -512; // 0xFFFFFE00
+
+/// CachedRectInit encoding - initial transmission with cache ID.
+/// Server sends this for new content, includes cache_id + actual encoding + pixel data.
+pub const ENCODING_CACHED_RECT_INIT: i32 = -511; // 0xFFFFFE01
+
+//
+// Pseudo-encodings (for capability negotiation)
+//
+
+/// Pseudo-encoding to advertise ContentCache support.
+/// Client includes this in SetEncodings to enable ContentCache protocol.
+pub const PSEUDO_ENCODING_CONTENT_CACHE: i32 = -496; // 0xFFFFFE10
+
+//
 // Security type constants
 //
 

@@ -34,15 +34,19 @@
 //! let client_init = ClientInit { shared: true };
 //! ```
 
+pub mod cache;
 pub mod client;
 pub mod server;
 pub mod types;
 
 // Re-export commonly used types
 pub use types::{
-    PixelFormat, Rectangle, ENCODING_COPYRECT, ENCODING_HEXTILE, ENCODING_RAW, ENCODING_RRE,
-    ENCODING_TIGHT, ENCODING_ZRLE,
+    PixelFormat, Rectangle, ENCODING_CACHED_RECT, ENCODING_CACHED_RECT_INIT, ENCODING_COPYRECT,
+    ENCODING_HEXTILE, ENCODING_RAW, ENCODING_RRE, ENCODING_TIGHT, ENCODING_ZRLE,
+    PSEUDO_ENCODING_CONTENT_CACHE,
 };
+
+pub use cache::{CachedRect, CachedRectInit};
 
 pub use server::{
     Bell, ColorMapEntry, FramebufferUpdate, ServerCutText, ServerInit, SetColorMapEntries,

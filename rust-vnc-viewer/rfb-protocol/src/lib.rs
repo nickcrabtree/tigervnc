@@ -29,7 +29,6 @@ pub mod handshake;
 pub mod io;
 pub mod messages;
 pub mod socket;
-pub mod handshake;
 
 // Re-export commonly used types
 pub use connection::{ConnectionState, RfbConnection};
