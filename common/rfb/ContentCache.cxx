@@ -26,10 +26,52 @@
 #include <time.h>
 #include <cstring>
 #include <algorithm>
+#include <iomanip>     //DebugContentCache_2025-10-14
 
 using namespace rfb;
 
 static core::LogWriter vlog("ContentCache");
+
+//DebugContentCache_2025-10-14 - Start debug logger implementation
+ContentCacheDebugLogger::ContentCacheDebugLogger() {
+  auto now = std::chrono::system_clock::now();
+  auto time_t = std::chrono::system_clock::to_time_t(now);
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+    now.time_since_epoch()) % 1000;
+  
+  std::string timestamp = std::to_string(time_t) + "_" + std::to_string(ms.count());
+  logFilename_ = "/tmp/contentcache_debug_" + timestamp + ".log";
+  
+  logFile_.open(logFilename_, std::ios::out | std::ios::app);
+  if (logFile_.is_open()) {
+    std::cout << "ContentCache debug log: " << logFilename_ << std::endl;
+    log("=== ContentCache Debug Log Started ===");
+  } else {
+    std::cerr << "Failed to open ContentCache debug log: " << logFilename_ << std::endl;
+  }
+}
+
+ContentCacheDebugLogger::~ContentCacheDebugLogger() {
+  if (logFile_.is_open()) {
+    log("=== ContentCache Debug Log Ended ===");
+    logFile_.close();
+  }
+}
+
+void ContentCacheDebugLogger::log(const std::string& message) {
+  std::lock_guard<std::mutex> lock(logMutex_);
+  if (logFile_.is_open()) {
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now.time_since_epoch()) % 1000;
+    
+    logFile_ << "[" << time_t << "." << std::setfill('0') << std::setw(3) << ms.count() 
+             << "] " << message << std::endl;
+    logFile_.flush();
+  }
+}
+//DebugContentCache_2025-10-14 - End debug logger implementation
 
 // ============================================================================
 // Fast Hash Function (FNV-1a variant)
@@ -98,9 +140,15 @@ ContentCache::ContentCache(size_t maxSizeMB, uint32_t maxAgeSec)
     t1Size_(0),
     t2Size_(0)
 {
+  //DebugContentCache_2025-10-14
+  ContentCacheDebugLogger::getInstance().log("ContentCache constructor ENTER: maxSizeMB=" + std::to_string(maxSizeMB) + ", maxAgeSec=" + std::to_string(maxAgeSec));
+  
   memset(&stats_, 0, sizeof(stats_));
   vlog.debug("ContentCache created with ARC: maxSize=%zuMB, maxAge=%us",
              maxSizeMB, maxAgeSec);
+             
+  //DebugContentCache_2025-10-14
+  ContentCacheDebugLogger::getInstance().log("ContentCache constructor EXIT: initialized successfully");
 }
 
 ContentCache::~ContentCache()
@@ -592,9 +640,17 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
                                      const PixelFormat& pf,
                                      int width, int height, int stridePixels)
 {
+  //DebugContentCache_2025-10-14
+  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels ENTER: cacheId=" + std::to_string(cacheId) + ", pixels=" + std::to_string(reinterpret_cast<uintptr_t>(pixels)) + ", width=" + std::to_string(width) + ", height=" + std::to_string(height) + ", stridePixels=" + std::to_string(stridePixels) + ", bpp=" + std::to_string(pf.bpp));
+  
   if (pixels == nullptr || width <= 0 || height <= 0) {
+    //DebugContentCache_2025-10-14
+    ContentCacheDebugLogger::getInstance().log("storeDecodedPixels EXIT: invalid parameters");
     return;
   }
+  
+  //DebugContentCache_2025-10-14
+  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels: creating CachedPixels entry");
   
   CachedPixels& cached = pixelCache_[cacheId];
   cached.cacheId = cacheId;
@@ -608,8 +664,22 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
   // CRITICAL: stridePixels is in pixels, not bytes - multiply by bytesPerPixel
   size_t bytesPerPixel = pf.bpp / 8;
   size_t dataSize = height * stridePixels * bytesPerPixel;
+  
+  //DebugContentCache_2025-10-14
+  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels: calculated dataSize=" + std::to_string(dataSize) + ", bytesPerPixel=" + std::to_string(bytesPerPixel));
+  
+  //DebugContentCache_2025-10-14
+  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels: about to resize pixels vector to " + std::to_string(dataSize));
+  
   cached.pixels.resize(dataSize);
+  
+  //DebugContentCache_2025-10-14
+  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels: about to memcpy from pixels=" + std::to_string(reinterpret_cast<uintptr_t>(pixels)) + " to cached.pixels.data()=" + std::to_string(reinterpret_cast<uintptr_t>(cached.pixels.data())) + ", size=" + std::to_string(dataSize));
+  
   memcpy(cached.pixels.data(), pixels, dataSize);
+  
+  //DebugContentCache_2025-10-14
+  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels: memcpy completed successfully");
   
   vlog.debug("Stored decoded pixels for cache ID %llu: %dx%d %dbpp (%zu bytes)",
              (unsigned long long)cacheId, width, height, pf.bpp, dataSize);
@@ -642,13 +712,24 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
 
 const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheId)
 {
+  //DebugContentCache_2025-10-14
+  ContentCacheDebugLogger::getInstance().log("getDecodedPixels ENTER: cacheId=" + std::to_string(cacheId));
+  
   auto it = pixelCache_.find(cacheId);
   if (it == pixelCache_.end()) {
+    //DebugContentCache_2025-10-14
+    ContentCacheDebugLogger::getInstance().log("getDecodedPixels EXIT: cache miss for cacheId=" + std::to_string(cacheId));
     return nullptr;
   }
   
+  //DebugContentCache_2025-10-14
+  ContentCacheDebugLogger::getInstance().log("getDecodedPixels: cache hit, updating access time");
+  
   // Update access time
   it->second.lastUsedTime = getCurrentTime();
+  
+  //DebugContentCache_2025-10-14
+  ContentCacheDebugLogger::getInstance().log("getDecodedPixels EXIT: returning cached pixels for cacheId=" + std::to_string(cacheId) + ", width=" + std::to_string(it->second.width) + ", height=" + std::to_string(it->second.height));
   
   return &(it->second);
 }

@@ -148,9 +148,9 @@ namespace rfb {
     int32_t getPreferredEncoding() { return preferredEncoding; }
 
     // Hook for content cache references (default: no-op)
-    virtual void onCachedRectRef(uint64_t cacheId, const core::Rect& r) {}
+    virtual void onCachedRectRef(uint64_t /*cacheId*/, const core::Rect& /*r*/) {}
     // Hook to drain pending CachedRectInit requests (default: no-op)
-    virtual void drainPendingCachedInits(std::vector<std::pair<uint64_t, core::Rect>>& out) {}
+    virtual void drainPendingCachedInits(std::vector<std::pair<uint64_t, core::Rect>>& /*out*/) {}
     virtual bool knowsCacheId(uint64_t) const { return false; }
     virtual void queueCachedInit(uint64_t, const core::Rect&) {}
     virtual void markCacheIdKnown(uint64_t) {}
