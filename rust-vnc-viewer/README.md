@@ -9,9 +9,9 @@ This is a Cargo workspace containing multiple crates:
 - **`rfb-common`** - Common types (geometry, configuration, cursors)
 - **`rfb-pixelbuffer`** - Pixel buffer abstraction and management  
 - **`rfb-protocol`** - RFB protocol implementation (network, I/O, messages)
-- **`rfb-encodings`** - Encoding/decoding implementations (Raw, Tight, ZRLE, etc.)
-- **`platform-input`** - Platform-specific input handling (keyboard, touch)
-- **`rvncviewer`** - Main viewer application
+- **`rfb-encodings`** - Encoding/decoding implementations (Raw, CopyRect, Tight, ZRLE, Hextile, RRE)
+- **`rfb-client`** - High-level async VNC client library with connection management
+- **`njcvncviewer-rs`** - Main GUI viewer application (egui-based)
 
 ## Building
 
@@ -28,18 +28,22 @@ cargo run --release
 
 ## Status
 
-✅ **Working Viewer** - Basic functional VNC client implemented!
+✅ **Working Viewer** - Functional VNC client with GUI!
 
-**Current Status**: Functional viewer with ContentCache integration planned  
+**Current Status**: Two implementations available
 **Last Updated**: 2025-10-23  
-**Overall Progress**: ~55% (7,000+ / 12,500 LOC)
+**Overall Progress**: ~70% (Foundation complete + working GUI viewer)
 
 ### Completed ✅
-- [x] **Phase 0**: Workspace structure with 6 crates
 - [x] **Phase 1**: rfb-pixelbuffer crate (complete, 19 tests)
 - [x] **Phase 2**: rfb-protocol crate (complete, 118 tests)
-- [x] **Phase 3**: Basic encodings (Raw, CopyRect)
-- [x] **Viewer**: njcvncviewer-rs application
+- [x] **Phase 3**: rfb-encodings crate (complete, 93 tests)
+  - [x] Raw, CopyRect, RRE, Hextile, Tight, ZRLE encodings
+- [x] **rfb-client**: High-level async client library
+  - [x] Connection management and event loop
+  - [x] Transport layer (TCP/TLS)
+  - [x] Configuration and error handling
+- [x] **njcvncviewer-rs**: GUI viewer application
   - [x] RFB handshake and connection management
   - [x] egui-based GUI with framebuffer rendering
   - [x] Mouse and keyboard input forwarding
@@ -54,11 +58,10 @@ cargo run --release
   - [ ] Integration and testing
 
 ### Planned 📋
-- [ ] Advanced encodings (Tight, ZRLE, Hextile, RRE)
-- [ ] ARC cache eviction algorithm
+- [ ] ARC cache eviction algorithm (upgrade from LRU)
 - [ ] Touch gesture support
 - [ ] Clipboard integration
-- [ ] Connection profiles
+- [ ] Connection profiles and improved UI
 
 ## Documentation
 
