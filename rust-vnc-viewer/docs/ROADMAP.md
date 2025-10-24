@@ -6,8 +6,9 @@ Development roadmap prioritizing fullscreen and multi-monitor support for deskto
 
 - **M0** (Current): Core VNC functionality stable
 - **M1** (Priority): Enhanced fullscreen support
-- **M2** (Priority): Multi-monitor support  
-- **M3+**: Windowed UX polish and advanced features
+- **M2** (Priority): Multi-monitor support
+- **M3** (Priority): PersistentCache protocol (immediately after M2)
+- **M4+**: Windowed UX polish and advanced features
 
 ## Milestone M0: Foundation (COMPLETED)
 
@@ -115,7 +116,99 @@ Development roadmap prioritizing fullscreen and multi-monitor support for deskto
 - [ ] **Position awareness**: Logical monitor positioning for navigation
 - [ ] **Span support**: Documentation for multi-monitor spanning (implementation deferred)
 
-## Milestone M3: Windowed UX Polish (FUTURE)
+## Milestone M3: PersistentCache Protocol (PRIORITY)
+
+**Priority**: HIGH  
+**Timeline**: 1-2 weeks (after M2)  
+**Goal**: Persistent, hash-based caching for cross-session and cross-server cache hits
+
+### Overview
+
+The C++ TigerVNC viewer recently implemented the **PersistentCache** protocol, a new RFB extension that uses content hashes (SHA-256) as stable cache keys. This enables:
+- **Cross-session persistence**: Cache survives client restarts
+- **Cross-server hits**: Same content on different servers reuses cached data
+- **97-99% bandwidth reduction**: Even better than ContentCache for repeated content
+
+### Features
+
+#### Protocol Foundation
+- [ ] **Protocol constants**: Pseudo-encoding `-321`, encodings `102` and `103`
+- [ ] **Message types**: `254` (PersistentCacheQuery), `253` (PersistentHashList)
+- [ ] **Content hashing**: SHA-256 truncated to 128 bits (16 bytes)
+- [ ] **Wire format**: Variable-length hash encoding for efficiency
+
+#### Cache Storage
+- [ ] **GlobalClientPersistentCache**: Hash-indexed storage with ARC eviction
+- [ ] **ARC algorithm**: Adaptive replacement with T1, T2, B1, B2 lists
+- [ ] **Size management**: Configurable limit (default: 2GB), byte-accurate accounting
+- [ ] **Statistics**: Hits, misses, evictions, memory usage tracking
+
+#### Client Protocol
+- [ ] **Decoders**: PersistentCachedRect (102), PersistentCachedRectInit (103)
+- [ ] **Query batching**: Efficient miss handling with batch requests
+- [ ] **Hash list**: Initial synchronization of known hashes
+- [ ] **Negotiation**: Prefer PersistentCache over ContentCache in SetEncodings
+
+#### Disk Persistence
+- [ ] **File format**: `~/.cache/tigervnc/persistentcache.dat` with 64-byte header
+- [ ] **Load/Save**: Automatic persistence on startup/shutdown
+- [ ] **Corruption handling**: Graceful recovery from invalid cache files
+- [ ] **Checksum**: SHA-256 verification for integrity
+
+### Implementation Phases
+
+| Phase | Duration | Description |
+|-------|----------|--------------|
+| PC-1 | 0.5 day | Protocol constants, ContentHash utility |
+| PC-2 | 2 days | GlobalClientPersistentCache with ARC |
+| PC-3 | 1 day | Client protocol messages and decoders |
+| PC-4 | 1 day | Integration and negotiation |
+| PC-5 | 1-2 days | Disk persistence implementation |
+| PC-6 | 1 day | Testing and validation |
+
+### Dependencies
+
+**Cargo dependencies:**
+```toml
+sha2 = "0.10"          # SHA-256 hashing
+byteorder = "1"        # Binary I/O
+indexmap = "2"         # Ordered maps for ARC
+directories = "5"      # XDG cache directory
+```
+
+### Acceptance Criteria
+- [ ] Protocol negotiation prefers PersistentCache when both are available
+- [ ] Hash computation matches C++ ContentHash::computeRect
+- [ ] ARC eviction maintains configured size limits
+- [ ] Disk persistence survives restarts without data loss
+- [ ] Cross-session hits verified with test server (Xnjcvnc :2)
+- [ ] Performance: <1ms hash computation, <200ms disk load/save
+
+### Testing Strategy
+- **Unit tests**: Hash computation, ARC eviction, disk round-trip
+- **Integration tests**: Mock server with encoding 102/103 sequences
+- **Cross-session**: Connect, disconnect, reconnect - verify cache hits
+- **Performance**: Benchmark hashing and I/O operations
+- **Safety**: Only use Xnjcvnc :2 per WARP.md (never Xtigervnc :1 or :3)
+
+### Technical Notes
+
+**Critical: Stride handling**
+```rust
+// Stride is in PIXELS, not bytes!
+let stride_bytes = stride_pixels * bytes_per_pixel;
+```
+
+**Hash stability**: Must match C++ implementation exactly for interoperability.
+
+**Protocol preference**: Include both `-321` and `-320` in SetEncodings, server chooses PersistentCache if supported.
+
+### Related Documentation
+- C++ design: `/home/nickc/code/tigervnc/PERSISTENTCACHE_DESIGN.md`
+- Rust implementation guide: `docs/protocol/PERSISTENTCACHE_RUST.md` (to be created)
+- ARC algorithm: `/home/nickc/code/tigervnc/ARC_ALGORITHM.md`
+
+## Milestone M4: Windowed UX Polish (FUTURE)
 
 **Priority**: MEDIUM  
 **Timeline**: Post-M2  
@@ -129,10 +222,10 @@ Development roadmap prioritizing fullscreen and multi-monitor support for deskto
 - [ ] **Status indicators**: Connection quality, latency display
 - [ ] **Theme support**: Dark/light mode preference
 
-## Milestone M4: Advanced Features (FUTURE)
+## Milestone M5: Advanced Features (FUTURE)
 
 **Priority**: LOW  
-**Timeline**: Post-M3  
+**Timeline**: Post-M4  
 **Goal**: Power user features and optimizations
 
 ### Features
@@ -179,10 +272,11 @@ These features add complexity without proportional value for desktop users. CLI 
 | M0 | - | - | ✅ Complete |
 | M1 | 1-2 weeks | winit, testing | 🎯 Next |
 | M2 | 1-2 weeks | M1 complete | 📋 Planned |
-| M3 | 2-3 weeks | M2 complete | 💭 Future |
-| M4 | TBD | M3 complete | 💭 Future |
+| M3 | 1-2 weeks | M2 complete | 📋 Planned |
+| M4 | 2-3 weeks | M3 complete | 💭 Future |
+| M5 | TBD | M4 complete | 💭 Future |
 
-**Total estimate for M1+M2**: 2-4 weeks for core fullscreen/multi-monitor functionality.
+**Total estimate for M1+M2+M3**: 3-6 weeks for core fullscreen, multi-monitor, and PersistentCache functionality.
 
 ## Success Metrics
 
@@ -195,6 +289,12 @@ These features add complexity without proportional value for desktop users. CLI 
 - [ ] Multi-monitor users can easily select and switch monitors
 - [ ] Hotkey navigation feels intuitive and responsive
 - [ ] Mixed DPI environments handled correctly
+
+### M3 Success
+- [ ] PersistentCache protocol fully functional with hash-based caching
+- [ ] Cross-session persistence verified through restart testing
+- [ ] Performance meets targets (<1ms hashing, <200ms I/O)
+- [ ] Cache interoperability with C++ viewer confirmed
 
 ### Overall Project Success
 - [ ] Competitive feature parity with C++ vncviewer for desktop use

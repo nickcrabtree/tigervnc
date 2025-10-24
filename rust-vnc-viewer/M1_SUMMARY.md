@@ -181,12 +181,46 @@ eframe takes exclusive ownership of winit's EventLoop. Solution: enumerate monit
 **Status**: eframe/egui may not support exclusive mode  
 **Tracking**: M1 stretch goal or M2
 
+## Near-Term Milestones
+
+Following the completion of M1 fullscreen work:
+
+### M2: Multi-Monitor Support (In Progress/Next)
+**Timeline**: 1-2 weeks after M1  
+**Status**: Some groundwork already complete (enumeration, navigation hotkeys)  
+**Remaining**: Per-monitor placement, mixed DPI handling, hotplug support
+
+### M3: PersistentCache Protocol (High Priority)
+**Timeline**: 1-2 weeks after M2  
+**Goal**: Implement hash-based caching for cross-session and cross-server cache hits
+
+**Key features**:
+- Content-addressable hashing (SHA-256, 16 bytes)
+- ARC eviction algorithm
+- Disk persistence at `~/.cache/tigervnc/persistentcache.dat`
+- Protocol negotiation via pseudo-encoding `-321`
+- 97-99% bandwidth reduction (even better than ContentCache)
+
+**References**:
+- C++ implementation: `/home/nickc/code/tigervnc/PERSISTENTCACHE_DESIGN.md`
+- Rust guide: `docs/protocol/PERSISTENTCACHE_RUST.md`
+- Implementation plan: `docs/IMPLEMENTATION_PLAN.md` (M3 section)
+
+**Rationale**: PersistentCache is prioritized immediately after multi-monitor work because:
+1. C++ implementation just completed (Oct 2025)
+2. Provides dramatic performance improvement for desktop workflows
+3. Cross-session persistence benefits all users
+4. Well-defined protocol with clear implementation path
+
+See `docs/ROADMAP.md` for complete milestone details and sequencing.
+
 ## File Manifest
 
 ### New Files
 - `rvncviewer/src/display/mod.rs` (83 lines)
 - `rvncviewer/src/fullscreen/mod.rs` (78 lines)
 - `docs/testing/M1_FULLSCREEN_TESTING.md` (399 lines)
+- `docs/protocol/PERSISTENTCACHE_RUST.md` (684 lines)
 - `PROGRESS_2025-10-24_M1_INITIAL.md` (203 lines)
 - `M1_SUMMARY.md` (this file)
 
@@ -194,7 +228,8 @@ eframe takes exclusive ownership of winit's EventLoop. Solution: enumerate monit
 - `rvncviewer/src/lib.rs` (added module exports)
 - `rvncviewer/src/args.rs` (added CLI options)
 - `rvncviewer/src/app.rs` (integrated fullscreen controller, hotkeys)
-- `docs/ROADMAP.md` (updated checklists)
+- `docs/ROADMAP.md` (updated checklists, added M3 milestone)
+- `docs/IMPLEMENTATION_PLAN.md` (added M3 PersistentCache section)
 - `docs/spec/fullscreen-and-multimonitor.md` (status annotations)
 - `docs/cli/USAGE.md` (documented new options)
 - `README.md` (updated progress)
