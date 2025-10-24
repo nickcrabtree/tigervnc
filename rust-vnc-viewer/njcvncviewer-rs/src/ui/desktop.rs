@@ -43,40 +43,56 @@ egui::Rounding::ZERO,
                 Stroke::new(1.0, Color32::GRAY)
             );
             
-            // Placeholder content when connected
+            // Render actual VNC content when connected
             if matches!(app.state(), crate::app::AppState::Connected(_)) {
-                // In a real implementation, this is where we would:
-                // 1. Get the latest framebuffer from rfb-client
-                // 2. Convert it to an egui::ColorImage or texture
-                // 3. Render it using ui.painter().image()
+                if let Some(texture) = app.framebuffer_texture() {
+                    // Render the framebuffer texture
+                    let image_rect = egui::Rect::from_min_size(
+                        rect.min,
+                        egui::vec2(display_width as f32, display_height as f32)
+                    );
+                    
+                    ui.painter().image(
+                        texture.id(),
+                        image_rect,
+                        egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1.0, 1.0)),
+                        Color32::WHITE
+                    );
+                } else {
+                    // No texture yet - show loading message
+                    let text_pos = rect.center();
+                    ui.painter().text(
+                        text_pos,
+                        egui::Align2::CENTER_CENTER,
+                        "Loading VNC framebuffer...",
+                        egui::FontId::proportional(16.0),
+                        Color32::WHITE,
+                    );
+                }
                 
-                // For now, show a placeholder message
-                let text_pos = rect.center() - egui::vec2(0.0, 10.0);
-                ui.painter().text(
-                    text_pos,
-                    egui::Align2::CENTER_CENTER,
-                    "VNC Desktop Content\n(Framebuffer rendering not yet implemented)",
-                    egui::FontId::proportional(16.0),
-                    Color32::WHITE,
-                );
-                
-                // Show viewport info
-                let info_text = format!(
-                    "Display: {}x{}\nZoom: {:.0}%\nScale Mode: {:?}",
-                    display_width,
-                    display_height,
-                    app.zoom_factor() * 100.0,
-                    app.scale_mode()
-                );
-                
-                let info_pos = rect.center() + egui::vec2(0.0, 40.0);
-                ui.painter().text(
-                    info_pos,
-                    egui::Align2::CENTER_CENTER,
-                    info_text,
-                    egui::FontId::proportional(12.0),
-                    Color32::LIGHT_GRAY,
-                );
+                // Optionally show viewport info (for debugging)
+                if cfg!(debug_assertions) {
+                    let info_text = format!(
+                        "{}x{} @ {:.0}% ({})",
+                        display_width,
+                        display_height,
+                        app.zoom_factor() * 100.0,
+                        match app.scale_mode() {
+                            rfb_display::ScaleMode::Native => "Native",
+                            rfb_display::ScaleMode::Fit => "Fit",
+                            rfb_display::ScaleMode::Fill => "Fill",
+                        }
+                    );
+                    
+                    let info_pos = rect.min + egui::vec2(10.0, 10.0);
+                    ui.painter().text(
+                        info_pos,
+                        egui::Align2::LEFT_TOP,
+                        info_text,
+                        egui::FontId::monospace(10.0),
+                        Color32::YELLOW,
+                    );
+                }
             } else {
                 // Not connected - show instructions
                 let text_pos = rect.center();

@@ -1,10 +1,12 @@
 use crate::{ui, AppConfig};
 use anyhow::{Context, Result};
-use egui::{Context as EguiContext, ViewportCommand};
+use egui::{Context as EguiContext, ViewportCommand, TextureHandle};
 use parking_lot::RwLock;
 use platform_input::*;
 use rfb_client::{Client, ClientBuilder, ServerEvent, ClientHandle, Config};
 use rfb_display::{ScaleMode, Viewport, ViewportConfig};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -91,6 +93,12 @@ pub struct VncViewerApp {
     last_frame_time: Instant,
     frame_count: u64,
     fps_counter: f64,
+    
+    /// Framebuffer texture for rendering
+    framebuffer_texture: Option<TextureHandle>,
+    
+    /// Last framebuffer update sequence number (to detect changes)
+    last_framebuffer_version: u64,
 }
 
 impl VncViewerApp {
@@ -155,6 +163,8 @@ impl VncViewerApp {
             last_frame_time: Instant::now(),
             frame_count: 0,
             fps_counter: 0.0,
+            framebuffer_texture: None,
+            last_framebuffer_version: 0,
         };
         
         // Auto-connect if server specified
@@ -225,6 +235,10 @@ impl VncViewerApp {
         }
         
         self.renderer = None;
+        self.framebuffer_texture = None;
+        self.last_framebuffer_version = 0;
+        self.framebuffer_width = 0;
+        self.framebuffer_height = 0;
         self.state = AppState::Disconnected;
         self.error_message = None;
     }
@@ -276,8 +290,14 @@ impl VncViewerApp {
                 info!("Connected to server: {}", name);
                 self.state = AppState::Connected(name.clone());
                 
-                // Update viewport with actual framebuffer size
-                // TODO: Update viewport content size when API is available
+                // Update framebuffer dimensions
+                self.framebuffer_width = width as u32;
+                self.framebuffer_height = height as u32;
+                
+                // Clear any existing texture to force recreation with new size
+                self.framebuffer_texture = None;
+                self.last_framebuffer_version = 0;
+                
                 info!("Framebuffer dimensions: {}x{}", width, height);
                 
                 // Update stats
@@ -418,6 +438,11 @@ impl eframe::App for VncViewerApp {
         
         // Process VNC client events
         self.process_client_events(ctx);
+        
+        // Update framebuffer texture when connected
+        if matches!(self.state, AppState::Connected(_)) {
+            self.update_framebuffer_texture(ctx);
+        }
         
         // Apply dark mode if configured
         if self.config.ui.dark_mode {
@@ -629,5 +654,92 @@ impl VncViewerApp {
     
     pub fn disconnect_from_server(&mut self) {
         self.disconnect()
+    }
+    
+    /// Update the framebuffer texture from the client handle.
+    ///
+    /// This should be called whenever framebuffer updates are received.
+    /// Returns true if the texture was updated.
+    pub fn update_framebuffer_texture(&mut self, ctx: &EguiContext) -> bool {
+        let Some(ref client_handle) = self.client_handle else {
+            // No client - clear texture
+            if self.framebuffer_texture.is_some() {
+                self.framebuffer_texture = None;
+                self.last_framebuffer_version = 0;
+            }
+            return false;
+        };
+        
+        // Get framebuffer size and format
+        let (width, height) = match client_handle.framebuffer_size() {
+            Some(size) => size,
+            None => return false,
+        };
+        
+        // Update stored dimensions
+        if self.framebuffer_width != width || self.framebuffer_height != height {
+            self.framebuffer_width = width;
+            self.framebuffer_height = height;
+            // Force texture recreation
+            self.framebuffer_texture = None;
+        }
+        
+        // Get framebuffer pixels
+        let pixels = match client_handle.framebuffer_pixels() {
+            Some(pixels) => pixels,
+            None => return false,
+        };
+        
+        // Simple version tracking based on content hash (for now)
+        let mut hasher = DefaultHasher::new();
+        pixels.hash(&mut hasher);
+        let content_hash = hasher.finish();
+        
+        if content_hash == self.last_framebuffer_version && self.framebuffer_texture.is_some() {
+            // No change, texture is still valid
+            return false;
+        }
+        
+        // Convert pixels to ColorImage
+        // The framebuffer format from rfb-client should be RGB888 (3 bytes per pixel)
+        let expected_len_rgb = (width * height * 3) as usize;
+        let expected_len_rgba = (width * height * 4) as usize;
+        
+        let rgba_pixels = if pixels.len() == expected_len_rgb {
+            // RGB format - convert to RGBA
+            let mut rgba_pixels = Vec::with_capacity(expected_len_rgba);
+            for chunk in pixels.chunks_exact(3) {
+                rgba_pixels.extend_from_slice(&[chunk[0], chunk[1], chunk[2], 255]); // Add alpha
+            }
+            rgba_pixels
+        } else if pixels.len() == expected_len_rgba {
+            // Already RGBA format
+            pixels
+        } else {
+            warn!(
+                "Unexpected framebuffer pixel data length: got {}, expected {} (RGB) or {} (RGBA)", 
+                pixels.len(), expected_len_rgb, expected_len_rgba
+            );
+            return false;
+        };
+        
+        let color_image = egui::ColorImage::from_rgba_unmultiplied(
+            [width as usize, height as usize],
+            &rgba_pixels,
+        );
+        
+        // Create or update texture
+        let texture_id = format!("framebuffer_{}x{}", width, height);
+        let texture = ctx.load_texture(texture_id, color_image, egui::TextureOptions::LINEAR);
+        
+        self.framebuffer_texture = Some(texture);
+        self.last_framebuffer_version = content_hash;
+        
+        true
+    }
+    
+    /// Get the current framebuffer texture for rendering.
+    pub fn framebuffer_texture(&self) -> Option<&TextureHandle> {
+        self.framebuffer_texture.as_ref()
     }
 }
