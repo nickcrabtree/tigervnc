@@ -61,6 +61,8 @@ fn default_encodings() -> Vec<i32> {
         rfb_encodings::ENCODING_RRE,
         rfb_encodings::ENCODING_COPY_RECT,
         rfb_encodings::ENCODING_RAW,
+        // ContentCache protocol capability
+        rfb_protocol::messages::PSEUDO_ENCODING_CONTENT_CACHE,
     ]
 }
 

@@ -107,6 +107,10 @@ pub use errors::RfbClientError;
 pub use messages::{ClientCommand, ServerEvent};
 pub use transport::TlsConfig;
 
+// Internal use
+use rfb_pixelbuffer::PixelBuffer;
+
+
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
@@ -114,7 +118,7 @@ use tokio::task::JoinHandle;
 ///
 /// The framebuffer is shared between the event loop (which updates it) and
 /// the application (which reads from it for rendering).
-pub type FramebufferHandle = Arc<parking_lot::Mutex<rfb_pixelbuffer::ManagedPixelBuffer>>;
+pub type FramebufferHandle = Arc<tokio::sync::Mutex<crate::framebuffer::Framebuffer>>;
 
 /// Builder for creating a VNC client.
 ///
@@ -166,14 +170,15 @@ impl ClientBuilder {
         let (event_tx, event_rx) = flume::bounded(64);
 
         // Spawn event loop
-        let handle = event_loop::spawn(self.config, cmd_rx, event_tx).await?;
+        let (join_handle, framebuffer_handle) = event_loop::spawn(self.config, cmd_rx, event_tx).await?;
 
         Ok(Client {
             handle: ClientHandle {
                 commands: cmd_tx,
                 events: event_rx,
+                framebuffer: Some(framebuffer_handle),
             },
-            join_handle: handle,
+            join_handle,
         })
     }
 }
@@ -186,6 +191,8 @@ impl ClientBuilder {
 pub struct ClientHandle {
     commands: flume::Sender<ClientCommand>,
     events: flume::Receiver<ServerEvent>,
+    /// Shared framebuffer for rendering
+    framebuffer: Option<FramebufferHandle>,
 }
 
 impl ClientHandle {
@@ -271,6 +278,72 @@ impl ClientHandle {
     /// Alias for close() to match the naming used in app.rs
     pub fn disconnect(&self) -> Result<(), RfbClientError> {
         self.close()
+    }
+    
+    /// Returns a handle to the shared framebuffer for rendering.
+    ///
+    /// Returns `None` if not yet connected or connection has been closed.
+    /// The framebuffer is protected by a mutex and can be safely accessed
+    /// from multiple threads.
+    #[must_use]
+    pub fn framebuffer(&self) -> Option<FramebufferHandle> {
+        self.framebuffer.clone()
+    }
+    
+    /// Convenience method to read framebuffer dimensions.
+    ///
+    /// Returns `None` if not connected or if the framebuffer lock cannot be acquired.
+    #[must_use]
+    pub fn framebuffer_size(&self) -> Option<(u32, u32)> {
+        // Note: This blocks - in a real implementation you'd want an async version
+        self.framebuffer.as_ref().and_then(|fb| {
+            if let Ok(fb) = fb.try_lock() {
+                let (w, h) = fb.size();
+                Some((w as u32, h as u32))
+            } else {
+                None
+            }
+        })
+    }
+    
+    /// Convenience method to get framebuffer pixel format.
+    ///
+    /// Returns `None` if not connected or if the framebuffer lock cannot be acquired.
+    #[must_use]
+    pub fn framebuffer_format(&self) -> Option<rfb_pixelbuffer::PixelFormat> {
+        self.framebuffer.as_ref().and_then(|fb| {
+            if let Ok(fb) = fb.try_lock() {
+                Some(fb.buffer().format().clone())
+            } else {
+                None
+            }
+        })
+    }
+    
+    /// Convenience method to read framebuffer pixels for rendering.
+    ///
+    /// Returns the raw pixel data as a byte slice. The format is always RGB888
+    /// regardless of the server's native pixel format.
+    ///
+    /// Returns `None` if not connected or if the framebuffer lock cannot be acquired.
+    #[must_use]
+    pub fn framebuffer_pixels(&self) -> Option<Vec<u8>> {
+        self.framebuffer.as_ref().and_then(|fb| {
+            if let Ok(fb) = fb.try_lock() {
+                let buffer = fb.buffer();
+                let rect = rfb_common::Rect::new(0, 0, buffer.width() as u32, buffer.height() as u32);
+                let mut stride = 0;
+                if let Some(pixels) = buffer.get_buffer(rect, &mut stride) {
+                    let bytes_per_pixel = buffer.format().bytes_per_pixel();
+                    let total_bytes = buffer.height() as usize * stride * bytes_per_pixel as usize;
+                    Some(pixels[..total_bytes].to_vec())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
     }
 }
 

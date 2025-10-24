@@ -3344,6 +3344,7 @@ dependencies = [
  "rfb-pixelbuffer",
  "rfb-protocol",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
