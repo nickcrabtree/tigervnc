@@ -117,7 +117,7 @@ impl VncViewerApp {
         // Load configuration
         let config_path = args.config.clone().or_else(|| {
             directories::UserDirs::new()
-                .and_then(|dirs| Some(dirs.home_dir()?.join(".config/rvncviewer/config.toml")))
+                .and_then(|dirs| dirs.home_dir().map(|h| h.join(".config/rvncviewer/config.toml")))
         });
         
         let config = if let Some(ref path) = config_path {
@@ -246,7 +246,7 @@ impl VncViewerApp {
         // Fullscreen state will be applied in the update method
     }
     
-    fn apply_fullscreen_state(&mut self, ctx: &egui::Context, frame: &mut Frame) {
+    fn apply_fullscreen_state(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         debug!("Applying fullscreen state: {}", self.config.fullscreen);
         
         // Request fullscreen mode change
@@ -339,13 +339,16 @@ impl App for VncViewerApp {
                     self.desktop_window.show(ui, &self.config, &self.connection_stats);
                 }
                 AppState::Disconnected { reason } => {
-                    ui.centered_and_justified(|ui| {
-                        ui.label(format!("Disconnected: {}", reason));
-                        if ui.button("Reconnect").clicked() {
-                            self.show_connection_dialog = true;
-                            self.state = AppState::Connecting;
-                        }
-                    });
+                    let reason_text = reason.clone();
+                    let reconnect_clicked = ui.centered_and_justified(|ui| {
+                        ui.label(format!("Disconnected: {}", reason_text));
+                        ui.button("Reconnect").clicked()
+                    }).inner;
+                    
+                    if reconnect_clicked {
+                        self.show_connection_dialog = true;
+                        self.state = AppState::Connecting;
+                    }
                 }
             }
         });

@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::app::AppConfig;
 
@@ -77,6 +77,7 @@ impl ConnectionDialog {
     pub fn show(&mut self, ctx: &egui::Context, show: &mut bool) -> Option<Result<ConnectionInfo>> {
         let mut result = None;
         
+        let mut should_close = false;
         egui::Window::new("Connect to VNC Server")
             .collapsible(false)
             .resizable(false)
@@ -217,16 +218,21 @@ impl ConnectionDialog {
                     ui.horizontal(|ui| {
                         if ui.button("Connect").clicked() {
                             result = Some(self.validate_and_connect());
+                            should_close = true;
                         }
                         
                         ui.add_space(10.0);
                         
                         if ui.button("Cancel").clicked() {
-                            *show = false;
+                            should_close = true;
                         }
                     });
                 });
             });
+        
+        if should_close {
+            *show = false;
+        }
         
         result
     }

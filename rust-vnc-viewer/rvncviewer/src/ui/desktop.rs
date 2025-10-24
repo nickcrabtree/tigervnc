@@ -52,7 +52,8 @@ impl DesktopWindow {
         
         // Main desktop display area
         let available_size = ui.available_size();
-        let (rect, response) = ui.allocate_response(available_size, egui::Sense::click_and_drag());
+        let response = ui.allocate_response(available_size, egui::Sense::click_and_drag());
+        let rect = response.rect;
         
         // Handle input events
         self.handle_input(&response, rect, config.view_only);
@@ -148,7 +149,7 @@ impl DesktopWindow {
                 self.drag_start = response.interact_pointer_pos().unwrap_or_default();
             } else if let Some(current_pos) = response.interact_pointer_pos() {
                 let delta = current_pos - self.drag_start;
-                self.viewport_offset += delta.to_vec2();
+                self.viewport_offset += delta - self.drag_start;
                 self.drag_start = current_pos;
             }
         } else {
@@ -156,7 +157,7 @@ impl DesktopWindow {
         }
         
         // Handle scroll wheel for zooming
-        let scroll_delta = response.ctx.input(|i| i.scroll_delta);
+        let scroll_delta = response.ctx.input(|i| i.smooth_scroll_delta);
         if scroll_delta.y != 0.0 && rect.contains(response.interact_pointer_pos().unwrap_or_default()) {
             let zoom_factor = if scroll_delta.y > 0.0 { 1.1 } else { 0.9 };
             self.viewport_scale = (self.viewport_scale * zoom_factor).clamp(0.1, 10.0);
@@ -324,7 +325,7 @@ impl DesktopWindow {
             self.framebuffer_size.1 as f32
         );
         
-        let relative_pos = (screen_pos - display_rect.min).to_vec2();
+        let relative_pos = screen_pos - display_rect.min;
         let display_size = display_rect.size();
         
         // Convert to normalized coordinates (0.0 to 1.0)

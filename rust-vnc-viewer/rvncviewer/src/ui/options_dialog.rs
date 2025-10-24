@@ -94,6 +94,7 @@ impl OptionsDialog {
         }
         
         let mut result = None;
+        let mut should_close = false;
         
         egui::Window::new("Preferences")
             .collapsible(false)
@@ -178,9 +179,9 @@ impl OptionsDialog {
                         ui.label("Drag to reorder encoding preferences (higher = preferred):");
                         ui.add_space(5.0);
                         
-                        // Simple encoding preference list (in a real implementation, this would be drag-and-drop)
+                        // Simple encoding preference list with buttons to reorder
                         let mut encodings_copy = self.state.encoding_preferences.clone();
-                        let mut modified = false;
+                        let mut swap_action: Option<(usize, usize)> = None;
                         
                         for (i, encoding) in encodings_copy.iter().enumerate() {
                             ui.horizontal(|ui| {
@@ -189,17 +190,22 @@ impl OptionsDialog {
                                 
                                 // Move up button
                                 if i > 0 && ui.small_button("▲").clicked() {
-                                    encodings_copy.swap(i, i - 1);
-                                    modified = true;
+                                    swap_action = Some((i, i - 1));
                                 }
                                 
                                 // Move down button
                                 if i < encodings_copy.len() - 1 && ui.small_button("▼").clicked() {
-                                    encodings_copy.swap(i, i + 1);
-                                    modified = true;
+                                    swap_action = Some((i, i + 1));
                                 }
                             });
                         }
+                        
+                        let modified = if let Some((from, to)) = swap_action {
+                            encodings_copy.swap(from, to);
+                            true
+                        } else {
+                            false
+                        };
                         
                         if modified {
                             self.state.encoding_preferences = encodings_copy;
@@ -222,7 +228,7 @@ impl OptionsDialog {
                             if ui.button("OK").clicked() {
                                 let new_config = self.create_updated_config(current_config);
                                 result = Some(new_config);
-                                *show = false;
+                                should_close = true;
                                 debug!("Applied preferences and closed dialog");
                             }
                             
@@ -231,7 +237,7 @@ impl OptionsDialog {
                             if ui.button("Cancel").clicked() {
                                 // Reset state to current config
                                 self.state = OptionsState::from(current_config);
-                                *show = false;
+                                should_close = true;
                                 debug!("Cancelled preference changes");
                             }
                             
@@ -245,6 +251,10 @@ impl OptionsDialog {
                     });
                 });
             });
+        
+        if should_close {
+            *show = false;
+        }
         
         result
     }

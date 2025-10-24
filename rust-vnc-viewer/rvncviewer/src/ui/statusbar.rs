@@ -1,5 +1,5 @@
 use eframe::egui;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::app::ConnectionStats;
 
