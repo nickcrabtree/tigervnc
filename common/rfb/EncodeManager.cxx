@@ -138,7 +138,8 @@ static const char *encoderTypeName(EncoderType type)
 }
 
 EncodeManager::EncodeManager(SConnection* conn_)
-  : conn(conn_), recentChangeTimer(this), cacheStatsTimer(this), contentCache(nullptr)
+  : conn(conn_), recentChangeTimer(this), cacheStatsTimer(this), contentCache(nullptr),
+    usePersistentCache(false)
 {
   StatsVector::iterator iter;
 
@@ -155,6 +156,7 @@ EncodeManager::EncodeManager(SConnection* conn_)
   updates = 0;
   memset(&copyStats, 0, sizeof(copyStats));
   memset(&cacheStats, 0, sizeof(cacheStats));
+  memset(&persistentCacheStats, 0, sizeof(persistentCacheStats));
   stats.resize(encoderClassMax);
   for (iter = stats.begin();iter != stats.end();++iter) {
     StatsVector::value_type::iterator iter2;
@@ -956,7 +958,11 @@ void EncodeManager::writeRects(const core::Region& changed,
 void EncodeManager::writeSubRect(const core::Rect& rect,
                                  const PixelBuffer* pb)
 {
-  // Try content cache lookup first
+  // Try PersistentCache first (preferred over ContentCache when both supported)
+  if (tryPersistentCacheLookup(rect, pb))
+    return;
+
+  // Try content cache lookup
   if (tryContentCacheLookup(rect, pb))
     return;
 
@@ -1361,6 +1367,60 @@ void EncodeManager::insertIntoContentCache(const core::Rect& rect,
   vlog.debug("ContentCache insert: rect [%d,%d-%d,%d], hash=%llx, cacheId=%llu",
              rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
              (unsigned long long)hash, (unsigned long long)cacheId);
+}
+
+bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
+                                             const PixelBuffer* pb)
+{
+  if (!usePersistentCache)
+    return false;
+
+  // Skip if below minimum size threshold
+  if (rect.area() < Server::persistentCacheMinRectSize)
+    return false;
+
+  // Require client support for the PersistentCache protocol
+  if (!conn->client.supportsEncoding(pseudoEncodingPersistentCache))
+    return false;
+
+  persistentCacheStats.cacheLookups++;
+
+  // Compute content hash using ContentHash utility
+  std::vector<uint8_t> hash = ContentHash::computeRect(pb, rect);
+
+  // Check if client has advertised this hash
+  if (clientKnowsHash(hash)) {
+    // Cache hit! Client has this content, send reference
+    persistentCacheStats.cacheHits++;
+    int equiv = 12 + rect.area() * (conn->client.pf().bpp/8);
+    persistentCacheStats.bytesSaved += equiv - (20 + hash.size()); // PersistentCachedRect overhead
+    copyStats.rects++;
+    copyStats.pixels += rect.area();
+    copyStats.equivalent += equiv;
+    beforeLength = conn->getOutStream()->length();
+    conn->writer()->writePersistentCachedRect(rect, hash);
+    copyStats.bytes += conn->getOutStream()->length() - beforeLength;
+    vlog.debug("PersistentCache protocol hit: rect [%d,%d-%d,%d]",
+               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
+    lossyRegion.assign_subtract(rect);
+    pendingRefreshRegion.assign_subtract(rect);
+    return true;
+  }
+
+  // Client doesn't have this hash yet
+  // We could send PersistentCachedRectInit immediately, but for now just fall through
+  // to regular encoding and the client will request it on cache miss
+  return false;
+}
+
+void EncodeManager::addClientKnownHash(const std::vector<uint8_t>& hash)
+{
+  clientKnownHashes_.insert(hash);
+}
+
+bool EncodeManager::clientKnowsHash(const std::vector<uint8_t>& hash) const
+{
+  return clientKnownHashes_.find(hash) != clientKnownHashes_.end();
 }
 
 template<class T>

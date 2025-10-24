@@ -380,6 +380,18 @@ void SConnection::setEncodings(int nEncodings, const int32_t* encodings)
 
   client.setEncodings(nEncodings, encodings);
 
+  // Check for PersistentCache support (preferred over ContentCache)
+  // The protocol negotiation: if client supports PersistentCache, use it
+  // Otherwise fall back to ContentCache if supported
+  vlog.debug("Client encodings: PersistentCache=%d, ContentCache=%d",
+             client.supportsEncoding(pseudoEncodingPersistentCache),
+             client.supportsEncoding(pseudoEncodingContentCache));
+  if (client.supportsEncoding(pseudoEncodingPersistentCache) && Server::enablePersistentCache) {
+    vlog.info("Using PersistentCache protocol");
+  } else if (client.supportsEncoding(pseudoEncodingContentCache)) {
+    vlog.info("Using ContentCache protocol (PersistentCache not available)");
+  }
+
   supportsLocalCursor();
 
   if (client.supportsFence() && firstFence)

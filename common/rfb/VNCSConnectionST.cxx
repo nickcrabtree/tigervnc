@@ -476,6 +476,22 @@ void VNCSConnectionST::clientReady(bool shared)
     desktopReady();
 }
 
+void VNCSConnectionST::setEncodings(int nEncodings, const int32_t* encodings)
+{
+  SConnection::setEncodings(nEncodings, encodings);
+  
+  // Enable PersistentCache on EncodeManager if client supports it
+  if (client.supportsEncoding(pseudoEncodingPersistentCache) && Server::enablePersistentCache) {
+    encodeManager.setUsePersistentCache(true);
+    vlog.info("PersistentCache enabled for this connection");
+  } else if (client.supportsEncoding(pseudoEncodingContentCache)) {
+    encodeManager.setUsePersistentCache(false);
+    vlog.info("ContentCache enabled for this connection (PersistentCache not available)");
+  } else {
+    encodeManager.setUsePersistentCache(false);
+  }
+}
+
 void VNCSConnectionST::setPixelFormat(const PixelFormat& pf)
 {
   SConnection::setPixelFormat(pf);
@@ -857,6 +873,36 @@ void VNCSConnectionST::recordCachedRectRef(uint64_t cacheId, const core::Rect& r
 void VNCSConnectionST::onCachedRectRef(uint64_t cacheId, const core::Rect& r)
 {
   recordCachedRectRef(cacheId, r);
+}
+
+void VNCSConnectionST::handlePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes)
+{
+  vlog.debug("Client queried %d persistent cache hashes", (int)hashes.size());
+  
+  // For Phase 6: Client is requesting data for hashes it doesn't have
+  // The proper response would be to send PersistentCachedRectInit with the data
+  // However, since we don't have a reverse mapping from hash -> current rectangle,
+  // we'll just mark these as un-cacheable and let normal encoding happen.
+  // A full implementation would need to store hash -> rect mappings.
+  
+  // TODO Phase 7: Implement proper query response by storing hash->rect mappings
+  // For now, this is a no-op and client will receive regular encoded rectangles
+}
+
+void VNCSConnectionST::handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
+                                                uint16_t chunkIndex,
+                                                const std::vector<std::vector<uint8_t>>& hashes)
+{
+  vlog.debug("Client advertised %d persistent cache hashes (chunk %d/%d, seq %u)",
+             (int)hashes.size(), chunkIndex + 1, totalChunks, sequenceId);
+  
+  // Forward to EncodeManager to track client's known hashes
+  for (const auto& hash : hashes) {
+    encodeManager.addClientKnownHash(hash);
+  }
+  
+  vlog.info("Received hash list: %d hashes (total client hashes tracked: %d)",
+            (int)hashes.size(), (int)hashes.size()); // TODO: track cumulative count
 }
 
 bool VNCSConnectionST::isShiftPressed()

@@ -21,6 +21,8 @@
 #define __RFB_ENCODEMANAGER_H__
 
 #include <vector>
+#include <unordered_set>
+#include <queue>
 
 #include <stdint.h>
 
@@ -28,6 +30,7 @@
 #include <core/Timer.h>
 
 #include <rfb/ContentCache.h>
+#include <rfb/ContentHash.h>
 #include <rfb/PixelBuffer.h>
 
 namespace rfb {
@@ -65,6 +68,11 @@ namespace rfb {
                               const RenderedCursor* renderedCursor,
                               size_t maxUpdateSize);
 
+    // PersistentCache protocol support - public interface
+    void addClientKnownHash(const std::vector<uint8_t>& hash);
+    bool clientKnowsHash(const std::vector<uint8_t>& hash) const;
+    void setUsePersistentCache(bool enable) { usePersistentCache = enable; }
+
   protected:
     void handleTimeout(core::Timer* t) override;
 
@@ -94,6 +102,9 @@ namespace rfb {
 
     bool tryContentCacheLookup(const core::Rect& rect, const PixelBuffer* pb);
     void insertIntoContentCache(const core::Rect& rect, const PixelBuffer* pb);
+
+    // PersistentCache protocol support (private implementation)
+    bool tryPersistentCacheLookup(const core::Rect& rect, const PixelBuffer* pb);
 
     bool checkSolidTile(const core::Rect& r, const uint8_t* colourValue,
                         const PixelBuffer *pb);
@@ -174,6 +185,18 @@ namespace rfb {
       unsigned long long bytesSaved;
     };
     ContentCacheStats cacheStats;
+
+    // PersistentCache protocol state
+    bool usePersistentCache;
+    std::unordered_set<std::vector<uint8_t>, ContentHash::HashVectorHasher> clientKnownHashes_;
+    std::queue<std::pair<std::vector<uint8_t>, core::Rect>> pendingPersistentQueries_;
+
+    struct PersistentCacheStats {
+      unsigned cacheHits;
+      unsigned cacheLookups;
+      unsigned long long bytesSaved;
+    };
+    PersistentCacheStats persistentCacheStats;
   };
 
 }
