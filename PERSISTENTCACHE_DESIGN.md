@@ -758,6 +758,106 @@ size_t strideBytes = stride * bytesPerPixel;  // Convert!
 - **RFB Protocol:** RFC 6143
 - **SHA-256:** FIPS 180-4
 
+## Implementation Progress
+
+### ✅ Phase 1: Protocol Foundation (COMPLETED)
+
+**Completed:** 2025-10-24
+
+**Tasks completed:**
+1. ✅ Added `pseudoEncodingPersistentCache = -321` to `common/rfb/encodings.h`
+2. ✅ Added `encodingPersistentCachedRect = 102` and `encodingPersistentCachedRectInit = 103`
+3. ✅ Added message type constants (msgTypePersistentCacheQuery, msgTypePersistentCacheHashList)
+4. ✅ Added server parameters: `enablePersistentCache` and `persistentCacheMinRectSize` in `common/rfb/ServerCore.h/.cxx`
+5. ✅ Added client parameters: `persistentCache`, `persistentCacheSize`, `persistentCachePath` in `vncviewer/parameters.cxx`
+
+**Testing:** Compiled successfully, no behavior changes.
+
+**Files modified:**
+- `common/rfb/encodings.h`: Lines 39-41, 59
+- `common/rfb/ServerCore.h`: Lines 57-59
+- `common/rfb/ServerCore.cxx`: Lines 120-128
+- `vncviewer/parameters.cxx`: Lines 247-259
+
+### ✅ Phase 2: Client Cache Storage (COMPLETED)
+
+**Completed:** 2025-10-24
+
+**Goal:** Implement `GlobalClientPersistentCache` with in-memory storage only.
+
+**Tasks completed:**
+1. ✅ Created `common/rfb/GlobalClientPersistentCache.h` with hash-indexed storage interface
+2. ✅ Created `common/rfb/GlobalClientPersistentCache.cxx` with full ARC eviction implementation
+3. ✅ Implemented `HashVectorHasher` for `std::vector<uint8_t>` keys
+4. ✅ Implemented protocol operations: `has()`, `get()`, `insert()`, `getAllHashes()`
+5. ✅ Implemented ARC algorithm: `replace()`, `moveToT2()`, `moveToB1()`, `moveToB2()`
+6. ✅ Added statistics tracking: hits, misses, evictions, T1/T2 sizes
+7. ✅ Updated `common/rfb/CMakeLists.txt` to build new files
+8. ✅ Verified build succeeds with `make viewer`
+
+**Files created:**
+- `common/rfb/GlobalClientPersistentCache.h` (169 lines)
+- `common/rfb/GlobalClientPersistentCache.cxx` (405 lines)
+
+**Files modified:**
+- `common/rfb/CMakeLists.txt`: Added GlobalClientPersistentCache.cxx
+
+**Notes:**
+- Disk persistence methods (`loadFromDisk()`, `saveToDisk()`) are stubs for Phase 7
+- ARC algorithm adapted from ContentCache with vector<uint8_t> keys instead of uint64_t
+- Unit tests deferred to after protocol integration (Phase 4)
+
+### ✅ Phase 3: Client Protocol Messages (COMPLETED)
+
+**Completed:** 2025-10-24
+
+**Goal:** Implement client-side message reading/writing.
+
+**Tasks completed:**
+1. ✅ Extended `CMsgReader::readRect()` switch statement to handle `encodingPersistentCachedRect` (102) and `encodingPersistentCachedRectInit` (103)
+2. ✅ Implemented `CMsgReader::readPersistentCachedRect()` - reads variable-length hash + flags
+3. ✅ Implemented `CMsgReader::readPersistentCachedRectInit()` - incremental decode with hash storage
+4. ✅ Added state variables for PersistentCachedRectInit decode tracking
+5. ✅ Implemented `CMsgWriter::writePersistentCacheQuery()` - batched hash query message
+6. ✅ Implemented `CMsgWriter::writePersistentHashList()` - chunked hash advertisement
+7. ✅ Updated `CMsgHandler` interface with virtual methods:
+   - `handlePersistentCachedRect(const core::Rect&, const std::vector<uint8_t>& hash)`
+   - `storePersistentCachedRect(const core::Rect&, const std::vector<uint8_t>& hash)`
+8. ✅ Wire format correctly handles variable-length hashes (1 byte length + hash bytes)
+9. ✅ Added `<vector>` includes to all affected headers
+10. ✅ Verified build succeeds with `make viewer`
+
+**Files modified:**
+- `common/rfb/CMsgReader.h`: Added method declarations and state variables
+- `common/rfb/CMsgReader.cxx`: Implemented read methods (80 lines added)
+- `common/rfb/CMsgWriter.h`: Added write method declarations
+- `common/rfb/CMsgWriter.cxx`: Implemented write methods (37 lines added)
+- `common/rfb/CMsgHandler.h`: Added virtual handler methods
+- `common/rfb/msgTypes.h`: Message type constants already present
+
+**Notes:**
+- Follows existing ContentCache pattern for incremental decode
+- Uses restore points properly to handle incomplete data
+- Hash list supports chunking for large caches (avoiding message size limits)
+- Ready for Phase 4 integration with DecodeManager
+
+### 🔄 Phase 4: Client Integration (NEXT)
+
+**Goal:** Wire cache into DecodeManager, handle protocol messages.
+
+**Next Steps:**
+1. Add `GlobalClientPersistentCache*` member to `DecodeManager`
+2. Implement `handlePersistentCachedRect()` in client handler (lookup and blit)
+3. Implement `storePersistentCachedRect()` in client handler (store after decode)
+4. Implement query batching and debouncing (aggregate multiple misses)
+5. Add protocol negotiation (check for -321 pseudo-encoding support)
+6. Wire up to CConnection or appropriate client connection class
+
+**Testing:** Integration tests with mock server
+
 ## Changelog
 
 - **2025-10-24:** Initial PersistentCache protocol design, distinct from ContentCache
+- **2025-10-24:** Phase 1 completed - protocol constants and parameters added
+- **2025-10-24:** Phase 2 completed - GlobalClientPersistentCache implementation with ARC algorithm
+- **2025-10-24:** Phase 3 completed - client protocol message reading/writing implementation

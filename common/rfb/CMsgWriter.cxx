@@ -244,6 +244,43 @@ void CMsgWriter::writeRequestCachedData(uint64_t cacheId)
   endMsg();
 }
 
+void CMsgWriter::writePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes)
+{
+  if (hashes.empty())
+    return;
+    
+  startMsg(msgTypePersistentCacheQuery);
+  os->writeU16(hashes.size());
+  
+  for (const auto& hash : hashes) {
+    os->writeU8(hash.size());
+    os->writeBytes(hash.data(), hash.size());
+  }
+  
+  endMsg();
+}
+
+void CMsgWriter::writePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
+                                        uint16_t chunkIndex,
+                                        const std::vector<std::vector<uint8_t>>& hashes)
+{
+  if (hashes.empty())
+    return;
+    
+  startMsg(msgTypePersistentCacheHashList);
+  os->writeU32(sequenceId);
+  os->writeU16(totalChunks);
+  os->writeU16(chunkIndex);
+  os->writeU16(hashes.size());
+  
+  for (const auto& hash : hashes) {
+    os->writeU8(hash.size());
+    os->writeBytes(hash.data(), hash.size());
+  }
+  
+  endMsg();
+}
+
 void CMsgWriter::writeClipboardCaps(uint32_t caps,
                                     const uint32_t* lengths)
 {

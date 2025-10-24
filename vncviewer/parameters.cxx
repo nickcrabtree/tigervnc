@@ -244,6 +244,20 @@ core::StringParameter
   via("via", "Gateway to tunnel via", "");
 #endif
 
+// PersistentCache parameters (cross-session, content hashes)
+core::BoolParameter
+  persistentCache("PersistentCache",
+                  "Enable PersistentCache protocol with content-hash based caching",
+                  false);
+core::IntParameter
+  persistentCacheSize("PersistentCacheSize",
+                      "Maximum size of persistent cache in MB",
+                      2048, 0, 8192);
+core::StringParameter
+  persistentCachePath("PersistentCachePath",
+                      "Path to persistent cache file (default: ~/.cache/tigervnc/persistentcache.dat)",
+                      "");
+
 static const char* IDENTIFIER_STRING = "TigerVNC Configuration file Version 1.0";
 
 /*

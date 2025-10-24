@@ -12,6 +12,7 @@ add_library(rfb STATIC
   ClientParams.cxx
   ComparingUpdateTracker.cxx
   ContentCache.cxx
+  GlobalClientPersistentCache.cxx
   CopyRectDecoder.cxx
   Cursor.cxx
   DecodeManager.cxx

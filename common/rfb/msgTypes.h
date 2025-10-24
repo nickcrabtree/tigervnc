@@ -46,7 +46,12 @@ namespace rfb {
 
   const int msgTypeSetDesktopSize = 251;
 
+  // ContentCache protocol (session-only)
   const int msgTypeRequestCachedData = 254;
+
+  // PersistentCache protocol (cross-session)
+  const int msgTypePersistentCacheQuery = 253;
+  const int msgTypePersistentCacheHashList = 252;
 
   const int msgTypeQEMUClientMessage = 255;
 }

@@ -83,6 +83,11 @@ extern core::BoolParameter reconnectOnError;
 extern core::StringParameter via;
 #endif
 
+// PersistentCache parameters
+extern core::BoolParameter persistentCache;
+extern core::IntParameter persistentCacheSize;
+extern core::StringParameter persistentCachePath;
+
 void saveViewerParameters(const char *filename, const char *servername=nullptr);
 char* loadViewerParameters(const char *filename);
 

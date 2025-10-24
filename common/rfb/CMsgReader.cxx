@@ -58,6 +58,10 @@ CMsgReader::CMsgReader(CMsgHandler* handler_, rdr::InStream* is_)
   pendingCacheInitActive = false;
   pendingCacheId = 0;
   pendingCacheEncoding = 0;
+  
+  // Initialize PersistentCachedRectInit state
+  pendingPersistentCacheInitActive = false;
+  pendingPersistentCacheEncoding = 0;
 }
 
 CMsgReader::~CMsgReader()
@@ -222,6 +226,12 @@ bool CMsgReader::readMsg()
       break;
     case encodingCachedRectInit:
       ret = readCachedRectInit(dataRect);
+      break;
+    case encodingPersistentCachedRect:
+      ret = readPersistentCachedRect(dataRect);
+      break;
+    case encodingPersistentCachedRectInit:
+      ret = readPersistentCachedRectInit(dataRect);
       break;
     default:
       ret = readRect(dataRect, rectEncoding);
@@ -939,5 +949,82 @@ bool CMsgReader::readCachedRectInit(const core::Rect& r)
     pendingCacheEncoding = 0;
   }
 
+  return ret;
+}
+
+bool CMsgReader::readPersistentCachedRect(const core::Rect& r)
+{
+  // Read variable-length hash: hashLen (1 byte) + hashBytes + flags (2 bytes)
+  if (!is->hasData(1))
+    return false;
+    
+  is->setRestorePoint();
+  
+  uint8_t hashLen = is->readU8();
+  
+  if (!is->hasDataOrRestore(hashLen + 2))
+    return false;
+  is->clearRestorePoint();
+  
+  std::vector<uint8_t> hash(hashLen);
+  is->readBytes(hash.data(), hashLen);
+  
+  uint16_t flags = is->readU16();  // Reserved, must be 0
+  (void)flags;  // Unused for now
+  
+  vlog.debug("Received PersistentCachedRect: [%d,%d-%d,%d] hashLen=%u",
+             r.tl.x, r.tl.y, r.br.x, r.br.y, hashLen);
+  
+  // Forward to handler to lookup and blit cached content
+  handler->handlePersistentCachedRect(r, hash);
+  
+  return true;
+}
+
+bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
+{
+  // Incremental decode without outer restore point to avoid nesting with decoder
+  if (!pendingPersistentCacheInitActive) {
+    // Need header: hashLen + hashBytes + innerEncoding + payloadLen
+    if (!is->hasData(1))
+      return false;
+      
+    is->setRestorePoint();
+    
+    uint8_t hashLen = is->readU8();
+    
+    if (!is->hasDataOrRestore(hashLen + 4))
+      return false;
+    is->clearRestorePoint();
+    
+    pendingPersistentHash.resize(hashLen);
+    is->readBytes(pendingPersistentHash.data(), hashLen);
+    
+    pendingPersistentCacheEncoding = is->readS32();
+    pendingPersistentCacheInitActive = true;
+    
+    vlog.debug("Received PersistentCachedRectInit: [%d,%d-%d,%d] hashLen=%u encoding=%d",
+               r.tl.x, r.tl.y, r.br.x, r.br.y, hashLen, pendingPersistentCacheEncoding);
+  }
+  
+  // Attempt to decode the rect using the remembered encoding
+  vlog.debug("PCDBG: begin decode hashLen=%zu encoding=%d rect=[%d,%d-%d,%d]",
+             pendingPersistentHash.size(), pendingPersistentCacheEncoding,
+             r.tl.x, r.tl.y, r.br.x, r.br.y);
+  
+  bool ret = readRect(r, pendingPersistentCacheEncoding);
+  
+  vlog.debug("PCDBG: end decode hashLen=%zu encoding=%d ret=%d",
+             pendingPersistentHash.size(), pendingPersistentCacheEncoding, (int)ret);
+  
+  if (ret) {
+    // Notify handler to store this decoded rect with hash
+    handler->storePersistentCachedRect(r, pendingPersistentHash);
+    // Clear pending state
+    pendingPersistentCacheInitActive = false;
+    pendingPersistentHash.clear();
+    pendingPersistentCacheEncoding = 0;
+  }
+  
   return ret;
 }
