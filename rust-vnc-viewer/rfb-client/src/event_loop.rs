@@ -8,8 +8,7 @@ use crate::{
     messages::{ClientCommand, ServerEvent},
     protocol,
 };
-use rfb_common::Rect;
-use rfb_protocol::messages::{server::FramebufferUpdate, types::Rectangle};
+use rfb_protocol::messages::server::FramebufferUpdate;
 use tokio::select;
 use tokio::task::JoinHandle;
 

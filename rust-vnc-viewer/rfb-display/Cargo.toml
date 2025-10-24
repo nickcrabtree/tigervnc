@@ -1,0 +1,33 @@
+[package]
+name = "rfb-display"
+version = "0.1.0"
+edition = "2021"
+description = "Efficient framebuffer-to-screen rendering for VNC clients with scaling, viewport, and cursor support"
+license = "MIT"
+repository = "https://github.com/your-repo/tigervnc-rust"
+authors = ["Your Name <your.email@example.com>"]
+
+[dependencies]
+# Workspace dependencies
+rfb-common = { workspace = true }
+rfb-pixelbuffer = { workspace = true }
+
+# Windowing and rendering
+winit = "0.28"
+pixels = "0.13"
+raw-window-handle = "0.5"
+
+# Image processing for cursors and screenshots
+image = "0.25"
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+
+[features]
+default = []
+# Optional screenshot functionality  
+screenshots = []

@@ -8,6 +8,15 @@ The Rust VNC implementation now includes **two complementary components**:
 1. **`njcvncviewer-rs`** - Complete GUI viewer application with egui
 2. **`rfb-client`** - High-level async VNC client library
 
+## Latest Progress
+
+- ✅ Phase 4 complete: rfb-client library (connection lifecycle, event loop, framebuffer updates)
+  - Details: `rust-vnc-viewer/PHASE4_COMPLETE.md`
+- ✅ Phase 5 complete: rfb-display crate (scaling, viewport, cursor, multi-monitor)
+  - Details: `rust-vnc-viewer/PHASE5_COMPLETE.md`
+- 📈 Tests: 320+ across workspace; rfb-display adds 68 tests (all passing)
+- 🚀 Performance: Scaling calculations < 0.02µs; 60 fps target easily met
+
 ## Crate Structure (After Merge)
 
 ```

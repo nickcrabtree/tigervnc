@@ -86,8 +86,8 @@ use crate::{Decoder, MutablePixelBuffer, PixelFormat, Rectangle, RfbInStream, EN
 use anyhow::{anyhow, bail, Context, Result};
 use flate2::Decompress;
 use rfb_common::Rect;
-use std::cell::RefCell;
 use std::io::Cursor;
+use std::sync::Mutex;
 use tokio::io::AsyncRead;
 
 // Tight compression control flags (upper nibble of comp_ctl)
@@ -128,14 +128,14 @@ const TIGHT_MIN_TO_COMPRESS: usize = 12;
 pub struct TightDecoder {
     /// Four independent zlib decompression streams (None = not yet initialized).
     /// Streams preserve dictionary across rectangles until explicitly reset.
-    /// Uses RefCell for interior mutability since decode() takes &self.
-    zlib_streams: RefCell<[Option<Decompress>; 4]>,
+    /// Uses Mutex for thread-safe interior mutability since decode() takes &self.
+    zlib_streams: Mutex<[Option<Decompress>; 4]>,
 }
 
 impl Default for TightDecoder {
     fn default() -> Self {
         Self {
-            zlib_streams: RefCell::new([None, None, None, None]),
+            zlib_streams: Mutex::new([None, None, None, None]),
         }
     }
 }
@@ -190,7 +190,7 @@ impl TightDecoder {
         compressed_data: &[u8],
         expected_size: usize,
     ) -> Result<Vec<u8>> {
-        let mut streams = self.zlib_streams.borrow_mut();
+        let mut streams = self.zlib_streams.lock().unwrap();
 
         // Initialize stream on first use
         if streams[stream_id].is_none() {
@@ -548,7 +548,7 @@ impl Decoder for TightDecoder {
 
         // Handle stream resets (lower 4 bits)
         {
-            let mut streams = self.zlib_streams.borrow_mut();
+            let mut streams = self.zlib_streams.lock().unwrap();
             for i in 0..4 {
                 if (comp_ctl & (1 << i)) != 0 {
                     streams[i] = None; // Reset stream
@@ -1028,11 +1028,11 @@ mod tests {
             .unwrap();
 
         // Stream 0 now has history
-        assert!(decoder.zlib_streams.borrow()[0].is_some());
+        assert!(decoder.zlib_streams.lock().unwrap()[0].is_some());
 
         // Reset stream 0 (bit 0 set in lower nibble)
-        decoder.zlib_streams.borrow_mut()[0] = None;
-        assert!(decoder.zlib_streams.borrow()[0].is_none());
+        decoder.zlib_streams.lock().unwrap()[0] = None;
+        assert!(decoder.zlib_streams.lock().unwrap()[0].is_none());
 
         // Decompress new data with fresh stream
         let data2 = b"Second data after reset";

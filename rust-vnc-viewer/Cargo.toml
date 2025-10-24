@@ -1,11 +1,14 @@
 [workspace]
 members = [
     "rfb-common",
+    "rfb-pixelbuffer", 
     "rfb-protocol",
-    "rfb-pixelbuffer",
     "rfb-encodings",
     "rfb-client",
+    "rfb-display",
+    "platform-input",
     "njcvncviewer-rs",
+    "rvncviewer"
 ]
 resolver = "2"
 
@@ -67,4 +70,5 @@ rfb-pixelbuffer = { path = "rfb-pixelbuffer" }
 rfb-protocol = { path = "rfb-protocol" }
 rfb-encodings = { path = "rfb-encodings" }
 rfb-client = { path = "rfb-client" }
+rfb-display = { path = "rfb-display" }
 platform-input = { path = "platform-input" }

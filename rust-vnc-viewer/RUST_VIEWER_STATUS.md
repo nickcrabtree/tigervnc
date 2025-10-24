@@ -1,7 +1,7 @@
 # Rust VNC Viewer - Current Status and Implementation Plan
 
 **Last Updated**: 2025-10-23  
-**Status**: Phase 3.5 - Basic viewer functional, ContentCache integration planned
+**Status**: Phases 1–5 complete (client + display); GUI viewer functional; planning Phase 6–8
 
 ---
 
@@ -26,8 +26,10 @@ rust-vnc-viewer/
 ├── rfb-common          ✅ Complete (geometry, config)
 ├── rfb-pixelbuffer     ✅ Complete (pixel formats, buffer management)
 ├── rfb-protocol        ✅ Complete (networking, I/O, messages, handshake)
-├── rfb-encodings       🔄 Partial (Raw, CopyRect implemented)
-├── platform-input      ⚠️  Stub (future work)
+├── rfb-encodings       ✅ Complete (Raw, CopyRect, RRE, Hextile, Tight, ZRLE)
+├── rfb-client          ✅ Complete (async client, event loop)
+├── rfb-display         ✅ Complete (rendering, scaling, viewport, cursor)
+├── platform-input      ⚠️  Stub (Phase 6)
 └── njcvncviewer-rs     ✅ Working viewer application
 ```
 
@@ -35,11 +37,11 @@ rust-vnc-viewer/
 
 | Metric | Value |
 |--------|-------|
-| **Total LOC** | ~7,000+ |
-| **Crates Complete** | 4 of 6 |
-| **Tests Passing** | 165+ |
-| **Build Status** | ✅ Compiling |
-| **Functional Status** | ✅ Connects and displays |
+| **Total LOC** | ~13,000+ |
+| **Crates Complete** | 6 of 8 (Phases 1–5) |
+| **Tests Passing** | 320+ (68 in rfb-display) |
+| **Build Status** | ✅ Clean builds |
+| **Functional Status** | ✅ Connects, displays, renders smoothly |
 
 ---
 
@@ -110,7 +112,7 @@ njcvncviewer-rs/src/
 
 ---
 
-## ContentCache Protocol - Implementation Plan
+## ContentCache Protocol - Implementation Plan (Phase 8)
 
 ### Overview
 

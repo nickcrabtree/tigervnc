@@ -57,6 +57,14 @@ impl Rect {
     pub const fn area(&self) -> u64 {
         self.width as u64 * self.height as u64
     }
+    
+    /// Check if this rectangle intersects with another rectangle.
+    pub const fn intersects(&self, other: Rect) -> bool {
+        !(self.x >= other.right() || 
+          self.right() <= other.x || 
+          self.y >= other.bottom() || 
+          self.bottom() <= other.y)
+    }
 }
 
 #[cfg(test)]

@@ -236,7 +236,7 @@ pub trait PixelBuffer {
 ///     Ok(())
 /// }
 /// ```
-pub trait MutablePixelBuffer: PixelBuffer {
+pub trait MutablePixelBuffer: PixelBuffer + Send {
     /// Gets read-write access to a rectangular region of pixel data.
     ///
     /// # Parameters

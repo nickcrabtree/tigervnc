@@ -28,21 +28,28 @@ cargo run --release
 
 ## Status
 
-✅ **Working Viewer** - Functional VNC client with GUI!
+✅ Phase 5 Complete — Display & Rendering crate finished; viewer rendering pipeline production-ready!
 
-**Current Status**: Two implementations available
+See also: `PHASE5_COMPLETE.md` and `PHASE4_COMPLETE.md` for details.
+
+✅ **Phase 4 Complete** - Production-ready async VNC client library!
+
+**Current Status**: rfb-client library complete, GUI viewer functional
 **Last Updated**: 2025-10-23  
-**Overall Progress**: ~70% (Foundation complete + working GUI viewer)
+**Overall Progress**: ~75% (Core protocol + client library complete + working GUI viewer)
 
 ### Completed ✅
 - [x] **Phase 1**: rfb-pixelbuffer crate (complete, 19 tests)
 - [x] **Phase 2**: rfb-protocol crate (complete, 118 tests)
 - [x] **Phase 3**: rfb-encodings crate (complete, 93 tests)
   - [x] Raw, CopyRect, RRE, Hextile, Tight, ZRLE encodings
-- [x] **rfb-client**: High-level async client library
+- [x] **Phase 4**: rfb-client crate (complete, 32 tests + 5 integration tests)
   - [x] Connection management and event loop
   - [x] Transport layer (TCP/TLS)
-  - [x] Configuration and error handling
+  - [x] Configuration and error handling  
+  - [x] Framebuffer state and decoder registry
+  - [x] CLI argument parsing (feature-gated)
+  - [x] Examples and integration tests
 - [x] **njcvncviewer-rs**: GUI viewer application
   - [x] RFB handshake and connection management
   - [x] egui-based GUI with framebuffer rendering

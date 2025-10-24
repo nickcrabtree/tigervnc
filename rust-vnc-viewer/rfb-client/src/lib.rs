@@ -209,6 +209,56 @@ impl ClientHandle {
         &self.events
     }
 
+    /// Tries to receive a server event without blocking.
+    ///
+    /// Returns `None` if no events are available.
+    pub fn try_recv_event(&self) -> Option<ServerEvent> {
+        self.events.try_recv().ok()
+    }
+
+    /// Sends a key event to the VNC server.
+    ///
+    /// # Arguments
+    ///
+    /// * `keysym` - The X11 keysym value
+    /// * `down` - True if key is pressed, false if released
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the client has been shut down.
+    pub fn send_key_event(&self, keysym: u32, down: bool) -> Result<(), RfbClientError> {
+        self.send(ClientCommand::Key { key: keysym, down })
+    }
+
+    /// Sends a pointer (mouse) event to the VNC server.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - X coordinate in pixels
+    /// * `y` - Y coordinate in pixels
+    /// * `buttons` - Button mask (bit 0 = left, bit 1 = middle, bit 2 = right)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the client has been shut down.
+    pub fn send_pointer_event(&self, x: u16, y: u16, buttons: u8) -> Result<(), RfbClientError> {
+        self.send(ClientCommand::Pointer { x, y, buttons })
+    }
+
+    /// Requests a framebuffer update.
+    ///
+    /// # Arguments
+    ///
+    /// * `incremental` - If true, only send updates for changed regions
+    /// * `rect` - Rectangle to update. If None, update entire screen
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the client has been shut down.
+    pub fn request_update(&self, incremental: bool, rect: Option<rfb_common::Rect>) -> Result<(), RfbClientError> {
+        self.send(ClientCommand::RequestUpdate { incremental, rect })
+    }
+
     /// Closes the connection to the VNC server.
     ///
     /// # Errors
@@ -216,6 +266,11 @@ impl ClientHandle {
     /// Returns an error if the client has already been shut down.
     pub fn close(&self) -> Result<(), RfbClientError> {
         self.send(ClientCommand::Close)
+    }
+    
+    /// Alias for close() to match the naming used in app.rs
+    pub fn disconnect(&self) -> Result<(), RfbClientError> {
+        self.close()
     }
 }
 

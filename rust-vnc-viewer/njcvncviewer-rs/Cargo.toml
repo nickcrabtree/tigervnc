@@ -15,6 +15,9 @@ rfb-common = { workspace = true }
 rfb-protocol = { workspace = true }
 rfb-pixelbuffer = { workspace = true }
 rfb-encodings = { workspace = true }
+rfb-client = { workspace = true }
+rfb-display = { workspace = true }
+platform-input = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true }
@@ -39,6 +42,21 @@ arboard = { workspace = true }
 # CLI
 clap = { version = "4.5", features = ["derive", "cargo"] }
 
+# Configuration and file I/O
+serde = { workspace = true }
+toml = "0.8"
+directories = "5"
+
+# Input handling
+winit = "0.28"
+bitflags = { workspace = true }
+
+# Rendering
+image = { workspace = true }
+pixels = "0.13"
+raw-window-handle = "0.6"
+
 # Utilities
 parking_lot = { workspace = true }
 crossbeam-channel = { workspace = true }
+once_cell = { workspace = true }
