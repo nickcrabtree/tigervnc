@@ -3522,6 +3522,7 @@ dependencies = [
  "rfb-client",
  "rfb-common",
  "rfb-display",
+ "rfb-pixelbuffer",
  "serde",
  "thiserror",
  "tokio",

@@ -16,6 +16,7 @@ rfb-client = { path = "../rfb-client", features = ["cli"] }
 rfb-display = { path = "../rfb-display" }
 platform-input = { path = "../platform-input" }
 rfb-common = { path = "../rfb-common" }
+rfb-pixelbuffer = { path = "../rfb-pixelbuffer" }
 
 # GUI framework
 eframe = { version = "0.27", default-features = false, features = [
