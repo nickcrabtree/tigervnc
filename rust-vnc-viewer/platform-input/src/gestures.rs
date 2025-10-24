@@ -79,7 +79,7 @@ pub struct GestureProcessor {
     // Current gesture state
     active_gesture: Option<GestureEvent>,
     last_gesture_time: Instant,
-    gesture_start_time: Instant,
+    _gesture_start_time: Instant,
     
     // Momentum tracking
     momentum_velocity_x: f64,
@@ -111,7 +111,7 @@ impl GestureProcessor {
             config: GestureConfig::default(),
             active_gesture: None,
             last_gesture_time: now,
-            gesture_start_time: now,
+            _gesture_start_time: now,
             momentum_velocity_x: 0.0,
             momentum_velocity_y: 0.0,
             last_momentum_update: now,

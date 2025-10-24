@@ -53,7 +53,7 @@ impl InputDispatcher {
 
     /// Handle a winit WindowEvent and return zero or more VNC client commands.
     pub fn handle_window_event(&mut self, event: &WindowEvent) -> Vec<ClientCommand> {
-        use winit::event::{ElementState, KeyboardInput, MouseButton, WindowEvent::*};
+        use winit::event::{ElementState, MouseButton, WindowEvent::*};
 
         let mut out = Vec::new();
         match event {

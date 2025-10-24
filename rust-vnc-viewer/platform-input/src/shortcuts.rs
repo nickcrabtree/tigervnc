@@ -3,7 +3,7 @@
 //! This module provides configurable keyboard shortcuts for common VNC viewer
 //! operations like fullscreen toggle, scaling mode changes, view-only mode, etc.
 
-use crate::keyboard::{Modifier, keysyms::*};
+use crate::keyboard::Modifier;
 use std::collections::HashMap;
 use winit::event::{VirtualKeyCode, KeyboardInput, ElementState};
 use tracing::trace;
