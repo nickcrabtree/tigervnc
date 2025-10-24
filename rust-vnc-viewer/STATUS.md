@@ -1,18 +1,27 @@
 # Rust VNC Viewer - Current Status
 
-**Date**: 2025-10-23  
-**Status**: Phase 5 COMPLETE ✅ — rfb-client and rfb-display finished; GUI viewer functional  
-**Last Updated**: Phase 5 complete; rendering, scaling, viewport, cursor, multi-monitor implemented.
+**Date**: 2025-10-24  
+**Status**: Phase 7 IN PROGRESS 🚧 — GUI viewer compiling; input handling complete  
+**Last Updated**: Phases 1-6 complete; Phase 7 (GUI) being finalized.
 
 ## Summary
 
-- ✅ Phases 1–5 complete (core protocol, encodings, client library, display/rendering)
-- ✅ Working GUI viewer (`njcvncviewer-rs`) built on `rfb-client` + `rfb-display`
-- 📈 Tests: 320+ across workspace (including 68 in rfb-display)
-- 🚀 Performance: Scaling calculations < 0.02µs; 60 fps target easily met
-- 🔜 Next: Phase 6 (input), Phase 7 (GUI polish), Phase 8 (advanced features)
+- ✅ Phases 1–6 complete (core protocol through input handling)
+- 🚧 Phase 7 in progress (GUI integration - rvncviewer compiles, needs final integration)
+- ✅ Working GUI skeleton (`rvncviewer`) with all UI components implemented
+- 📈 Tests: 336+ across workspace (16 tests in platform-input)
+- 🚀 Performance: All performance targets met
+- 🔜 Next: Complete Phase 7 integration, then Phase 8 (advanced features)
 
-See also: `PHASE4_COMPLETE.md`, `PHASE5_COMPLETE.md` for detailed completion reports.
+## 📚 Documentation Quick Links
+
+- **[NEXT_STEPS.md](NEXT_STEPS.md)** — Detailed implementation plan for Phases 4-8
+- **[PROGRESS.md](PROGRESS.md)** — Phase-by-phase progress tracker with detailed task breakdown
+- **[PHASE4_COMPLETE.md](PHASE4_COMPLETE.md)** — rfb-client completion report
+- **[PHASE5_COMPLETE.md](PHASE5_COMPLETE.md)** — rfb-display completion report  
+- **[PHASE6_COMPLETE.md](PHASE6_COMPLETE.md)** — platform-input completion report
+- **[RUST_VIEWER_STATUS.md](RUST_VIEWER_STATUS.md)** — Broader plan + ContentCache (Phase 8)
+- **[README.md](README.md)** — Project overview and getting started
 
 ## Workspace Structure
 
@@ -47,11 +56,22 @@ See also: `PHASE4_COMPLETE.md`, `PHASE5_COMPLETE.md` for detailed completion rep
 - Pixels/wgpu-based renderer with scaling (Native, Fit, Fill), viewport, cursor, multi-monitor, DPI
 - Performance validated; 68 tests (unit+integration+perf) passing
 
-### platform-input — PLANNED (Phase 6)
-- Keyboard/mouse/gestures, throttling, shortcuts
+### platform-input — COMPLETE ✅ (Phase 6)
+- Keyboard mapping (X11 keysyms), mouse events with throttling, gesture support
+- Keyboard shortcuts system with 16 default actions
+- ButtonMask, KeyMapper, GestureProcessor, ShortcutsConfig
+- 16 tests passing; comprehensive input handling
+- See **[PHASE6_COMPLETE.md](PHASE6_COMPLETE.md)** for details
 
-### njcvncviewer-rs — WORKING ✅
-- egui-based GUI; integrates `rfb-client` + `rfb-display`
+### rvncviewer — IN PROGRESS 🚧 (Phase 7)
+- egui-based GUI viewer binary
+- All UI components implemented (connection dialog, options, menu, status bar, desktop)
+- Successfully compiles as of 2025-10-24
+- Integration with rfb-client and platform-input in progress
+
+### njcvncviewer-rs — COMPLETE ✅
+- Alternative egui-based GUI; successfully integrated `rfb-client` + `rfb-display`
+- Fully functional viewer application
 
 ## Build & Test Status
 
@@ -69,37 +89,80 @@ cargo test
 
 ## Statistics (Workspace)
 
-- Total LOC: ~13,000+ (code + docs + tests)
-- Tests passing: 320+ (including 68 in rfb-display)
-- Crates complete: 6/8 (Phases 1–5)
+- Total LOC: ~15,000+ (code + docs + tests)
+- Tests passing: 336+ (320 from Phases 1-5, 16 from platform-input)
+- Crates complete: 7/9 (Phases 1–6 complete)
+- Crates in progress: 1 (rvncviewer - Phase 7)
 
-## Recent Activity (2025-10-23)
+## Recent Activity
 
+### 2025-10-24
+- ✅ Phase 6 COMPLETE: platform-input (keyboard, mouse, gestures, shortcuts - 1,640 LOC)
+- 🚧 Phase 7 IN PROGRESS: rvncviewer GUI compilation fixed
+- 🔧 Fixed egui 0.27 API compatibility issues
+- 🔧 Resolved all borrowing conflicts in dialog closures
+- 📈 Added 16 tests in platform-input; all passing
+- 🎯 Next: Complete rvncviewer integration and testing
+
+### 2025-10-23
 - ✅ Phase 5 COMPLETE: rfb-display (scaling, viewport, cursor, multi-monitor, DPI)
 - ✅ Phase 4 COMPLETE: rfb-client (connection lifecycle, event loop, framebuffer updates)
-- 📈 Added 68 tests; all passing
+- 📈 Added 68 tests in rfb-display; all passing
 - 🚀 Fit/Fill scaling calculations < 0.02µs each
 
-## Next Phases
+## Current Focus: Phase 7 - GUI Integration 🚧
 
-### Phase 6: Input Handling
-- Keyboard mapping to RFB keysyms; mouse buttons/scroll; gesture support (winit)
-- Pointer throttling; shortcuts; view-only mode integration
+### Phase 7 Status (85% Complete)
+- ✅ All UI components implemented (connection dialog, options, menu bar, status bar, desktop)
+- ✅ Successfully compiles with egui 0.27
+- ✅ Configuration management with persistence
+- ⏳ Integration of platform-input for event handling
+- ⏳ Connection to rfb-client for actual VNC functionality
+- ⏳ End-to-end testing
+- See **[NEXT_STEPS.md](NEXT_STEPS.md)** Section "Phase 7" for remaining tasks
 
-### Phase 7: GUI Integration
-- Menus, dialogs, fullscreen, status overlays; preferences persistence
+### Phase 8: Advanced Features (Planned)
+- Clipboard integration, TLS security, listen mode
+- SSH tunnel integration, file transfer
+- ContentCache protocol (client-side)
+- See **[RUST_VIEWER_STATUS.md](RUST_VIEWER_STATUS.md)** for ContentCache details
 
-### Phase 8: Advanced Features
-- Clipboard, TLS, listen mode, SSH tunnel integration
-- ContentCache protocol (client-side) — see `RUST_VIEWER_STATUS.md` (Phase 8)
+## Build & Test Commands
 
-## Quick Links
+```bash
+# Build entire workspace
+cd rust-vnc-viewer
+cargo build
 
-- `PHASE4_COMPLETE.md` — rfb-client completion report
-- `PHASE5_COMPLETE.md` — rfb-display completion report
-- `PROGRESS.md` — phase-by-phase tracker
-- `RUST_VIEWER_STATUS.md` — broader plan + ContentCache (Phase 8)
+# Build specific crates
+cargo build -p rvncviewer        # GUI viewer
+cargo build -p platform-input    # Input handling
+cargo build -p rfb-display       # Display/rendering
+
+# Run all tests
+cargo test
+
+# Run tests for specific crate
+cargo test -p platform-input
+cargo test -p rfb-display
+```
+
+## Documentation Index
+
+### Completion Reports
+- **[PHASE4_COMPLETE.md](PHASE4_COMPLETE.md)** — rfb-client (connection & event loop)
+- **[PHASE5_COMPLETE.md](PHASE5_COMPLETE.md)** — rfb-display (rendering & viewport)
+- **[PHASE6_COMPLETE.md](PHASE6_COMPLETE.md)** — platform-input (keyboard, mouse, gestures)
+
+### Planning & Progress
+- **[NEXT_STEPS.md](NEXT_STEPS.md)** — Implementation plan for Phases 4-8
+- **[PROGRESS.md](PROGRESS.md)** — Detailed phase-by-phase progress tracker
+- **[RUST_VIEWER_STATUS.md](RUST_VIEWER_STATUS.md)** — Broader plan + ContentCache design
+
+### Getting Started
+- **[README.md](README.md)** — Project overview and quick start
+- **[BUILD_CONTENTCACHE.md](BUILD_CONTENTCACHE.md)** — ContentCache build instructions
 
 ---
 
-This status reflects the project as of 2025-10-23 after Phase 5 completion.
+This status reflects the project as of 2025-10-24 after Phase 6 completion.
