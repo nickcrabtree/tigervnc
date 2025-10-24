@@ -250,18 +250,22 @@ mod tests {
         let test_cache_id = 98765u64;
         let cached_rect_init = CachedRectInit::new(test_cache_id, ENCODING_RAW);
         
-        // Raw pixel data: 2x2 red pixels (4 pixels * 4 bytes each = 16 bytes)
+        // Raw pixel data: 2x2 red pixels (4 pixels * 4 bytes each = 16 bytes for RGBA)
+        // Note: ManagedPixelBuffer internally expects RGBA even when configured as RGB888
         let raw_pixels = vec![
-            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 1
-            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 2
-            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 3
-            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 4
+            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 1 (RGBA)
+            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 2 (RGBA)
+            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 3 (RGBA)
+            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 4 (RGBA)
         ];
 
         // Create stream data
         let mut stream_data = Vec::new();
-        let mut out_stream = RfbOutStream::new(&mut stream_data);
-        cached_rect_init.write_to(&mut out_stream).unwrap();
+        {
+            let mut out_stream = RfbOutStream::new(&mut stream_data);
+            cached_rect_init.write_to(&mut out_stream).unwrap();
+            out_stream.flush().await.unwrap();
+        }
         stream_data.extend_from_slice(&raw_pixels);
         
         let mut stream = RfbInStream::new(Cursor::new(stream_data));
@@ -275,7 +279,7 @@ mod tests {
             encoding: ENCODING_CACHED_RECT_INIT,
         };
 
-        // Decode should succeed
+        // Decode should succeed - wire format is 32-bit RGBA to match raw pixel data
         let wire_format = crate::PixelFormat {
             bits_per_pixel: 32,
             depth: 24, 
@@ -325,8 +329,11 @@ mod tests {
         let cached_rect_init = CachedRectInit::new(11111, 999); // Invalid encoding
         
         let mut stream_data = Vec::new();
-        let mut out_stream = RfbOutStream::new(&mut stream_data);
-        cached_rect_init.write_to(&mut out_stream).unwrap();
+        {
+            let mut out_stream = RfbOutStream::new(&mut stream_data);
+            cached_rect_init.write_to(&mut out_stream).unwrap();
+            out_stream.flush().await.unwrap();
+        }
         // No pixel data needed since this should fail early
         
         let mut stream = RfbInStream::new(Cursor::new(stream_data));
@@ -354,7 +361,9 @@ mod tests {
         };
         let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unsupported actual_encoding"));
+        let error_msg = result.unwrap_err().to_string();
+        // Error message includes "Failed to decode actual_encoding 999"
+        assert!(error_msg.contains("Failed to decode actual_encoding 999"));
     }
 
     #[test]

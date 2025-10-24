@@ -16,6 +16,7 @@
 //! use rfb_encodings::content_cache::{ContentCache, CachedPixels};
 //! use rfb_pixelbuffer::PixelFormat;
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create cache with 1GB limit
 //! let mut cache = ContentCache::new(1024);
 //!
@@ -36,6 +37,8 @@
 //! // Check statistics
 //! let stats = cache.stats();
 //! println!("Hit rate: {:.1}%", stats.hit_rate * 100.0);
+//! # Ok(())
+//! # }
 //! ```
 
 use rfb_pixelbuffer::PixelFormat;

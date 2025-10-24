@@ -23,6 +23,9 @@ platform-input = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
 
+# Data structures
+bytes = { workspace = true }
+
 # Error handling
 anyhow = { workspace = true }
 thiserror = { workspace = true }

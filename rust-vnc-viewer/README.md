@@ -1,11 +1,15 @@
 # Rust VNC Viewer
 
-A high-performance Rust VNC viewer with **ContentCache protocol support** for 97-99% bandwidth reduction.
+**Desktop-focused** high-performance VNC viewer with **ContentCache protocol support** for 97-99% bandwidth reduction and excellent **fullscreen/multi-monitor** experience.
+
+Note: This README is the canonical documentation for the Rust viewer. Historical phase/progress reports have been removed to reduce noise. For roadmap and usage, see docs/ROADMAP.md and docs/cli/USAGE.md.
 
 ## 🚀 Key Features
 
 - **ContentCache Protocol**: 97-99% bandwidth reduction for repeated content
 - **Complete RFB Implementation**: All standard encodings (Raw, CopyRect, RRE, Hextile, Tight, ZRLE)
+- **Desktop-Optimized**: Fullscreen and multi-monitor support for desktop workflows
+- **CLI-Configured**: Command-line driven configuration, no settings GUI
 - **Async Architecture**: Tokio-based for high performance and responsiveness
 - **Cross-platform GUI**: egui-based interface with smooth rendering
 - **Production Ready**: Comprehensive error handling, logging, and testing
@@ -47,6 +51,7 @@ cargo run --release
 **Current Status**: Production-ready VNC client with full encoding support  
 **Last Updated**: 2025-10-24  
 **Overall Progress**: ~90% (All standard encodings + ContentCache + GUI complete)
+**Tests**: All workspace unit/integration/doc tests passing
 
 ### Completed ✅
 - [x] **Phase 1-3**: Core protocol libraries (230+ tests)
@@ -83,24 +88,31 @@ cargo run --release
   - [x] RRE encoding (Rise-and-Run-length encoding)
   - [x] 94+ tests passing, production-quality implementation
 
-### In Progress 🔄 (Phase 9B)
-- [ ] Advanced features
-  - [ ] Clipboard integration (bidirectional cut/copy/paste)
-  - [ ] Touch gesture support (pinch zoom, swipe)
-  - [ ] Connection profiles and settings UI
-  - [ ] Screenshot functionality
-  - [ ] Full-screen mode improvements
-  - [ ] Multi-monitor support
+### Next Priority 🎯 (Milestone M1/M2)
+- [ ] **Fullscreen enhancements** (M1 - HIGH PRIORITY)
+  - [x] F11 toggle, CLI `--fullscreen` option
+  - [ ] Borderless/exclusive modes with DPI awareness
+  - [ ] Scaling policies (fit, fill, 1:1) with aspect ratio control
+- [ ] **Multi-monitor support** (M2 - HIGH PRIORITY)  
+  - [x] Monitor enumeration and CLI selection parsing (`--monitor primary|index|name`)
+  - [x] Runtime hotkeys (Ctrl+Alt+←/→, Ctrl+Alt+0-9, Ctrl+Alt+P)
+  - [ ] Mixed DPI handling and smooth transitions
+
+### Recently Completed ✅
+- [x] **Phase 9B-Clipboard**: Bidirectional clipboard integration
 
 ## Documentation
 
-### Implementation Status
-- **[PHASE9A_ADVANCED_ENCODINGS_COMPLETE.md](PHASE9A_ADVANCED_ENCODINGS_COMPLETE.md)** - 🎆 **NEW!** All standard VNC encodings complete!
-- **[PHASE8A_CONTENTCACHE_COMPLETE.md](PHASE8A_CONTENTCACHE_COMPLETE.md)** - 🎉 ContentCache protocol implementation details
-- **[PHASE6_COMPLETE.md](PHASE6_COMPLETE.md)** - Platform input handling completion
-- **[RUST_VIEWER_STATUS.md](RUST_VIEWER_STATUS.md)** - Overall project status and roadmap
-- **[STATUS.md](STATUS.md)** - Detailed progress tracking
-- **[PROGRESS.md](PROGRESS.md)** - Phase-by-phase completion metrics
+### Current Priorities
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** - 🎯 **Prioritized roadmap** with fullscreen/multi-monitor focus
+- **[docs/cli/USAGE.md](docs/cli/USAGE.md)** - 📋 **CLI usage guide** for desktop-focused configuration
+- **[docs/spec/fullscreen-and-multimonitor.md](docs/spec/fullscreen-and-multimonitor.md)** - 🔧 **Technical specification** for M1/M2 features
+- **[docs/SEP/SEP-0001-out-of-scope.md](docs/SEP/SEP-0001-out-of-scope.md)** - 🚫 **Out-of-scope features** (touch, settings UI, screenshots)
+
+### Implementation Notes
+- All standard encodings implemented; ContentCache protocol supported
+- For priorities and next milestones, see docs/ROADMAP.md
+- For CLI usage, see docs/cli/USAGE.md
 
 ### Technical References  
 - **[../CONTENTCACHE_DESIGN_IMPLEMENTATION.md](../CONTENTCACHE_DESIGN_IMPLEMENTATION.md)** - C++ ContentCache reference
@@ -109,25 +121,39 @@ cargo run --release
 ## Quick Start
 
 ```bash
-# Build the viewer
+# Build the desktop viewer
 cd rust-vnc-viewer
 cargo build --release
 
-# Run the viewer with ContentCache enabled (default)
+# Basic connection (windowed)
 cargo run --release --package njcvncviewer-rs -- localhost:2
 
-# Run with verbose logging to see ContentCache activity
-cargo run --package njcvncviewer-rs -- -vv localhost:2
+# Fullscreen on primary monitor
+cargo run --release --package njcvncviewer-rs -- --fullscreen --monitor primary localhost:2
+
+# Multi-monitor: fullscreen on second monitor with fit scaling
+cargo run --release --package njcvncviewer-rs -- --fullscreen --monitor 1 --scale fit localhost:2
+
+# With password from environment (secure)
+VNC_PASSWORD=secret cargo run --release --package njcvncviewer-rs -- server:5901
 
 # Run all tests (320+ tests across all crates)
 cargo test
 
-# Test ContentCache protocol specifically
-cargo test --package rfb-encodings cached_rect
-cargo test --package rfb-protocol cached
+# Verbose logging for debugging
+cargo run --package njcvncviewer-rs -- -vv localhost:2
+```
 
-# See ContentCache implementation details
-cat PHASE8A_CONTENTCACHE_COMPLETE.md
+### Testing with WARP Safety Rules
+
+⚠️ **Important**: Use test server only (per [WARP.md](../WARP.md) safety rules)
+
+```bash
+# Safe: Connect to test server Xnjcvnc :2 (port 5902)
+cargo run -- localhost:2
+
+# ❌ NEVER: Do not connect to production servers :1 or :3
+# These are production servers for unrelated work
 ```
 
 ## Performance
@@ -154,6 +180,30 @@ With ContentCache protocol enabled:
 │ rfb-pixelbuffer │ rfb-common                │
 │ (Pixels)        │ (Types)                   │
 └─────────────────────────────────────────────┘
+```
+
+## Out-of-Scope Features
+
+The following features are **explicitly out-of-scope** for the desktop-focused viewer (see [SEP-0001](docs/SEP/SEP-0001-out-of-scope.md)):
+
+- **🚫 Touch/Gesture Support**: Desktop-only; use trackpad scrolling
+- **🚫 Settings UI/Profiles**: Use CLI configuration and environment variables  
+- **🚫 Screenshot Capture**: Use OS tools (`gnome-screenshot`, `grim`, `scrot`, etc.)
+
+### Alternatives
+
+**Screenshots**: Use native OS tools instead:
+```bash
+# X11: Capture VNC window
+gnome-screenshot --window --file vnc-session.png
+
+# Wayland: Capture active window  
+grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.focused?) | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" vnc.png
+```
+
+**Configuration**: Use command-line flags:
+```bash
+cargo run -- --connect vnc://server:5901 --fullscreen --monitor primary --scale fit
 ```
 
 ## License

@@ -368,111 +368,126 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 ---
 
-## 🚀 Phase 8: Advanced Features
+## 🎯 Phase 8: Desktop-Focused Features (UPDATED PRIORITIES)
 
-**Goal**: Implement remaining features for full parity with C++ vncviewer: clipboard, file transfer, additional security types, and advanced options.
+**Goal**: Excellent fullscreen and multi-monitor experience for desktop VNC usage. Advanced features are deprioritized per [SEP-0001](docs/SEP/SEP-0001-out-of-scope.md).
 
-### Scope
+### New Scope (Desktop-Focused)
 
-#### Core Features
-- **Clipboard integration**: send/receive text between local and remote
-- **File transfer support**: ContentCache protocol extension (if available)
-- **Multiple security types**: VNC password, TLS/SSL encryption
-- **SSH tunneling**: integrate with external SSH process
-- **Listen mode**: accept reverse VNC connections
-- **View-only mode**: suppress all input events
-- **Shared/exclusive session modes**: multiple clients vs single
+#### High Priority: Fullscreen & Multi-Monitor (M1/M2)
+- **Fullscreen improvements**: F11 toggle, CLI start option, borderless vs exclusive modes
+- **Multi-monitor support**: Monitor enumeration, selection, hotkey navigation
+- **Scaling enhancements**: Fit/Fill/1:1 policies with DPI awareness
+- **Monitor management**: Primary detection, name/index selection, mixed DPI handling
 
-#### Display Features
-- **Screen recording/screenshots**: save frames to disk
-- **Connection info overlay**: detailed statistics display
-- **LED state indicators**: Caps Lock, Num Lock, Scroll Lock (where supported)
+#### Medium Priority: Polish (M3)
+- **Window state memory**: Remember size/position per connection
+- **Connection management**: Recent connections (CLI-based)
+- **Performance monitoring**: Bandwidth/latency metrics display
 
-#### Performance Features
-- **Quality/compression level controls**: UI for adjusting bandwidth/CPU tradeoffs
-- **Encoding preference configuration**: order and enable/disable specific encodings
-- **Auto-select encoding**: dynamically choose based on network conditions
+#### Out-of-Scope (Explicitly Removed)
+Per [SEP-0001](docs/SEP/SEP-0001-out-of-scope.md), the following are **permanently out-of-scope**:
+- **Touch/Gesture support**: Desktop-only focus
+- **Settings UI/Profiles**: Use CLI configuration
+- **Screenshot functionality**: Use OS tools (gnome-screenshot, grim, etc.)
 
-### Estimated Effort
-- **LOC**: 1,200–2,000 (depends on feature subset)
-- **Time**: 10–20 dev days (modular delivery)
-- **Dependencies**: arboard, rustls, openssh, image, ffmpeg-sidecar (optional)
+### Estimated Effort (Updated)
+- **M1 (Fullscreen)**: 1-2 weeks, ~800-1,200 LOC
+- **M2 (Multi-monitor)**: 1-2 weeks, ~600-1,000 LOC  
+- **Dependencies**: winit (primary), egui/eframe, platform-specific APIs
 
-### Files to Create/Extend
+### Modules to Create/Extend (M1/M2 Focus)
 
 ```
-rfb-client/src/
-├── clipboard.rs                    # Clipboard message handlers
-├── file_transfer.rs                # ContentCache protocol support
-├── security/
-│   ├── mod.rs
-│   ├── vnc_auth.rs                 # VNC password authentication
-│   └── tls.rs                      # TLS encryption via rustls
-├── listen.rs                       # Reverse connection listener
-└── auto_select.rs                  # Automatic encoding selection
+njcvncviewer-rs/src/
+├── display/
+│   ├── mod.rs                      # DisplayManager trait and Monitor model
+│   ├── winit_backend.rs            # Winit-based monitor enumeration
+│   └── monitor_selection.rs        # Primary/index/name selection logic
+├── fullscreen/
+│   ├── mod.rs                      # FullscreenController and state
+│   ├── transitions.rs              # Enter/exit/toggle logic
+│   └── hotkeys.rs                  # F11, Ctrl+Alt+Arrow navigation
+├── scaling/
+│   ├── mod.rs                      # Scaling policies (fit/fill/1:1)
+│   ├── calculations.rs             # Viewport and aspect ratio math
+│   └── dpi.rs                      # DPI handling for mixed environments
+└── cli.rs                          # Extended CLI args (--fullscreen, --monitor)
 
-rvncviewer/src/ui/
-├── clipboard_ui.rs                 # Clipboard transfer UI
-├── transfer_ui.rs                  # File transfer UI
-├── stats_overlay.rs                # Connection statistics overlay
-└── led_indicators.rs               # Keyboard LED state display
-
-rfb-display/src/
-└── screenshot.rs                   # Screenshot capture hooks
+# Files to Remove/Avoid
+# - No src/touch.rs or src/gestures/
+# - No src/ui/settings/ or src/profiles/  
+# - No src/screenshot.rs or recording features
 ```
 
-### Key Dependencies
+### Key Dependencies (Updated)
 
 ```toml
-# Add to rfb-client and rvncviewer as needed
-arboard = "3"                       # Cross-platform clipboard
-rustls = "0.23"                     # TLS support
-tokio-rustls = "0.25"
-image = "0.25"                      # Screenshots
-# openssh = "0.10" or use external SSH process (preferred)
+# Primary windowing and monitor management
+winit = "0.28"                      # Cross-platform window/monitor APIs
+egui = "0.27"                       # GUI framework
+eframe = "0.27"                     # egui app framework
+
+# CLI and configuration
+clap = { version = "4", features = ["derive"] }  # Command-line parsing
+serde = { version = "1", features = ["derive"] }   # Config serialization
+
+# Removed dependencies:
+# - No touch/gesture specific crates
+# - No screenshot/image processing crates 
+# - No GUI settings frameworks
 ```
 
-### Test Requirements
+### Test Requirements (Updated)
 
-1. **Clipboard tests**:
-   - Round-trip ASCII and UTF-8 text
-   - Handle clipboard unavailable gracefully
+1. **Monitor enumeration tests**:
+   - Detect single/dual/triple monitor setups
+   - Handle primary monitor detection
+   - Test monitor by index/name selection
    
-2. **Security tests**:
-   - Negotiate each security type (None, VNCAuth, TLS)
-   - Verify TLS certificate validation
-   - Test authentication failure paths
+2. **Fullscreen transition tests**:
+   - Enter/exit fullscreen reliably
+   - F11 and Ctrl+Alt+F hotkeys
+   - State preservation across transitions
    
-3. **Listen mode tests**:
-   - Accept reverse connections
-   - Handle multiple connection attempts
+3. **Scaling calculation tests**:
+   - Fit/Fill/1:1 math with various aspect ratios
+   - DPI scaling for high-resolution displays
+   - Letterboxing and centering logic
    
-4. **View-only tests**:
-   - Verify all input events suppressed
-   - Ensure view-only state persists
+4. **Multi-monitor tests**:
+   - Move fullscreen between monitors
+   - Ctrl+Alt+Arrow navigation
+   - Mixed DPI environment handling
    
-5. **Encoding preference tests**:
-   - Verify encoding order honored
-   - Test quality/compression controls affect bandwidth
+5. **CLI argument tests**:
+   - `--fullscreen`, `--monitor`, `--scale` parsing
+   - Invalid monitor fallback behavior
+   - Environment variable integration
 
-### Success Criteria
+### Success Criteria (Updated)
 
-- ✅ Clipboard send/receive works bidirectionally
-- ✅ File transfer functional (if server supports ContentCache)
-- ✅ TLS encryption available for secure connections
-- ✅ SSH tunneling integration documented and working
-- ✅ Listen mode accepts reverse connections
-- ✅ View-only mode suppresses all input
-- ✅ Shared/exclusive modes work correctly
-- ✅ Quality/compression controls affect performance as expected
-- ✅ Encoding preferences honored
-- ✅ Screenshots/recording capture frames correctly
-- ✅ Statistics overlay displays accurate data
-- ✅ LED indicators reflect remote state
-- ✅ All features match C++ vncviewer behavior
+**M1 (Fullscreen)**:
+- ✅ F11 toggle works reliably across X11/Wayland
+- ✅ CLI `--fullscreen` starts in fullscreen mode
+- ✅ Borderless fullscreen with exclusive fallback
+- ✅ DPI-aware scaling on high-resolution monitors
+- ✅ Smooth transitions without flicker (<200ms)
+- ✅ Scaling policies (fit/fill/1:1) work correctly
+
+**M2 (Multi-monitor)**:
+- ✅ Accurate monitor enumeration and selection
+- ✅ CLI `--monitor primary|index|name` works
+- ✅ Ctrl+Alt+Arrow hotkeys move between monitors
+- ✅ Mixed DPI environments handled gracefully
+- ✅ Monitor disconnect/reconnect recovery
+- ✅ Clear error messages for invalid selections
+
+**General**:
+- ✅ Cross-platform consistency (X11/Wayland)
+- ✅ Zero clippy warnings
 - ✅ Clear configuration and error messages
 - ✅ No defensive fallbacks (fail-fast policy maintained)
-- ✅ Zero clippy warnings
 
 ---
 

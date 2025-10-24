@@ -2428,6 +2428,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "bitflags 2.10.0",
+ "bytes",
  "clap",
  "crossbeam-channel",
  "directories",

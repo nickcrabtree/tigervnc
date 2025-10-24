@@ -14,6 +14,8 @@ use crate::ui::{
     options_dialog::OptionsDialog,
     statusbar::StatusBar,
 };
+use crate::display::{enumerate_monitors, MonitorInfo};
+use crate::fullscreen::FullscreenController;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppState {
@@ -96,6 +98,11 @@ pub struct VncViewerApp {
     
     /// Fullscreen state tracking
     fullscreen_pending: bool,
+
+    /// Fullscreen controller and monitor list
+    fullscreen: FullscreenController,
+    monitors: Vec<MonitorInfo>,
+    target_monitor_selector: Option<String>,
     
     /// VNC connection manager
     vnc_connection: VncConnection,
@@ -156,6 +163,15 @@ impl VncViewerApp {
         let options_dialog = OptionsDialog::new(&config);
         let menubar = MenuBar::new();
         let statusbar = StatusBar::new();
+
+        // Enumerate monitors (once at startup)
+        let monitors = enumerate_monitors();
+
+        // Configure fullscreen controller and target monitor
+        let mut fullscreen = FullscreenController::new();
+        let target_monitor_selector = args.monitor.clone();
+        fullscreen.set_target(&monitors, target_monitor_selector.as_deref());
+        fullscreen.set_enabled(config.fullscreen);
         
         // Determine initial state
         let (state, show_connection_dialog, current_server) = if let Some(server) = args.server.clone() {
@@ -184,6 +200,9 @@ impl VncViewerApp {
             current_server,
             connection_stats: ConnectionStats::default(),
             fullscreen_pending: false,
+            fullscreen,
+            monitors,
+            target_monitor_selector,
             vnc_connection: VncConnection::new(),
             runtime,
         })
@@ -308,22 +327,42 @@ impl VncViewerApp {
     
     fn apply_fullscreen_state(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         debug!("Applying fullscreen state: {}", self.config.fullscreen);
-        
-        // Request fullscreen mode change
-        ctx.send_viewport_cmd(if self.config.fullscreen {
-            egui::ViewportCommand::Fullscreen(true)
-        } else {
-            egui::ViewportCommand::Fullscreen(false)
-        });
+        self.fullscreen.set_enabled(self.config.fullscreen);
+        self.fullscreen.apply(ctx);
     }
 }
 
 impl App for VncViewerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut Frame) {
         // Handle fullscreen toggle
-        if ctx.input(|i| i.key_pressed(egui::Key::F11)) {
+        if ctx.input(|i| i.key_pressed(egui::Key::F11) || (i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::F))) {
             self.config.fullscreen = !self.config.fullscreen;
             self.fullscreen_pending = true;
+        }
+
+        // Handle monitor navigation (only when in fullscreen)
+        if self.config.fullscreen {
+            if ctx.input(|i| i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::ArrowLeft)) {
+                self.fullscreen.prev_monitor(&self.monitors);
+                self.fullscreen_pending = true;
+            } else if ctx.input(|i| i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::ArrowRight)) {
+                self.fullscreen.next_monitor(&self.monitors);
+                self.fullscreen_pending = true;
+            } else if ctx.input(|i| i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::P)) {
+                self.fullscreen.jump_to_primary(&self.monitors);
+                self.fullscreen_pending = true;
+            }
+            // Ctrl+Alt+0-9 for direct monitor selection
+            for (digit, key) in [(0, egui::Key::Num0), (1, egui::Key::Num1), (2, egui::Key::Num2),
+                                  (3, egui::Key::Num3), (4, egui::Key::Num4), (5, egui::Key::Num5),
+                                  (6, egui::Key::Num6), (7, egui::Key::Num7), (8, egui::Key::Num8),
+                                  (9, egui::Key::Num9)].iter() {
+                if ctx.input(|i| i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(*key)) {
+                    self.fullscreen.jump_to_monitor(&self.monitors, *digit);
+                    self.fullscreen_pending = true;
+                    break;
+                }
+            }
         }
         
         // Apply pending fullscreen state change

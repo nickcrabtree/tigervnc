@@ -252,6 +252,19 @@ impl ClientHandle {
         self.send(ClientCommand::Pointer { x, y, buttons })
     }
 
+    /// Sends clipboard text to the VNC server.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - Clipboard text data (typically UTF-8)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the client has been shut down.
+    pub fn send_clipboard(&self, text: bytes::Bytes) -> Result<(), RfbClientError> {
+        self.send(ClientCommand::ClientCutText { text })
+    }
+
     /// Requests a framebuffer update.
     ///
     /// # Arguments

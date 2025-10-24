@@ -1,5 +1,6 @@
 use crate::{ui, AppConfig};
 use anyhow::{Context, Result};
+use arboard::Clipboard;
 use egui::{Context as EguiContext, ViewportCommand, TextureHandle};
 use parking_lot::RwLock;
 use platform_input::*;
@@ -80,6 +81,10 @@ pub struct VncViewerApp {
     shortcuts_config: ShortcutsConfig,
     gesture_processor: GestureProcessor,
     
+    /// Clipboard management
+    clipboard: Option<Clipboard>,
+    last_clipboard_text: String,
+    
     /// Connection statistics
     stats: Arc<RwLock<ConnectionStats>>,
     
@@ -134,6 +139,12 @@ impl VncViewerApp {
         let shortcuts_config = ShortcutsConfig::default();
         let gesture_processor = GestureProcessor::with_config(gesture_config);
         
+        // Initialize clipboard (may fail on headless systems)
+        let clipboard = Clipboard::new().ok();
+        if clipboard.is_none() {
+            warn!("Failed to initialize system clipboard - clipboard integration will be disabled");
+        }
+        
         let stats = Arc::new(RwLock::new(ConnectionStats::default()));
         let ui_state = ui::UiState::new();
         
@@ -157,6 +168,8 @@ impl VncViewerApp {
             key_mapper,
             shortcuts_config,
             gesture_processor,
+            clipboard,
+            last_clipboard_text: String::new(),
             stats,
             ui_state,
             error_message: None,
@@ -336,7 +349,16 @@ impl VncViewerApp {
             
             ServerEvent::ServerCutText { text } => {
                 debug!("Server clipboard: {} bytes", text.len());
-                // TODO: Update system clipboard
+                // Update system clipboard with server text
+                if let Ok(text_str) = String::from_utf8(text.to_vec()) {
+                    if let Err(e) = self.set_clipboard_text(&text_str) {
+                        warn!("Failed to set clipboard: {}", e);
+                    } else {
+                        info!("Updated system clipboard from server ({} bytes)", text.len());
+                    }
+                } else {
+                    warn!("Received non-UTF8 clipboard data from server");
+                }
             }
             
             ServerEvent::Error { message } => {
@@ -427,6 +449,46 @@ impl VncViewerApp {
             stats.frames_rendered = self.frame_count as u32;
         }
     }
+    
+    /// Set system clipboard text
+    fn set_clipboard_text(&mut self, text: &str) -> Result<()> {
+        if let Some(ref mut clipboard) = self.clipboard {
+            clipboard.set_text(text)
+                .context("Failed to set clipboard text")?;
+            self.last_clipboard_text = text.to_string();
+        }
+        Ok(())
+    }
+    
+    /// Get system clipboard text
+    fn get_clipboard_text(&mut self) -> Option<String> {
+        if let Some(ref mut clipboard) = self.clipboard {
+            clipboard.get_text().ok()
+        } else {
+            None
+        }
+    }
+    
+    /// Check if clipboard has changed and send to server
+    fn check_and_send_clipboard(&mut self) {
+        if self.ui_state.view_only {
+            return;
+        }
+        
+        if let Some(text) = self.get_clipboard_text() {
+            // Only send if clipboard has changed
+            if text != self.last_clipboard_text {
+                debug!("Local clipboard changed: {} bytes", text.len());
+                self.last_clipboard_text = text.clone();
+                
+                if let Some(ref client_handle) = self.client_handle {
+                    if let Err(e) = client_handle.send_clipboard(bytes::Bytes::from(text)) {
+                        warn!("Failed to send clipboard to server: {}", e);
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl eframe::App for VncViewerApp {
@@ -439,8 +501,9 @@ impl eframe::App for VncViewerApp {
         // Process VNC client events
         self.process_client_events(ctx);
         
-        // Update framebuffer texture when connected
+        // Check and sync clipboard when connected
         if matches!(self.state, AppState::Connected(_)) {
+            self.check_and_send_clipboard();
             self.update_framebuffer_texture(ctx);
         }
         

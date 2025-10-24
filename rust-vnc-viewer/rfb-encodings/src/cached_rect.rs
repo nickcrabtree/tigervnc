@@ -151,12 +151,12 @@ mod tests {
         let cache = Arc::new(Mutex::new(ContentCache::new(100))); // 100MB limit
         
         let test_cache_id = 12345u64;
-        let test_pixels: Vec<u8> = (0..64 * 64).flat_map(|_| vec![0xFF, 0x00, 0x00, 0xFF]).collect(); // Red pixels
+        let test_pixels: Vec<u8> = (0..64 * 64).flat_map(|_| vec![0xFF, 0x00, 0x00, 0xFF]).collect(); // Red pixels (RGBA)
         let cached_pixels = CachedPixels::new(
             test_cache_id,
             test_pixels.clone(),
-            PixelFormat::rgb888(),
-            64, 64, 64
+            PixelFormat::rgb888(), // Format is still RGB888, but ManagedPixelBuffer might expect RGBA internally
+            64, 64, 64 // stride in pixels (tightly packed)
         );
         
         {
@@ -173,8 +173,11 @@ mod tests {
         // Create stream with CachedRect data
         let cached_rect = CachedRect::new(test_cache_id);
         let mut stream_data = Vec::new();
-        let mut out_stream = RfbOutStream::new(&mut stream_data);
-        cached_rect.write_to(&mut out_stream).unwrap();
+        {
+            let mut out_stream = RfbOutStream::new(&mut stream_data);
+            cached_rect.write_to(&mut out_stream).unwrap();
+            out_stream.flush().await.unwrap();
+        }
         let mut stream = RfbInStream::new(Cursor::new(stream_data));
 
         // Create rectangle
@@ -186,7 +189,7 @@ mod tests {
             encoding: ENCODING_CACHED_RECT,
         };
 
-        // Decode should succeed (cache hit)
+        // Decode should succeed (cache hit) - wire format is 32-bit to match RGBA data
         let wire_format = crate::PixelFormat {
             bits_per_pixel: 32,
             depth: 24, 
@@ -224,8 +227,11 @@ mod tests {
         let missing_cache_id = 99999u64;
         let cached_rect = CachedRect::new(missing_cache_id);
         let mut stream_data = Vec::new();
-        let mut out_stream = RfbOutStream::new(&mut stream_data);
-        cached_rect.write_to(&mut out_stream).unwrap();
+        {
+            let mut out_stream = RfbOutStream::new(&mut stream_data);
+            cached_rect.write_to(&mut out_stream).unwrap();
+            out_stream.flush().await.unwrap();
+        }
         let mut stream = RfbInStream::new(Cursor::new(stream_data));
 
         // Create rectangle
@@ -269,12 +275,12 @@ mod tests {
         let cache = Arc::new(Mutex::new(ContentCache::new(100)));
         
         let test_cache_id = 54321u64;
-        let test_pixels: Vec<u8> = (0..64 * 64).flat_map(|_| vec![0x00, 0xFF, 0x00, 0xFF]).collect(); // Green pixels
+        let test_pixels: Vec<u8> = (0..64 * 64).flat_map(|_| vec![0x00, 0xFF, 0x00, 0xFF]).collect(); // Green pixels (RGBA)
         let cached_pixels = CachedPixels::new(
             test_cache_id,
             test_pixels,
-            PixelFormat::rgb888(),
-            64, 64, 64
+            PixelFormat::rgb888(), // Format is still RGB888, but ManagedPixelBuffer expects RGBA internally
+            64, 64, 64 // stride in pixels (tightly packed)
         );
         
         {
@@ -288,8 +294,11 @@ mod tests {
         // Create stream with CachedRect data
         let cached_rect = CachedRect::new(test_cache_id);
         let mut stream_data = Vec::new();
-        let mut out_stream = RfbOutStream::new(&mut stream_data);
-        cached_rect.write_to(&mut out_stream).unwrap();
+        {
+            let mut out_stream = RfbOutStream::new(&mut stream_data);
+            cached_rect.write_to(&mut out_stream).unwrap();
+            out_stream.flush().await.unwrap();
+        }
         let mut stream = RfbInStream::new(Cursor::new(stream_data));
 
         // Create rectangle with DIFFERENT dimensions than cached data

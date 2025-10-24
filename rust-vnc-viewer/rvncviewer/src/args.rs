@@ -9,8 +9,8 @@ pub struct Args {
     /// VNC server address (host:display or host:port)
     pub server: Option<String>,
     
-    /// Password for VNC authentication
-    #[arg(short, long)]
+    /// Password for VNC authentication (prefer VNC_PASSWORD env var)
+    #[arg(short, long, env = "VNC_PASSWORD")]
     pub password: Option<String>,
     
     /// Use view-only mode (no input sent to server)
@@ -20,6 +20,14 @@ pub struct Args {
     /// Start in fullscreen mode
     #[arg(short, long)]
     pub fullscreen: bool,
+    
+    /// Target monitor for fullscreen: "primary", index (e.g., "1"), or name substring (e.g., "HDMI")
+    #[arg(long, value_name = "SELECTOR")]
+    pub monitor: Option<String>,
+    
+    /// Preserve aspect ratio when scaling (fit/fill)
+    #[arg(long, default_value_t = true)]
+    pub keep_aspect: bool,
     
     /// Configuration file path
     #[arg(short, long)]
