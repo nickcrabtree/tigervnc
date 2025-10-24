@@ -3,7 +3,7 @@ use clap::Parser;
 use eframe::egui;
 use rvncviewer::app::VncViewerApp;
 use rvncviewer::args::Args;
-use tracing::{info, warn};
+use tracing::info;
 
 fn init_logging(verbose: bool) -> Result<()> {
     let log_level = if verbose { "debug" } else { "info" };
@@ -30,7 +30,10 @@ fn create_app(args: Args) -> Result<VncViewerApp> {
         Some(path) => path.parent().map(|p| p.to_path_buf()),
         None => {
             directories::UserDirs::new()
-                .and_then(|dirs| dirs.home_dir().map(|h| h.join(".config/rvncviewer")))
+                .and_then(|dirs| {
+                    let home_dir = dirs.home_dir().to_path_buf();
+                    Some(home_dir.join(".config/rvncviewer"))
+                })
         }
     };
     
@@ -75,24 +78,18 @@ async fn main() -> Result<()> {
         shader_version: None,
         centered: true,
         persist_window: true,
+        window_builder: None,
+        ..Default::default()
     };
     
     // Run the application
     info!("Launching GUI");
-    match eframe::run_native(
+    eframe::run_native(
         "TigerVNC Viewer",
         options,
         Box::new(move |_cc| Box::new(app)),
-    ) {
-        Ok(()) => {
-            info!("Application exited normally");
-            Ok(())
-        }
-        Err(e) => {
-            warn!("Application exited with error: {}", e);
-            Err(e.into())
-        }
-    }
+    )
+    .map_err(|e| anyhow::anyhow!("eframe error: {}", e))
 }
 
 fn load_icon() -> Result<egui::IconData> {

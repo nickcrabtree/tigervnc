@@ -149,7 +149,7 @@ impl DesktopWindow {
                 self.drag_start = response.interact_pointer_pos().unwrap_or_default();
             } else if let Some(current_pos) = response.interact_pointer_pos() {
                 let delta = current_pos - self.drag_start;
-                self.viewport_offset += delta - self.drag_start;
+                self.viewport_offset += egui::Vec2::new(delta.x, delta.y);
                 self.drag_start = current_pos;
             }
         } else {
@@ -345,32 +345,36 @@ impl DesktopWindow {
     }
     
     /// Update the display texture with new framebuffer data
-    pub fn update_framebuffer(&mut self, ctx: &egui::Context, data: &[u8], size: (u32, u32)) {
+    /// 
+    /// Expects RGB888 format (3 bytes per pixel) from VNC client
+    pub fn update_framebuffer(&mut self, ctx: &egui::Context, width: u32, height: u32, data: &[u8]) {
+        let size = (width, height);
         if size != self.framebuffer_size {
             // Framebuffer size changed, recreate texture
             self.framebuffer_size = size;
             self.display_texture = None;
         }
         
-        // Convert raw framebuffer data to egui::ColorImage
-        let width = size.0 as usize;
-        let height = size.1 as usize;
+        // Convert RGB888 framebuffer data to egui::ColorImage
+        let width_usize = width as usize;
+        let height_usize = height as usize;
+        let expected_bytes = width_usize * height_usize * 3; // RGB888 = 3 bytes per pixel
         
-        if data.len() != width * height * 4 {
-            warn!("Framebuffer data size mismatch: expected {}, got {}", width * height * 4, data.len());
+        if data.len() != expected_bytes {
+            warn!("Framebuffer data size mismatch: expected {} (RGB888), got {}", expected_bytes, data.len());
             return;
         }
         
-        let mut pixels = Vec::with_capacity(width * height);
-        for chunk in data.chunks_exact(4) {
-            // Assume RGBA format
-            pixels.push(egui::Color32::from_rgba_premultiplied(
-                chunk[0], chunk[1], chunk[2], chunk[3]
+        let mut pixels = Vec::with_capacity(width_usize * height_usize);
+        for chunk in data.chunks_exact(3) {
+            // Convert RGB888 to RGBA (add full opacity)
+            pixels.push(egui::Color32::from_rgba_unmultiplied(
+                chunk[0], chunk[1], chunk[2], 255
             ));
         }
         
         let color_image = egui::ColorImage {
-            size: [width, height],
+            size: [width_usize, height_usize],
             pixels,
         };
         

@@ -1,8 +1,6 @@
 use anyhow::Result;
 use rfb_client::{Client, ClientBuilder, ClientHandle, Config, ServerEvent};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
+use tracing::info;
 
 /// Manages the VNC client connection and event processing.
 pub struct VncConnection {
@@ -42,7 +40,7 @@ impl VncConnection {
         server: &str,
         port: Option<u16>,
         password: Option<String>,
-        shared: bool,
+        _shared: bool,
     ) -> Result<()> {
         info!("Connecting to VNC server: {}", server);
         self.status = ConnectionStatus::Connecting;
@@ -58,13 +56,15 @@ impl VncConnection {
         };
 
         // Build configuration
-        let mut config_builder = Config::builder().host(&host).port(port).shared(shared);
+        let mut config_builder = Config::builder().host(&host).port(port);
 
         if let Some(pwd) = password {
             config_builder = config_builder.password(&pwd);
         }
 
         let config = config_builder.build()?;
+        
+        // Note: SharedFlag is sent during protocol init, not part of config
 
         // Connect to server
         let client = ClientBuilder::new(config).build().await?;

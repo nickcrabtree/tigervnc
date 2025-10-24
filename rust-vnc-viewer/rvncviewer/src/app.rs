@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
 use crate::args::Args;
+use crate::vnc_connection::{VncConnection, ConnectionStatus};
 
 use crate::ui::{
     connection_dialog::ConnectionDialog,
@@ -95,6 +96,12 @@ pub struct VncViewerApp {
     
     /// Fullscreen state tracking
     fullscreen_pending: bool,
+    
+    /// VNC connection manager
+    vnc_connection: VncConnection,
+    
+    /// Tokio runtime for async operations
+    runtime: tokio::runtime::Runtime,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -117,7 +124,10 @@ impl VncViewerApp {
         // Load configuration
         let config_path = args.config.clone().or_else(|| {
             directories::UserDirs::new()
-                .and_then(|dirs| dirs.home_dir().map(|h| h.join(".config/rvncviewer/config.toml")))
+                .and_then(|dirs| {
+                    let home_dir = dirs.home_dir().to_path_buf();
+                    Some(home_dir.join(".config/rvncviewer/config.toml"))
+                })
         });
         
         let config = if let Some(ref path) = config_path {
@@ -154,6 +164,10 @@ impl VncViewerApp {
             (AppState::Connecting, true, None)
         };
         
+        // Create tokio runtime for async operations
+        let runtime = tokio::runtime::Runtime::new()
+            .expect("Failed to create tokio runtime");
+        
         Ok(Self {
             args,
             config,
@@ -170,6 +184,8 @@ impl VncViewerApp {
             current_server,
             connection_stats: ConnectionStats::default(),
             fullscreen_pending: false,
+            vnc_connection: VncConnection::new(),
+            runtime,
         })
     }
     
@@ -200,6 +216,7 @@ impl VncViewerApp {
                 self.state = AppState::Connecting;
             }
             MenuAction::Disconnect => {
+                self.vnc_connection.disconnect();
                 self.disconnect("User requested disconnection".to_string());
             }
             MenuAction::Options => {
@@ -238,6 +255,49 @@ impl VncViewerApp {
         self.connection_stats = ConnectionStats::default();
         self.show_connection_dialog = true;
     }
+    
+    /// Poll VNC events and update state
+    fn poll_vnc_events(&mut self, ctx: &egui::Context) {
+        use rfb_client::ServerEvent;
+        
+        while let Some(event) = self.vnc_connection.poll_event() {
+            match event {
+                ServerEvent::FramebufferUpdated { damage: _ } => {
+                    // Update desktop window
+                    if let Some((width, height)) = self.vnc_connection.framebuffer_size() {
+                        if let Some(pixels) = self.vnc_connection.framebuffer_pixels() {
+                            self.desktop_window.update_framebuffer(ctx, width, height, &pixels);
+                        }
+                    }
+                    
+                    // Request repaint for next frame
+                    ctx.request_repaint();
+                }
+                ServerEvent::Connected { width, height, name, .. } => {
+                    info!("Server info: {}x{} - {}", width, height, name);
+                    self.connection_stats.framebuffer_size = (width as u32, height as u32);
+                    self.connection_stats.server_name = name;
+                }
+                ServerEvent::ConnectionClosed => {
+                    warn!("Server closed connection");
+                    self.disconnect("Server closed connection".to_string());
+                }
+                ServerEvent::Error { message } => {
+                    warn!("Server error: {}", message);
+                    self.disconnect(format!("Error: {}", message));
+                }
+                ServerEvent::Bell => {
+                    // Handle bell
+                    debug!("Bell alert received");
+                }
+                ServerEvent::ServerCutText { .. } => {
+                    // Handle clipboard
+                    debug!("Clipboard update received");
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 impl VncViewerApp {
@@ -271,6 +331,10 @@ impl App for VncViewerApp {
             self.apply_fullscreen_state(ctx, frame);
             self.fullscreen_pending = false;
         }
+        
+        // Poll VNC events
+        self.poll_vnc_events(ctx);
+        
         // Handle menu bar
         if self.config.show_menubar {
             if let Some(action) = self.menubar.show(ctx) {
@@ -290,15 +354,32 @@ impl App for VncViewerApp {
                         
                         // Add to recent servers
                         if !self.config.recent_servers.contains(&connection_info.server) {
-                            self.config.recent_servers.insert(0, connection_info.server);
+                            self.config.recent_servers.insert(0, connection_info.server.clone());
                             self.config.recent_servers.truncate(10); // Keep last 10
                         }
                         
-                        // TODO: Initiate actual VNC connection
-                        // For now, simulate successful connection
-                        self.state = AppState::Connected;
-                        self.connection_stats.connected = true;
-                        self.connection_stats.server_name = self.current_server.clone().unwrap_or_default();
+                        // Initiate actual VNC connection
+                        let server = connection_info.server.clone();
+                        let password = connection_info.password.clone();
+                        let shared = connection_info.shared;
+                        
+                        match self.runtime.block_on(async {
+                            self.vnc_connection.connect(&server, None, password, shared).await
+                        }) {
+                            Ok(()) => {
+                                if let ConnectionStatus::Connected { width, height, server_name } = self.vnc_connection.status() {
+                                    info!("Successfully connected to {}", server_name);
+                                    self.state = AppState::Connected;
+                                    self.connection_stats.connected = true;
+                                    self.connection_stats.server_name = server_name.clone();
+                                    self.connection_stats.framebuffer_size = (*width as u32, *height as u32);
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Connection failed: {}", e);
+                                self.state = AppState::Disconnected { reason: format!("Connection failed: {}", e) };
+                            }
+                        }
                     }
                     Err(e) => {
                         warn!("Connection dialog error: {}", e);
