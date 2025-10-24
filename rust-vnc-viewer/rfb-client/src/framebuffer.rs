@@ -7,10 +7,11 @@ use crate::errors::RfbClientError;
 use anyhow::Result as AnyResult;
 use rfb_common::Rect;
 use rfb_encodings as enc;
-use rfb_encodings::{Decoder, MutablePixelBuffer, RfbInStream};
+use rfb_encodings::{Decoder, MutablePixelBuffer, RfbInStream, ContentCache};
 use rfb_pixelbuffer::{ManagedPixelBuffer, PixelBuffer as _, PixelFormat as LocalPixelFormat};
 use rfb_protocol::messages::types::{PixelFormat as ServerPixelFormat, Rectangle};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use tokio::io::AsyncRead;
 
 /// Registry of decoders keyed by encoding type.
@@ -27,8 +28,16 @@ impl DecoderRegistry {
         reg.register(DecoderEntry::CopyRect(enc::CopyRectDecoder));
         reg.register(DecoderEntry::RRE(enc::RREDecoder));
         reg.register(DecoderEntry::Hextile(enc::HextileDecoder));
-reg.register(DecoderEntry::Tight(enc::TightDecoder::default()));
+        reg.register(DecoderEntry::Tight(enc::TightDecoder::default()));
         reg.register(DecoderEntry::ZRLE(enc::ZRLEDecoder::default()));
+        reg
+    }
+    
+    /// Create a registry with all standard encodings plus ContentCache support.
+    pub fn with_content_cache(cache: Arc<Mutex<ContentCache>>) -> Self {
+        let mut reg = Self::with_standard();
+        reg.register(DecoderEntry::CachedRect(enc::CachedRectDecoder::new(cache.clone())));
+        reg.register(DecoderEntry::CachedRectInit(enc::CachedRectInitDecoder::new(cache)));
         reg
     }
 
@@ -51,6 +60,8 @@ enum DecoderEntry {
     Hextile(enc::HextileDecoder),
     Tight(enc::TightDecoder),
     ZRLE(enc::ZRLEDecoder),
+    CachedRect(enc::CachedRectDecoder),
+    CachedRectInit(enc::CachedRectInitDecoder),
 }
 
 impl DecoderEntry {
@@ -62,6 +73,8 @@ impl DecoderEntry {
             Self::Hextile(d) => d.encoding_type(),
             Self::Tight(d) => d.encoding_type(),
             Self::ZRLE(d) => d.encoding_type(),
+            Self::CachedRect(d) => d.encoding_type(),
+            Self::CachedRectInit(d) => d.encoding_type(),
         }
     }
 
@@ -79,6 +92,8 @@ impl DecoderEntry {
             Self::Hextile(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::Tight(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::ZRLE(d) => d.decode(stream, rect, pixel_format, buffer).await,
+            Self::CachedRect(d) => d.decode(stream, rect, pixel_format, buffer).await,
+            Self::CachedRectInit(d) => d.decode(stream, rect, pixel_format, buffer).await,
         }
     }
 }
@@ -104,6 +119,25 @@ impl Framebuffer {
             buffer,
             server_pixel_format,
             registry: DecoderRegistry::with_standard(),
+        }
+    }
+    
+    /// Create a new framebuffer with ContentCache support.
+    ///
+    /// This enables the ContentCache protocol for 97-99% bandwidth reduction
+    /// on repeated content.
+    pub fn with_content_cache(
+        width: u16,
+        height: u16,
+        server_pixel_format: ServerPixelFormat,
+        cache: Arc<Mutex<ContentCache>>,
+    ) -> Self {
+        let local_format = LocalPixelFormat::rgb888();
+        let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
+        Self {
+            buffer,
+            server_pixel_format,
+            registry: DecoderRegistry::with_content_cache(cache),
         }
     }
 

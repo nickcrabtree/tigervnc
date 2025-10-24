@@ -1,0 +1,19 @@
+[package]
+name = "platform-input"
+version = "0.1.0"
+edition = "2021"
+description = "Cross-platform input dispatcher for mapping winit events to VNC ClientCommand messages"
+license = "GPL-2.0-or-later"
+authors = ["Nick Crabtree"]
+
+[dependencies]
+rfb-client = { path = "../rfb-client" }
+rfb-common = { path = "../rfb-common" }
+bitflags = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+winit = "0.28"
+
+[dev-dependencies]
+pretty_assertions = "1.4"

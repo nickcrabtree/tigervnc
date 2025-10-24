@@ -1,0 +1,49 @@
+[package]
+name = "rvncviewer"
+version = "0.1.0"
+edition = "2021"
+description = "Modern VNC viewer implementation in Rust"
+license = "GPL-2.0+"
+authors = ["TigerVNC Team"]
+
+[[bin]]
+name = "rvncviewer"
+path = "src/main.rs"
+
+[dependencies]
+# Local crates
+rfb-client = { path = "../rfb-client", features = ["cli"] }
+rfb-display = { path = "../rfb-display" }
+platform-input = { path = "../platform-input" }
+rfb-common = { path = "../rfb-common" }
+rfb-pixelbuffer = { path = "../rfb-pixelbuffer" }
+
+# GUI framework
+eframe = { version = "0.27", default-features = false, features = [
+    "default_fonts",
+    "glow", 
+    "persistence",
+] }
+egui = "0.27"
+winit = "0.28"
+
+# CLI and configuration
+clap = { version = "4", features = ["derive", "env"] }
+directories = "5"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Utilities
+image = { version = "0.25", default-features = false, features = ["png"] }
+chrono = { version = "0.4", features = ["clock"] }

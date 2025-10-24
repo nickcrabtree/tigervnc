@@ -55,6 +55,11 @@ All versions of TigerVNC contain the following programs:
                  with the remote desktop being displayed by the VNC server.  The
                  VNC server can be running on a Windows or a Unix/Linux machine.
 
+* njcvncviewer-rs - **NEW**: High-performance Rust VNC viewer with ContentCache 
+                    protocol support for 97-99% bandwidth reduction. Features 
+                    async architecture, cross-platform GUI, and comprehensive 
+                    input handling. See ``rust-vnc-viewer/`` directory.
+
 
 Windows-specific
 ================

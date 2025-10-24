@@ -7,20 +7,24 @@ use crate::{
     framebuffer::Framebuffer,
     messages::{ClientCommand, ServerEvent},
     protocol,
+    FramebufferHandle,
 };
-use rfb_common::Rect;
-use rfb_protocol::messages::{server::FramebufferUpdate, types::Rectangle};
+use rfb_encodings::ContentCache;
+use std::sync::Mutex;
+use rfb_protocol::messages::server::FramebufferUpdate;
+use std::sync::Arc;
 use tokio::select;
 use tokio::task::JoinHandle;
 
 /// Spawn the client event loop.
 ///
 /// This establishes a connection, creates the framebuffer, and starts read/write loops.
+/// Returns both the join handle and the shared framebuffer handle.
 pub async fn spawn(
     config: Config,
     commands: flume::Receiver<ClientCommand>,
     events: flume::Sender<ServerEvent>,
-) -> Result<JoinHandle<()>, RfbClientError> {
+) -> Result<(JoinHandle<()>, FramebufferHandle), RfbClientError> {
     // Establish connection and get streams + server init
     let conn = connection::establish(&config).await?;
     let width = conn.server_init.framebuffer_width;
@@ -28,8 +32,19 @@ pub async fn spawn(
     let name = conn.server_init.name.clone();
     let pixel_format = conn.server_init.pixel_format.clone();
 
-    // Initialize framebuffer with server pixel format
-    let mut framebuffer = Framebuffer::new(width, height, pixel_format.clone());
+    // Initialize shared framebuffer with server pixel format and optional ContentCache
+    let framebuffer = if config.content_cache.enabled {
+        // Create ContentCache instance
+        let cache = Arc::new(Mutex::new(ContentCache::new(config.content_cache.size_mb)));
+        Arc::new(tokio::sync::Mutex::new(
+            Framebuffer::with_content_cache(width, height, pixel_format.clone(), cache)
+        ))
+    } else {
+        Arc::new(tokio::sync::Mutex::new(
+            Framebuffer::new(width, height, pixel_format.clone())
+        ))
+    };
+    let framebuffer_handle = framebuffer.clone();
 
     // Notify application of successful connection
     let _ = events.send(ServerEvent::Connected {
@@ -43,8 +58,8 @@ pub async fn spawn(
     let mut input = conn.input; // RfbInStream<...>
     let mut output = conn.output; // RfbOutStream<...>
 
-    // Initial SetEncodings based on config
-    let _ = protocol::write_set_encodings(&mut output, config.display.encodings.clone()).await;
+    // Initial SetEncodings based on config (including ContentCache if enabled)
+    let _ = protocol::write_set_encodings(&mut output, config.effective_encodings()).await;
 
     // Spawn a task to run the main loop (read + write via select)
     let handle = tokio::spawn(async move {
@@ -58,7 +73,7 @@ pub async fn spawn(
                             use crate::protocol::IncomingMessage as IM;
                             match msg {
                                 IM::FramebufferUpdate(update) => {
-                                    if let Err(e) = handle_framebuffer_update(&mut framebuffer, &mut input, update, &events).await {
+                                    if let Err(e) = handle_framebuffer_update(&framebuffer, &mut input, update, &events).await {
                                         let _ = events.send(ServerEvent::Error { message: e.to_string() });
                                         let _ = events.send(ServerEvent::ConnectionClosed);
                                         break;
@@ -105,17 +120,20 @@ pub async fn spawn(
         }
     });
 
-    Ok(handle)
+    Ok((handle, framebuffer_handle))
 }
 
 async fn handle_framebuffer_update<R: tokio::io::AsyncRead + Unpin>(
-    framebuffer: &mut Framebuffer,
+    framebuffer: &FramebufferHandle,
     input: &mut rfb_protocol::io::RfbInStream<R>,
     update: FramebufferUpdate,
     events: &flume::Sender<ServerEvent>,
 ) -> Result<(), RfbClientError> {
     // Apply all rectangles using decoders
-    let damage = framebuffer.apply_update(input, &update.rectangles).await?;
+    let damage = {
+        let mut fb = framebuffer.lock().await;
+        fb.apply_update(input, &update.rectangles).await?
+    };
     if !damage.is_empty() {
         let _ = events.send(ServerEvent::FramebufferUpdated { damage });
     }

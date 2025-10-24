@@ -1,343 +1,566 @@
-use crate::connection::{ConnectionCommand, ConnectionEvent, ConnectionManager};
-use crossbeam_channel::{Receiver, Sender};
-use egui::{ColorImage, Context, TextureHandle, TextureOptions};
-use rfb_pixelbuffer::{ManagedPixelBuffer, PixelBuffer, PixelFormat};
-use rfb_protocol::connection::ConnectionState;
+use crate::{ui, AppConfig};
+use anyhow::{Context, Result};
+use egui::{Context as EguiContext, ViewportCommand, TextureHandle};
+use parking_lot::RwLock;
+use platform_input::*;
+use rfb_client::{Client, ClientBuilder, ServerEvent, ClientHandle, Config};
+use rfb_display::{ScaleMode, Viewport, ViewportConfig};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use tracing::{debug, info};
+use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
+use tracing::{debug, error, info, warn};
+
+#[derive(Debug, Clone)]
+pub enum AppState {
+    /// Show connection dialog
+    Connecting,
+    /// VNC client connecting/connected
+    Connected(String), // Server name
+    /// Error state
+    Error(String),
+    /// Disconnected
+    Disconnected,
+}
+
+/// Connection statistics
+#[derive(Debug)]
+pub struct ConnectionStats {
+    pub connected_at: Option<Instant>,
+    pub bytes_received: u64,
+    pub bytes_sent: u64,
+    pub rectangles_received: u32,
+    pub frames_rendered: u32,
+    pub last_update: Instant,
+}
+
+impl Default for ConnectionStats {
+    fn default() -> Self {
+        Self {
+            connected_at: None,
+            bytes_received: 0,
+            bytes_sent: 0,
+            rectangles_received: 0,
+            frames_rendered: 0,
+            last_update: Instant::now(),
+        }
+    }
+}
 
 pub struct VncViewerApp {
-    // Connection channels
-    command_tx: Sender<ConnectionCommand>,
-    event_rx: Receiver<ConnectionEvent>,
-
-    // Connection state
-    state: ConnectionState,
-    server_name: String,
+    /// Application configuration
+    config: AppConfig,
+    
+    /// Current application state
+    state: AppState,
+    
+    /// VNC client handle (when connected)
+    client_handle: Option<ClientHandle>,
+    
+    /// Channel for receiving connection results
+    connection_rx: Option<mpsc::UnboundedReceiver<Result<ClientHandle, String>>>,
+    
+    /// Display renderer (placeholder)
+    renderer: Option<()>,
+    
+    /// Viewport (pan/zoom/scale)
+    viewport: Viewport,
+    
+    /// Current scale mode
+    current_scale_mode: ScaleMode,
+    
+    /// Framebuffer dimensions (when connected)
+    framebuffer_width: u32,
+    framebuffer_height: u32,
+    
+    /// Input processors
+    input_dispatcher: InputDispatcher,
+    key_mapper: KeyMapper,
+    shortcuts_config: ShortcutsConfig,
+    gesture_processor: GestureProcessor,
+    
+    /// Connection statistics
+    stats: Arc<RwLock<ConnectionStats>>,
+    
+    /// UI state
+    ui_state: ui::UiState,
+    
+    /// Error message display
     error_message: Option<String>,
-
-    // Framebuffer
-    framebuffer: Option<Arc<ManagedPixelBuffer>>,
-    texture: Option<TextureHandle>,
-    fb_width: u16,
-    fb_height: u16,
-    pixel_format: Option<PixelFormat>,
-
-    // View state
-    scale: f32,
-    offset_x: f32,
-    offset_y: f32,
-
-    // Input state
-    mouse_x: u16,
-    mouse_y: u16,
-    button_mask: u8,
+    
+    /// Frame timing
+    last_frame_time: Instant,
+    frame_count: u64,
+    fps_counter: f64,
+    
+    /// Framebuffer texture for rendering
+    framebuffer_texture: Option<TextureHandle>,
+    
+    /// Last framebuffer update sequence number (to detect changes)
+    last_framebuffer_version: u64,
 }
 
 impl VncViewerApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>, host: String, port: u16, shared: bool) -> Self {
-        // Create channels
-        let (event_tx, event_rx) = crossbeam_channel::unbounded();
-        let (command_tx, command_rx) = crossbeam_channel::unbounded();
-
-        // Spawn connection thread
-        let manager = ConnectionManager::new(event_tx, command_rx, host.clone(), port, shared);
-
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(manager.run());
-        });
-
-        Self {
-            command_tx,
-            event_rx,
-            state: ConnectionState::Disconnected,
-            server_name: format!("{}:{}", host, port),
+    pub fn new(
+        _cc: &eframe::CreationContext<'_>,
+        config: AppConfig,
+        initial_server: Option<String>,
+    ) -> Self {
+        info!("Creating VNC Viewer App");
+        
+        // Set up viewport with default dimensions
+        let viewport_config = ViewportConfig::default();
+        let mut viewport = Viewport::new(viewport_config);
+        
+        // Set initial scale mode based on config
+        let initial_scale_mode = match config.display.scale_mode.as_str() {
+            "native" => ScaleMode::Native,
+            "fit" => ScaleMode::Fit,
+            "fill" => ScaleMode::Fill,
+            _ => ScaleMode::Fit,
+        };
+        // Store scale mode in the app since Viewport doesn't have this concept directly
+        
+        // Configure input handling
+        let gesture_config = GestureConfig {
+            momentum_decay: config.input.scroll_momentum_decay as f64,
+            zoom_sensitivity: config.input.zoom_sensitivity as f64,
+            ..Default::default()
+        };
+        
+        let input_dispatcher = InputDispatcher::new();
+        let key_mapper = KeyMapper::new();
+        let shortcuts_config = ShortcutsConfig::default();
+        let gesture_processor = GestureProcessor::with_config(gesture_config);
+        
+        let stats = Arc::new(RwLock::new(ConnectionStats::default()));
+        let ui_state = ui::UiState::new();
+        
+        let initial_state = if initial_server.is_some() {
+            AppState::Connecting
+        } else {
+            AppState::Disconnected
+        };
+        
+        let mut app = Self {
+            config,
+            state: initial_state,
+            client_handle: None,
+            connection_rx: None,
+            renderer: None,
+            viewport,
+            current_scale_mode: initial_scale_mode,
+            framebuffer_width: 0,
+            framebuffer_height: 0,
+            input_dispatcher,
+            key_mapper,
+            shortcuts_config,
+            gesture_processor,
+            stats,
+            ui_state,
             error_message: None,
-            framebuffer: None,
-            texture: None,
-            fb_width: 0,
-            fb_height: 0,
-            pixel_format: None,
-            scale: 1.0,
-            offset_x: 0.0,
-            offset_y: 0.0,
-            mouse_x: 0,
-            mouse_y: 0,
-            button_mask: 0,
-        }
-    }
-
-    fn process_events(&mut self, ctx: &Context) {
-        while let Ok(event) = self.event_rx.try_recv() {
-            match event {
-                ConnectionEvent::StateChanged(state) => {
-                    info!("Connection state: {:?}", state);
-                    self.state = state;
-                    ctx.request_repaint();
-                }
-                ConnectionEvent::Connected {
-                    width,
-                    height,
-                    pixel_format,
-                    server_name,
-                } => {
-                    info!(
-                        "Connected: {} ({}x{}, {:?})",
-                        server_name, width, height, pixel_format
-                    );
-                    self.fb_width = width;
-                    self.fb_height = height;
-                    self.pixel_format = Some(pixel_format);
-                    self.server_name = server_name;
-                    self.error_message = None;
-                    ctx.request_repaint();
-                }
-                ConnectionEvent::FramebufferUpdate { buffer } => {
-                    debug!("Framebuffer update received");
-                    self.framebuffer = Some(buffer);
-                    self.texture = None; // Force texture rebuild
-                    ctx.request_repaint();
-                }
-                ConnectionEvent::Error(msg) => {
-                    info!("Connection error: {}", msg);
-                    self.error_message = Some(msg);
-                    self.state = ConnectionState::Closed;
-                    ctx.request_repaint();
-                }
-                ConnectionEvent::Disconnected => {
-                    info!("Disconnected");
-                    self.state = ConnectionState::Closed;
-                    ctx.request_repaint();
-                }
+            last_frame_time: Instant::now(),
+            frame_count: 0,
+            fps_counter: 0.0,
+            framebuffer_texture: None,
+            last_framebuffer_version: 0,
+        };
+        
+        // Auto-connect if server specified
+        if let Some(server) = initial_server {
+            if let Err(e) = app.connect_to_server(&server) {
+                error!("Failed to auto-connect to {}: {:#}", server, e);
+                app.set_error(format!("Failed to connect to {}: {:#}", server, e));
             }
         }
+        
+        app
     }
-
-    fn update_texture(&mut self, ctx: &Context) {
-        if self.texture.is_none() {
-            if let Some(ref fb) = self.framebuffer {
-                let color_image = self.framebuffer_to_color_image(fb);
-                let texture = ctx.load_texture("framebuffer", color_image, TextureOptions::LINEAR);
-                self.texture = Some(texture);
-            }
+    
+    fn connect_to_server(&mut self, server_address: &str) -> Result<()> {
+        info!("Connecting to server: {}", server_address);
+        
+        let (host, port) = crate::parse_server_address(server_address)
+            .context("Invalid server address")?;
+        
+        // Build client configuration
+        let client_config = Config::builder()
+            .host(host)
+            .port(port)
+            .build()
+            .context("Invalid client configuration")?;
+        
+        self.state = AppState::Connecting;
+        self.error_message = None;
+        
+        // Reset statistics
+        {
+            let mut stats = self.stats.write();
+            *stats = ConnectionStats::default();
+            stats.last_update = Instant::now();
         }
-    }
-
-    fn framebuffer_to_color_image(&self, fb: &ManagedPixelBuffer) -> ColorImage {
-        let (width, height) = fb.dimensions();
-        let width = width as usize;
-        let height = height as usize;
-        let pf = fb.format();
-
-        let mut pixels = Vec::with_capacity(width * height);
-
-        // Convert framebuffer to RGBA
-        let bytes_per_pixel = (pf.bits_per_pixel / 8) as usize;
-        let data = fb.data();
-
-        for y in 0..height {
-            for x in 0..width {
-                let offset = (y * width + x) * bytes_per_pixel;
-                let pixel = &data[offset..offset + bytes_per_pixel];
-
-                let (r, g, b) = if pf.true_color {
-                    // Extract RGB components using shifts and masks
-                    let value = match bytes_per_pixel {
-                        4 => u32::from_ne_bytes([pixel[0], pixel[1], pixel[2], pixel[3]]),
-                        3 => {
-                            u32::from_ne_bytes([pixel[0], pixel[1], pixel[2], 0]) & 0x00FFFFFF
-                        }
-                        2 => u16::from_ne_bytes([pixel[0], pixel[1]]) as u32,
-                        1 => pixel[0] as u32,
-                        _ => 0,
-                    };
-
-                    let r_mask = pf.red_max as u32;
-                    let g_mask = pf.green_max as u32;
-                    let b_mask = pf.blue_max as u32;
-
-                    let r = ((value >> pf.red_shift) & r_mask) * 255 / r_mask;
-                    let g = ((value >> pf.green_shift) & g_mask) * 255 / g_mask;
-                    let b = ((value >> pf.blue_shift) & b_mask) * 255 / b_mask;
-
-                    (r as u8, g as u8, b as u8)
-                } else {
-                    // Color map not supported yet
-                    (128, 128, 128)
-                };
-
-                pixels.push(egui::Color32::from_rgba_unmultiplied(r, g, b, 255));
-            }
-        }
-
-        ColorImage {
-            size: [width, height],
-            pixels,
-        }
-    }
-
-    fn render_status_bar(&self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label(format!("Server: {}", self.server_name));
-            ui.separator();
-            ui.label(format!("State: {}", self.state));
-
-            if let Some(ref err) = self.error_message {
-                ui.separator();
-                ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
-            }
-
-            if self.state == ConnectionState::Normal {
-                ui.separator();
-                ui.label(format!("Size: {}x{}", self.fb_width, self.fb_height));
-                ui.separator();
-                ui.label(format!("Scale: {:.0}%", self.scale * 100.0));
+        
+        // Create channel for connection result
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.connection_rx = Some(rx);
+        
+        // Spawn async connection task
+        tokio::spawn(async move {
+            match ClientBuilder::new(client_config).build().await {
+                Ok(client) => {
+                    let handle = client.handle();
+                    // Send the client handle back to the main thread
+                    let _ = tx.send(Ok(handle));
+                    // Keep the client alive by storing it temporarily
+                    // In a real implementation, we'd need to store this somewhere
+                    std::mem::forget(client);
+                }
+                Err(e) => {
+                    let _ = tx.send(Err(format!("Failed to connect: {:#}", e)));
+                }
             }
         });
+        
+        Ok(())
     }
+    
+    fn disconnect(&mut self) {
+        info!("Disconnecting from server");
+        
+        if let Some(handle) = self.client_handle.take() {
+            if let Err(e) = handle.disconnect() {
+                warn!("Error during disconnect: {:#}", e);
+            }
+        }
+        
+        self.renderer = None;
+        self.framebuffer_texture = None;
+        self.last_framebuffer_version = 0;
+        self.framebuffer_width = 0;
+        self.framebuffer_height = 0;
+        self.state = AppState::Disconnected;
+        self.error_message = None;
+    }
+    
+    fn set_error<S: Into<String>>(&mut self, message: S) {
+        let message = message.into();
+        error!("Application error: {}", message);
+        self.state = AppState::Error(message.clone());
+        self.error_message = Some(message);
+        self.client_handle = None;
+        self.renderer = None;
+    }
+    
+    fn process_connection_results(&mut self, ctx: &EguiContext) {
+        if let Some(ref mut rx) = self.connection_rx {
+            if let Ok(result) = rx.try_recv() {
+                match result {
+                    Ok(client_handle) => {
+                        info!("Connection established successfully");
+                        self.client_handle = Some(client_handle);
+                        self.state = AppState::Connected("Connected".to_string());
+                        self.connection_rx = None;
+                        ctx.request_repaint();
+                    }
+                    Err(error) => {
+                        error!("Connection failed: {}", error);
+                        self.set_error(error);
+                        self.connection_rx = None;
+                        ctx.request_repaint();
+                    }
+                }
+            }
+        }
+    }
+    
+    fn process_client_events(&mut self, ctx: &EguiContext) {
+        // Clone the handle to avoid borrow conflicts
+        let client_handle = self.client_handle.clone();
+        if let Some(ref client_handle) = client_handle {
+            while let Some(event) = client_handle.try_recv_event() {
+                self.handle_client_event(event, ctx);
+            }
+        }
+    }
+    
+    fn handle_client_event(&mut self, event: ServerEvent, ctx: &EguiContext) {
+        match event {
+            ServerEvent::Connected { width, height, name, .. } => {
+                info!("Connected to server: {}", name);
+                self.state = AppState::Connected(name.clone());
+                
+                // Update framebuffer dimensions
+                self.framebuffer_width = width as u32;
+                self.framebuffer_height = height as u32;
+                
+                // Clear any existing texture to force recreation with new size
+                self.framebuffer_texture = None;
+                self.last_framebuffer_version = 0;
+                
+                info!("Framebuffer dimensions: {}x{}", width, height);
+                
+                // Update stats
+                {
+                    let mut stats = self.stats.write();
+                    stats.connected_at = Some(Instant::now());
+                }
+                
+                ctx.request_repaint();
+            }
+            
+            ServerEvent::FramebufferUpdated { damage } => {
+                debug!("Framebuffer update with {} regions", damage.len());
+                
+                // Update renderer (would normally update texture/surface)
+                // For now, we'll just count the update
+                {
+                    let mut stats = self.stats.write();
+                    stats.rectangles_received += damage.len() as u32;
+                    stats.last_update = Instant::now();
+                }
+                
+                ctx.request_repaint();
+            }
+            
+            ServerEvent::DesktopResized { width, height } => {
+                info!("Desktop resized to {}x{}", width, height);
+                // TODO: Update viewport content size
+                ctx.request_repaint();
+            }
+            
+            ServerEvent::Bell => {
+                debug!("Bell received");
+                // TODO: Play system bell sound
+            }
+            
+            ServerEvent::ServerCutText { text } => {
+                debug!("Server clipboard: {} bytes", text.len());
+                // TODO: Update system clipboard
+            }
+            
+            ServerEvent::Error { message } => {
+                error!("Connection error: {}", message);
+                self.set_error(format!("Connection error: {}", message));
+                ctx.request_repaint();
+            }
+            
+            ServerEvent::ConnectionClosed => {
+                info!("Server disconnected");
+                self.state = AppState::Disconnected;
+                self.client_handle = None;
+                self.renderer = None;
+                ctx.request_repaint();
+            }
+        }
+    }
+    
+    fn handle_shortcut_action(&mut self, action: ShortcutAction, ctx: &EguiContext) {
+        match action {
+            ShortcutAction::ToggleFullscreen => {
+                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!self.ui_state.fullscreen));
+                self.ui_state.fullscreen = !self.ui_state.fullscreen;
+            }
+            ShortcutAction::Disconnect => {
+                self.disconnect();
+            }
+            ShortcutAction::ZoomIn => {
+                self.viewport.zoom_in();
+            }
+            ShortcutAction::ZoomOut => {
+                self.viewport.zoom_out();
+            }
+            ShortcutAction::ResetZoom => {
+                self.viewport.reset_zoom();
+            }
+            ShortcutAction::ScaleNative => {
+                self.set_scale_mode(ScaleMode::Native);
+            }
+            ShortcutAction::ScaleFit => {
+                self.set_scale_mode(ScaleMode::Fit);
+            }
+            ShortcutAction::ScaleFill => {
+                self.set_scale_mode(ScaleMode::Fill);
+            }
+            ShortcutAction::ToggleViewOnly => {
+                self.ui_state.view_only = !self.ui_state.view_only;
+                info!("View-only mode: {}", self.ui_state.view_only);
+            }
+            ShortcutAction::SendCtrlAltDel => {
+                if let Some(ref client_handle) = self.client_handle {
+                    // Send Ctrl+Alt+Del key combination
+                    let _ = client_handle.send_key_event(0xFFE3, true); // Left Ctrl
+                    let _ = client_handle.send_key_event(0xFFE9, true); // Left Alt  
+                    let _ = client_handle.send_key_event(0xFFFF, true); // Delete
+                    let _ = client_handle.send_key_event(0xFFFF, false); // Delete up
+                    let _ = client_handle.send_key_event(0xFFE9, false); // Left Alt up
+                    let _ = client_handle.send_key_event(0xFFE3, false); // Left Ctrl up
+                }
+            }
+            ShortcutAction::ShowHelp => {
+                self.ui_state.show_help = true;
+            }
+            ShortcutAction::TakeScreenshot => {
+                info!("Screenshot requested");
+                // TODO: Implement screenshot functionality
+            }
+            _ => {
+                debug!("Unhandled shortcut action: {:?}", action);
+            }
+        }
+    }
+    
+    fn update_fps(&mut self) {
+        let now = Instant::now();
+        let frame_time = now.duration_since(self.last_frame_time).as_secs_f64();
+        
+        self.frame_count += 1;
+        self.last_frame_time = now;
+        
+        // Update FPS counter with exponential smoothing
+        let current_fps = 1.0 / frame_time;
+        self.fps_counter = self.fps_counter * 0.9 + current_fps * 0.1;
+        
+        // Update stats
+        {
+            let mut stats = self.stats.write();
+            stats.frames_rendered = self.frame_count as u32;
+        }
+    }
+}
 
-    fn render_framebuffer(&mut self, ui: &mut egui::Ui) {
-        if let Some(ref texture) = self.texture {
-            let _available_size = ui.available_size();
+impl eframe::App for VncViewerApp {
+    fn update(&mut self, ctx: &EguiContext, frame: &mut eframe::Frame) {
+        self.update_fps();
+        
+        // Process connection results from async tasks
+        self.process_connection_results(ctx);
+        
+        // Process VNC client events
+        self.process_client_events(ctx);
+        
+        // Update framebuffer texture when connected
+        if matches!(self.state, AppState::Connected(_)) {
+            self.update_framebuffer_texture(ctx);
+        }
+        
+        // Apply dark mode if configured
+        if self.config.ui.dark_mode {
+            ctx.set_visuals(egui::Visuals::dark());
+        } else {
+            ctx.set_visuals(egui::Visuals::light());
+        }
+        
+        // Render menu bar
+        if self.config.ui.show_menu_bar && self.ui_state.show_menu_bar {
+            ui::render_menu_bar(self, ctx);
+        }
+        
+        // Render status bar
+        if self.config.ui.show_status_bar && self.ui_state.show_status_bar {
+            ui::render_status_bar(self, ctx);
+        }
+        
+        // Main content area
+        egui::CentralPanel::default().show(ctx, |ui| {
+            match &self.state {
+                AppState::Disconnected => {
+                    ui::render_connection_dialog(self, ui, ctx);
+                }
+                AppState::Connecting => {
+                    ui::render_connecting_screen(ui);
+                }
+                AppState::Connected(_server_name) => {
+                    ui::render_desktop_area(self, ui, ctx);
+                }
+                AppState::Error(error) => {
+                    let error_msg = error.clone();
+                    ui::render_error_screen(ui, &error_msg, |app| {
+                        app.state = AppState::Disconnected;
+                        app.error_message = None;
+                    }, self);
+                }
+            }
+        });
+        
+        // Render dialogs
+        ui::render_dialogs(self, ctx);
+        
+        // Handle window events and input
+        self.handle_window_input(ctx, frame);
+        
+        // Request repaint if connected (for continuous updates)
+        if matches!(self.state, AppState::Connected(_)) {
+            ctx.request_repaint_after(Duration::from_millis(16)); // ~60 FPS
+        }
+    }
+}
 
-            // Calculate scaled size
-            let scaled_width = self.fb_width as f32 * self.scale;
-            let scaled_height = self.fb_height as f32 * self.scale;
-
-            // Create scrollable area
-            egui::ScrollArea::both()
-                .auto_shrink([false; 2])
-                .show(ui, |ui| {
-                    let (rect, response) = ui.allocate_exact_size(
-                        egui::vec2(scaled_width, scaled_height),
-                        egui::Sense::click_and_drag(),
-                    );
-
-                    // Draw texture
-                    ui.painter().image(
-                        texture.id(),
-                        rect,
-                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                        egui::Color32::WHITE,
-                    );
-
-                    // Handle mouse input
-                    if response.hovered() {
-                        if let Some(pos) = response.hover_pos() {
-                            let rel_x = ((pos.x - rect.min.x) / self.scale) as u16;
-                            let rel_y = ((pos.y - rect.min.y) / self.scale) as u16;
-
-                            if rel_x != self.mouse_x || rel_y != self.mouse_y {
-                                self.mouse_x = rel_x.min(self.fb_width - 1);
-                                self.mouse_y = rel_y.min(self.fb_height - 1);
-
-                                let _ = self.command_tx.send(ConnectionCommand::PointerEvent {
-                                    button_mask: self.button_mask,
-                                    x: self.mouse_x,
-                                    y: self.mouse_y,
-                                });
+impl VncViewerApp {
+    fn handle_window_input(&mut self, ctx: &EguiContext, _frame: &mut eframe::Frame) {
+        // Handle keyboard shortcuts
+        ctx.input(|i| {
+            for event in &i.events {
+                if let egui::Event::Key { key, pressed, modifiers, .. } = event {
+                    if *pressed {
+                        // Convert egui input to platform-input format
+                        let active_mods = self.egui_modifiers_to_platform(*modifiers);
+                        
+                        // For now, implement a simple shortcut check manually
+                        // In a complete implementation, this would use the shortcuts_config properly
+                        if let Some(action) = self.check_egui_shortcut(*key, &active_mods) {
+                            self.handle_shortcut_action(action, ctx);
+                        } else if matches!(self.state, AppState::Connected(_)) && !self.ui_state.view_only {
+                            // Send regular key to VNC server
+                            if let Some(keysym) = self.egui_key_to_keysym(*key) {
+                                if let Some(ref client_handle) = self.client_handle {
+                                    let _ = client_handle.send_key_event(keysym, *pressed);
+                                }
                             }
                         }
                     }
-
-                    // Handle clicks
-                    if response.clicked() {
-                        self.button_mask |= 0x01; // Left button
-                        let _ = self.command_tx.send(ConnectionCommand::PointerEvent {
-                            button_mask: self.button_mask,
-                            x: self.mouse_x,
-                            y: self.mouse_y,
-                        });
-                    }
-
-                    if !ui.input(|i| i.pointer.primary_down()) && self.button_mask & 0x01 != 0 {
-                        self.button_mask &= !0x01; // Release left button
-                        let _ = self.command_tx.send(ConnectionCommand::PointerEvent {
-                            button_mask: self.button_mask,
-                            x: self.mouse_x,
-                            y: self.mouse_y,
-                        });
-                    }
-                });
-
-            // Handle keyboard input
-            ui.input(|i| {
-                for event in &i.events {
-                    if let egui::Event::Key {
-                        key,
-                        pressed,
-                        ..
-                    } = event
-                    {
-                        // Convert egui key to X11 keysym (simplified)
-                        if let Some(keysym) = self.egui_key_to_x11(*key) {
-                            let _ = self.command_tx.send(ConnectionCommand::KeyEvent {
-                                down: *pressed,
-                                key: keysym,
-                            });
-                        }
-                    }
                 }
-            });
-
-            // Request continuous updates
-            if self.state == ConnectionState::Normal {
-                let _ = self.command_tx.send(ConnectionCommand::RequestUpdate {
-                    incremental: true,
-                    x: 0,
-                    y: 0,
-                    width: self.fb_width,
-                    height: self.fb_height,
-                });
             }
-        } else {
-            ui.centered_and_justified(|ui| {
-                ui.spinner();
-                ui.label("Waiting for framebuffer...");
-            });
+        });
+    }
+    
+    fn check_egui_shortcut(&self, key: egui::Key, modifiers: &[Modifier]) -> Option<ShortcutAction> {
+        use egui::Key;
+        
+        // Simple shortcut mapping - in a real implementation this would use shortcuts_config
+        match (key, modifiers) {
+            (Key::F11, []) => Some(ShortcutAction::ToggleFullscreen),
+            (Key::Escape, []) if matches!(self.state, AppState::Connected(_)) => Some(ShortcutAction::ToggleFullscreen),
+            (Key::Q, [Modifier::Control]) => Some(ShortcutAction::Disconnect),
+            (Key::F1, []) => Some(ShortcutAction::ShowHelp),
+            _ => None,
         }
     }
-
-    fn egui_key_to_x11(&self, key: egui::Key) -> Option<u32> {
-        // X11 keysym mapping (basic set)
+    
+    fn egui_modifiers_to_platform(&self, mods: egui::Modifiers) -> Vec<Modifier> {
+        let mut result = Vec::new();
+        if mods.shift { result.push(Modifier::Shift); }
+        if mods.ctrl { result.push(Modifier::Control); }
+        if mods.alt { result.push(Modifier::Alt); }
+        if mods.command { result.push(Modifier::Super); }
+        result
+    }
+    
+    fn egui_key_to_keysym(&self, key: egui::Key) -> Option<u32> {
+        // Convert egui::Key to X11 keysym
+        // This is a simplified mapping - the real implementation would be in platform-input
         use egui::Key;
         Some(match key {
-            Key::A => 0x0061,
-            Key::B => 0x0062,
-            Key::C => 0x0063,
-            Key::D => 0x0064,
-            Key::E => 0x0065,
-            Key::F => 0x0066,
-            Key::G => 0x0067,
-            Key::H => 0x0068,
-            Key::I => 0x0069,
-            Key::J => 0x006a,
-            Key::K => 0x006b,
-            Key::L => 0x006c,
-            Key::M => 0x006d,
-            Key::N => 0x006e,
-            Key::O => 0x006f,
-            Key::P => 0x0070,
-            Key::Q => 0x0071,
-            Key::R => 0x0072,
-            Key::S => 0x0073,
-            Key::T => 0x0074,
-            Key::U => 0x0075,
-            Key::V => 0x0076,
-            Key::W => 0x0077,
-            Key::X => 0x0078,
-            Key::Y => 0x0079,
-            Key::Z => 0x007a,
-            Key::Num0 => 0x0030,
-            Key::Num1 => 0x0031,
-            Key::Num2 => 0x0032,
-            Key::Num3 => 0x0033,
-            Key::Num4 => 0x0034,
-            Key::Num5 => 0x0035,
-            Key::Num6 => 0x0036,
-            Key::Num7 => 0x0037,
-            Key::Num8 => 0x0038,
+            Key::A => 0x0061, Key::B => 0x0062, Key::C => 0x0063, Key::D => 0x0064,
+            Key::E => 0x0065, Key::F => 0x0066, Key::G => 0x0067, Key::H => 0x0068,
+            Key::I => 0x0069, Key::J => 0x006a, Key::K => 0x006b, Key::L => 0x006c,
+            Key::M => 0x006d, Key::N => 0x006e, Key::O => 0x006f, Key::P => 0x0070,
+            Key::Q => 0x0071, Key::R => 0x0072, Key::S => 0x0073, Key::T => 0x0074,
+            Key::U => 0x0075, Key::V => 0x0076, Key::W => 0x0077, Key::X => 0x0078,
+            Key::Y => 0x0079, Key::Z => 0x007a,
+            Key::Num0 => 0x0030, Key::Num1 => 0x0031, Key::Num2 => 0x0032,
+            Key::Num3 => 0x0033, Key::Num4 => 0x0034, Key::Num5 => 0x0035,
+            Key::Num6 => 0x0036, Key::Num7 => 0x0037, Key::Num8 => 0x0038,
             Key::Num9 => 0x0039,
             Key::Space => 0x0020,
             Key::Enter => 0xff0d,
@@ -352,83 +575,171 @@ impl VncViewerApp {
             _ => return None,
         })
     }
-}
-
-impl eframe::App for VncViewerApp {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        // Process connection events
-        self.process_events(ctx);
-
-        // Update texture if needed
-        self.update_texture(ctx);
-
-        // Top panel: menu and toolbar
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("Disconnect").clicked() {
-                        let _ = self.command_tx.send(ConnectionCommand::Disconnect);
-                        ui.close_menu();
-                    }
-                    if ui.button("Quit").clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                });
-
-                ui.menu_button("View", |ui| {
-                    if ui.button("Zoom In").clicked() {
-                        self.scale = (self.scale * 1.25).min(4.0);
-                        ui.close_menu();
-                    }
-                    if ui.button("Zoom Out").clicked() {
-                        self.scale = (self.scale / 1.25).max(0.25);
-                        ui.close_menu();
-                    }
-                    if ui.button("Reset Zoom").clicked() {
-                        self.scale = 1.0;
-                        ui.close_menu();
-                    }
-                });
-            });
-        });
-
-        // Bottom panel: status bar
-        egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
-            self.render_status_bar(ui);
-        });
-
-        // Central panel: framebuffer display
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if self.state == ConnectionState::Normal {
-                self.render_framebuffer(ui);
-            } else {
-                ui.centered_and_justified(|ui| {
-                    match self.state {
-                        ConnectionState::Disconnected => ui.label("Disconnected"),
-                        ConnectionState::ProtocolVersion
-                        | ConnectionState::Security
-                        | ConnectionState::SecurityResult
-                        | ConnectionState::ClientInit
-                        | ConnectionState::ServerInit => {
-                            ui.spinner();
-                            ui.label(format!("Connecting... ({})", self.state))
-                        }
-                        ConnectionState::Closed => {
-                            if let Some(ref err) = self.error_message {
-                                ui.colored_label(egui::Color32::RED, format!("Error: {}", err))
-                            } else {
-                                ui.label("Connection closed")
-                            }
-                        }
-                        _ => ui.label(format!("State: {}", self.state)),
-                    }
-                });
-            }
-        });
-
-        // Request repaint for continuous updates
-        if self.state == ConnectionState::Normal {
-            ctx.request_repaint();
+    
+    // Public getters for UI components
+    pub fn config(&self) -> &AppConfig {
+        &self.config
+    }
+    
+    pub fn state(&self) -> &AppState {
+        &self.state
+    }
+    
+    pub fn stats(&self) -> Arc<RwLock<ConnectionStats>> {
+        Arc::clone(&self.stats)
+    }
+    
+    pub fn viewport(&self) -> &Viewport {
+        &self.viewport
+    }
+    
+    pub fn viewport_mut(&mut self) -> &mut Viewport {
+        &mut self.viewport
+    }
+    
+    /// Get viewport content size (framebuffer dimensions)
+    pub fn content_size(&self) -> Option<(u32, u32)> {
+        if self.framebuffer_width > 0 && self.framebuffer_height > 0 {
+            Some((self.framebuffer_width, self.framebuffer_height))
+        } else {
+            None
         }
+    }
+    
+    /// Get the current zoom factor
+    pub fn zoom_factor(&self) -> f32 {
+        self.viewport.zoom() as f32
+    }
+    
+    /// Get the current scale mode
+    pub fn scale_mode(&self) -> ScaleMode {
+        self.current_scale_mode
+    }
+    
+    /// Set the scale mode
+    pub fn set_scale_mode(&mut self, mode: ScaleMode) {
+        self.current_scale_mode = mode;
+        // Apply the scale mode by adjusting viewport zoom
+        // This is a simplified implementation
+        match mode {
+            ScaleMode::Native => {
+                self.viewport.reset_zoom();
+            }
+            ScaleMode::Fit => {
+                // Would calculate fit zoom based on window size
+                // For now just use current zoom
+            }
+            ScaleMode::Fill => {
+                // Would calculate fill zoom based on window size  
+                // For now just use current zoom
+            }
+        }
+    }
+    
+    pub fn ui_state(&self) -> &ui::UiState {
+        &self.ui_state
+    }
+    
+    pub fn ui_state_mut(&mut self) -> &mut ui::UiState {
+        &mut self.ui_state
+    }
+    
+    pub fn fps_counter(&self) -> f64 {
+        self.fps_counter
+    }
+    
+    pub fn connect_to(&mut self, server_address: &str) -> Result<()> {
+        self.connect_to_server(server_address)
+    }
+    
+    pub fn disconnect_from_server(&mut self) {
+        self.disconnect()
+    }
+    
+    /// Update the framebuffer texture from the client handle.
+    ///
+    /// This should be called whenever framebuffer updates are received.
+    /// Returns true if the texture was updated.
+    pub fn update_framebuffer_texture(&mut self, ctx: &EguiContext) -> bool {
+        let Some(ref client_handle) = self.client_handle else {
+            // No client - clear texture
+            if self.framebuffer_texture.is_some() {
+                self.framebuffer_texture = None;
+                self.last_framebuffer_version = 0;
+            }
+            return false;
+        };
+        
+        // Get framebuffer size and format
+        let (width, height) = match client_handle.framebuffer_size() {
+            Some(size) => size,
+            None => return false,
+        };
+        
+        // Update stored dimensions
+        if self.framebuffer_width != width || self.framebuffer_height != height {
+            self.framebuffer_width = width;
+            self.framebuffer_height = height;
+            // Force texture recreation
+            self.framebuffer_texture = None;
+        }
+        
+        // Get framebuffer pixels
+        let pixels = match client_handle.framebuffer_pixels() {
+            Some(pixels) => pixels,
+            None => return false,
+        };
+        
+        // Simple version tracking based on content hash (for now)
+        let mut hasher = DefaultHasher::new();
+        pixels.hash(&mut hasher);
+        let content_hash = hasher.finish();
+        
+        if content_hash == self.last_framebuffer_version && self.framebuffer_texture.is_some() {
+            // No change, texture is still valid
+            return false;
+        }
+        
+        // Convert pixels to ColorImage
+        // The framebuffer format from rfb-client should be RGB888 (3 bytes per pixel)
+        let expected_len_rgb = (width * height * 3) as usize;
+        let expected_len_rgba = (width * height * 4) as usize;
+        
+        let rgba_pixels = if pixels.len() == expected_len_rgb {
+            // RGB format - convert to RGBA
+            let mut rgba_pixels = Vec::with_capacity(expected_len_rgba);
+            for chunk in pixels.chunks_exact(3) {
+                rgba_pixels.extend_from_slice(&[chunk[0], chunk[1], chunk[2], 255]); // Add alpha
+            }
+            rgba_pixels
+        } else if pixels.len() == expected_len_rgba {
+            // Already RGBA format
+            pixels
+        } else {
+            warn!(
+                "Unexpected framebuffer pixel data length: got {}, expected {} (RGB) or {} (RGBA)", 
+                pixels.len(), expected_len_rgb, expected_len_rgba
+            );
+            return false;
+        };
+        
+        let color_image = egui::ColorImage::from_rgba_unmultiplied(
+            [width as usize, height as usize],
+            &rgba_pixels,
+        );
+        
+        // Create or update texture
+        let texture_id = format!("framebuffer_{}x{}", width, height);
+        let texture = ctx.load_texture(texture_id, color_image, egui::TextureOptions::LINEAR);
+        
+        self.framebuffer_texture = Some(texture);
+        self.last_framebuffer_version = content_hash;
+        
+        true
+    }
+    
+    /// Get the current framebuffer texture for rendering.
+    pub fn framebuffer_texture(&self) -> Option<&TextureHandle> {
+        self.framebuffer_texture.as_ref()
     }
 }

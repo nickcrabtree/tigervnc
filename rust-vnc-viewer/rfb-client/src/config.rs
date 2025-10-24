@@ -18,6 +18,8 @@ pub struct Config {
     pub input: InputConfig,
     /// Reconnection settings.
     pub reconnect: ReconnectConfig,
+    /// ContentCache settings.
+    pub content_cache: ContentCacheConfig,
 }
 
 /// Connection configuration.
@@ -146,6 +148,42 @@ fn default_jitter() -> f32 {
     0.1
 }
 
+/// ContentCache configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentCacheConfig {
+    /// Enable ContentCache protocol for bandwidth reduction.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Maximum cache size in megabytes.
+    #[serde(default = "default_cache_size_mb")]
+    pub size_mb: usize,
+    /// Cache entry lifetime in seconds (0 = no expiration).
+    #[serde(default = "default_max_age_seconds")]
+    pub max_age_seconds: u64,
+    /// Minimum rectangle size to cache (in pixels).
+    #[serde(default = "default_min_rect_size")]
+    pub min_rect_size: u32,
+    /// Cache utilization threshold for proactive cleanup (0.0-1.0).
+    #[serde(default = "default_cleanup_threshold")]
+    pub cleanup_threshold: f64,
+}
+
+fn default_cache_size_mb() -> usize {
+    2048 // 2GB default
+}
+
+fn default_max_age_seconds() -> u64 {
+    300 // 5 minutes
+}
+
+fn default_min_rect_size() -> u32 {
+    4096 // 64x64 pixels minimum
+}
+
+fn default_cleanup_threshold() -> f64 {
+    0.8 // Start cleanup at 80% utilization
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -174,6 +212,13 @@ impl Default for Config {
                 backoff_ms: default_backoff_ms(),
                 max_backoff_ms: default_max_backoff_ms(),
                 jitter: default_jitter(),
+            },
+            content_cache: ContentCacheConfig {
+                enabled: default_true(),
+                size_mb: default_cache_size_mb(),
+                max_age_seconds: default_max_age_seconds(),
+                min_rect_size: default_min_rect_size(),
+                cleanup_threshold: default_cleanup_threshold(),
             },
         }
     }
@@ -216,6 +261,19 @@ impl Config {
             ));
         }
 
+        // Validate ContentCache config
+        if self.content_cache.size_mb == 0 && self.content_cache.enabled {
+            return Err(RfbClientError::Config(
+                "ContentCache size cannot be 0 when enabled".to_string(),
+            ));
+        }
+        
+        if !(0.0..=1.0).contains(&self.content_cache.cleanup_threshold) {
+            return Err(RfbClientError::Config(
+                "ContentCache cleanup threshold must be between 0.0 and 1.0".to_string(),
+            ));
+        }
+
         Ok(())
     }
 
@@ -223,6 +281,23 @@ impl Config {
     #[must_use]
     pub fn timeout(&self) -> Duration {
         Duration::from_millis(self.connection.timeout_ms)
+    }
+    
+    /// Returns the complete encodings list including ContentCache capabilities if enabled.
+    #[must_use]
+    pub fn effective_encodings(&self) -> Vec<i32> {
+        let mut encodings = self.display.encodings.clone();
+        
+        if self.content_cache.enabled {
+            // Add ContentCache protocol capability
+            encodings.push(rfb_protocol::messages::types::PSEUDO_ENCODING_CONTENT_CACHE);
+            
+            // Add ContentCache encodings to the front of the list for priority
+            encodings.insert(0, rfb_protocol::messages::types::ENCODING_CACHED_RECT_INIT);
+            encodings.insert(0, rfb_protocol::messages::types::ENCODING_CACHED_RECT);
+        }
+        
+        encodings
     }
 }
 

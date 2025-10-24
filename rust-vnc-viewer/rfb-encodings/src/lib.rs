@@ -83,6 +83,16 @@ pub use tight::TightDecoder;
 pub mod zrle;
 pub use zrle::ZRLEDecoder;
 
+// ContentCache for caching decoded pixel data and decoders
+pub mod content_cache;
+pub use content_cache::{ContentCache, CachedPixels, CacheStats};
+
+pub mod cached_rect;
+pub use cached_rect::CachedRectDecoder;
+
+pub mod cached_rect_init;
+pub use cached_rect_init::CachedRectInitDecoder;
+
 // Standard VNC encodings
 /// Raw encoding: uncompressed pixel data (simplest encoding).
 pub const ENCODING_RAW: i32 = 0;
@@ -114,6 +124,13 @@ pub const ENCODING_LAST_RECT: i32 = -224;
 
 /// Pseudo-encoding: desktop size change notification.
 pub const ENCODING_DESKTOP_SIZE: i32 = -223;
+
+// ContentCache encoding types (TigerVNC extension)
+/// CachedRect encoding: reference to cached content (cache hit).
+pub const ENCODING_CACHED_RECT: i32 = -512; // 0xFFFFFE00
+
+/// CachedRectInit encoding: initial transmission with cache ID (cache miss).
+pub const ENCODING_CACHED_RECT_INIT: i32 = -511; // 0xFFFFFE01
 
 /// Core trait for all RFB encoding/decoding implementations.
 ///

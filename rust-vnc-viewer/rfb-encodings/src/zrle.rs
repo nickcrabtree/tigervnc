@@ -112,7 +112,7 @@ use crate::{Decoder, MutablePixelBuffer, PixelFormat, Rectangle, RfbInStream, EN
 use anyhow::{anyhow, bail, Context, Result};
 use flate2::{Decompress, FlushDecompress, Status};
 use rfb_common::Rect;
-use std::cell::RefCell;
+use std::sync::Mutex;
 use tokio::io::AsyncRead;
 
 /// ZRLE tile size (64x64 pixels, smaller at rectangle edges).
@@ -141,16 +141,16 @@ const MAX_PALETTE_SIZE: u8 = 127;
 /// assert_eq!(decoder.encoding_type(), ENCODING_ZRLE);
 /// ```
 pub struct ZRLEDecoder {
-    /// Zlib decompressor state. Uses RefCell for interior mutability since
+    /// Zlib decompressor state. Uses Mutex for thread-safe interior mutability since
     /// decode() takes &self but needs to reset decompressor per rectangle.
-    inflater: RefCell<Decompress>,
+    inflater: Mutex<Decompress>,
 }
 
 impl Default for ZRLEDecoder {
     fn default() -> Self {
         Self {
             // zlib format (with header), not raw deflate
-            inflater: RefCell::new(Decompress::new(true)),
+            inflater: Mutex::new(Decompress::new(true)),
         }
     }
 }
@@ -220,7 +220,7 @@ impl ZRLEDecoder {
     ///
     /// Resets the decompressor state and inflates the entire input.
     fn decompress_zlib(&self, compressed: &[u8]) -> Result<Vec<u8>> {
-        let mut inflater = self.inflater.borrow_mut();
+        let mut inflater = self.inflater.lock().unwrap();
 
         // Reset decompressor for fresh rectangle
         inflater.reset(true);
