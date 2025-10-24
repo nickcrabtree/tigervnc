@@ -25,10 +25,34 @@
 #include <list>
 #include <string>
 #include <functional>
+#include <fstream>
+#include <mutex>
+#include <chrono>
 
 #include <rfb/PixelFormat.h>
 
 namespace rfb {
+
+  // Debug logger for PersistentCache - logs to tmpfile with timestamps
+  class PersistentCacheDebugLogger {
+  public:
+    static PersistentCacheDebugLogger& getInstance() {
+      static PersistentCacheDebugLogger instance;
+      return instance;
+    }
+    
+    void log(const std::string& message);
+    
+  private:
+    PersistentCacheDebugLogger();
+    ~PersistentCacheDebugLogger();
+    PersistentCacheDebugLogger(const PersistentCacheDebugLogger&) = delete;
+    PersistentCacheDebugLogger& operator=(const PersistentCacheDebugLogger&) = delete;
+    
+    std::ofstream logFile_;
+    std::string logFilename_;
+    std::mutex logMutex_;
+  };
 
   // Hash function for std::vector<uint8_t> to use as key in unordered_map
   struct HashVectorHasher {

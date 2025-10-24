@@ -1400,16 +1400,36 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     beforeLength = conn->getOutStream()->length();
     conn->writer()->writePersistentCachedRect(rect, hash);
     copyStats.bytes += conn->getOutStream()->length() - beforeLength;
-    vlog.debug("PersistentCache protocol hit: rect [%d,%d-%d,%d]",
-               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
+    
+    // Format hash for logging (first 8 bytes as hex)
+    char hashStr[32];
+    snprintf(hashStr, sizeof(hashStr), "%02x%02x%02x%02x%02x%02x%02x%02x",
+             hash.size() > 0 ? hash[0] : 0,
+             hash.size() > 1 ? hash[1] : 0,
+             hash.size() > 2 ? hash[2] : 0,
+             hash.size() > 3 ? hash[3] : 0,
+             hash.size() > 4 ? hash[4] : 0,
+             hash.size() > 5 ? hash[5] : 0,
+             hash.size() > 6 ? hash[6] : 0,
+             hash.size() > 7 ? hash[7] : 0);
+    
+    vlog.debug("PersistentCache protocol HIT: rect [%d,%d-%d,%d] hash=%s... saved %d bytes",
+               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y, hashStr,
+               equiv - (20 + (int)hash.size()));
+    
     lossyRegion.assign_subtract(rect);
     pendingRefreshRegion.assign_subtract(rect);
     return true;
   }
-
+  
   // Client doesn't have this hash yet
   // We could send PersistentCachedRectInit immediately, but for now just fall through
   // to regular encoding and the client will request it on cache miss
+  persistentCacheStats.cacheMisses++;
+  
+  vlog.debug("PersistentCache MISS: rect [%d,%d-%d,%d] - client doesn't have hash, falling back to regular encoding",
+             rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
+  
   return false;
 }
 

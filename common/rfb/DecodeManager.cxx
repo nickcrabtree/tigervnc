@@ -60,6 +60,13 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   // TODO: Read size from parameters in Phase 4
   persistentCache = new GlobalClientPersistentCache(2048);
   vlog.info("Client PersistentCache initialized: 2048MB (ARC-managed)");
+  
+  // Load persistent cache from disk
+  if (persistentCache->loadFromDisk()) {
+    vlog.info("PersistentCache loaded from disk");
+  } else {
+    vlog.debug("PersistentCache starting fresh (no cache file or load failed)");
+  }
 
   cpuCount = std::thread::hardware_concurrency();
   if (cpuCount == 0) {
@@ -103,7 +110,16 @@ DecodeManager::~DecodeManager()
     delete decoder;
     
   delete contentCache;
-  delete persistentCache;
+  
+  // Save persistent cache to disk before destroying
+  if (persistentCache) {
+    if (persistentCache->saveToDisk()) {
+      vlog.info("PersistentCache saved to disk");
+    } else {
+      vlog.error("Failed to save PersistentCache to disk");
+    }
+    delete persistentCache;
+  }
 }
 
 bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
@@ -259,6 +275,36 @@ void DecodeManager::logStats()
     vlog.info("    Misses: %u", cacheStats.cache_misses);
     vlog.info("  ARC cache performance:");
     contentCache->logArcStats();
+  }
+  
+  // Log client-side PersistentCache statistics
+  if (persistentCache != nullptr) {
+    auto stats = persistentCache->getStats();
+    vlog.info(" ");
+    vlog.info("Client-side PersistentCache statistics:");
+    vlog.info("  Protocol operations (PersistentCachedRect received):");
+    vlog.info("    Lookups: %u, Hits: %u (%.1f%%)",
+              persistentCacheStats.cache_lookups,
+              persistentCacheStats.cache_hits,
+              persistentCacheStats.cache_lookups > 0 ?
+                (100.0 * persistentCacheStats.cache_hits / persistentCacheStats.cache_lookups) : 0.0);
+    vlog.info("    Misses: %u, Queries sent: %u",
+              persistentCacheStats.cache_misses,
+              persistentCacheStats.queries_sent);
+    vlog.info("  ARC cache performance:");
+    vlog.info("    Total entries: %zu, Total bytes: %s",
+              stats.totalEntries,
+              core::iecPrefix(stats.totalBytes, "B").c_str());
+    vlog.info("    Cache hits: %llu, Cache misses: %llu, Evictions: %llu",
+              (unsigned long long)stats.cacheHits,
+              (unsigned long long)stats.cacheMisses,
+              (unsigned long long)stats.evictions);
+    vlog.info("    T1 (recency): %zu entries, T2 (frequency): %zu entries",
+              stats.t1Size, stats.t2Size);
+    vlog.info("    B1 (ghost-T1): %zu entries, B2 (ghost-T2): %zu entries",
+              stats.b1Size, stats.b2Size);
+    vlog.info("    ARC parameter p (target T1 bytes): %s",
+              core::iecPrefix(stats.targetT1Size, "B").c_str());
   }
 }
 
@@ -552,8 +598,21 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   if (cached == nullptr) {
     // Cache miss - queue request for later batching
     persistentCacheStats.cache_misses++;
-    vlog.debug("PersistentCache miss for hash (len=%zu), queuing query",
-               hash.size());
+    
+    // Format hash for logging (first 8 bytes as hex)
+    char hashStr[32];
+    snprintf(hashStr, sizeof(hashStr), "%02x%02x%02x%02x%02x%02x%02x%02x",
+             hash.size() > 0 ? hash[0] : 0,
+             hash.size() > 1 ? hash[1] : 0,
+             hash.size() > 2 ? hash[2] : 0,
+             hash.size() > 3 ? hash[3] : 0,
+             hash.size() > 4 ? hash[4] : 0,
+             hash.size() > 5 ? hash[5] : 0,
+             hash.size() > 6 ? hash[6] : 0,
+             hash.size() > 7 ? hash[7] : 0);
+    
+    vlog.debug("PersistentCache MISS: rect [%d,%d-%d,%d] hash=%s... (len=%zu), queuing query",
+               r.tl.x, r.tl.y, r.br.x, r.br.y, hashStr, hash.size());
     
     // Add to pending queries for batching
     pendingQueries.push_back(hash);
@@ -568,9 +627,21 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   
   persistentCacheStats.cache_hits++;
   
-  vlog.debug("PersistentCache hit for hash (len=%zu): blitting %dx%d to [%d,%d-%d,%d]",
-             hash.size(), cached->width, cached->height,
-             r.tl.x, r.tl.y, r.br.x, r.br.y);
+  // Format hash for logging (first 8 bytes as hex)
+  char hashStr[32];
+  snprintf(hashStr, sizeof(hashStr), "%02x%02x%02x%02x%02x%02x%02x%02x",
+           hash.size() > 0 ? hash[0] : 0,
+           hash.size() > 1 ? hash[1] : 0,
+           hash.size() > 2 ? hash[2] : 0,
+           hash.size() > 3 ? hash[3] : 0,
+           hash.size() > 4 ? hash[4] : 0,
+           hash.size() > 5 ? hash[5] : 0,
+           hash.size() > 6 ? hash[6] : 0,
+           hash.size() > 7 ? hash[7] : 0);
+  
+  vlog.debug("PersistentCache HIT: rect [%d,%d-%d,%d] hash=%s... cached=%dx%d stride=%d",
+             r.tl.x, r.tl.y, r.br.x, r.br.y, hashStr,
+             cached->width, cached->height, cached->stridePixels);
   
   // Blit cached pixels to framebuffer at target position
   pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
@@ -585,13 +656,30 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
     return;
   }
   
-  vlog.debug("Storing decoded rect [%d,%d-%d,%d] with persistent hash (len=%zu)",
-             r.tl.x, r.tl.y, r.br.x, r.br.y, hash.size());
+  // Format hash for logging (first 8 bytes as hex)
+  char hashStr[32];
+  snprintf(hashStr, sizeof(hashStr), "%02x%02x%02x%02x%02x%02x%02x%02x",
+           hash.size() > 0 ? hash[0] : 0,
+           hash.size() > 1 ? hash[1] : 0,
+           hash.size() > 2 ? hash[2] : 0,
+           hash.size() > 3 ? hash[3] : 0,
+           hash.size() > 4 ? hash[4] : 0,
+           hash.size() > 5 ? hash[5] : 0,
+           hash.size() > 6 ? hash[6] : 0,
+           hash.size() > 7 ? hash[7] : 0);
+  
+  vlog.debug("PersistentCache STORE: rect [%d,%d-%d,%d] hash=%s... (len=%zu)",
+             r.tl.x, r.tl.y, r.br.x, r.br.y, hashStr, hash.size());
   
   // Get pixel data from framebuffer
   // CRITICAL: stride from getBuffer() is in pixels, not bytes
   int stridePixels;
   const uint8_t* pixels = pb->getBuffer(r, &stridePixels);
+  
+  size_t bppBytes = (size_t)pb->getPF().bpp / 8;
+  size_t pixelBytes = (size_t)r.height() * stridePixels * bppBytes;
+  vlog.debug("PersistentCache STORE details: bpp=%d stridePx=%d pixelBytes=%zu",
+             pb->getPF().bpp, stridePixels, pixelBytes);
   
   // Store in persistent cache with hash
   persistentCache->insert(hash, pixels, pb->getPF(),
