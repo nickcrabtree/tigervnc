@@ -20,6 +20,7 @@
 - **[PHASE4_COMPLETE.md](PHASE4_COMPLETE.md)** — rfb-client completion report
 - **[PHASE5_COMPLETE.md](PHASE5_COMPLETE.md)** — rfb-display completion report  
 - **[PHASE6_COMPLETE.md](PHASE6_COMPLETE.md)** — platform-input completion report
+- **[PHASE7_STATUS.md](PHASE7_STATUS.md)** — Phase 7 current status and remaining work
 - **[RUST_VIEWER_STATUS.md](RUST_VIEWER_STATUS.md)** — Broader plan + ContentCache (Phase 8)
 - **[README.md](README.md)** — Project overview and getting started
 
@@ -153,6 +154,7 @@ cargo test -p rfb-display
 - **[PHASE4_COMPLETE.md](PHASE4_COMPLETE.md)** — rfb-client (connection & event loop)
 - **[PHASE5_COMPLETE.md](PHASE5_COMPLETE.md)** — rfb-display (rendering & viewport)
 - **[PHASE6_COMPLETE.md](PHASE6_COMPLETE.md)** — platform-input (keyboard, mouse, gestures)
+- **[PHASE7_STATUS.md](PHASE7_STATUS.md)** — rvncviewer GUI (current status & architecture)
 
 ### Planning & Progress
 - **[NEXT_STEPS.md](NEXT_STEPS.md)** — Implementation plan for Phases 4-8
