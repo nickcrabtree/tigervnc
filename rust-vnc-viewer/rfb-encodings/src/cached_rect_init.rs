@@ -276,10 +276,22 @@ mod tests {
         };
 
         // Decode should succeed
+        let wire_format = crate::PixelFormat {
+            bits_per_pixel: 32,
+            depth: 24, 
+            big_endian: 0,
+            true_color: 1,
+            red_max: 255,
+            green_max: 255,
+            blue_max: 255,
+            red_shift: 16,
+            green_shift: 8,
+            blue_shift: 0,
+        };
         let result = decoder.decode(
             &mut stream,
             &rect,
-            &PixelFormat::rgb888(),
+            &wire_format,
             &mut buffer,
         ).await;
         assert!(result.is_ok());
@@ -292,15 +304,15 @@ mod tests {
         assert_eq!(stats.entries, 1);
 
         // Verify we can look up the cached data
-        let cached = {
+        let cached_pixels = {
             let mut c = cache.lock().unwrap();
-            c.lookup(test_cache_id)
+            c.lookup(test_cache_id).map(|cp| (cp.width, cp.height, cp.cache_id))
         };
-        assert!(cached.is_some());
-        let cached_pixels = cached.unwrap();
-        assert_eq!(cached_pixels.width, 2);
-        assert_eq!(cached_pixels.height, 2);
-        assert_eq!(cached_pixels.cache_id, test_cache_id);
+        assert!(cached_pixels.is_some());
+        let (width, height, cache_id) = cached_pixels.unwrap();
+        assert_eq!(width, 2);
+        assert_eq!(height, 2);
+        assert_eq!(cache_id, test_cache_id);
     }
 
     #[tokio::test]
@@ -328,7 +340,19 @@ mod tests {
         };
 
         // Decode should fail
-        let result = decoder.decode(&mut stream, &rect, &PixelFormat::rgb888(), &mut buffer).await;
+        let wire_format = crate::PixelFormat {
+            bits_per_pixel: 32,
+            depth: 24, 
+            big_endian: 0,
+            true_color: 1,
+            red_max: 255,
+            green_max: 255,
+            blue_max: 255,
+            red_shift: 16,
+            green_shift: 8,
+            blue_shift: 0,
+        };
+        let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Unsupported actual_encoding"));
     }

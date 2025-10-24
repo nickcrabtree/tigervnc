@@ -187,7 +187,19 @@ mod tests {
         };
 
         // Decode should succeed (cache hit)
-        let result = decoder.decode(&mut stream, &rect, &PixelFormat::rgb888(), &mut buffer).await;
+        let wire_format = crate::PixelFormat {
+            bits_per_pixel: 32,
+            depth: 24, 
+            big_endian: 0,
+            true_color: 1,
+            red_max: 255,
+            green_max: 255,
+            blue_max: 255,
+            red_shift: 16,
+            green_shift: 8,
+            blue_shift: 0,
+        };
+        let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
         assert!(result.is_ok());
 
         // Verify cache statistics
@@ -226,7 +238,19 @@ mod tests {
         };
 
         // Decode should fail (cache miss)
-        let result = decoder.decode(&mut stream, &rect, &PixelFormat::rgb888(), &mut buffer).await;
+        let wire_format = crate::PixelFormat {
+            bits_per_pixel: 32,
+            depth: 24, 
+            big_endian: 0,
+            true_color: 1,
+            red_max: 255,
+            green_max: 255,
+            blue_max: 255,
+            red_shift: 16,
+            green_shift: 8,
+            blue_shift: 0,
+        };
+        let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Cache miss"));
 
@@ -278,7 +302,19 @@ mod tests {
         };
 
         // Decode should fail (dimension mismatch)
-        let result = decoder.decode(&mut stream, &rect, &PixelFormat::rgb888(), &mut buffer).await;
+        let wire_format = crate::PixelFormat {
+            bits_per_pixel: 32,
+            depth: 24, 
+            big_endian: 0,
+            true_color: 1,
+            red_max: 255,
+            green_max: 255,
+            blue_max: 255,
+            red_shift: 16,
+            green_shift: 8,
+            blue_shift: 0,
+        };
+        let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("don't match"));
     }
