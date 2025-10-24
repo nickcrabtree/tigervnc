@@ -25,6 +25,7 @@
 #define __RFB_CMSGHANDLER_H__
 
 #include <stdint.h>
+#include <vector>
 
 #include <rfb/ServerParams.h>
 
@@ -84,9 +85,15 @@ namespace rfb {
                                         const size_t* lengths,
                                         const uint8_t* const* data) = 0;
 
-    // Cache protocol extension handlers
+    // Cache protocol extension handlers (ContentCache - session-only)
     virtual void handleCachedRect(const core::Rect& r, uint64_t cacheId) = 0;
     virtual void storeCachedRect(const core::Rect& r, uint64_t cacheId) = 0;
+    
+    // PersistentCache protocol extension handlers (cross-session)
+    virtual void handlePersistentCachedRect(const core::Rect& r, 
+                                           const std::vector<uint8_t>& hash) = 0;
+    virtual void storePersistentCachedRect(const core::Rect& r,
+                                          const std::vector<uint8_t>& hash) = 0;
 
     ServerParams server;
   };

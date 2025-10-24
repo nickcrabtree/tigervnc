@@ -32,9 +32,13 @@ namespace rfb {
   const int encodingH264 = 50;
 #endif
 
-  // TigerVNC cache-based encoding extension
+  // TigerVNC cache-based encoding extension (ContentCache - session-only)
   const int encodingCachedRect = 100;
   const int encodingCachedRectInit = 101;
+  
+  // TigerVNC persistent cache encoding extension (PersistentCache - cross-session)
+  const int encodingPersistentCachedRect = 102;
+  const int encodingPersistentCachedRectInit = 103;
 
   const int encodingMax = 255;
 
@@ -50,8 +54,9 @@ namespace rfb {
   const int pseudoEncodingCursorWithAlpha = -314;
   const int pseudoEncodingQEMUKeyEvent = -258;
 
-  // TigerVNC cache-based protocol extension
-  const int pseudoEncodingContentCache = -320;
+  // TigerVNC cache-based protocol extensions
+  const int pseudoEncodingContentCache = -320;      // Session-only, server-assigned IDs
+  const int pseudoEncodingPersistentCache = -321;   // Cross-session, content hashes
 
   // TightVNC-specific
   const int pseudoEncodingLastRect = -224;

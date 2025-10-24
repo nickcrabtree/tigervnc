@@ -111,6 +111,12 @@ bool SMsgReader::readMsg()
   case msgTypeRequestCachedData:
     ret = readRequestCachedData();
     break;
+  case msgTypePersistentCacheQuery:
+    ret = readPersistentCacheQuery();
+    break;
+  case msgTypePersistentCacheHashList:
+    ret = readPersistentHashList();
+    break;
   case msgTypeQEMUClientMessage:
     ret = readQEMUMessage();
     break;
@@ -534,5 +540,77 @@ bool SMsgReader::readRequestCachedData()
              (unsigned long long)cacheId);
 
   handler->handleRequestCachedData(cacheId);
+  return true;
+}
+
+bool SMsgReader::readPersistentCacheQuery()
+{
+  if (!is->hasData(2))
+    return false;
+
+  is->setRestorePoint();
+
+  uint16_t count = is->readU16();
+
+  std::vector<std::vector<uint8_t>> hashes;
+  hashes.reserve(count);
+
+  for (uint16_t i = 0; i < count; i++) {
+    if (!is->hasDataOrRestore(1))
+      return false;
+
+    uint8_t hashLen = is->readU8();
+
+    if (!is->hasDataOrRestore(hashLen))
+      return false;
+
+    std::vector<uint8_t> hash(hashLen);
+    is->readBytes(hash.data(), hashLen);
+    hashes.push_back(hash);
+  }
+
+  is->clearRestorePoint();
+
+  vlog.debug("Client queried %d persistent cache hashes", count);
+
+  handler->handlePersistentCacheQuery(hashes);
+  return true;
+}
+
+bool SMsgReader::readPersistentHashList()
+{
+  if (!is->hasData(4 + 2 + 2 + 2))
+    return false;
+
+  is->setRestorePoint();
+
+  uint32_t sequenceId = is->readU32();
+  uint16_t totalChunks = is->readU16();
+  uint16_t chunkIndex = is->readU16();
+  uint16_t count = is->readU16();
+
+  std::vector<std::vector<uint8_t>> hashes;
+  hashes.reserve(count);
+
+  for (uint16_t i = 0; i < count; i++) {
+    if (!is->hasDataOrRestore(1))
+      return false;
+
+    uint8_t hashLen = is->readU8();
+
+    if (!is->hasDataOrRestore(hashLen))
+      return false;
+
+    std::vector<uint8_t> hash(hashLen);
+    is->readBytes(hash.data(), hashLen);
+    hashes.push_back(hash);
+  }
+
+  is->clearRestorePoint();
+
+  vlog.debug("Client advertised %d persistent cache hashes (chunk %d/%d, seq %u)",
+             count, chunkIndex + 1, totalChunks, sequenceId);
+
+  handler->handlePersistentHashList(sequenceId, totalChunks, chunkIndex, hashes);
   return true;
 }

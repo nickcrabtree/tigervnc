@@ -99,6 +99,7 @@ core::BoolParameter rfb::Server::queryConnect
 ("QueryConnect",
  "Prompt the local user to accept or reject incoming connections.",
  false);
+// ContentCache parameters (session-only, server-assigned IDs)
 core::BoolParameter rfb::Server::enableContentCache
 ("EnableContentCache",
  "Enable content-addressable cache for automatic CopyRect detection",
@@ -114,4 +115,14 @@ core::IntParameter rfb::Server::contentCacheMaxAge
 core::IntParameter rfb::Server::contentCacheMinRectSize
 ("ContentCacheMinRectSize",
  "Minimum rectangle size (pixels) to consider for caching",
+ 4096, 0, INT_MAX);
+
+// PersistentCache parameters (cross-session, content hashes)
+core::BoolParameter rfb::Server::enablePersistentCache
+("EnablePersistentCache",
+ "Enable PersistentCache protocol with content-hash based caching",
+ false);
+core::IntParameter rfb::Server::persistentCacheMinRectSize
+("PersistentCacheMinRectSize",
+ "Minimum rectangle size (pixels) to consider for persistent caching",
  4096, 0, INT_MAX);

@@ -1020,7 +1020,9 @@ void CConnection::updateEncodings()
   encodings.push_back(pseudoEncodingQEMUKeyEvent);
   encodings.push_back(pseudoEncodingExtendedMouseButtons);
   
-  // Cache protocol extension
+  // Cache protocol extensions
+  // PersistentCache preferred over ContentCache (cross-session vs session-only)
+  encodings.push_back(pseudoEncodingPersistentCache);
   encodings.push_back(pseudoEncodingContentCache);
 
   if (Decoder::supported(preferredEncoding)) {
@@ -1061,4 +1063,18 @@ void CConnection::storeCachedRect(const core::Rect& r, uint64_t cacheId)
 {
   // Forward to decoder manager to store decoded content with cache ID
   decoder.storeCachedRect(r, cacheId, framebuffer);
+}
+
+void CConnection::handlePersistentCachedRect(const core::Rect& r,
+                                            const std::vector<uint8_t>& hash)
+{
+  // Forward to decoder manager to handle cache lookup and blit
+  decoder.handlePersistentCachedRect(r, hash, framebuffer);
+}
+
+void CConnection::storePersistentCachedRect(const core::Rect& r,
+                                           const std::vector<uint8_t>& hash)
+{
+  // Forward to decoder manager to store decoded content with hash
+  decoder.storePersistentCachedRect(r, hash, framebuffer);
 }

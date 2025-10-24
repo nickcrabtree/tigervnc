@@ -242,9 +242,15 @@ namespace rfb {
     void handleClipboardProvide(uint32_t flags, const size_t* lengths,
                                 const uint8_t* const* data) override;
 
-    // Cache protocol extension handlers
+    // Cache protocol extension handlers (ContentCache - session-only)
     void handleCachedRect(const core::Rect& r, uint64_t cacheId) override;
     void storeCachedRect(const core::Rect& r, uint64_t cacheId) override;
+    
+    // PersistentCache protocol extension handlers (cross-session)
+    void handlePersistentCachedRect(const core::Rect& r,
+                                    const std::vector<uint8_t>& hash) override;
+    void storePersistentCachedRect(const core::Rect& r,
+                                   const std::vector<uint8_t>& hash) override;
 
     // Methods to be overridden in a derived class
 

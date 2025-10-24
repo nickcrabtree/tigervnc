@@ -25,6 +25,7 @@
 #define __RFB_CMSGREADER_H__
 
 #include <stdint.h>
+#include <vector>
 
 #include <core/Rect.h>
 
@@ -73,9 +74,13 @@ namespace rfb {
     bool readLEDState();
     bool readVMwareLEDState();
     
-    // Cache protocol extension
+    // Cache protocol extension (ContentCache - session-only)
     bool readCachedRect(const core::Rect& r);
     bool readCachedRectInit(const core::Rect& r);
+    
+    // PersistentCache protocol extension (cross-session)
+    bool readPersistentCachedRect(const core::Rect& r);
+    bool readPersistentCachedRectInit(const core::Rect& r);
 
   private:
     CMsgHandler* handler;
@@ -101,6 +106,11 @@ namespace rfb {
     bool pendingCacheInitActive;
     uint64_t pendingCacheId;
     int pendingCacheEncoding;
+    
+    // State for PersistentCachedRectInit decode
+    bool pendingPersistentCacheInitActive;
+    std::vector<uint8_t> pendingPersistentHash;
+    int pendingPersistentCacheEncoding;
 
     static const int maxCursorSize = 256;
   };
