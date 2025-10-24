@@ -841,19 +841,58 @@ size_t strideBytes = stride * bytesPerPixel;  // Convert!
 - Hash list supports chunking for large caches (avoiding message size limits)
 - Ready for Phase 4 integration with DecodeManager
 
-### 🔄 Phase 4: Client Integration (NEXT)
+### ✅ Phase 4: Client Integration (COMPLETED)
+
+**Completed:** 2025-10-24
 
 **Goal:** Wire cache into DecodeManager, handle protocol messages.
 
-**Next Steps:**
-1. Add `GlobalClientPersistentCache*` member to `DecodeManager`
-2. Implement `handlePersistentCachedRect()` in client handler (lookup and blit)
-3. Implement `storePersistentCachedRect()` in client handler (store after decode)
-4. Implement query batching and debouncing (aggregate multiple misses)
-5. Add protocol negotiation (check for -321 pseudo-encoding support)
-6. Wire up to CConnection or appropriate client connection class
+**Tasks completed:**
+1. ✅ Added `GlobalClientPersistentCache*` member to `DecodeManager`
+2. ✅ Initialized PersistentCache in DecodeManager constructor (2GB default)
+3. ✅ Implemented `DecodeManager::handlePersistentCachedRect()` - lookup by hash and blit
+4. ✅ Implemented `DecodeManager::storePersistentCachedRect()` - store with hash after decode
+5. ✅ Implemented query batching with `pendingQueries` vector (batch size: 10)
+6. ✅ Implemented `DecodeManager::flushPendingQueries()` - sends batched queries
+7. ✅ Added `flushPendingQueries()` call to `DecodeManager::flush()`
+8. ✅ Added PersistentCache statistics tracking (hits, misses, lookups, queries_sent)
+9. ✅ Implemented `CConnection::handlePersistentCachedRect()` - forwards to DecodeManager
+10. ✅ Implemented `CConnection::storePersistentCachedRect()` - forwards to DecodeManager
+11. ✅ Added `pseudoEncodingPersistentCache` to encoding negotiation in `CConnection::updateEncodings()`
+12. ✅ PersistentCache listed before ContentCache (preferred when both supported)
+13. ✅ Verified build succeeds with `make viewer`
 
-**Testing:** Integration tests with mock server
+**Files modified:**
+- `common/rfb/DecodeManager.h`: Added PersistentCache member, stats, and method declarations
+- `common/rfb/DecodeManager.cxx`: Implemented handlers and query batching (83 lines added)
+- `common/rfb/CConnection.h`: Added handler declarations
+- `common/rfb/CConnection.cxx`: Implemented handlers and encoding negotiation
+
+**Key Features:**
+- **Query batching**: Caches up to 10 misses before sending query to reduce roundtrips
+- **Automatic flushing**: Queries flushed on frame completion via `flush()`
+- **Statistics**: Tracks cache performance separately from ContentCache
+- **Protocol negotiation**: Client advertises support, server chooses PersistentCache if available
+
+**Notes:**
+- Cache initialized with hardcoded 2GB size (TODO: read from parameters)
+- Batching threshold of 10 is tunable for performance
+- Ready for server-side implementation (Phases 5-6)
+
+### 🔄 Phase 5: Server Protocol Messages (NEXT)
+
+**Goal:** Implement server-side message reading/writing.
+
+**Next Steps:**
+1. Extend `SMsgReader` to handle `msgTypePersistentCacheQuery` (253) and `msgTypePersistentCacheHashList` (252)
+2. Add `SMsgWriter::writePersistentCachedRect()` - send hash reference
+3. Add `SMsgWriter::writePersistentCachedRectInit()` - send hash + encoded data
+4. Update `SMsgHandler` interface with new virtual methods:
+   - `handlePersistentCacheQuery()`
+   - `handlePersistentHashList()`
+5. Wire format implementation for reading client messages
+
+**Testing:** Mock client tests
 
 ## Changelog
 
@@ -861,3 +900,4 @@ size_t strideBytes = stride * bytesPerPixel;  // Convert!
 - **2025-10-24:** Phase 1 completed - protocol constants and parameters added
 - **2025-10-24:** Phase 2 completed - GlobalClientPersistentCache implementation with ARC algorithm
 - **2025-10-24:** Phase 3 completed - client protocol message reading/writing implementation
+- **2025-10-24:** Phase 4 completed - client integration with DecodeManager and query batching

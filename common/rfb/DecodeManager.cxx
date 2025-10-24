@@ -41,7 +41,7 @@ using namespace rfb;
 static core::LogWriter vlog("DecodeManager");
 
 DecodeManager::DecodeManager(CConnection *conn_) :
-  conn(conn_), threadException(nullptr), contentCache(nullptr)
+  conn(conn_), threadException(nullptr), contentCache(nullptr), persistentCache(nullptr)
 {
   size_t cpuCount;
 
@@ -49,11 +49,17 @@ DecodeManager::DecodeManager(CConnection *conn_) :
 
   memset(stats, 0, sizeof(stats));
   memset(&cacheStats, 0, sizeof(cacheStats));
+  memset(&persistentCacheStats, 0, sizeof(persistentCacheStats));
   
   // Initialize client-side content cache (2GB default, unlimited age)
   // Let ARC algorithm handle eviction without time-based constraints
   contentCache = new ContentCache(2048, 0);
   vlog.info("Client ContentCache initialized: 2048MB, unlimited age (ARC-managed)");
+  
+  // Initialize client-side persistent cache (2GB default)
+  // TODO: Read size from parameters in Phase 4
+  persistentCache = new GlobalClientPersistentCache(2048);
+  vlog.info("Client PersistentCache initialized: 2048MB (ARC-managed)");
 
   cpuCount = std::thread::hardware_concurrency();
   if (cpuCount == 0) {
@@ -97,6 +103,7 @@ DecodeManager::~DecodeManager()
     delete decoder;
     
   delete contentCache;
+  delete persistentCache;
 }
 
 bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
@@ -194,6 +201,9 @@ void DecodeManager::flush()
   lock.unlock();
 
   throwThreadException();
+  
+  // Flush any pending PersistentCache queries
+  flushPendingQueries();
 }
 
 void DecodeManager::logStats()
@@ -523,4 +533,84 @@ void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
                                   
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::storeCachedRect EXIT: storeDecodedPixels completed successfully");
+}
+
+void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
+                                              const std::vector<uint8_t>& hash,
+                                              ModifiablePixelBuffer* pb)
+{
+  if (persistentCache == nullptr || pb == nullptr) {
+    vlog.error("handlePersistentCachedRect called but cache or framebuffer is null");
+    return;
+  }
+  
+  persistentCacheStats.cache_lookups++;
+  
+  // Lookup cached pixels by hash
+  const GlobalClientPersistentCache::CachedPixels* cached = persistentCache->get(hash);
+  
+  if (cached == nullptr) {
+    // Cache miss - queue request for later batching
+    persistentCacheStats.cache_misses++;
+    vlog.debug("PersistentCache miss for hash (len=%zu), queuing query",
+               hash.size());
+    
+    // Add to pending queries for batching
+    pendingQueries.push_back(hash);
+    
+    // Flush if we have enough queries (batch size: 10)
+    if (pendingQueries.size() >= 10) {
+      flushPendingQueries();
+    }
+    
+    return;
+  }
+  
+  persistentCacheStats.cache_hits++;
+  
+  vlog.debug("PersistentCache hit for hash (len=%zu): blitting %dx%d to [%d,%d-%d,%d]",
+             hash.size(), cached->width, cached->height,
+             r.tl.x, r.tl.y, r.br.x, r.br.y);
+  
+  // Blit cached pixels to framebuffer at target position
+  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
+}
+
+void DecodeManager::storePersistentCachedRect(const core::Rect& r,
+                                             const std::vector<uint8_t>& hash,
+                                             ModifiablePixelBuffer* pb)
+{
+  if (persistentCache == nullptr || pb == nullptr) {
+    vlog.error("storePersistentCachedRect called but cache or framebuffer is null");
+    return;
+  }
+  
+  vlog.debug("Storing decoded rect [%d,%d-%d,%d] with persistent hash (len=%zu)",
+             r.tl.x, r.tl.y, r.br.x, r.br.y, hash.size());
+  
+  // Get pixel data from framebuffer
+  // CRITICAL: stride from getBuffer() is in pixels, not bytes
+  int stridePixels;
+  const uint8_t* pixels = pb->getBuffer(r, &stridePixels);
+  
+  // Store in persistent cache with hash
+  persistentCache->insert(hash, pixels, pb->getPF(),
+                         r.width(), r.height(), stridePixels);
+}
+
+void DecodeManager::flushPendingQueries()
+{
+  if (pendingQueries.empty())
+    return;
+    
+  vlog.debug("Flushing %zu pending PersistentCache queries",
+             pendingQueries.size());
+  
+  // Send batched query to server
+  conn->writer()->writePersistentCacheQuery(pendingQueries);
+  
+  persistentCacheStats.queries_sent += pendingQueries.size();
+  
+  // Clear pending queries
+  pendingQueries.clear();
 }

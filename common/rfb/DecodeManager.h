@@ -28,6 +28,7 @@
 #include <core/Region.h>
 
 #include <rfb/ContentCache.h>
+#include <rfb/GlobalClientPersistentCache.h>
 #include <rfb/encodings.h>
 
 namespace core {
@@ -54,11 +55,19 @@ namespace rfb {
 
     void flush();
     
-    // Cache protocol extension
+    // Cache protocol extension (ContentCache - session-only)
     void handleCachedRect(const core::Rect& r, uint64_t cacheId,
                          ModifiablePixelBuffer* pb);
     void storeCachedRect(const core::Rect& r, uint64_t cacheId,
                         ModifiablePixelBuffer* pb);
+    
+    // PersistentCache protocol extension (cross-session)
+    void handlePersistentCachedRect(const core::Rect& r,
+                                    const std::vector<uint8_t>& hash,
+                                    ModifiablePixelBuffer* pb);
+    void storePersistentCachedRect(const core::Rect& r,
+                                   const std::vector<uint8_t>& hash,
+                                   ModifiablePixelBuffer* pb);
 
   private:
     void logStats();
@@ -120,7 +129,7 @@ namespace rfb {
     std::list<DecodeThread*> threads;
     std::exception_ptr threadException;
     
-    // Client-side content cache
+    // Client-side content cache (ContentCache - session-only)
     ContentCache* contentCache;
     struct CacheStats {
       unsigned cache_hits;
@@ -128,6 +137,20 @@ namespace rfb {
       unsigned cache_misses;
     };
     CacheStats cacheStats;
+    
+    // Client-side persistent cache (PersistentCache - cross-session)
+    GlobalClientPersistentCache* persistentCache;
+    struct PersistentCacheStats {
+      unsigned cache_hits;
+      unsigned cache_lookups;
+      unsigned cache_misses;
+      unsigned queries_sent;
+    };
+    PersistentCacheStats persistentCacheStats;
+    
+    // Batching for PersistentCache queries
+    std::vector<std::vector<uint8_t>> pendingQueries;
+    void flushPendingQueries();
   };
 
 }
