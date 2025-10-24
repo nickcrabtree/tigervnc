@@ -9,6 +9,8 @@ use crate::{
     protocol,
     FramebufferHandle,
 };
+use rfb_encodings::ContentCache;
+use std::sync::Mutex;
 use rfb_protocol::messages::server::FramebufferUpdate;
 use std::sync::Arc;
 use tokio::select;
@@ -30,8 +32,18 @@ pub async fn spawn(
     let name = conn.server_init.name.clone();
     let pixel_format = conn.server_init.pixel_format.clone();
 
-    // Initialize shared framebuffer with server pixel format
-    let framebuffer = Arc::new(tokio::sync::Mutex::new(Framebuffer::new(width, height, pixel_format.clone())));
+    // Initialize shared framebuffer with server pixel format and optional ContentCache
+    let framebuffer = if config.content_cache.enabled {
+        // Create ContentCache instance
+        let cache = Arc::new(Mutex::new(ContentCache::new(config.content_cache.size_mb)));
+        Arc::new(tokio::sync::Mutex::new(
+            Framebuffer::with_content_cache(width, height, pixel_format.clone(), cache)
+        ))
+    } else {
+        Arc::new(tokio::sync::Mutex::new(
+            Framebuffer::new(width, height, pixel_format.clone())
+        ))
+    };
     let framebuffer_handle = framebuffer.clone();
 
     // Notify application of successful connection
@@ -46,8 +58,8 @@ pub async fn spawn(
     let mut input = conn.input; // RfbInStream<...>
     let mut output = conn.output; // RfbOutStream<...>
 
-    // Initial SetEncodings based on config
-    let _ = protocol::write_set_encodings(&mut output, config.display.encodings.clone()).await;
+    // Initial SetEncodings based on config (including ContentCache if enabled)
+    let _ = protocol::write_set_encodings(&mut output, config.effective_encodings()).await;
 
     // Spawn a task to run the main loop (read + write via select)
     let handle = tokio::spawn(async move {
