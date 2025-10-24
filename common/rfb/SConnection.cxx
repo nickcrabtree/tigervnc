@@ -526,6 +526,18 @@ void SConnection::handleRequestCachedData(uint64_t /*cacheId*/)
   // Default no-op: servers that care (e.g., VNCSConnectionST) override this.
 }
 
+void SConnection::handlePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& /*hashes*/)
+{
+  // Default no-op: servers that implement PersistentCache override this.
+}
+
+void SConnection::handlePersistentHashList(uint32_t /*sequenceId*/, uint16_t /*totalChunks*/,
+                                           uint16_t /*chunkIndex*/,
+                                           const std::vector<std::vector<uint8_t>>& /*hashes*/)
+{
+  // Default no-op: servers that implement PersistentCache override this.
+}
+
 void SConnection::supportsLocalCursor()
 {
 }

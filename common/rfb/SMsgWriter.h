@@ -24,6 +24,7 @@
 #define __RFB_SMSGWRITER_H__
 
 #include <stdint.h>
+#include <vector>
 
 namespace core { struct Rect; }
 
@@ -123,6 +124,12 @@ namespace rfb {
     
     // Cache protocol extension: initial transmission with cache ID
     void writeCachedRectInit(const core::Rect& r, uint64_t cacheId, int encoding);
+
+    // PersistentCache protocol extension: reference by content hash
+    void writePersistentCachedRect(const core::Rect& r, const std::vector<uint8_t>& hash);
+    
+    // PersistentCache protocol extension: initial transmission with hash
+    void writePersistentCachedRectInit(const core::Rect& r, const std::vector<uint8_t>& hash, int encoding);
 
     // Encoders should call these to mark the start and stop of individual
     // rects.

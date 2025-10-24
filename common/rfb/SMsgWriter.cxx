@@ -437,6 +437,27 @@ void SMsgWriter::writeCachedRectInit(const core::Rect& r, uint64_t cacheId, int 
   // Note: endRect() should be called by caller after writing pixel data
 }
 
+void SMsgWriter::writePersistentCachedRect(const core::Rect& r, const std::vector<uint8_t>& hash)
+{
+  startRect(r, encodingPersistentCachedRect);
+  // Write variable-length hash
+  os->writeU8((uint8_t)hash.size());
+  os->writeBytes(hash.data(), hash.size());
+  os->writeU16(0);  // flags (reserved, must be 0)
+  endRect();
+}
+
+void SMsgWriter::writePersistentCachedRectInit(const core::Rect& r, const std::vector<uint8_t>& hash, int encoding)
+{
+  startRect(r, encodingPersistentCachedRectInit);
+  // Write variable-length hash
+  os->writeU8((uint8_t)hash.size());
+  os->writeBytes(hash.data(), hash.size());
+  os->writeU32(encoding);
+  // Caller will write payloadLen and payloadBytes after this
+  // Note: endRect() should be called by caller after writing pixel data
+}
+
 void SMsgWriter::startRect(const core::Rect& r, int encoding)
 {
   if (++nRectsInUpdate > nRectsInHeader && nRectsInHeader)

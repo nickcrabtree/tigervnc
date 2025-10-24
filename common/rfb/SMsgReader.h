@@ -24,6 +24,8 @@
 #ifndef __RFB_SMSGREADER_H__
 #define __RFB_SMSGREADER_H__
 
+#include <vector>
+
 namespace rdr { class InStream; }
 
 namespace rfb {
@@ -56,6 +58,8 @@ namespace rfb {
     bool readClientCutText();
     bool readExtendedClipboard(int32_t len);
     bool readRequestCachedData();
+    bool readPersistentCacheQuery();
+    bool readPersistentHashList();
 
     bool readQEMUMessage();
     bool readQEMUKeyEvent();
