@@ -231,7 +231,8 @@ fn load_config(config_path: Option<PathBuf>) -> Result<AppConfig> {
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<()> {
     let args = Args::parse();
 
     init_logging(args.verbose);
