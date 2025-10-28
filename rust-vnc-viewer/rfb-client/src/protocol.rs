@@ -36,6 +36,16 @@ pub enum IncomingMessage {
 /// - 1: SetColorMapEntries
 /// - 2: Bell
 /// - 3: ServerCutText
+/// Read only the next server message type byte.
+pub async fn read_message_type<R: AsyncRead + Unpin>(
+    instream: &mut RfbInStream<R>,
+) -> Result<u8, RfbClientError> {
+    instream
+        .read_u8()
+        .await
+        .map_err(|e| RfbClientError::Protocol(format!("failed to read message type: {}", e)))
+}
+
 pub async fn read_server_message<R: AsyncRead + Unpin>(
     instream: &mut RfbInStream<R>,
 ) -> Result<IncomingMessage, RfbClientError> {
@@ -189,6 +199,28 @@ pub async fn write_client_cut_text<W: AsyncWrite + Unpin>(
         text: text.to_string(),
     };
     msg.write_to(outstream);
+    outstream
+        .flush()
+        .await
+        .map_err(|e| RfbClientError::Transport(e))
+}
+
+/// Enable or disable continuous updates over a specified rectangle and flush.
+pub async fn write_enable_continuous_updates<W: AsyncWrite + Unpin>(
+    outstream: &mut RfbOutStream<W>,
+    enable: bool,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+) -> Result<(), RfbClientError> {
+    // Message type 150 (client -> server)
+    outstream.write_u8(150);
+    outstream.write_u8(if enable { 1 } else { 0 });
+    outstream.write_u16(x);
+    outstream.write_u16(y);
+    outstream.write_u16(width);
+    outstream.write_u16(height);
     outstream
         .flush()
         .await

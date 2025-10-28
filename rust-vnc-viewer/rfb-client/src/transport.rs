@@ -180,7 +180,12 @@ impl Transport {
             RfbClientError::ConnectionFailed(format!("Failed to set TCP_NODELAY: {}", e))
         })?;
 
-        tracing::info!("Connected to {} via plain TCP", addr);
+        // Log local and remote addresses for correlation with server logs
+        if let (Ok(local), Ok(peer)) = (stream.local_addr(), stream.peer_addr()) {
+            tracing::info!("Connected via TCP: local={} -> remote={}", local, peer);
+        } else {
+            tracing::info!("Connected to {} via plain TCP", addr);
+        }
         Ok(Transport::Plain(PlainTransport { stream }))
     }
 
@@ -278,7 +283,11 @@ impl Transport {
             RfbClientError::TlsError(format!("TLS handshake failed: {}", e))
         })?;
 
-        tracing::info!("Connected to {} via TLS", addr);
+        if let (Ok(local), Ok(peer)) = (tls_stream.get_ref().0.local_addr(), tls_stream.get_ref().0.peer_addr()) {
+            tracing::info!("Connected via TLS: local={} -> remote={}", local, peer);
+        } else {
+            tracing::info!("Connected to {} via TLS", addr);
+        }
         Ok(Transport::Tls(TlsTransport { stream: tls_stream }))
     }
 

@@ -209,6 +209,35 @@ impl Framebuffer {
         }
     }
 
+    /// Apply an update by streaming from the input (reads header + decodes rectangles).
+    pub async fn apply_update_stream<R: AsyncRead + Unpin>(
+        &mut self,
+        stream: &mut RfbInStream<R>,
+    ) -> Result<Vec<Rect>, RfbClientError> {
+        // FramebufferUpdate header: 1 byte padding + 2 bytes rect count
+        stream
+            .skip(1)
+            .await
+            .map_err(|e| RfbClientError::Protocol(format!("failed to read FramebufferUpdate padding: {}", e)))?;
+        let num = stream
+            .read_u16()
+            .await
+            .map_err(|e| RfbClientError::Protocol(format!("failed to read FramebufferUpdate rect count: {}", e)))? as usize;
+
+        let mut damage = Vec::with_capacity(num);
+        for _ in 0..num {
+            let rect = Rectangle::read_from(stream)
+                .await
+                .map_err(|e| RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e)))?;
+            tracing::info!("FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}", rect.x, rect.y, rect.width, rect.height, rect.encoding);
+            self.apply_rectangle(stream, &rect).await?;
+            if rect.encoding >= 0 {
+                damage.push(Rect::new(rect.x as i32, rect.y as i32, rect.width as u32, rect.height as u32));
+            }
+        }
+        Ok(damage)
+    }
+
     /// Apply multiple rectangles, returning the list of damaged regions for repaint.
     pub async fn apply_update<R: AsyncRead + Unpin>(
         &mut self,
