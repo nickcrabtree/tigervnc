@@ -62,6 +62,8 @@ enum DecoderEntry {
     ZRLE(enc::ZRLEDecoder),
     CachedRect(enc::CachedRectDecoder),
     CachedRectInit(enc::CachedRectInitDecoder),
+    PersistentCachedRect(enc::PersistentCachedRectDecoder),
+    PersistentCachedRectInit(enc::PersistentCachedRectInitDecoder),
 }
 
 impl DecoderEntry {
@@ -75,6 +77,8 @@ impl DecoderEntry {
             Self::ZRLE(d) => d.encoding_type(),
             Self::CachedRect(d) => d.encoding_type(),
             Self::CachedRectInit(d) => d.encoding_type(),
+            Self::PersistentCachedRect(d) => d.encoding_type(),
+            Self::PersistentCachedRectInit(d) => d.encoding_type(),
         }
     }
 
@@ -94,6 +98,8 @@ impl DecoderEntry {
             Self::ZRLE(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::CachedRect(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::CachedRectInit(d) => d.decode(stream, rect, pixel_format, buffer).await,
+            Self::PersistentCachedRect(d) => d.decode(stream, rect, pixel_format, buffer).await,
+            Self::PersistentCachedRectInit(d) => d.decode(stream, rect, pixel_format, buffer).await,
         }
     }
 }
@@ -123,9 +129,6 @@ impl Framebuffer {
     }
     
     /// Create a new framebuffer with ContentCache support.
-    ///
-    /// This enables the ContentCache protocol for 97-99% bandwidth reduction
-    /// on repeated content.
     pub fn with_content_cache(
         width: u16,
         height: u16,
@@ -139,6 +142,21 @@ impl Framebuffer {
             server_pixel_format,
             registry: DecoderRegistry::with_content_cache(cache),
         }
+    }
+
+    /// Create a new framebuffer with PersistentCache support.
+    pub fn with_persistent_cache(
+        width: u16,
+        height: u16,
+        server_pixel_format: ServerPixelFormat,
+        pcache: Arc<Mutex<enc::PersistentClientCache>>,
+    ) -> Self {
+        let local_format = LocalPixelFormat::rgb888();
+        let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
+        let mut reg = DecoderRegistry::with_standard();
+        reg.register(DecoderEntry::PersistentCachedRect(enc::PersistentCachedRectDecoder::new(pcache.clone())));
+        reg.register(DecoderEntry::PersistentCachedRectInit(enc::PersistentCachedRectInitDecoder::new(pcache)));
+        Self { buffer, server_pixel_format, registry: reg }
     }
 
     /// Returns the current dimensions.
@@ -199,6 +217,7 @@ impl Framebuffer {
     ) -> Result<Vec<Rect>, RfbClientError> {
         let mut damage = Vec::with_capacity(rects.len());
         for rect in rects {
+            tracing::info!("FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}", rect.x, rect.y, rect.width, rect.height, rect.encoding);
             self.apply_rectangle(stream, rect).await?;
             if rect.encoding >= 0 {
                 damage.push(Rect::new(rect.x as i32, rect.y as i32, rect.width as u32, rect.height as u32));

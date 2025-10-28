@@ -14,8 +14,11 @@ After initial CMake configuration (see below), use these simple commands:
 # Build everything (viewer + server)
 make
 
-# Build viewer only
+# Build C++ viewer only (njcvncviewer)
 make viewer
+
+# Build Rust viewer only (njcvncviewer-rs)
+make rust_viewer
 
 # Build server (Xnjcvnc) only
 make server
@@ -122,9 +125,10 @@ make server
 ```
 
 **How it works:**
-- `make viewer`: Builds njcvncviewer via CMake, automatically rebuilding dependent libraries as needed
+- `make viewer`: Builds njcvncviewer (C++/FLTK) via CMake, automatically rebuilding dependent libraries as needed
+- `make rust_viewer`: Builds njcvncviewer-rs (Rust) via Cargo, automatically rebuilding dependent Rust crates as needed
 - `make server`: Builds CMake libraries (rfb, rdr, network, core, unixcommon) then invokes the Xorg autotools build
-- `make` (or `make all`): Builds both viewer and server
+- `make` (or `make all`): Builds both C++ viewer and server (does not build Rust viewer)
 
 **Prerequisites:**
 - Viewer: CMake configuration only
@@ -169,8 +173,14 @@ cmake --build build
 After building, executables are located at:
 
 ```bash
-# Viewer
+# C++ Viewer
 build/vncviewer/njcvncviewer
+
+# Rust Viewer (actual binary)
+rust-vnc-viewer/target/release/njcvncviewer-rs
+
+# Rust Viewer (symlink for convenience)
+build/vncviewer/njcvncviewer-rs -> rust-vnc-viewer/target/release/njcvncviewer-rs
 
 # Server (actual binary)
 build/unix/xserver/hw/vnc/Xnjcvnc

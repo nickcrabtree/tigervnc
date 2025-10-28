@@ -108,7 +108,7 @@ impl Decoder for CachedRectDecoder {
                         )
                     })?;
 
-                tracing::debug!(
+                tracing::info!(
                     "ContentCache HIT: cache_id={}, rect={}x{} at ({},{}), {} bytes → framebuffer",
                     cached_rect.cache_id,
                     rect.width, rect.height,

@@ -7,6 +7,8 @@ use tracing::info;
 
 mod app;
 mod ui;
+mod display;
+mod fullscreen;
 
 #[derive(Parser, Debug)]
 #[command(name = "njcvncviewer-rs")]
@@ -36,6 +38,10 @@ struct Args {
     /// Window height (ignored in fullscreen mode)
     #[arg(long, default_value_t = 768)]
     height: u32,
+
+    /// Monitor selector for fullscreen: "primary", index (0,1,2...), or name substring
+    #[arg(long)]
+    monitor: Option<String>,
 
     /// Configuration file path
     #[arg(long)]
@@ -281,7 +287,7 @@ async fn main() -> Result<()> {
     eframe::run_native(
         "TigerVNC Rust Viewer",
         native_options,
-        Box::new(move |cc| Box::new(app::VncViewerApp::new(cc, config, initial_server))),
+        Box::new(move |cc| Box::new(app::VncViewerApp::new(cc, config, initial_server, args.monitor.clone()))),
     )
     .map_err(|e| anyhow::anyhow!("GUI error: {}", e))
 }

@@ -39,16 +39,35 @@ pub enum IncomingMessage {
 pub async fn read_server_message<R: AsyncRead + Unpin>(
     instream: &mut RfbInStream<R>,
 ) -> Result<IncomingMessage, RfbClientError> {
+    tracing::trace!("Waiting for server message...");
     let message_type = instream
         .read_u8()
         .await
         .map_err(|e| RfbClientError::Protocol(format!("failed to read message type: {}", e)))?;
+    
+    tracing::debug!("Received server message type: {}", message_type);
 
     match message_type {
-        0 => msg::FramebufferUpdate::read_from(instream)
-            .await
-            .map(IncomingMessage::FramebufferUpdate)
-            .map_err(|e| RfbClientError::Protocol(format!("failed to read FramebufferUpdate: {}", e))),
+        0 => {
+            tracing::debug!("Parsing FramebufferUpdate message...");
+            // Increase timeout to tolerate server encoding delay
+            let parse_future = msg::FramebufferUpdate::read_from(instream);
+            let result = match tokio::time::timeout(std::time::Duration::from_secs(30), parse_future).await {
+                Ok(Ok(fb_update)) => {
+                    tracing::debug!("FramebufferUpdate parsed successfully with {} rectangles", fb_update.rectangles.len());
+                    Ok(IncomingMessage::FramebufferUpdate(fb_update))
+                },
+                Ok(Err(e)) => {
+                    tracing::error!("Failed to parse FramebufferUpdate: {}", e);
+                    Err(RfbClientError::Protocol(format!("failed to read FramebufferUpdate: {}", e)))
+                },
+                Err(_timeout) => {
+                    tracing::error!("Timeout (30s) parsing FramebufferUpdate - possible hang or slow network");
+                    Err(RfbClientError::Protocol("timeout reading FramebufferUpdate".to_string()))
+                }
+            };
+            result
+        }
         1 => msg::SetColorMapEntries::read_from(instream)
             .await
             .map(IncomingMessage::SetColorMapEntries)

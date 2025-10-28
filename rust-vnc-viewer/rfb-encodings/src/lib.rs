@@ -93,6 +93,22 @@ pub use cached_rect::CachedRectDecoder;
 pub mod cached_rect_init;
 pub use cached_rect_init::CachedRectInitDecoder;
 
+// PersistentCache
+pub mod persistent_cache;
+pub use persistent_cache::{PersistentClientCache, PersistentCachedPixels};
+
+pub mod persistent_cached_rect;
+pub use persistent_cached_rect::PersistentCachedRectDecoder;
+
+pub mod persistent_cached_rect_init;
+pub use persistent_cached_rect_init::PersistentCachedRectInitDecoder;
+
+// PersistentCache encodings
+/// PersistentCachedRect encoding: reference by 16-byte content hash
+pub const ENCODING_PERSISTENT_CACHED_RECT: i32 = 102;
+/// PersistentCachedRectInit encoding: include hash + actual encoding + data
+pub const ENCODING_PERSISTENT_CACHED_RECT_INIT: i32 = 103;
+
 // Standard VNC encodings
 /// Raw encoding: uncompressed pixel data (simplest encoding).
 pub const ENCODING_RAW: i32 = 0;
@@ -127,10 +143,10 @@ pub const ENCODING_DESKTOP_SIZE: i32 = -223;
 
 // ContentCache encoding types (TigerVNC extension)
 /// CachedRect encoding: reference to cached content (cache hit).
-pub const ENCODING_CACHED_RECT: i32 = -512; // 0xFFFFFE00
+pub const ENCODING_CACHED_RECT: i32 = 100;
 
 /// CachedRectInit encoding: initial transmission with cache ID (cache miss).
-pub const ENCODING_CACHED_RECT_INIT: i32 = -511; // 0xFFFFFE01
+pub const ENCODING_CACHED_RECT_INIT: i32 = 101;
 
 /// Core trait for all RFB encoding/decoding implementations.
 ///

@@ -19,9 +19,12 @@
 #ifndef __RFB_CONTENTHASH_H__
 #define __RFB_CONTENTHASH_H__
 
-#include <vector>
 #include <stdint.h>
+#include <cstring>
+#include <vector>
+
 #include <openssl/sha.h>
+
 #include <core/Rect.h>
 #include <rfb/PixelBuffer.h>
 
@@ -38,14 +41,14 @@ namespace rfb {
     // Compute hash over raw byte data
     static std::vector<uint8_t> compute(const uint8_t* data, size_t len) {
       std::vector<uint8_t> hash(16);
-      
+
       SHA256_CTX ctx;
       SHA256_Init(&ctx);
       SHA256_Update(&ctx, data, len);
-      
+
       uint8_t full_hash[32];
       SHA256_Final(full_hash, &ctx);
-      
+
       // Truncate to 16 bytes
       memcpy(hash.data(), full_hash, 16);
       return hash;
@@ -53,27 +56,27 @@ namespace rfb {
 
     // Compute hash for a rectangle region in a PixelBuffer
     // CRITICAL: Handles stride-in-pixels correctly (multiply by bytesPerPixel)
-    static std::vector<uint8_t> computeRect(const PixelBuffer* pb, 
+    static std::vector<uint8_t> computeRect(const PixelBuffer* pb,
                                            const core::Rect& r) {
       int stride;
       const uint8_t* pixels = pb->getBuffer(r, &stride);
-      
+
       int bytesPerPixel = pb->getPF().bpp / 8;
       size_t rowBytes = r.width() * bytesPerPixel;
       size_t strideBytes = stride * bytesPerPixel;  // CRITICAL: multiply by bytesPerPixel!
-      
+
       // Hash row-major pixel data (only the actual pixels, not padding)
       SHA256_CTX ctx;
       SHA256_Init(&ctx);
-      
+
       for (int y = 0; y < r.height(); y++) {
         const uint8_t* row = pixels + (y * strideBytes);
         SHA256_Update(&ctx, row, rowBytes);
       }
-      
+
       uint8_t full_hash[32];
       SHA256_Final(full_hash, &ctx);
-      
+
       std::vector<uint8_t> hash(16);
       memcpy(hash.data(), full_hash, 16);
       return hash;
@@ -93,6 +96,6 @@ namespace rfb {
     };
   };
 
-}
+}  // namespace rfb
 
 #endif

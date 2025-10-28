@@ -49,6 +49,9 @@ impl Default for ConnectionStats {
     }
 }
 
+use crate::display::{enumerate_monitors, MonitorInfo};
+use crate::fullscreen::FullscreenController;
+
 pub struct VncViewerApp {
     /// Application configuration
     config: AppConfig,
@@ -104,6 +107,10 @@ pub struct VncViewerApp {
     
     /// Last framebuffer update sequence number (to detect changes)
     last_framebuffer_version: u64,
+
+    /// Fullscreen controller and monitor list
+    fullscreen: FullscreenController,
+    monitors: Vec<MonitorInfo>,
 }
 
 impl VncViewerApp {
@@ -111,6 +118,7 @@ impl VncViewerApp {
         _cc: &eframe::CreationContext<'_>,
         config: AppConfig,
         initial_server: Option<String>,
+        monitor_selector: Option<String>,
     ) -> Self {
         info!("Creating VNC Viewer App");
         
@@ -154,6 +162,10 @@ impl VncViewerApp {
             AppState::Disconnected
         };
         
+        // Enumerate monitors (once at startup)
+        let monitors = enumerate_monitors();
+        let mut fullscreen = FullscreenController::new();
+        
         let mut app = Self {
             config,
             state: initial_state,
@@ -178,7 +190,15 @@ impl VncViewerApp {
             fps_counter: 0.0,
             framebuffer_texture: None,
             last_framebuffer_version: 0,
+            fullscreen,
+            monitors,
         };
+        
+        // Configure fullscreen from config and monitor selector
+        app.fullscreen.set_enabled(app.config.display.fullscreen);
+        if let Some(sel) = monitor_selector.as_deref() {
+            app.fullscreen.set_target(&app.monitors, Some(sel));
+        }
         
         // Auto-connect if server specified
         if let Some(server) = initial_server {
@@ -297,6 +317,19 @@ impl VncViewerApp {
         }
     }
     
+    fn request_framebuffer_update(&self) {
+        if let Some(ref client_handle) = self.client_handle {
+            // Request incremental update for entire framebuffer using actual dimensions
+            if self.framebuffer_width > 0 && self.framebuffer_height > 0 {
+                let rect = rfb_common::Rect::new(0, 0, self.framebuffer_width, self.framebuffer_height);
+                let _ = client_handle.send(rfb_client::ClientCommand::RequestUpdate {
+                    incremental: true,
+                    rect: Some(rect),
+                });
+            }
+        }
+    }
+    
     fn handle_client_event(&mut self, event: ServerEvent, ctx: &EguiContext) {
         match event {
             ServerEvent::Connected { width, height, name, .. } => {
@@ -319,6 +352,8 @@ impl VncViewerApp {
                     stats.connected_at = Some(Instant::now());
                 }
                 
+                // Note: Initial framebuffer update request is sent by event loop after SetEncodings
+                
                 ctx.request_repaint();
             }
             
@@ -332,6 +367,9 @@ impl VncViewerApp {
                     stats.rectangles_received += damage.len() as u32;
                     stats.last_update = Instant::now();
                 }
+                
+                // Request next incremental update
+                self.request_framebuffer_update();
                 
                 ctx.request_repaint();
             }
@@ -566,11 +604,64 @@ impl VncViewerApp {
             for event in &i.events {
                 if let egui::Event::Key { key, pressed, modifiers, .. } = event {
                     if *pressed {
+                        // Fullscreen shortcuts
+                        let alt = modifiers.alt;
+                        let ctrl = modifiers.ctrl;
+                        match key {
+                            egui::Key::F11 => {
+                                self.fullscreen.toggle();
+                                self.ui_state.fullscreen = self.fullscreen.state().enabled;
+                                self.fullscreen.apply(ctx);
+                                continue;
+                            }
+                            egui::Key::Enter if alt => {
+                                self.fullscreen.toggle();
+                                self.ui_state.fullscreen = self.fullscreen.state().enabled;
+                                self.fullscreen.apply(ctx);
+                                continue;
+                            }
+                            egui::Key::ArrowLeft if ctrl && alt => {
+                                self.fullscreen.prev_monitor(&self.monitors);
+                                self.fullscreen.apply(ctx);
+                                continue;
+                            }
+                            egui::Key::ArrowRight if ctrl && alt => {
+                                self.fullscreen.next_monitor(&self.monitors);
+                                self.fullscreen.apply(ctx);
+                                continue;
+                            }
+                            egui::Key::P if ctrl && alt => {
+                                self.fullscreen.jump_to_primary(&self.monitors);
+                                self.fullscreen.apply(ctx);
+                                continue;
+                            }
+                            egui::Key::Num0 | egui::Key::Num1 | egui::Key::Num2 | egui::Key::Num3 |
+                            egui::Key::Num4 | egui::Key::Num5 | egui::Key::Num6 | egui::Key::Num7 |
+                            egui::Key::Num8 | egui::Key::Num9 if ctrl && alt => {
+                                let idx = match key {
+                                    egui::Key::Num0 => 0,
+                                    egui::Key::Num1 => 1,
+                                    egui::Key::Num2 => 2,
+                                    egui::Key::Num3 => 3,
+                                    egui::Key::Num4 => 4,
+                                    egui::Key::Num5 => 5,
+                                    egui::Key::Num6 => 6,
+                                    egui::Key::Num7 => 7,
+                                    egui::Key::Num8 => 8,
+                                    egui::Key::Num9 => 9,
+                                    _ => 0,
+                                };
+                                self.fullscreen.jump_to_monitor(&self.monitors, idx);
+                                self.fullscreen.apply(ctx);
+                                continue;
+                            }
+                            _ => {}
+                        }
+
                         // Convert egui input to platform-input format
                         let active_mods = self.egui_modifiers_to_platform(*modifiers);
                         
                         // For now, implement a simple shortcut check manually
-                        // In a complete implementation, this would use the shortcuts_config properly
                         if let Some(action) = self.check_egui_shortcut(*key, &active_mods) {
                             self.handle_shortcut_action(action, ctx);
                         } else if matches!(self.state, AppState::Connected(_)) && !self.ui_state.view_only {
@@ -585,6 +676,9 @@ impl VncViewerApp {
                 }
             }
         });
+
+        // Apply fullscreen state each frame to keep window in sync
+        self.fullscreen.apply(ctx);
     }
     
     fn check_egui_shortcut(&self, key: egui::Key, modifiers: &[Modifier]) -> Option<ShortcutAction> {

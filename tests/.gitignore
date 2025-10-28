@@ -9,3 +9,10 @@ gesturehandler
 hostport
 pixelformat
 unicode
+
+# E2E test artifacts
+# Ignore all generated logs, screenshots, reports, and run directories
+# Example: tests/e2e/_artifacts/20251027_070838/{logs,screenshots,reports}
+e2e/_artifacts/
+# Common log files created by tests
+*.log

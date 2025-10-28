@@ -193,6 +193,7 @@ namespace rfb {
 
     struct PersistentCacheStats {
       unsigned cacheHits;
+      unsigned cacheMisses;
       unsigned cacheLookups;
       unsigned long long bytesSaved;
     };

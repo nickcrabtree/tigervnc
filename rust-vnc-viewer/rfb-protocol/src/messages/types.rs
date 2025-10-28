@@ -267,16 +267,16 @@ pub const ENCODING_TIGHT: i32 = 7;
 pub const ENCODING_ZRLE: i32 = 16;
 
 //
-// ContentCache encoding types
+// ContentCache encoding types (TigerVNC extension)
 //
 
 /// CachedRect encoding - reference to cached content (20 bytes: cache_id only).
 /// Server sends this when content is already in client's cache.
-pub const ENCODING_CACHED_RECT: i32 = -512; // 0xFFFFFE00
+pub const ENCODING_CACHED_RECT: i32 = 100;
 
 /// CachedRectInit encoding - initial transmission with cache ID.
 /// Server sends this for new content, includes cache_id + actual encoding + pixel data.
-pub const ENCODING_CACHED_RECT_INIT: i32 = -511; // 0xFFFFFE01
+pub const ENCODING_CACHED_RECT_INIT: i32 = 101;
 
 //
 // Pseudo-encodings (for capability negotiation)
@@ -284,7 +284,17 @@ pub const ENCODING_CACHED_RECT_INIT: i32 = -511; // 0xFFFFFE01
 
 /// Pseudo-encoding to advertise ContentCache support.
 /// Client includes this in SetEncodings to enable ContentCache protocol.
-pub const PSEUDO_ENCODING_CONTENT_CACHE: i32 = -496; // 0xFFFFFE10
+pub const PSEUDO_ENCODING_CONTENT_CACHE: i32 = -320; // 0xFFFFFEC0 (server expects -320)
+
+/// Pseudo-encoding to advertise PersistentCache support.
+/// Preferred over ContentCache when both are supported.
+pub const PSEUDO_ENCODING_PERSISTENT_CACHE: i32 = -321; // 0xFFFFFEBF
+
+// PersistentCache encoding types (TigerVNC extension)
+/// PersistentCachedRect encoding - reference by 16-byte hash
+pub const ENCODING_PERSISTENT_CACHED_RECT: i32 = 102;
+/// PersistentCachedRectInit encoding - include hash + actual encoding + data
+pub const ENCODING_PERSISTENT_CACHED_RECT_INIT: i32 = 103;
 
 //
 // Security type constants

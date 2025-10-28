@@ -32,8 +32,13 @@ pub async fn spawn(
     let name = conn.server_init.name.clone();
     let pixel_format = conn.server_init.pixel_format.clone();
 
-    // Initialize shared framebuffer with server pixel format and optional ContentCache
-    let framebuffer = if config.content_cache.enabled {
+    // Initialize shared framebuffer with server pixel format and optional caches
+    let framebuffer = if config.persistent_cache.enabled {
+        let pcache = Arc::new(Mutex::new(rfb_encodings::PersistentClientCache::new(config.persistent_cache.size_mb)));
+        Arc::new(tokio::sync::Mutex::new(
+            Framebuffer::with_persistent_cache(width, height, pixel_format.clone(), pcache)
+        ))
+    } else if config.content_cache.enabled {
         // Create ContentCache instance
         let cache = Arc::new(Mutex::new(ContentCache::new(config.content_cache.size_mb)));
         Arc::new(tokio::sync::Mutex::new(
@@ -58,13 +63,53 @@ pub async fn spawn(
     let mut input = conn.input; // RfbInStream<...>
     let mut output = conn.output; // RfbOutStream<...>
 
-    // Initial SetEncodings based on config (including ContentCache if enabled)
-    let _ = protocol::write_set_encodings(&mut output, config.effective_encodings()).await;
+    // Capture config values needed in the spawned task
+    let encodings = config.effective_encodings();
+    let fb_width = width;
+    let fb_height = height;
 
     // Spawn a task to run the main loop (read + write via select)
     let handle = tokio::spawn(async move {
+        // Send initial protocol messages from within the task
+        // 1) SetPixelFormat to 32bpp true-color little-endian RGB888 (like C++ viewer)
+        let desired_pf = rfb_protocol::messages::types::PixelFormat {
+            bits_per_pixel: 32,
+            depth: 24,
+            big_endian: 0,
+            true_color: 1,
+            red_max: 255,
+            green_max: 255,
+            blue_max: 255,
+            red_shift: 16,
+            green_shift: 8,
+            blue_shift: 0,
+        };
+        if let Err(e) = protocol::write_set_pixel_format(&mut output, desired_pf).await {
+            tracing::error!("Failed to send SetPixelFormat: {}", e);
+            return;
+        }
+
+        // 2) SetEncodings
+        tracing::info!("Sending SetEncodings: {:?}", encodings);
+        if let Err(e) = protocol::write_set_encodings(&mut output, encodings).await {
+            tracing::error!("Failed to send SetEncodings: {}", e);
+            return;
+        }
+        
+        // 3) Request initial full framebuffer update
+        tracing::info!("Requesting initial framebuffer update: {}x{}", fb_width, fb_height);
+        if let Err(e) = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await {
+            tracing::error!("Failed to send FramebufferUpdateRequest: {}", e);
+            return;
+        }
+
+        tracing::info!("Event loop task started, entering main loop");
         // Use async recv to avoid blocking
+        let mut iteration = 0u64;
         loop {
+            if iteration % 100 == 1 {
+                tracing::debug!("Event loop iteration {}", iteration);
+            }
             select! {
                 // Prefer reading server messages to keep buffers flowing
                 res = protocol::read_server_message(&mut input) => {
@@ -73,6 +118,9 @@ pub async fn spawn(
                             use crate::protocol::IncomingMessage as IM;
                             match msg {
                                 IM::FramebufferUpdate(update) => {
+                                    // Log rectangle encodings for diagnostics
+                                    let encs: Vec<i32> = update.rectangles.iter().map(|r| r.encoding).collect();
+                                    tracing::info!("FramebufferUpdate: {} rects, encodings={:?}", encs.len(), encs);
                                     if let Err(e) = handle_framebuffer_update(&framebuffer, &mut input, update, &events).await {
                                         let _ = events.send(ServerEvent::Error { message: e.to_string() });
                                         let _ = events.send(ServerEvent::ConnectionClosed);

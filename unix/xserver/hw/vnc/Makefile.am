@@ -63,7 +63,8 @@ Xnjcvnc_LDADD = \
 	$(LOCAL_LIBS) \
 	$(XSERVER_SYS_LIBS) \
 	$(XVNC_SYS_LIBS) \
-	$(LIBXCVT_LIBS)
+	$(LIBXCVT_LIBS) \
+	-lcrypto
 
 Xnjcvnc_LDFLAGS = $(LD_EXPORT_SYMBOLS_FLAG)
 

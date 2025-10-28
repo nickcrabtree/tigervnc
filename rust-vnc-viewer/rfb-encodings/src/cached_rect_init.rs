@@ -141,7 +141,7 @@ impl Decoder for CachedRectInitDecoder {
             .await
             .context("Failed to read CachedRectInit from stream")?;
 
-        tracing::debug!(
+        tracing::info!(
             "CachedRectInit: cache_id={}, actual_encoding={}, rect={}x{} at ({},{})",
             cached_rect_init.cache_id,
             cached_rect_init.actual_encoding,
@@ -213,7 +213,7 @@ impl Decoder for CachedRectInitDecoder {
                     })?;
             }
 
-            tracing::debug!(
+            tracing::info!(
                 "ContentCache STORE: cache_id={}, {} bytes stored for rect {}x{} at ({},{})",
                 cached_rect_init.cache_id,
                 pixel_data_len,

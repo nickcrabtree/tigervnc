@@ -20,6 +20,9 @@ pub struct Config {
     pub reconnect: ReconnectConfig,
     /// ContentCache settings.
     pub content_cache: ContentCacheConfig,
+    /// PersistentCache settings.
+    #[serde(default)]
+    pub persistent_cache: PersistentCacheConfig,
 }
 
 /// Connection configuration.
@@ -184,6 +187,19 @@ fn default_cleanup_threshold() -> f64 {
     0.8 // Start cleanup at 80% utilization
 }
 
+/// PersistentCache configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PersistentCacheConfig {
+    /// Enable PersistentCache protocol (-321) with disk-backed storage.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Maximum cache size in megabytes (on disk and in memory accounting).
+    #[serde(default = "default_persistent_cache_size_mb")]
+    pub size_mb: usize,
+}
+
+fn default_persistent_cache_size_mb() -> usize { 2048 }
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -219,6 +235,10 @@ impl Default for Config {
                 max_age_seconds: default_max_age_seconds(),
                 min_rect_size: default_min_rect_size(),
                 cleanup_threshold: default_cleanup_threshold(),
+            },
+            persistent_cache: PersistentCacheConfig {
+                enabled: false,
+                size_mb: default_persistent_cache_size_mb(),
             },
         }
     }
@@ -286,18 +306,32 @@ impl Config {
     /// Returns the complete encodings list including ContentCache capabilities if enabled.
     #[must_use]
     pub fn effective_encodings(&self) -> Vec<i32> {
-        let mut encodings = self.display.encodings.clone();
+        let mut standard = self.display.encodings.clone();
         
+        // Build preferred order list
+        let mut encs: Vec<i32> = Vec::new();
+        
+        // PersistentCache preferred if enabled
+        if self.persistent_cache.enabled {
+            encs.push(rfb_protocol::messages::types::PSEUDO_ENCODING_PERSISTENT_CACHE);
+            encs.push(rfb_protocol::messages::types::ENCODING_PERSISTENT_CACHED_RECT);
+            encs.push(rfb_protocol::messages::types::ENCODING_PERSISTENT_CACHED_RECT_INIT);
+        }
+
         if self.content_cache.enabled {
-            // Add ContentCache protocol capability
-            encodings.push(rfb_protocol::messages::types::PSEUDO_ENCODING_CONTENT_CACHE);
-            
-            // Add ContentCache encodings to the front of the list for priority
-            encodings.insert(0, rfb_protocol::messages::types::ENCODING_CACHED_RECT_INIT);
-            encodings.insert(0, rfb_protocol::messages::types::ENCODING_CACHED_RECT);
+            // Pseudo capabilities FIRST so server detects support immediately
+            encs.push(rfb_protocol::messages::types::PSEUDO_ENCODING_CONTENT_CACHE);
+            // ContentCache rectangle encodings preferred ahead of standard ones
+            encs.push(rfb_protocol::messages::types::ENCODING_CACHED_RECT);
+            encs.push(rfb_protocol::messages::types::ENCODING_CACHED_RECT_INIT);
         }
         
-        encodings
+        // Append standard encodings in configured order
+        encs.extend(standard);
+        // Common pseudo-encodings used by TigerVNC
+        encs.push(rfb_encodings::ENCODING_LAST_RECT);
+        encs.push(rfb_encodings::ENCODING_DESKTOP_SIZE);
+        encs
     }
 }
 
