@@ -70,8 +70,10 @@ pub async fn spawn(
 
     // Spawn a task to run the main loop (read + write via select)
     let handle = tokio::spawn(async move {
+        use std::time::Instant;
         // Periodic incremental update requester (best-effort)
         let mut periodic = tokio::time::interval(std::time::Duration::from_millis(250));
+        let mut last_update = Instant::now();
 
         // Send initial protocol messages from within the task
         // 1) SetPixelFormat to 32bpp true-color little-endian RGB888 (like C++ viewer)
@@ -136,6 +138,7 @@ pub async fn spawn(
                                         }
                                     };
                                     if !damage.is_empty() {
+                                        last_update = Instant::now();
                                         let _ = events.send(ServerEvent::FramebufferUpdated { damage });
                                     }
                                 }
@@ -204,8 +207,14 @@ pub async fn spawn(
                 }
 
                 _ = periodic.tick() => {
-                    tracing::debug!("Periodic incremental FramebufferUpdateRequest");
-                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                    // If no update in the last second, request a full non-incremental refresh
+                    if last_update.elapsed() > std::time::Duration::from_secs(1) {
+                        tracing::debug!("Periodic FULL FramebufferUpdateRequest (no updates in 1s)");
+                        let _ = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await;
+                    } else {
+                        tracing::debug!("Periodic incremental FramebufferUpdateRequest");
+                        let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                    }
                 }
             }
         }

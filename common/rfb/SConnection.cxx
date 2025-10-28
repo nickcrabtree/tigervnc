@@ -378,6 +378,16 @@ void SConnection::setEncodings(int nEncodings, const int32_t* encodings)
   firstQEMUKeyEvent = !client.supportsEncoding(pseudoEncodingQEMUKeyEvent);
   firstExtMouseButtonsEvent = !client.supportsEncoding(pseudoEncodingExtendedMouseButtons);
 
+  // Log full SetEncodings list for debugging and client comparison
+  {
+    std::string encList;
+    for (int i = 0; i < nEncodings; i++) {
+      if (i) encList += ", ";
+      encList += core::format("%d", encodings[i]);
+    }
+    vlog.info("Client SetEncodings (%d): [%s]", nEncodings, encList.c_str());
+  }
+
   client.setEncodings(nEncodings, encodings);
 
   // Check for PersistentCache support (preferred over ContentCache)
