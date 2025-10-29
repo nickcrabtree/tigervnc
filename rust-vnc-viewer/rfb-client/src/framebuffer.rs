@@ -198,6 +198,24 @@ impl Framebuffer {
                     .get(other)
                     .ok_or_else(|| RfbClientError::UnsupportedEncoding(other))?;
 
+                // Log selected decoder variant and rectangle details for debugging
+                let decoder_name = match decoder {
+                    DecoderEntry::Raw(_) => "Raw",
+                    DecoderEntry::CopyRect(_) => "CopyRect",
+                    DecoderEntry::RRE(_) => "RRE",
+                    DecoderEntry::Hextile(_) => "Hextile",
+                    DecoderEntry::Tight(_) => "Tight",
+                    DecoderEntry::ZRLE(_) => "ZRLE",
+                    DecoderEntry::CachedRect(_) => "CachedRect",
+                    DecoderEntry::CachedRectInit(_) => "CachedRectInit",
+                    DecoderEntry::PersistentCachedRect(_) => "PersistentCachedRect",
+                    DecoderEntry::PersistentCachedRectInit(_) => "PersistentCachedRectInit",
+                };
+                tracing::debug!(
+                    "Decoder selected: {} (encoding={}) for rect x={}, y={}, w={}, h={}",
+                    decoder_name, other, rect.x, rect.y, rect.width, rect.height
+                );
+
                 let pf = &self.server_pixel_format;
                 let buffer: &mut dyn MutablePixelBuffer = &mut self.buffer;
 

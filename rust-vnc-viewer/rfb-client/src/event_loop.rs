@@ -227,6 +227,7 @@ pub async fn spawn(
                                             }
                                         }
                                     };
+                                    tracing::debug!("Decoded FramebufferUpdate with {} damaged rects", damage.len());
                                     if !damage.is_empty() {
                                         last_update = Instant::now();
                                         let _ = events.send(ServerEvent::FramebufferUpdated { damage });
