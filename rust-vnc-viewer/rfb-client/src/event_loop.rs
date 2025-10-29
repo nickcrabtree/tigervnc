@@ -180,14 +180,17 @@ pub async fn spawn(
                         }
                         150 => {
                             // EndOfContinuousUpdates (server->client). No payload.
-                            tracing::info!("MAIN: received EndOfContinuousUpdates (150)");
-                            // Nudge the server with a FULL request to ensure progress
+                            tracing::info!("MAIN: received EndOfContinuousUpdates (150) -> re-enabling CU and requesting FULL+incremental");
+                            // Re-enable continuous updates explicitly
+                            let _ = protocol::write_enable_continuous_updates(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            // Pipeline both FULL and incremental requests
                             let _ = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await;
+                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
                             last_request = Instant::now();
                         }
                         248 => {
                             // ServerFence: read padding(3), flags(u32), len(u8), payload[len]
-                            tracing::info!("MAIN: received ServerFence (248)");
+                            tracing::info!("MAIN: received ServerFence (248) -> re-enabling CU and requesting FULL+incremental");
                             use tokio::io::AsyncReadExt as _;
                             // Read 3 bytes padding by skipping
                             let _ = input.skip(3).await;
@@ -199,8 +202,11 @@ pub async fn spawn(
                                     let _ = input.read_bytes(&mut buf).await;
                                 }
                             }
-                            // Nudge the server with a FULL request to ensure progress
+                            // Re-enable continuous updates explicitly
+                            let _ = protocol::write_enable_continuous_updates(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            // Pipeline both FULL and incremental requests
                             let _ = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await;
+                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
                             last_request = Instant::now();
                         }
                         _ => {
