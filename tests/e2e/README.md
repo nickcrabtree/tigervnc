@@ -201,7 +201,7 @@ python3 tests/e2e/run_contentcache_test.py --wm fluxbox
 # Increase duration for more cycles
 python3 tests/e2e/run_contentcache_test.py --duration 180
 
-# Check server parameters (ContentCache=1, ContentCacheMinRectSize=4096)
+# Check server parameters (EnableContentCache=1, ContentCacheMinRectSize=4096)
 ```
 
 ### Screenshot Differences

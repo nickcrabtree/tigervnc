@@ -14,7 +14,7 @@ all: viewer server
 
 # Viewer (CMake will rebuild its dependencies as needed)
 viewer:
-	cmake --build $(BUILD_DIR) --target vncviewer
+	cmake --build $(BUILD_DIR) --target njcvncviewer
 
 # Server: build CMake library deps first, then the Xorg-based Xvnc
 # Note: The xserver build uses a copy of TigerVNC source files in the build tree.

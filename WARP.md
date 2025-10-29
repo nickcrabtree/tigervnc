@@ -565,9 +565,9 @@ This fork includes a custom **ContentCache** system that provides 97-99% bandwid
 
 Server parameters (add to `~/.vnc/config`):
 ```bash
-ContentCache=1              # Enable (default: true)
-ContentCacheSize=2048       # Cache size in MB (default: 2048)
-ContentCacheMaxAge=300      # Max age in seconds (default: 300)
+EnableContentCache=1          # Enable (default: true)
+ContentCacheSize=2048         # Cache size in MB (default: 2048)
+ContentCacheMaxAge=0          # Max age in seconds (0 = unlimited)
 ContentCacheMinRectSize=4096  # Min pixels to cache (default: 4096)
 ```
 

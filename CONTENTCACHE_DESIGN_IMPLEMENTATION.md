@@ -565,13 +565,13 @@ Add to `~/.vnc/config` or pass on command line:
 
 ```bash
 # Enable ContentCache
-ContentCache=1
+EnableContentCache=1
 
 # Cache size in MB (default: 2048 MB)
 ContentCacheSize=2048
 
-# Maximum age for cached entries in seconds (default: 300 = 5 minutes)
-ContentCacheMaxAge=300
+# Maximum age for cached entries in seconds (0 = unlimited)
+ContentCacheMaxAge=0
 
 # Minimum rectangle size to cache in pixels (default: 4096 = 64x64)
 ContentCacheMinRectSize=4096
@@ -580,25 +580,25 @@ ContentCacheMinRectSize=4096
 ### Server Code (`ServerCore.cxx`)
 
 ```cpp
-BoolParameter Server::enableContentCache
-("ContentCache",
- "Enable content-addressable historical cache for repeated content",
+core::BoolParameter Server::enableContentCache
+("EnableContentCache",
+ "Enable content-addressable cache for automatic CopyRect detection",
  true);
 
-IntParameter Server::contentCacheSize
+core::IntParameter Server::contentCacheSize
 ("ContentCacheSize",
- "Size of content cache in MB",
- 2048, 0, 10000);
+ "Maximum size of content cache in MB",
+ 2048, 0, 8192);
 
-IntParameter Server::contentCacheMaxAge
+core::IntParameter Server::contentCacheMaxAge
 ("ContentCacheMaxAge",
- "Maximum age of cached content in seconds",
- 300, 10, 3600);
+ "Maximum age of cached content in seconds (0 = unlimited)",
+ 0, 0, INT_MAX);
 
-IntParameter Server::contentCacheMinRectSize
+core::IntParameter Server::contentCacheMinRectSize
 ("ContentCacheMinRectSize",
- "Minimum rectangle size to cache (in pixels)",
- 4096, 1024, 1000000);
+ "Minimum rectangle size (pixels) to consider for caching",
+ 4096, 0, INT_MAX);
 ```
 
 ### Client Configuration
