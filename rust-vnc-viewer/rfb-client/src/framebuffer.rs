@@ -219,20 +219,40 @@ impl Framebuffer {
             .skip(1)
             .await
             .map_err(|e| RfbClientError::Protocol(format!("failed to read FramebufferUpdate padding: {}", e)))?;
-        let num = stream
+        let num_raw = stream
             .read_u16()
             .await
-            .map_err(|e| RfbClientError::Protocol(format!("failed to read FramebufferUpdate rect count: {}", e)))? as usize;
+            .map_err(|e| RfbClientError::Protocol(format!("failed to read FramebufferUpdate rect count: {}", e)))?;
 
-        let mut damage = Vec::with_capacity(num);
-        for _ in 0..num {
-            let rect = Rectangle::read_from(stream)
-                .await
-                .map_err(|e| RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e)))?;
-            tracing::info!("FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}", rect.x, rect.y, rect.width, rect.height, rect.encoding);
-            self.apply_rectangle(stream, &rect).await?;
-            if rect.encoding >= 0 {
-                damage.push(Rect::new(rect.x as i32, rect.y as i32, rect.width as u32, rect.height as u32));
+        let mut damage: Vec<Rect> = Vec::new();
+        if num_raw == 0xFFFF {
+            // Unknown number of rectangles; terminated by LastRect pseudo-encoding
+            loop {
+                let rect = Rectangle::read_from(stream)
+                    .await
+                    .map_err(|e| RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e)))?;
+                tracing::info!("FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}", rect.x, rect.y, rect.width, rect.height, rect.encoding);
+                if rect.encoding == enc::ENCODING_LAST_RECT {
+                    // End of this update
+                    break;
+                }
+                self.apply_rectangle(stream, &rect).await?;
+                if rect.encoding >= 0 {
+                    damage.push(Rect::new(rect.x as i32, rect.y as i32, rect.width as u32, rect.height as u32));
+                }
+            }
+        } else {
+            let num = num_raw as usize;
+            damage.reserve(num);
+            for _ in 0..num {
+                let rect = Rectangle::read_from(stream)
+                    .await
+                    .map_err(|e| RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e)))?;
+                tracing::info!("FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}", rect.x, rect.y, rect.width, rect.height, rect.encoding);
+                self.apply_rectangle(stream, &rect).await?;
+                if rect.encoding >= 0 {
+                    damage.push(Rect::new(rect.x as i32, rect.y as i32, rect.width as u32, rect.height as u32));
+                }
             }
         }
         Ok(damage)

@@ -4,7 +4,7 @@
 //! VNC_TEST_SERVER to specify the server address (default: localhost:5900).
 //!
 //! Example:
-//!   VNC_TEST_SERVER=localhost:5902 cargo test --test integration -- --nocapture
+//!   VNC_TEST_SERVER=localhost:5901 cargo test --test integration -- --nocapture
 
 use rfb_client::{ClientBuilder, ClientCommand, Config, ServerEvent};
 use std::env;

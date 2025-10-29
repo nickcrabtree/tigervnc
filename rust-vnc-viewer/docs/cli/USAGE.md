@@ -12,14 +12,14 @@ rust-vnc-viewer --connect vnc://HOST[:PORT] [options]
 rust-vnc-viewer HOST[:PORT] [options]
 
 # Examples
-rust-vnc-viewer localhost:5902
+rust-vnc-viewer localhost:5901
 rust-vnc-viewer --connect vnc://192.168.1.100:5901 --fullscreen --monitor primary
 ```
 
 ## Core Options
 
 ### Connection
-- `--connect, -c STRING`: VNC connection string (e.g., `vnc://localhost:5902`)
+- `--connect, -c STRING`: VNC connection string (e.g., `vnc://localhost:5901`)
 - `--password STRING`: Connection password (prefer `$VNC_PASSWORD` environment variable)
 
 ### Display
@@ -101,7 +101,7 @@ rust-vnc-viewer vnc://server:5901 --scale 1:1
 ### Basic Connection
 ```bash
 # Simple windowed connection
-rust-vnc-viewer localhost:5902
+rust-vnc-viewer localhost:5901
 
 # With password from environment
 VNC_PASSWORD=secret rust-vnc-viewer server.example.com:5901
@@ -122,10 +122,10 @@ rust-vnc-viewer vnc://server:5901 --fullscreen --monitor "4K" --scale 1:1
 ### Development/Testing
 ```bash
 # Verbose logging for debugging
-rust-vnc-viewer vnc://localhost:5902 -vvv
+rust-vnc-viewer vnc://localhost:5901 -vvv
 
 # Testing with specific window size
-rust-vnc-viewer vnc://localhost:5902 --width 800 --height 600 --scale 1:1
+rust-vnc-viewer vnc://localhost:5901 --width 800 --height 600 --scale 1:1
 ```
 
 ## Platform-Specific Notes

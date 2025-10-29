@@ -343,7 +343,7 @@ fn test_scaling_fit_calculation() {
 - Single monitor: F11 toggle, scaling modes
 - Dual monitors: Ctrl+Alt+Arrow navigation, index selection
 - Mixed DPI: Scaling correctness across different DPI monitors
-- Server testing: Only use Xnjcvnc :2, never production :1 or :3
+- Server testing: Use the e2e framework (displays :998/:999); never touch production :1, :2, or :3
 
 ## Dependencies
 
@@ -1089,7 +1089,7 @@ fn bench_disk_save_load(b: &mut Bencher) {
 }
 ```
 
-**Manual QA** (with Xnjcvnc :2 per WARP.md safety rules):
+**Manual QA** (with e2e framework displays :998/:999):
 1. Connect to test server, verify negotiation logs show `-321`
 2. Observe ContentCache hits transitioning to PersistentCache hits
 3. Restart client, verify cache loaded from disk
@@ -1123,7 +1123,7 @@ openssl = { version = "0.10", optional = true, features = ["vendored"] }
 - [ ] **Hash computation**: Matches C++ ContentHash::computeRect exactly
 - [ ] **ARC eviction**: Maintains configured size limits with proper promotions
 - [ ] **Disk persistence**: Survives restarts without data loss or corruption
-- [ ] **Cross-session hits**: Verified with test server (Xnjcvnc :2)
+- [ ] **Cross-session hits**: Verified with e2e test framework (:999)
 - [ ] **Performance**: Hash <1ms per rect, disk I/O <200ms for typical cache
 - [ ] **Code quality**: Zero clippy warnings, comprehensive test coverage
 - [ ] **Documentation**: Inline docs for all public APIs

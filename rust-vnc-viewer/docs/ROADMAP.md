@@ -181,7 +181,7 @@ directories = "5"      # XDG cache directory
 - [ ] Hash computation matches C++ ContentHash::computeRect
 - [ ] ARC eviction maintains configured size limits
 - [ ] Disk persistence survives restarts without data loss
-- [ ] Cross-session hits verified with test server (Xnjcvnc :2)
+- [ ] Cross-session hits verified with e2e test framework (:999)
 - [ ] Performance: <1ms hash computation, <200ms disk load/save
 
 ### Testing Strategy
@@ -263,7 +263,7 @@ These features add complexity without proportional value for desktop users. CLI 
 - **Unit tests**: Monitor selection logic, scaling calculations
 - **Integration tests**: Fullscreen transitions, multi-monitor movement
 - **Manual QA**: Real hardware testing with various monitor configurations
-- **VNC server compatibility**: Test with TigerVNC (Xnjcvnc :2 per WARP.md safety rules)
+- **VNC server compatibility**: Test with the e2e framework (displays :998/:999)
 
 ## Timeline Summary
 

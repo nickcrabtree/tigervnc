@@ -41,7 +41,7 @@ Once implemented, PersistentCache will be available through feature flags:
 cargo build --release --features persistent-cache
 
 # Run viewer with PersistentCache enabled
-cargo run --release --features persistent-cache -- localhost:2
+cargo run --release --features persistent-cache -- localhost:999
 
 # Verify in logs
 # Expected output:
@@ -2545,14 +2545,14 @@ Comprehensive test suite covering unit tests, integration tests, and cross-sessi
 
 #### **2. Integration Tests**
 
-Connect to test server (`Xnjcvnc :2`) with PersistentCache enabled:
+Use the e2e test framework (displays :998/:999) with PersistentCache enabled:
 
 ```rust
 #[tokio::test]
 #[ignore]  // Requires test server
 async fn test_persistent_cache_integration() {
     // Connect to test server
-    let mut client = VncClient::connect("localhost:2").await.unwrap();
+let mut client = VncClient::connect("localhost:999").await.unwrap();
     
     // Verify PersistentCache negotiated
     assert_eq!(client.cache_mode(), CacheMode::Persistent);
@@ -2582,7 +2582,7 @@ async fn test_cross_session_persistence() {
     
     // Session 1: Populate cache
     {
-        let mut client = VncClient::connect_with_cache("localhost:2", cache_path.clone())
+let mut client = VncClient::connect_with_cache("localhost:999", cache_path.clone())
             .await.unwrap();
         
         for _ in 0..20 {
@@ -2599,7 +2599,7 @@ async fn test_cross_session_persistence() {
     
     // Session 2: Verify immediate hits from disk
     {
-        let mut client = VncClient::connect_with_cache("localhost:2", cache_path)
+let mut client = VncClient::connect_with_cache("localhost:999", cache_path)
             .await.unwrap();
         
         let stats_before = client.cache_stats();

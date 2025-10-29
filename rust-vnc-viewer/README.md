@@ -126,13 +126,13 @@ cd rust-vnc-viewer
 cargo build --release
 
 # Basic connection (windowed)
-cargo run --release --package njcvncviewer-rs -- localhost:2
+cargo run --release --package njcvncviewer-rs -- localhost:999
 
 # Fullscreen on primary monitor
-cargo run --release --package njcvncviewer-rs -- --fullscreen --monitor primary localhost:2
+cargo run --release --package njcvncviewer-rs -- --fullscreen --monitor primary localhost:999
 
 # Multi-monitor: fullscreen on second monitor with fit scaling
-cargo run --release --package njcvncviewer-rs -- --fullscreen --monitor 1 --scale fit localhost:2
+cargo run --release --package njcvncviewer-rs -- --fullscreen --monitor 1 --scale fit localhost:999
 
 # With password from environment (secure)
 VNC_PASSWORD=secret cargo run --release --package njcvncviewer-rs -- server:5901
@@ -141,19 +141,21 @@ VNC_PASSWORD=secret cargo run --release --package njcvncviewer-rs -- server:5901
 cargo test
 
 # Verbose logging for debugging
-cargo run --package njcvncviewer-rs -- -vv localhost:2
+cargo run --package njcvncviewer-rs -- -vv localhost:999
 ```
 
 ### Testing with WARP Safety Rules
 
-⚠️ **Important**: Use test server only (per [WARP.md](../WARP.md) safety rules)
+Use the end-to-end test framework (tests/e2e) which launches isolated servers on high-numbered displays.
 
 ```bash
-# Safe: Connect to test server Xnjcvnc :2 (port 5902)
-cargo run -- localhost:2
+# Start e2e harness (spawns :998 and :999)
+python3 ../tests/e2e/run_contentcache_test.py --verbose &
 
-# ❌ NEVER: Do not connect to production servers :1 or :3
-# These are production servers for unrelated work
+# Connect the Rust viewer to :999 (safe test display)
+cargo run -- localhost:999
+
+# ❌ Do not connect to production servers :1, :2, or :3
 ```
 
 ## Performance

@@ -16,6 +16,11 @@ of Tight encoding that is greatly accelerated by the use of the libjpeg-turbo
 JPEG codec.
 
 
+Documentation
+==============
+
+For a curated and up-to-date documentation index, see `docs/README.md <docs/README.md>`_.
+
 Legal
 =====
 

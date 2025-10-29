@@ -45,13 +45,13 @@
 ### Monitor Selection
 ```bash
 # Primary monitor (default)
-rvncviewer --fullscreen --monitor primary localhost:2
+rvncviewer --fullscreen --monitor primary localhost:999
 
 # By index (0, 1, 2, ...)
-rvncviewer --fullscreen --monitor 1 localhost:2
+rvncviewer --fullscreen --monitor 1 localhost:999
 
 # By name substring (case-insensitive)
-rvncviewer --fullscreen --monitor HDMI localhost:2
+rvncviewer --fullscreen --monitor HDMI localhost:999
 ```
 
 ### Runtime Navigation
@@ -63,10 +63,10 @@ While in fullscreen:
 ### Secure Password Input
 ```bash
 # Preferred: Environment variable (not in shell history)
-VNC_PASSWORD=secret rvncviewer localhost:2
+VNC_PASSWORD=secret rvncviewer localhost:999
 
 # Alternative: CLI flag (visible in ps/history)
-rvncviewer --password secret localhost:2
+rvncviewer --password secret localhost:999
 ```
 
 ## What Works
@@ -252,10 +252,10 @@ cargo build --release --package rvncviewer
 RUST_LOG=rvncviewer=info ./target/release/rvncviewer
 
 # Test fullscreen on specific monitor
-./target/release/rvncviewer --fullscreen --monitor 1 localhost:2
+./target/release/rvncviewer --fullscreen --monitor 1 localhost:999
 
 # Use secure password
-VNC_PASSWORD=secret ./target/release/rvncviewer localhost:2
+VNC_PASSWORD=secret ./target/release/rvncviewer localhost:999
 ```
 
 ### Development

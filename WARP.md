@@ -387,44 +387,28 @@ There are **two different VNC server binaries** running on the same machine:
 # Standard TigerVNC (system-installed)
 Xtigervnc :1  # Display :1, port 5901
 Xtigervnc :3  # Display :3, port 5903
+
+# Custom fork (Xnjcvnc) - PRODUCTION
+Xnjcvnc  :2   # Display :2, port 5902
 ```
 
-**CRITICAL**: These are **production servers** for unrelated work. DO NOT:
+**CRITICAL**: All of the above are **production servers**. DO NOT:
 - Stop or restart these processes
 - Modify their configuration
 - Kill these processes
 - Send them test traffic
 
-#### Test/Development Server (Safe to Modify)
+#### Test Architecture
 
-```bash
-# Custom fork with ContentCache
-Xnjcvnc :2    # Display :2, port 5902
-```
+Use the end-to-end test framework under `tests/e2e`, which launches isolated VNC servers on high-numbered displays (e.g., `:998`, `:999`). See `tests/e2e/README.md`.
 
-This is the **test server** built from `/home/nickc/code/tigervnc`. Safe to:
-- Stop and restart for testing
-- Modify configuration
-- Test ContentCache features
-- Debug with verbose logging
-
-**Location**: `/home/nickc/code/tigervnc/build/unix/vncserver/Xnjcvnc`
+Note: The local build binary exists at `/home/nickc/code/tigervnc/build/unix/vncserver/Xnjcvnc`. Do not run it on display `:2`.
 
 ### SSH Tunnels
 
-Local Mac connects to the remote test server via SSH tunnels:
+Do not tunnel to production display `:2`.
 
-```bash
-# Active tunnels (from local Mac)
-localhost:5902 -> 192.168.86.7:5902  # Test server (Xnjcvnc :2)
-localhost:5903 -> 192.168.86.7:5903  # Production (Xtigervnc :3)
-```
-
-**Connect to test server**:
-```bash
-# From local Mac
-~/scripts/njcvncviewer_start.sh localhost:2
-```
+For testing, use the e2e framework (which starts servers on high-numbered displays) or set up tunnels only to those test displays as needed. See `tests/e2e/README.md`.
 
 ### Safely Identifying Processes
 
@@ -438,54 +422,27 @@ ssh nickc@birdsurvey.hopto.org "ps aux | grep -E 'Xnjcvnc|Xtigervnc' | grep -v g
 ssh nickc@birdsurvey.hopto.org "pwdx <PID>"
 
 # Example output:
-# nickc 2039996  Xnjcvnc :2        <- TEST SERVER (safe to modify)
+# nickc 2039996  Xnjcvnc :2        <- PRODUCTION (do not touch)
 # nickc  515252  Xtigervnc :3      <- PRODUCTION (do not touch)
 # nickc  900511  Xtigervnc :1      <- PRODUCTION (do not touch)
 ```
 
-### Test Server Management
+### Test Architecture Management
 
-#### Stopping Test Server Safely
+Use the e2e test framework to start/stop isolated test servers on high-numbered displays. Do not manage or restart production servers.
 
-```bash
-# Find the test server PID
-ssh nickc@birdsurvey.hopto.org "ps aux | grep Xnjcvnc | grep ':2' | grep -v grep"
-
-# Verify it's display :2 before killing
-ssh nickc@birdsurvey.hopto.org "kill -TERM <PID>"
-```
-
-#### Restarting with Verbose Logging
-
-```bash
-# SSH to server
-ssh nickc@birdsurvey.hopto.org
-
-# Navigate to VNC config directory
-cd /home/nickc/.vnc
-
-# Start with verbose ContentCache logging
-vncserver :2 -Log *:stderr:100
-
-# Or manually with full control
-/home/nickc/code/tigervnc/build/unix/vncserver/Xnjcvnc :2 \
-  -localhost=0 \
-  -rfbport 5902 \
-  -Log ContentCache:stderr:100,EncodeManager:stderr:100,DecodeManager:stderr:100 \
-  -geometry 3840x2100 \
-  -depth 24
-```
+See `tests/e2e/README.md` for commands and options.
 
 #### Log Locations
 
 ```bash
-# Server logs
-/home/nickc/.vnc/quartz:2.log          # Test server (Xnjcvnc)
-/home/nickc/.vnc/quartz:1.log          # Production (do not read/modify)
-/home/nickc/.vnc/quartz:3.log          # Production (do not read/modify)
+# Production server logs (do not read/modify)
+/home/nickc/.vnc/quartz:1.log
+/home/nickc/.vnc/quartz:2.log
+/home/nickc/.vnc/quartz:3.log
 
-# View test server logs
-ssh nickc@birdsurvey.hopto.org "tail -f /home/nickc/.vnc/quartz:2.log"
+# Test framework logs
+# See tests/e2e output and logs produced by the harness
 
 # Client logs (on local Mac)
 /tmp/vncviewer_*.log   # Created by njcvncviewer_start.sh
@@ -497,11 +454,11 @@ When debugging rectangle corruption issues:
 
 1. **Capture synchronized logs**:
    ```bash
-   # Terminal 1: Server logs
-   ssh nickc@birdsurvey.hopto.org "tail -f /home/nickc/.vnc/quartz:2.log"
+   # Use the e2e test framework (isolated displays :998/:999)
+   python3 tests/e2e/run_contentcache_test.py --verbose
    
-   # Terminal 2: Client logs  
-   ~/scripts/njcvncviewer_start.sh localhost:2 2>&1 | tee /tmp/client_debug.log
+   # In another terminal: run the Rust viewer against the e2e test server
+   cargo run --package njcvncviewer-rs -- -vv localhost:999 2>&1 | tee /tmp/client_debug.log
    ```
 
 2. **Check ContentCache message flow**:
@@ -623,16 +580,8 @@ ContentCacheMinRectSize=4096  # Min pixels to cache (default: 4096)
 ### Debugging
 
 ```bash
-# Enable verbose logging
-Xnjcvnc :2 -Log *:stderr:100
-
-# Monitor cache statistics (logged hourly)
-tail -f ~/.vnc/quartz:2.log | grep -i contentcache
-
-# Example output:
-# ContentCache: Hit rate: 23.5% (1234 hits, 4032 misses)
-# ContentCache: Memory: 156MB / 2048MB (7.6% used), 10245 entries
-# ContentCache: ARC balance: T1=8245 (80.5%), T2=2000 (19.5%)
+# Enable verbose logging in the e2e test framework as needed
+# See tests/e2e/README.md for options
 ```
 
 ### Documentation

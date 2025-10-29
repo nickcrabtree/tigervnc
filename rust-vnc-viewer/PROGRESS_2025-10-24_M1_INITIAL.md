@@ -88,7 +88,7 @@ cargo build
 
 ### Manual Smoke Test (Pending)
 ```bash
-cargo run --package rvncviewer -- --fullscreen --monitor primary localhost:2
+cargo run --package rvncviewer -- --fullscreen --monitor primary localhost:999
 ```
 - Verify monitor enumeration logs appear
 - Verify fullscreen activates on F11
@@ -182,7 +182,7 @@ None currently blocking progress. Main limitation is eframe integration for per-
 2. **VNC_PASSWORD Environment Variable**
    - Wired via clap `env = "VNC_PASSWORD"` attribute
    - More secure than CLI `--password` flag (doesn't appear in ps/shell history)
-   - Usage: `VNC_PASSWORD=secret cargo run -- localhost:2`
+   - Usage: `VNC_PASSWORD=secret cargo run -- localhost:999`
 
 3. **Documentation Updates**
    - ROADMAP.md: Marked navigation hotkeys as complete

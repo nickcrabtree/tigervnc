@@ -123,14 +123,14 @@ The debug logs are **separate from** the standard VNC logging system (`-Log` par
 
 ```bash
 # Start viewer
-~/scripts/njcvncviewer_start.sh localhost:2
+cargo run --package njcvncviewer-rs -- localhost:999
 
 # Output shows both log files:
 # ContentCache debug log: /tmp/contentcache_debug_1729789234_567.log
 # PersistentCache debug log: /tmp/persistentcache_debug_1729789234_568.log
 
 # You can also enable verbose VNC logging:
-~/scripts/njcvncviewer_start.sh localhost:2 -Log "*:stderr:30,ContentCache:stderr:100,PersistentCache:stderr:100"
+cargo run --package njcvncviewer-rs -- localhost:999 -vv
 
 # Now you have:
 # 1. VNC logs on stderr (verbose, for real-time monitoring)
@@ -147,7 +147,7 @@ The debug logs are **separate from** the standard VNC logging system (`-Log` par
 **Debug approach**:
 ```bash
 # Start viewer and reproduce issue
-~/scripts/njcvncviewer_start.sh localhost:2
+cargo run --package njcvncviewer-rs -- localhost:999
 
 # After crash/exit, examine logs
 grep -i "error\|corrupt\|invalid" /tmp/contentcache_debug_*.log
@@ -192,14 +192,14 @@ grep "cache MISS" /tmp/contentcache_debug_*.log | wc -l
 **Debug approach**:
 ```bash
 # First session - check save
-~/scripts/njcvncviewer_start.sh localhost:2
+cargo run --package njcvncviewer-rs -- localhost:999
 # (use for a while, then exit)
 
 grep "saveToDisk" /tmp/persistentcache_debug_*.log
 # Should show: "saveToDisk: saving N entries to ..."
 
 # Second session - check load
-~/scripts/njcvncviewer_start.sh localhost:2
+cargo run --package njcvncviewer-rs -- localhost:999
 
 # Find the NEW log file (most recent timestamp)
 ls -lt /tmp/persistentcache_debug_*.log | head -1

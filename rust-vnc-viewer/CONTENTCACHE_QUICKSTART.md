@@ -192,11 +192,11 @@ async fn test_lru_eviction() {
 
 **Integration test:**
 ```bash
-# 1. Start TigerVNC server with ContentCache on :2
-# (C++ implementation)
+# 1. Start the e2e test harness (spawns :998 and :999 locally)
+python3 ../tests/e2e/run_contentcache_test.py --verbose &
 
 # 2. Run Rust viewer
-cargo run --package njcvncviewer-rs -- -vv localhost:2
+cargo run --package njcvncviewer-rs -- -vv localhost:999
 
 # 3. Observe logs:
 # "CachedRect received: cache_id=123"
@@ -261,29 +261,17 @@ Server                              Client
 ### Server Setup
 
 ```bash
-# SSH to test server
-ssh nickc@birdsurvey.hopto.org
-
-# Ensure Xnjcvnc :2 is running with ContentCache
-# (Should already be configured in ~/.vnc/xstartup)
-
-# Enable verbose ContentCache logging
-vncserver :2 -Log ContentCache:stderr:100
-
-# Or restart with logging
-vncserver -kill :2
-vncserver :2 -Log ContentCache:stderr:100,EncodeManager:stderr:100
+# Use the e2e test framework instead of a shared server
+python3 ../tests/e2e/run_contentcache_test.py --verbose
+# This starts isolated servers on :998 and :999
 ```
 
 ### Viewer Testing
 
 ```bash
-# Local machine - SSH tunnel (may already exist)
-ssh -L 5902:localhost:5902 nickc@birdsurvey.hopto.org
-
-# Run Rust viewer with verbose logging
+# Run Rust viewer with verbose logging against :999
 cd ~/code/tigervnc/rust-vnc-viewer
-cargo run --package njcvncviewer-rs -- -vv localhost:2 2>&1 | tee /tmp/viewer.log
+cargo run --package njcvncviewer-rs -- -vv localhost:999 2>&1 | tee /tmp/viewer.log
 
 # Look for these in logs:
 # - "Negotiated encodings: [0, 1, -496]"  (includes ContentCache)
@@ -304,7 +292,7 @@ cargo run --package njcvncviewer-rs -- -vv localhost:2 2>&1 | tee /tmp/viewer.lo
 **Debugging:**
 ```bash
 # Monitor network traffic
-tcpdump -i lo -n port 5902 -w /tmp/vnc.pcap
+tcpdump -i lo -n port 6899 -w /tmp/vnc.pcap
 
 # Analyze in Wireshark later
 wireshark /tmp/vnc.pcap
@@ -370,9 +358,9 @@ wireshark /tmp/vnc.pcap
 
 ```bash
 # Capture 60 seconds of traffic
-tcpdump -i lo port 5902 -w /tmp/baseline.pcap &
+tcpdump -i lo port 6899 -w /tmp/baseline.pcap &
 TCPDUMP_PID=$!
-cargo run --package njcvncviewer-rs -- --disable-cache localhost:2 &
+cargo run --package njcvncviewer-rs -- --disable-cache localhost:999 &
 VIEWER_PID=$!
 
 # Interact: switch windows, scroll, return to previous windows
@@ -390,8 +378,8 @@ tcpdump -r /tmp/baseline.pcap | wc -l
 
 ```bash
 # Same test with ContentCache enabled
-tcpdump -i lo port 5902 -w /tmp/cached.pcap &
-cargo run --package njcvncviewer-rs -- localhost:2 &
+tcpdump -i lo port 6899 -w /tmp/cached.pcap &
+cargo run --package njcvncviewer-rs -- localhost:999 &
 # ... same interaction ...
 
 # Compare

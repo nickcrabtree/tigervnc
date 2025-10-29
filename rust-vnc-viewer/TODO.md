@@ -207,7 +207,7 @@ if self.fullscreen.state().enabled {
 **Linux Testing** (primary development platform):
 - [ ] `cargo run -p njcvncviewer-rs -- --help`
 - [ ] Verify `--monitor` option appears in help
-- [ ] Test basic connection: `cargo run -p njcvncviewer-rs -- localhost:2`
+- [ ] Test basic connection: `cargo run -p njcvncviewer-rs -- localhost:999`
 - [ ] Test fullscreen toggle with F11
 - [ ] Verify no regressions in existing functionality
 
@@ -385,7 +385,7 @@ cargo build --release -p njcvncviewer-rs
 
 # Run
 ./rust-vnc-viewer/target/release/njcvncviewer-rs --help
-./rust-vnc-viewer/target/release/njcvncviewer-rs localhost:2
+./rust-vnc-viewer/target/release/njcvncviewer-rs localhost:999
 ```
 
 ### Testing Commands

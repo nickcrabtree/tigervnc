@@ -610,8 +610,8 @@ async fn test_cross_session() {
 ### WARP Safety
 
 **CRITICAL**: When testing with TigerVNC server:
-- ✅ **SAFE**: Use `Xnjcvnc :2` (test server at display :2)
-- ❌ **FORBIDDEN**: Do NOT touch `Xtigervnc :1` or `:3` (production servers)
+- ✅ **SAFE**: Use the e2e framework (displays :998 and :999)
+- ❌ **FORBIDDEN**: Do NOT touch production servers `:1`, `:2`, or `:3`
 
 ## Performance Considerations
 

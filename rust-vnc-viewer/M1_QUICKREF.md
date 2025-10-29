@@ -7,22 +7,22 @@
 
 ```bash
 # Basic fullscreen
-rvncviewer --fullscreen localhost:2
+rvncviewer --fullscreen localhost:999
 
 # Target specific monitor
-rvncviewer --fullscreen --monitor primary localhost:2
-rvncviewer --fullscreen --monitor 1 localhost:2
-rvncviewer --fullscreen --monitor HDMI localhost:2
+rvncviewer --fullscreen --monitor primary localhost:999
+rvncviewer --fullscreen --monitor 1 localhost:999
+rvncviewer --fullscreen --monitor HDMI localhost:999
 
 # With password (secure)
-VNC_PASSWORD=secret rvncviewer --fullscreen localhost:2
+VNC_PASSWORD=secret rvncviewer --fullscreen localhost:999
 
 # With verbose logging
-RUST_LOG=rvncviewer=info rvncviewer --fullscreen localhost:2
+RUST_LOG=rvncviewer=info rvncviewer --fullscreen localhost:999
 
 # All options combined
 RUST_LOG=info VNC_PASSWORD=secret rvncviewer \
-  --fullscreen --monitor 1 localhost:2
+  --fullscreen --monitor 1 localhost:999
 ```
 
 ## Keyboard Shortcuts
@@ -57,10 +57,10 @@ cargo build --package rvncviewer
 cargo build --release --package rvncviewer
 
 # Run directly (debug)
-cargo run --package rvncviewer -- localhost:2
+cargo run --package rvncviewer -- localhost:999
 
 # Run release binary
-./target/release/rvncviewer localhost:2
+./target/release/rvncviewer localhost:999
 ```
 
 ## Debugging
@@ -70,10 +70,10 @@ cargo run --package rvncviewer -- localhost:2
 RUST_LOG=rvncviewer=info ./target/release/rvncviewer
 
 # Full debug logs
-RUST_LOG=debug ./target/release/rvncviewer localhost:2
+RUST_LOG=debug ./target/release/rvncviewer localhost:999
 
 # Trace everything
-RUST_LOG=trace ./target/release/rvncviewer localhost:2
+RUST_LOG=trace ./target/release/rvncviewer localhost:999
 ```
 
 ## Expected Log Output
@@ -99,15 +99,15 @@ INFO rvncviewer::fullscreen: Switched to monitor 0: 'DP-1'
 RUST_LOG=info ./target/release/rvncviewer
 
 # TC2: Test F11 toggle
-./target/release/rvncviewer localhost:2
+./target/release/rvncviewer localhost:999
 # Press F11 twice
 
 # TC3: Test monitor navigation (2+ monitors required)
-./target/release/rvncviewer --fullscreen localhost:2
+./target/release/rvncviewer --fullscreen localhost:999
 # Press Ctrl+Alt+→, observe logs
 
 # TC4: Test VNC_PASSWORD
-VNC_PASSWORD=test ./target/release/rvncviewer localhost:2
+VNC_PASSWORD=test ./target/release/rvncviewer localhost:999
 # In another terminal: ps aux | grep rvncviewer
 # Verify password is NOT visible
 ```

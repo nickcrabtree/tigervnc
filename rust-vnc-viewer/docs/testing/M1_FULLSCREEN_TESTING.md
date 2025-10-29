@@ -21,12 +21,12 @@ This guide covers testing procedures for the fullscreen and multi-monitor featur
 - Rust toolchain (1.70+)
 
 ### Server Safety
-Per [WARP.md](../../WARP.md), only connect to the test server:
+Use the end-to-end test framework (tests/e2e) with isolated displays:
 ```bash
-# SAFE: Test server Xnjcvnc :2 (port 5902)
-ssh nickc@birdsurvey.hopto.org "ps aux | grep 'Xnjcvnc :2'"
+# SAFE: e2e test displays :998 (6898) and :999 (6899)
+python3 ../../tests/e2e/run_contentcache_test.py --verbose
 
-# Never test against production servers :1 or :3
+# Never test against production servers :1, :2, or :3
 ```
 
 ## Build and Setup
@@ -79,7 +79,7 @@ INFO rvncviewer::display:   Monitor 1: 'HDMI-A-1' 2560x1440 @1.5x
 
 **Steps**:
 ```bash
-./target/release/rvncviewer --fullscreen localhost:2
+./target/release/rvncviewer --fullscreen localhost:999
 ```
 
 **Expected Behavior**:
@@ -101,13 +101,13 @@ INFO rvncviewer::display:   Monitor 1: 'HDMI-A-1' 2560x1440 @1.5x
 **Steps**:
 ```bash
 # Test 1: Primary
-RUST_LOG=rvncviewer=info ./target/release/rvncviewer --fullscreen --monitor primary localhost:2
+RUST_LOG=rvncviewer=info ./target/release/rvncviewer --fullscreen --monitor primary localhost:999
 
 # Test 2: By index
-RUST_LOG=rvncviewer=info ./target/release/rvncviewer --fullscreen --monitor 1 localhost:2
+RUST_LOG=rvncviewer=info ./target/release/rvncviewer --fullscreen --monitor 1 localhost:999
 
 # Test 3: By name substring
-RUST_LOG=rvncviewer=info ./target/release/rvncviewer --fullscreen --monitor HDMI localhost:2
+RUST_LOG=rvncviewer=info ./target/release/rvncviewer --fullscreen --monitor HDMI localhost:999
 ```
 
 **Expected Output** (Test 1):
@@ -131,7 +131,7 @@ INFO rvncviewer::fullscreen: Fullscreen target monitor: 0 'DP-1', 1920x1080 @1.0
 **Objective**: Verify F11 toggles fullscreen mode
 
 **Steps**:
-1. Start viewer in windowed mode: `./target/release/rvncviewer localhost:2`
+1. Start viewer in windowed mode: `./target/release/rvncviewer localhost:999`
 2. Press `F11`
 3. Wait for fullscreen transition
 4. Press `F11` again
@@ -149,7 +149,7 @@ INFO rvncviewer::fullscreen: Fullscreen target monitor: 0 'DP-1', 1920x1080 @1.0
 **Objective**: Verify alternative fullscreen hotkey
 
 **Steps**:
-1. Start viewer: `./target/release/rvncviewer localhost:2`
+1. Start viewer: `./target/release/rvncviewer localhost:999`
 2. Press `Ctrl+Alt+F`
 
 **Expected Behavior**:
@@ -165,7 +165,7 @@ INFO rvncviewer::fullscreen: Fullscreen target monitor: 0 'DP-1', 1920x1080 @1.0
 **Prerequisites**: 2+ monitors
 
 **Steps**:
-1. Start in fullscreen: `./target/release/rvncviewer --fullscreen localhost:2`
+1. Start in fullscreen: `./target/release/rvncviewer --fullscreen localhost:999`
 2. Press `Ctrl+Alt+→` (right arrow)
 3. Observe log output and behavior
 4. Press `Ctrl+Alt+←` (left arrow)
@@ -193,7 +193,7 @@ INFO rvncviewer::fullscreen: Switched to monitor 0: 'DP-1'
 **Prerequisites**: 2+ monitors (index 0, 1, etc.)
 
 **Steps**:
-1. Start in fullscreen: `./target/release/rvncviewer --fullscreen localhost:2`
+1. Start in fullscreen: `./target/release/rvncviewer --fullscreen localhost:999`
 2. Press `Ctrl+Alt+1`
 3. Observe log output
 4. Press `Ctrl+Alt+0`
@@ -216,7 +216,7 @@ INFO rvncviewer::fullscreen: Jumped to monitor 0: 'DP-1'
 **Objective**: Verify primary monitor hotkey
 
 **Steps**:
-1. Start fullscreen on secondary: `./target/release/rvncviewer --fullscreen --monitor 1 localhost:2`
+1. Start fullscreen on secondary: `./target/release/rvncviewer --fullscreen --monitor 1 localhost:999`
 2. Press `Ctrl+Alt+P`
 
 **Expected Logs**:
@@ -240,7 +240,7 @@ INFO rvncviewer::fullscreen: Jumped to primary monitor: 'DP-1'
 export VNC_PASSWORD=testpass123
 
 # Connect (password should not appear in ps output)
-./target/release/rvncviewer localhost:2
+./target/release/rvncviewer localhost:999
 ```
 
 **Validation**:
@@ -263,7 +263,7 @@ Expected: Password NOT visible in command line
 
 **Steps**:
 ```bash
-RUST_LOG=rvncviewer=info ./target/release/rvncviewer --fullscreen --monitor 99 localhost:2
+RUST_LOG=rvncviewer=info ./target/release/rvncviewer --fullscreen --monitor 99 localhost:999
 ```
 
 **Expected Output**:
@@ -371,7 +371,7 @@ When filing issues, include:
 **Test Case**: TC6 (Monitor Navigation)
 
 **Steps to Reproduce**:
-1. Start fullscreen: ./target/release/rvncviewer --fullscreen localhost:2
+1. Start fullscreen: ./target/release/rvncviewer --fullscreen localhost:999
 2. Press Ctrl+Alt+→
 
 **Expected**: Switch to monitor 1

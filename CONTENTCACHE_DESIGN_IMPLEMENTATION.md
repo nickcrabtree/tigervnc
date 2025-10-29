@@ -462,99 +462,99 @@ void CMsgReader::readRect(const core::Rect& r, int encoding) {
 
 ## Build System
 
-### Building Server (Xvnc)
+### Building Server (Xnjcvnc)
 
-The TigerVNC build system has **two separate build processes**:
+The TigerVNC build system has two separate build processes:
 
-1. **CMake build** (for libraries, vncviewer, utilities)
-2. **Autotools build** (for Xvnc server - integrates with Xorg)
+1. CMake build (for libraries, viewers, utilities)
+2. Autotools build (for the Xnjcvnc server integrated with Xorg)
 
 #### CMake Build (Libraries and Viewer)
 
 ```bash
-# From tigervnc root
+# From repository root
 cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build -j$(nproc)
 
-# This builds:
-# - build/common/rfb/libvnc.a (RFB protocol library with ContentCache)
-# - build/vncviewer/vncviewer (VNC client)
+# This builds (among others):
+# - build/common/rfb/libvnc.a
+# - build/vncviewer/njcvncviewer
 # - build/unix/vncpasswd/vncpasswd
 # - build/unix/x0vncserver/x0vncserver
 ```
 
-#### Xvnc Server Build (Integrated with Xorg)
+#### Xnjcvnc Server Build (Integrated with Xorg)
 
-The Xvnc server requires building against patched Xorg source:
+The Xnjcvnc server requires building against patched Xorg source:
 
 ```bash
-# 1. Extract Xorg server source (handled by unix/xserver/configure)
+# 1. Prepare the xserver build tree (once)
+# See unix/xserver*.patch and follow your distro-specific setup
 cd build/unix/xserver
 
-# 2. Configure with patches applied
-./configure --prefix=/usr/local --with-pic --without-dtrace \
-    --disable-static --disable-dri --enable-dri2 --enable-dri3 \
-    --enable-glx --disable-xorg --disable-xnest --disable-xvfb \
-    --disable-dmx --disable-xwin --disable-xephyr --disable-kdrive
+# 2. Configure Xorg with required options
+./configure --with-pic --without-dtrace --disable-static --disable-dri \
+  --disable-xinerama --disable-xvfb --disable-xnest --disable-xorg \
+  --disable-dmx --disable-xwin --disable-xephyr --disable-kdrive \
+  --disable-config-hal --disable-config-udev --disable-dri2 --enable-glx \
+  --with-default-font-path="catalogue:/etc/X11/fontpath.d,built-ins" \
+  --with-xkb-path=/usr/share/X11/xkb \
+  --with-xkb-output=/var/lib/xkb \
+  --with-xkb-bin-directory=/usr/bin \
+  --with-serverconfig-path=/usr/lib/xorg
 
-# 3. Build Xvnc
+# 3. Build Xnjcvnc
 make -j$(nproc)
 
-# Result: build/unix/xserver/hw/vnc/Xvnc
+# Result: build/unix/xserver/hw/vnc/Xnjcvnc
 ```
 
-**Important**: The CMake build creates `libvnc.la` (with ContentCache), which is linked into Xvnc during the Xorg build.
+Important: The CMake build provides the libraries linked into Xnjcvnc during the Xorg build.
 
-#### Binary Location Confusion
+#### Binary locations
 
-Multiple binaries/symlinks exist:
+- Source of truth: build/unix/xserver/hw/vnc/Xnjcvnc (actual built binary)
+- Convenience symlink: build/unix/vncserver/Xnjcvnc -> hw/vnc/Xnjcvnc
+- System binary (not your build): /usr/bin/Xnjcvnc
 
-- **Source of truth**: `build/unix/xserver/hw/vnc/Xvnc` (actual built binary)
-- **Symlink (may be stale)**: `build/unix/vncserver/Xtigervnc`
-- **System binary**: `/usr/bin/Xtigervnc` (system installation, not your build)
-
-**Fix stale symlink**:
+To fix a stale symlink:
 ```bash
-ln -sf /home/nickc/code/tigervnc/build/unix/xserver/hw/vnc/Xvnc \
-       /home/nickc/code/tigervnc/build/unix/vncserver/Xtigervnc
+ln -sf "$(pwd)/build/unix/xserver/hw/vnc/Xnjcvnc" build/unix/vncserver/Xnjcvnc
 ```
 
 ### Rebuilding After Code Changes
 
-#### For RFB Protocol Changes (ContentCache)
+#### For RFB protocol changes (ContentCache)
 
 ```bash
-# 1. Build common libraries with CMake
-cd /home/nickc/code/tigervnc/build
-cmake --build . -j$(nproc)
+# 1. Build libraries with CMake
+cmake --build build -j$(nproc)
 
-# 2. Rebuild Xvnc server to pick up new libvnc.la
-cd /home/nickc/code/tigervnc/build/unix/xserver
-make -j$(nproc)
+# 2. Rebuild Xnjcvnc to pick up updates
+make -C build/unix/xserver -j$(nproc)
 
 # 3. Verify binary timestamp
-ls -lh hw/vnc/Xvnc
+ls -lh build/unix/xserver/hw/vnc/Xnjcvnc
 ```
 
-#### For Client Changes
+#### For client changes
 
 ```bash
-# Rebuild viewer only
-cd /home/nickc/code/tigervnc/build
-cmake --build . --target vncviewer -j$(nproc)
+# Rebuild the C++ viewer only
+cmake --build build --target njcvncviewer -j$(nproc)
 ```
 
 ### Testing Your Build
 
 ```bash
 # Check which binary is actually running
-ps aux | grep Xtigervnc
+ps aux | grep Xnjcvnc | grep -v grep
 
-# Verify binary used is your build, not system
-readlink -f /home/nickc/code/tigervnc/build/unix/vncserver/Xtigervnc
+# Verify symlink target
+readlink -f build/unix/vncserver/Xnjcvnc
 
 # Check build timestamp
-ls -lh /home/nickc/code/tigervnc/build/unix/xserver/hw/vnc/Xvnc
+ls -lh build/unix/xserver/hw/vnc/Xnjcvnc
 ```
 
 ## Configuration
@@ -658,7 +658,7 @@ Interpretation:
 
 ```bash
 # Server side
-Xtigervnc :2 -Log *:stderr:100
+Xnjcvnc :2 -Log *:stderr:100
 
 # Look for ContentCache messages
 tail -f ~/.vnc/quartz:2.log | grep -i contentcache
@@ -717,7 +717,7 @@ grep "CachedRect cache miss" client.log
 grep "Memory:" ~/.vnc/quartz:2.log | tail -1
 
 # Monitor process RSS
-ps aux | grep Xtigervnc
+ps aux | grep Xnjcvnc
 ```
 
 ### Instrumentation Points
@@ -813,7 +813,7 @@ Key implementation details:
 - **64-bit FNV-1a hashing** of pixel data (mind the stride units!)
 - **ARC algorithm** balances recency and frequency
 - **Protocol messages**: CachedRect (20 bytes) and CachedRectInit (20 + encoding)
-- **Dual build system**: CMake for libraries, Autotools for Xvnc
+- **Dual build system**: CMake for libraries, Autotools for Xnjcvnc
 - **Capability negotiation**: Client advertises support, server opts in
 
 For questions or issues, check the VNC logs and cache statistics, and ensure both server and client are using builds with ContentCache support enabled.
