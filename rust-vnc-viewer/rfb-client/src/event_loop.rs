@@ -202,127 +202,106 @@ pub async fn spawn(
         // Use async recv to avoid blocking
         let mut iteration = 0u64;
         loop {
+            iteration = iteration.wrapping_add(1);
             if iteration % 100 == 1 {
                 tracing::debug!("Event loop iteration {}", iteration);
             }
-            select! {
-                // Prefer reading server messages to keep buffers flowing
-                res = protocol::read_message_type(&mut input) => {
-                    match res {
-                        Ok(msg_type) => {
-                            tracing::debug!("Server message type: {}", msg_type);
-                            match msg_type {
-                                0 => {
-                                    // FramebufferUpdate: pipeline next incremental request, then stream-decode
-                                    tracing::debug!("Pipelining incremental FramebufferUpdateRequest");
-                                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
-                                    let damage = {
-                                        let mut fb = framebuffer.lock().await;
-                                        match fb.apply_update_stream(&mut input).await {
-                                            Ok(d) => d,
-                                            Err(e) => {
-                                                let _ = events.send(ServerEvent::Error { message: e.to_string() });
-                                                let _ = events.send(ServerEvent::ConnectionClosed);
-                                                break;
-                                            }
-                                        }
-                                    };
-                                    tracing::debug!("Decoded FramebufferUpdate with {} damaged rects", damage.len());
-                                    if !damage.is_empty() {
-                                        last_update = Instant::now();
-                                        let _ = events.send(ServerEvent::FramebufferUpdated { damage });
+            // Read next server message type with a timeout to ensure we keep nudging the server
+            match tokio::time::timeout(std::time::Duration::from_millis(500), protocol::read_message_type(&mut input)).await {
+                Ok(Ok(msg_type)) => {
+                    tracing::debug!("Server message type: {}", msg_type);
+                    match msg_type {
+                        0 => {
+                            // FramebufferUpdate: pipeline next incremental request, then stream-decode
+                            tracing::debug!("Pipelining incremental FramebufferUpdateRequest");
+                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            let damage = {
+                                let mut fb = framebuffer.lock().await;
+                                match fb.apply_update_stream(&mut input).await {
+                                    Ok(d) => d,
+                                    Err(e) => {
+                                        let _ = events.send(ServerEvent::Error { message: e.to_string() });
+                                        let _ = events.send(ServerEvent::ConnectionClosed);
+                                        break;
                                     }
                                 }
-                                1 => {
-                                    // SetColorMapEntries - currently ignored
-                                    // We still need to consume the payload to stay in sync
-                                    let _ = rfb_protocol::messages::server::SetColorMapEntries::read_from(&mut input).await;
-                                    // Nudge the server
-                                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
-                                    last_request = Instant::now();
-                                }
-                                2 => {
-                                    let _ = events.send(ServerEvent::Bell);
-                                    // Nudge the server
-                                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
-                                    last_request = Instant::now();
-                                }
-                                3 => {
-                                    if let Ok(cut) = rfb_protocol::messages::server::ServerCutText::read_from(&mut input).await {
-                                        use bytes::Bytes;
-                                        let _ = events.send(ServerEvent::ServerCutText { text: Bytes::from(cut.text) });
-                                    }
-                                    // Nudge the server
-                                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
-                                    last_request = Instant::now();
-                                }
-                                150 => {
-                                    // EndOfContinuousUpdates (server->client). No payload.
-                                    // Nudge the server
-                                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
-                                    last_request = Instant::now();
-                                }
-                                248 => {
-                                    // ServerFence: read padding(3), flags(u32), len(u8), payload[len]
-                                    use tokio::io::AsyncReadExt as _;
-                                    // We don't have direct helpers for small reads here; reuse RfbInStream
-                                    // Read 3 bytes padding by skipping
-                                    let _ = input.skip(3).await;
-                                    // Read flags (u32) and length (u8)
-                                    if let Ok(_flags) = input.read_u32().await {
-                                        if let Ok(len) = input.read_u8().await {
-                                            // Read len bytes
-                                            let mut buf = vec![0u8; len as usize];
-                                            let _ = input.read_bytes(&mut buf).await;
-                                        }
-                                    }
-                                    // Nudge the server
-                                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
-                                    last_request = Instant::now();
-                                }
-                                _ => {
-                                    // Unknown or unsupported server message: ignore to keep connection alive
-                                    tracing::debug!("Ignoring unsupported server message type: {}", msg_type);
-                                }
+                            };
+                            tracing::debug!("Decoded FramebufferUpdate with {} damaged rects", damage.len());
+                            if !damage.is_empty() {
+                                last_update = Instant::now();
+                                let _ = events.send(ServerEvent::FramebufferUpdated { damage });
                             }
                         }
-                        Err(e) => {
-                            // Report and exit on error (fail-fast)
+                        1 => {
+                            // SetColorMapEntries - currently ignored
+                            // We still need to consume the payload to stay in sync
+                            let _ = rfb_protocol::messages::server::SetColorMapEntries::read_from(&mut input).await;
+                            // Nudge the server
+                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            last_request = Instant::now();
+                        }
+                        2 => {
+                            let _ = events.send(ServerEvent::Bell);
+                            // Nudge the server
+                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            last_request = Instant::now();
+                        }
+                        3 => {
+                            if let Ok(cut) = rfb_protocol::messages::server::ServerCutText::read_from(&mut input).await {
+                                use bytes::Bytes;
+                                let _ = events.send(ServerEvent::ServerCutText { text: Bytes::from(cut.text) });
+                            }
+                            // Nudge the server
+                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            last_request = Instant::now();
+                        }
+                        150 => {
+                            // EndOfContinuousUpdates (server->client). No payload.
+                            // Nudge the server
+                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            last_request = Instant::now();
+                        }
+                        248 => {
+                            // ServerFence: read padding(3), flags(u32), len(u8), payload[len]
+                            use tokio::io::AsyncReadExt as _;
+                            // Read 3 bytes padding by skipping
+                            let _ = input.skip(3).await;
+                            // Read flags (u32) and length (u8)
+                            if let Ok(_flags) = input.read_u32().await {
+                                if let Ok(len) = input.read_u8().await {
+                                    // Read len bytes
+                                    let mut buf = vec![0u8; len as usize];
+                                    let _ = input.read_bytes(&mut buf).await;
+                                }
+                            }
+                            // Nudge the server
+                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            last_request = Instant::now();
+                        }
+                        _ => {
+                            // Unknown or unsupported server message: ignore to keep connection alive
+                            tracing::debug!("Ignoring unsupported server message type: {}", msg_type);
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    // Report and exit on error (fail-fast)
+                    let _ = events.send(ServerEvent::Error { message: e.to_string() });
+                    let _ = events.send(ServerEvent::ConnectionClosed);
+                    break;
+                }
+                Err(_elapsed) => {
+                    // Timeout waiting for server message: proactively request an incremental update
+                    tracing::debug!("No server message in 500ms; sending incremental FramebufferUpdateRequest");
+                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                    last_request = Instant::now();
+                    // Also try to drain any pending command without blocking
+                    if let Ok(command) = commands.try_recv() {
+                        if let Err(e) = handle_command(&mut output, &events, command).await {
                             let _ = events.send(ServerEvent::Error { message: e.to_string() });
                             let _ = events.send(ServerEvent::ConnectionClosed);
                             break;
                         }
-                    }
-                }
-
-                cmd = commands.recv_async() => {
-                    match cmd {
-                        Ok(command) => {
-                            if let Err(e) = handle_command(&mut output, &events, command).await {
-                                let _ = events.send(ServerEvent::Error { message: e.to_string() });
-                                let _ = events.send(ServerEvent::ConnectionClosed);
-                                break;
-                            }
-                        }
-                        Err(_) => {
-                            // Command channel closed by application
-                            let _ = events.send(ServerEvent::ConnectionClosed);
-                            break;
-                        }
-                    }
-                }
-
-                _ = periodic.tick() => {
-                    // Aggressive full refresh during first 2s after connect
-                    if start_time.elapsed() < std::time::Duration::from_secs(2) {
-                        tracing::debug!("Periodic FULL FramebufferUpdateRequest (startup burst)");
-                        let _ = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await;
-                    } else if last_update.elapsed() > std::time::Duration::from_secs(1) {
-                        tracing::debug!("Periodic FULL FramebufferUpdateRequest (no updates in 1s)");
-                        let _ = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await;
-                    } else {
-                        tracing::debug!("Periodic incremental FramebufferUpdateRequest");
-                        let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
                     }
                 }
             }
