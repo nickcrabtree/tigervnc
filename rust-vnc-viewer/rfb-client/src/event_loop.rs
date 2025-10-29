@@ -71,12 +71,21 @@ pub async fn spawn(
     // Spawn a task to run the main loop (read + write via select)
     let handle = tokio::spawn(async move {
         use std::time::Instant;
+        let start_time = Instant::now();
         // Periodic incremental update requester (best-effort)
         let mut periodic = tokio::time::interval(std::time::Duration::from_millis(250));
         let mut last_update = Instant::now();
+        let mut last_request = Instant::now();
 
         // Send initial protocol messages from within the task
-        // 1) SetPixelFormat to 32bpp true-color little-endian RGB888 (like C++ viewer)
+        // 1) SetEncodings (C++ sends this before SetPixelFormat)
+        tracing::info!("Sending SetEncodings: {:?}", encodings);
+        if let Err(e) = protocol::write_set_encodings(&mut output, encodings).await {
+            tracing::error!("Failed to send SetEncodings: {}", e);
+            return;
+        }
+
+        // 2) SetPixelFormat to 32bpp true-color little-endian RGB888 (like C++ viewer)
         let desired_pf = rfb_protocol::messages::types::PixelFormat {
             bits_per_pixel: 32,
             depth: 24,
@@ -94,18 +103,91 @@ pub async fn spawn(
             return;
         }
 
-        // 2) SetEncodings
-        tracing::info!("Sending SetEncodings: {:?}", encodings);
-        if let Err(e) = protocol::write_set_encodings(&mut output, encodings).await {
-            tracing::error!("Failed to send SetEncodings: {}", e);
-            return;
-        }
-
         // 3) Request initial full framebuffer update
         tracing::info!("Requesting initial framebuffer update: {}x{}", fb_width, fb_height);
         if let Err(e) = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await {
             tracing::error!("Failed to send FramebufferUpdateRequest: {}", e);
             return;
+        }
+
+        // Drain initial non-update messages and try to trigger first update
+        {
+            use std::time::{Duration, Instant};
+            let start = Instant::now();
+            'drain: loop {
+                if start.elapsed() > Duration::from_millis(800) {
+                    tracing::debug!("Handshake drain timeout");
+                    break 'drain;
+                }
+                match tokio::time::timeout(Duration::from_millis(200), protocol::read_message_type(&mut input)).await {
+                    Ok(Ok(mt)) => {
+                        tracing::debug!("Drain: server message type {}", mt);
+                        match mt {
+                            0 => {
+                                // First update arrived; pipeline next and decode
+                                tracing::debug!("Drain: first FramebufferUpdate received, decoding");
+                                let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                                let damage = {
+                                    let mut fb = framebuffer.lock().await;
+                                    match fb.apply_update_stream(&mut input).await {
+                                        Ok(d) => d,
+                                        Err(e) => {
+                                            let _ = events.send(ServerEvent::Error { message: e.to_string() });
+                                            let _ = events.send(ServerEvent::ConnectionClosed);
+                                            return;
+                                        }
+                                    }
+                                };
+                                if !damage.is_empty() {
+                                    let _ = events.send(ServerEvent::FramebufferUpdated { damage });
+                                }
+                                // Continue draining briefly in case more messages queued
+                            }
+                            1 => {
+                                let _ = rfb_protocol::messages::server::SetColorMapEntries::read_from(&mut input).await;
+                                let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            }
+                            2 => {
+                                let _ = events.send(ServerEvent::Bell);
+                                let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            }
+                            3 => {
+                                if let Ok(cut) = rfb_protocol::messages::server::ServerCutText::read_from(&mut input).await {
+                                    use bytes::Bytes;
+                                    let _ = events.send(ServerEvent::ServerCutText { text: Bytes::from(cut.text) });
+                                }
+                                let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            }
+                            150 => {
+                                // EndOfContinuousUpdates (no payload)
+                                let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            }
+                            248 => {
+                                // ServerFence: skip payload
+                                let _ = input.skip(3).await;
+                                if let Ok(_flags) = input.read_u32().await {
+                                    if let Ok(len) = input.read_u8().await {
+                                        let mut buf = vec![0u8; len as usize];
+                                        let _ = input.read_bytes(&mut buf).await;
+                                    }
+                                }
+                                let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            }
+                            _ => {
+                                // Ignore unknown
+                            }
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        tracing::debug!("Drain: read error: {}", e);
+                        break 'drain;
+                    }
+                    Err(_) => {
+                        // No message within 200ms
+                        break 'drain;
+                    }
+                }
+            }
         }
 
         tracing::info!("Event loop task started, entering main loop");
@@ -146,18 +228,30 @@ pub async fn spawn(
                                     // SetColorMapEntries - currently ignored
                                     // We still need to consume the payload to stay in sync
                                     let _ = rfb_protocol::messages::server::SetColorMapEntries::read_from(&mut input).await;
+                                    // Nudge the server
+                                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                                    last_request = Instant::now();
                                 }
                                 2 => {
                                     let _ = events.send(ServerEvent::Bell);
+                                    // Nudge the server
+                                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                                    last_request = Instant::now();
                                 }
                                 3 => {
                                     if let Ok(cut) = rfb_protocol::messages::server::ServerCutText::read_from(&mut input).await {
                                         use bytes::Bytes;
                                         let _ = events.send(ServerEvent::ServerCutText { text: Bytes::from(cut.text) });
                                     }
+                                    // Nudge the server
+                                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                                    last_request = Instant::now();
                                 }
                                 150 => {
                                     // EndOfContinuousUpdates (server->client). No payload.
+                                    // Nudge the server
+                                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                                    last_request = Instant::now();
                                 }
                                 248 => {
                                     // ServerFence: read padding(3), flags(u32), len(u8), payload[len]
@@ -173,6 +267,9 @@ pub async fn spawn(
                                             let _ = input.read_bytes(&mut buf).await;
                                         }
                                     }
+                                    // Nudge the server
+                                    let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                                    last_request = Instant::now();
                                 }
                                 _ => {
                                     // Unknown or unsupported server message: ignore to keep connection alive
@@ -207,8 +304,11 @@ pub async fn spawn(
                 }
 
                 _ = periodic.tick() => {
-                    // If no update in the last second, request a full non-incremental refresh
-                    if last_update.elapsed() > std::time::Duration::from_secs(1) {
+                    // Aggressive full refresh during first 2s after connect
+                    if start_time.elapsed() < std::time::Duration::from_secs(2) {
+                        tracing::debug!("Periodic FULL FramebufferUpdateRequest (startup burst)");
+                        let _ = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await;
+                    } else if last_update.elapsed() > std::time::Duration::from_secs(1) {
                         tracing::debug!("Periodic FULL FramebufferUpdateRequest (no updates in 1s)");
                         let _ = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await;
                     } else {

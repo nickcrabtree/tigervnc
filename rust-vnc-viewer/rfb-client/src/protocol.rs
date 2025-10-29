@@ -119,6 +119,13 @@ pub async fn write_set_pixel_format<W: AsyncWrite + Unpin>(
     msg
         .write_to(outstream)
         .map_err(|e| RfbClientError::Protocol(format!("failed to write SetPixelFormat: {}", e)))?;
+    tracing::debug!("Wrote SetPixelFormat (bpp={}, depth={}, shifts r/g/b={} {}/{}/{})",
+        msg.pixel_format.bits_per_pixel,
+        msg.pixel_format.depth,
+        msg.pixel_format.red_shift,
+        msg.pixel_format.green_shift,
+        msg.pixel_format.blue_shift,
+        0);
     outstream
         .flush()
         .await
@@ -131,6 +138,7 @@ pub async fn write_set_encodings<W: AsyncWrite + Unpin>(
     encodings: Vec<i32>,
 ) -> Result<(), RfbClientError> {
     let msg = msg::SetEncodings { encodings };
+    tracing::debug!("Wrote SetEncodings: {:?}", msg.encodings);
     msg.write_to(outstream);
     outstream
         .flush()
@@ -154,6 +162,8 @@ pub async fn write_framebuffer_update_request<W: AsyncWrite + Unpin>(
         width,
         height,
     };
+    tracing::debug!("Wrote FramebufferUpdateRequest inc={} rect=({},{} {}x{})",
+        incremental, x, y, width, height);
     msg.write_to(outstream);
     outstream
         .flush()

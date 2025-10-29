@@ -318,19 +318,42 @@ impl Config {
             encs.push(rfb_protocol::messages::types::ENCODING_PERSISTENT_CACHED_RECT_INIT);
         }
 
+        // Match C++ viewer pseudo-encodings ordering for maximum compatibility
+        // Cursor with alpha, VMware cursor, Cursor, XCursor
+        encs.push(-314);
+        encs.push(0x574d5664); // 1464686180 VMware cursor
+        encs.push(-239);
+        encs.push(-240);
+        // VMware cursor position, DesktopSize, ExtendedDesktopSize, LED state, VMware LED state
+        encs.push(0x574d5666); // 1464686182
+        encs.push(-223);
+        encs.push(-308);
+        encs.push(-261);
+        encs.push(0x574d5668); // 1464686184
+        // Desktop name, LastRect, ExtendedClipboard, ContinuousUpdates, Fence, QEMUKeyEvent, ExtendedMouseButtons
+        encs.push(-307);
+        encs.push(-224);
+        encs.push(-1063131698); // 0xC0A1E5CE
+        encs.push(-313);
+        encs.push(-312);
+        encs.push(-258);
+        encs.push(-316);
+
         if self.content_cache.enabled {
-            // Pseudo capabilities FIRST so server detects support immediately
-            encs.push(rfb_protocol::messages::types::PSEUDO_ENCODING_CONTENT_CACHE);
-            // ContentCache rectangle encodings preferred ahead of standard ones
-            encs.push(rfb_protocol::messages::types::ENCODING_CACHED_RECT);
-            encs.push(rfb_protocol::messages::types::ENCODING_CACHED_RECT_INIT);
+            // C++ viewer advertises ContentCache after common pseudos
+            encs.push(rfb_protocol::messages::types::PSEUDO_ENCODING_CONTENT_CACHE); // -320
+            // ContentCache rectangle encodings
+            encs.push(rfb_protocol::messages::types::ENCODING_CACHED_RECT);        // 100
+            encs.push(rfb_protocol::messages::types::ENCODING_CACHED_RECT_INIT);   // 101
         }
-        
-        // Append standard encodings in configured order
+
+        // Append standard encodings in configured order (tight priority like C++)
         encs.extend(standard);
-        // Common pseudo-encodings used by TigerVNC
-        encs.push(rfb_encodings::ENCODING_LAST_RECT);
-        encs.push(rfb_encodings::ENCODING_DESKTOP_SIZE);
+
+        // Tight compression/quality hints (optional)
+        encs.push(-254); // CompressLevel 2
+        encs.push(-24);  // QualityLevel 8
+
         encs
     }
 }
