@@ -9,6 +9,7 @@
 //! policy and returning rich `RfbClientError` values.
 
 use crate::errors::RfbClientError;
+use crate::protocol_trace;
 use rfb_protocol::io::{RfbInStream, RfbOutStream};
 use rfb_protocol::messages as msg;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -40,21 +41,23 @@ pub enum IncomingMessage {
 pub async fn read_message_type<R: AsyncRead + Unpin>(
     instream: &mut RfbInStream<R>,
 ) -> Result<u8, RfbClientError> {
-    instream
+    let t = instream
         .read_u8()
         .await
-        .map_err(|e| RfbClientError::Protocol(format!("failed to read message type: {}", e)))
+        .map_err(|e| RfbClientError::Protocol(format!("failed to read message type: {}", e)))?;
+    if protocol_trace::enabled() { protocol_trace::in_msg("ServerMessageType", &format!("type={}", t)); }
+    Ok(t)
 }
 
 pub async fn read_server_message<R: AsyncRead + Unpin>(
     instream: &mut RfbInStream<R>,
 ) -> Result<IncomingMessage, RfbClientError> {
     tracing::trace!("Waiting for server message...");
-    let message_type = instream
+let message_type = instream
         .read_u8()
         .await
         .map_err(|e| RfbClientError::Protocol(format!("failed to read message type: {}", e)))?;
-    
+    if protocol_trace::enabled() { protocol_trace::in_msg("ServerMessageType", &format!("type={}", message_type)); }
     tracing::debug!("Received server message type: {}", message_type);
 
     match message_type {
@@ -64,6 +67,7 @@ pub async fn read_server_message<R: AsyncRead + Unpin>(
             let parse_future = msg::FramebufferUpdate::read_from(instream);
             let result = match tokio::time::timeout(std::time::Duration::from_secs(30), parse_future).await {
                 Ok(Ok(fb_update)) => {
+                    if protocol_trace::enabled() { protocol_trace::in_msg("FramebufferUpdate", &format!("rects={}", fb_update.rectangles.len())); }
                     tracing::debug!("FramebufferUpdate parsed successfully with {} rectangles", fb_update.rectangles.len());
                     Ok(IncomingMessage::FramebufferUpdate(fb_update))
                 },
@@ -80,15 +84,15 @@ pub async fn read_server_message<R: AsyncRead + Unpin>(
         }
         1 => msg::SetColorMapEntries::read_from(instream)
             .await
-            .map(IncomingMessage::SetColorMapEntries)
+            .map(|m| { if protocol_trace::enabled() { protocol_trace::in_msg("SetColorMapEntries", &format!("first={} colors={}", m.first_color, m.colors.len())); } IncomingMessage::SetColorMapEntries(m) })
             .map_err(|e| RfbClientError::Protocol(format!("failed to read SetColorMapEntries: {}", e))),
         2 => msg::Bell::read_from(instream)
             .await
-            .map(IncomingMessage::Bell)
+            .map(|m| { if protocol_trace::enabled() { protocol_trace::in_msg("Bell", ""); } IncomingMessage::Bell(m) })
             .map_err(|e| RfbClientError::Protocol(format!("failed to read Bell: {}", e))),
         3 => msg::ServerCutText::read_from(instream)
             .await
-            .map(IncomingMessage::ServerCutText)
+            .map(|m| { if protocol_trace::enabled() { protocol_trace::in_msg("ServerCutText", &format!("len={}", m.text.len())); } IncomingMessage::ServerCutText(m) })
             .map_err(|e| RfbClientError::Protocol(format!("failed to read ServerCutText: {}", e))),
         other => Err(RfbClientError::UnexpectedMessage(format!(
             "unsupported server message type: {}",
@@ -103,6 +107,7 @@ pub async fn write_client_init<W: AsyncWrite + Unpin>(
     shared: bool,
 ) -> Result<(), RfbClientError> {
     let msg = msg::ClientInit { shared };
+    if protocol_trace::enabled() { protocol_trace::out_msg("ClientInit", &format!("shared={}", shared)); }
     msg.write_to(outstream);
     outstream
         .flush()
@@ -116,6 +121,19 @@ pub async fn write_set_pixel_format<W: AsyncWrite + Unpin>(
     pixel_format: msg::PixelFormat,
 ) -> Result<(), RfbClientError> {
     let msg = msg::SetPixelFormat { pixel_format };
+    if protocol_trace::enabled() {
+        protocol_trace::out_msg(
+            "SetPixelFormat",
+            &format!(
+                "bpp={} depth={} shifts={}/{}/{}",
+                msg.pixel_format.bits_per_pixel,
+                msg.pixel_format.depth,
+                msg.pixel_format.red_shift,
+                msg.pixel_format.green_shift,
+                msg.pixel_format.blue_shift
+            ),
+        );
+    }
     msg
         .write_to(outstream)
         .map_err(|e| RfbClientError::Protocol(format!("failed to write SetPixelFormat: {}", e)))?;
@@ -138,6 +156,7 @@ pub async fn write_set_encodings<W: AsyncWrite + Unpin>(
     encodings: Vec<i32>,
 ) -> Result<(), RfbClientError> {
     let msg = msg::SetEncodings { encodings };
+    if protocol_trace::enabled() { protocol_trace::out_msg("SetEncodings", &format!("n={}", msg.encodings.len())); }
     tracing::debug!("Wrote SetEncodings: {:?}", msg.encodings);
     msg.write_to(outstream);
     outstream
@@ -162,6 +181,7 @@ pub async fn write_framebuffer_update_request<W: AsyncWrite + Unpin>(
         width,
         height,
     };
+    if protocol_trace::enabled() { protocol_trace::out_msg("FramebufferUpdateRequest", &format!("inc={} rect=({},{} {}x{})", incremental, x, y, width, height)); }
     tracing::debug!("Wrote FramebufferUpdateRequest inc={} rect=({},{} {}x{})",
         incremental, x, y, width, height);
     msg.write_to(outstream);
@@ -178,6 +198,7 @@ pub async fn write_key_event<W: AsyncWrite + Unpin>(
     down: bool,
 ) -> Result<(), RfbClientError> {
     let msg = msg::KeyEvent { down, key };
+    if protocol_trace::enabled() { protocol_trace::out_msg("KeyEvent", &format!("down={} key=0x{:X}", down, key)); }
     msg.write_to(outstream);
     outstream
         .flush()
@@ -193,6 +214,7 @@ pub async fn write_pointer_event<W: AsyncWrite + Unpin>(
     y: u16,
 ) -> Result<(), RfbClientError> {
     let msg = msg::PointerEvent { button_mask, x, y };
+    if protocol_trace::enabled() { protocol_trace::out_msg("PointerEvent", &format!("buttons=0x{:02X} pos=({}, {})", button_mask, x, y)); }
     msg.write_to(outstream);
     outstream
         .flush()
@@ -208,6 +230,7 @@ pub async fn write_client_cut_text<W: AsyncWrite + Unpin>(
     let msg = msg::ClientCutText {
         text: text.to_string(),
     };
+    if protocol_trace::enabled() { protocol_trace::out_msg("ClientCutText", &format!("len={}", msg.text.len())); }
     msg.write_to(outstream);
     outstream
         .flush()
@@ -225,6 +248,7 @@ pub async fn write_enable_continuous_updates<W: AsyncWrite + Unpin>(
     height: u16,
 ) -> Result<(), RfbClientError> {
     // Message type 150 (client -> server)
+    if protocol_trace::enabled() { protocol_trace::out_msg("EnableContinuousUpdates", &format!("enable={} rect=({},{} {}x{})", enable, x, y, width, height)); }
     outstream.write_u8(150);
     outstream.write_u8(if enable { 1 } else { 0 });
     outstream.write_u16(x);

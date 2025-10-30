@@ -96,6 +96,7 @@ mod connection;
 mod event_loop;
 mod framebuffer;
 mod protocol;
+mod protocol_trace;
 
 // Optional CLI support
 #[cfg(feature = "cli")]

@@ -3225,6 +3225,7 @@ dependencies = [
  "clap",
  "flume",
  "futures",
+ "once_cell",
  "parking_lot",
  "pretty_assertions",
  "rfb-common",
