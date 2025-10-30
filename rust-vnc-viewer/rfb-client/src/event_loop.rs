@@ -103,18 +103,15 @@ pub async fn spawn(
             return;
         }
 
-        // 3) Enable ContinuousUpdates (server-driven updates) over full framebuffer
-        // Matches C++ viewer behavior and helps drive higher update cadence
-        if let Err(e) = protocol::write_enable_continuous_updates(&mut output, true, 0, 0, fb_width, fb_height).await {
-            tracing::warn!("Failed to enable ContinuousUpdates: {}", e);
-        } else {
-            tracing::debug!("Enabled ContinuousUpdates over 0,0 {}x{}", fb_width, fb_height);
-        }
-
-        // 4) Request initial full framebuffer update
-        tracing::info!("Requesting initial framebuffer update: {}x{}", fb_width, fb_height);
+        // 3) Baseline: do NOT enable ContinuousUpdates yet.
+        // 4) Request two initial full framebuffer updates back-to-back (baseline handshake)
+        tracing::info!("Requesting initial FULL framebuffer updates (x2): {}x{}", fb_width, fb_height);
         if let Err(e) = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await {
-            tracing::error!("Failed to send FramebufferUpdateRequest: {}", e);
+            tracing::error!("Failed to send first FULL FramebufferUpdateRequest: {}", e);
+            return;
+        }
+        if let Err(e) = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await {
+            tracing::error!("Failed to send second FULL FramebufferUpdateRequest: {}", e);
             return;
         }
 
