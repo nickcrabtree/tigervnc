@@ -59,13 +59,11 @@ pub struct DisplayConfig {
 }
 
 fn default_encodings() -> Vec<i32> {
+    // Minimal, known-good baseline encodings: Raw(0), CopyRect(1), ZRLE(16)
     vec![
-        rfb_encodings::ENCODING_TIGHT,
-        rfb_encodings::ENCODING_ZRLE,
-        rfb_encodings::ENCODING_HEXTILE,
-        rfb_encodings::ENCODING_RRE,
-        rfb_encodings::ENCODING_COPY_RECT,
         rfb_encodings::ENCODING_RAW,
+        rfb_encodings::ENCODING_COPY_RECT,
+        rfb_encodings::ENCODING_ZRLE,
     ]
 }
 
@@ -155,7 +153,7 @@ fn default_jitter() -> f32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContentCacheConfig {
     /// Enable ContentCache protocol for bandwidth reduction.
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     pub enabled: bool,
     /// Maximum cache size in megabytes.
     #[serde(default = "default_cache_size_mb")]
@@ -186,6 +184,8 @@ fn default_min_rect_size() -> u32 {
 fn default_cleanup_threshold() -> f64 {
     0.8 // Start cleanup at 80% utilization
 }
+
+fn default_false() -> bool { false }
 
 /// PersistentCache configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -230,7 +230,7 @@ impl Default for Config {
                 jitter: default_jitter(),
             },
             content_cache: ContentCacheConfig {
-                enabled: default_true(),
+                enabled: default_false(),
                 size_mb: default_cache_size_mb(),
                 max_age_seconds: default_max_age_seconds(),
                 min_rect_size: default_min_rect_size(),
@@ -303,58 +303,16 @@ impl Config {
         Duration::from_millis(self.connection.timeout_ms)
     }
     
-    /// Returns the complete encodings list including ContentCache capabilities if enabled.
+    /// Returns the complete encodings list for baseline operation.
     #[must_use]
     pub fn effective_encodings(&self) -> Vec<i32> {
-        let mut standard = self.display.encodings.clone();
-        
-        // Build preferred order list
-        let mut encs: Vec<i32> = Vec::new();
-        
-        // PersistentCache preferred if enabled
-        if self.persistent_cache.enabled {
-            encs.push(rfb_protocol::messages::types::PSEUDO_ENCODING_PERSISTENT_CACHE);
-            encs.push(rfb_protocol::messages::types::ENCODING_PERSISTENT_CACHED_RECT);
-            encs.push(rfb_protocol::messages::types::ENCODING_PERSISTENT_CACHED_RECT_INIT);
-        }
-
-        // Match C++ viewer pseudo-encodings ordering for maximum compatibility
-        // Cursor with alpha, VMware cursor, Cursor, XCursor
-        encs.push(-314);
-        encs.push(0x574d5664); // 1464686180 VMware cursor
-        encs.push(-239);
-        encs.push(-240);
-        // VMware cursor position, DesktopSize, ExtendedDesktopSize, LED state, VMware LED state
-        encs.push(0x574d5666); // 1464686182
-        encs.push(-223);
-        encs.push(-308);
-        encs.push(-261);
-        encs.push(0x574d5668); // 1464686184
-        // Desktop name, LastRect, ExtendedClipboard, ContinuousUpdates, Fence, QEMUKeyEvent, ExtendedMouseButtons
-        encs.push(-307);
-        encs.push(-224);
-        encs.push(-1063131698); // 0xC0A1E5CE
-        encs.push(-313);
-        encs.push(-312);
-        encs.push(-258);
-        encs.push(-316);
-
-        if self.content_cache.enabled {
-            // C++ viewer advertises ContentCache after common pseudos
-            encs.push(rfb_protocol::messages::types::PSEUDO_ENCODING_CONTENT_CACHE); // -320
-            // ContentCache rectangle encodings
-            encs.push(rfb_protocol::messages::types::ENCODING_CACHED_RECT);        // 100
-            encs.push(rfb_protocol::messages::types::ENCODING_CACHED_RECT_INIT);   // 101
-        }
-
-        // Append standard encodings in configured order (tight priority like C++)
-        encs.extend(standard);
-
-        // Tight compression/quality hints (optional)
-        encs.push(-254); // CompressLevel 2
-        encs.push(-24);  // QualityLevel 8
-
-        encs
+        // Baseline: strictly minimal, known-good list
+        // Raw(0), CopyRect(1), ZRLE(16)
+        vec![
+            rfb_encodings::ENCODING_RAW,
+            rfb_encodings::ENCODING_COPY_RECT,
+            rfb_encodings::ENCODING_ZRLE,
+        ]
     }
 }
 
