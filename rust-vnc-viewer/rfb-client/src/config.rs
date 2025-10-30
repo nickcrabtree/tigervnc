@@ -394,10 +394,13 @@ mod tests {
     }
 
     #[test]
-    fn test_default_encodings() {
-        let encodings = default_encodings();
-        assert!(encodings.contains(&rfb_encodings::ENCODING_TIGHT));
-        assert!(encodings.contains(&rfb_encodings::ENCODING_RAW));
-        assert_eq!(*encodings.last().unwrap(), rfb_encodings::ENCODING_RAW);
+    fn test_effective_encodings_baseline() {
+        // Test baseline: minimal encodings (Raw, CopyRect, ZRLE)
+        let config = Config::default();
+        let encodings = config.effective_encodings();
+        assert_eq!(encodings.len(), 3);
+        assert_eq!(encodings[0], rfb_encodings::ENCODING_RAW);
+        assert_eq!(encodings[1], rfb_encodings::ENCODING_COPY_RECT);
+        assert_eq!(encodings[2], rfb_encodings::ENCODING_ZRLE);
     }
 }
