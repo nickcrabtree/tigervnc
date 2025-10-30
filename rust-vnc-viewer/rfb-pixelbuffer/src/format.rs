@@ -486,4 +486,170 @@ mod tests {
         let pixel = [0x00, 0x00, 0x00, 0x00];
         pf.to_rgb888(&pixel);
     }
+
+    // Critical stride calculation tests
+    // Per WARP.md: stride is in PIXELS, not bytes!
+
+    #[test]
+    fn test_stride_calculation_32bpp() {
+        let pf = PixelFormat::rgb888();
+        let width = 100;
+        let height = 50;
+        let stride = width; // Stride in pixels
+        let bytes_per_pixel = pf.bytes_per_pixel() as usize;
+
+        // CORRECT: multiply stride by bytes_per_pixel
+        let byte_length = height * stride * bytes_per_pixel;
+        assert_eq!(byte_length, 50 * 100 * 4);
+        assert_eq!(byte_length, 20000);
+
+        // This would be WRONG (caused critical bug):
+        // let wrong = height * stride;  // Missing bytes_per_pixel!
+    }
+
+    #[test]
+    fn test_stride_calculation_16bpp_rgb565() {
+        let pf = PixelFormat {
+            bits_per_pixel: 16,
+            depth: 16,
+            big_endian: false,
+            true_color: true,
+            red_max: 31,
+            green_max: 63,
+            blue_max: 31,
+            red_shift: 11,
+            green_shift: 5,
+            blue_shift: 0,
+        };
+
+        let width = 64;
+        let height = 64;
+        let stride = width;
+        let bytes_per_pixel = pf.bytes_per_pixel() as usize;
+
+        assert_eq!(bytes_per_pixel, 2);
+        let byte_length = height * stride * bytes_per_pixel;
+        assert_eq!(byte_length, 64 * 64 * 2);
+        assert_eq!(byte_length, 8192);
+    }
+
+    #[test]
+    fn test_stride_calculation_24bpp() {
+        let pf = PixelFormat {
+            bits_per_pixel: 24,
+            depth: 24,
+            big_endian: false,
+            true_color: true,
+            red_max: 255,
+            green_max: 255,
+            blue_max: 255,
+            red_shift: 16,
+            green_shift: 8,
+            blue_shift: 0,
+        };
+
+        let width = 100;
+        let height = 100;
+        let stride = width;
+        let bytes_per_pixel = pf.bytes_per_pixel() as usize;
+
+        assert_eq!(bytes_per_pixel, 3);
+        let byte_length = height * stride * bytes_per_pixel;
+        assert_eq!(byte_length, 100 * 100 * 3);
+        assert_eq!(byte_length, 30000);
+    }
+
+    #[test]
+    fn test_pixel_offset_calculation() {
+        let pf = PixelFormat::rgb888();
+        let stride = 1920; // Full HD width in pixels
+        let bytes_per_pixel = pf.bytes_per_pixel() as usize;
+
+        // Access pixel at (100, 50)
+        let x = 100usize;
+        let y = 50usize;
+
+        // CORRECT: (y * stride + x) * bytes_per_pixel
+        let byte_offset = (y * stride + x) * bytes_per_pixel;
+        assert_eq!(byte_offset, (50 * 1920 + 100) * 4);
+        assert_eq!(byte_offset, 384400);
+
+        // Row offset for y=50
+        let row_offset = y * stride * bytes_per_pixel;
+        assert_eq!(row_offset, 50 * 1920 * 4);
+        assert_eq!(row_offset, 384000);
+
+        // Column offset within row
+        let col_offset = x * bytes_per_pixel;
+        assert_eq!(col_offset, 100 * 4);
+        assert_eq!(col_offset, 400);
+
+        // Total = row + column
+        assert_eq!(byte_offset, row_offset + col_offset);
+    }
+
+    #[test]
+    fn test_rgb565_conversion_accuracy() {
+        // RGB565: 5 bits red, 6 bits green, 5 bits blue
+        let pf = PixelFormat {
+            bits_per_pixel: 16,
+            depth: 16,
+            big_endian: false,
+            true_color: true,
+            red_max: 31,   // 5 bits = max 31
+            green_max: 63, // 6 bits = max 63
+            blue_max: 31,  // 5 bits = max 31
+            red_shift: 11,
+            green_shift: 5,
+            blue_shift: 0,
+        };
+
+        // Test white (all max)
+        let white = [255, 255, 255, 255];
+        let encoded = pf.from_rgb888(white);
+        let decoded = pf.to_rgb888(&encoded);
+        assert_eq!(decoded, [255, 255, 255, 255]);
+
+        // Test black
+        let black = [0, 0, 0, 255];
+        let encoded = pf.from_rgb888(black);
+        let decoded = pf.to_rgb888(&encoded);
+        assert_eq!(decoded, [0, 0, 0, 255]);
+
+        // Test red (should use all 5 red bits)
+        let red = [255, 0, 0, 255];
+        let encoded = pf.from_rgb888(red);
+        let decoded = pf.to_rgb888(&encoded);
+        assert_eq!(decoded[0], 255); // Red channel preserved
+        assert_eq!(decoded[1], 0);   // Green zero
+        assert_eq!(decoded[2], 0);   // Blue zero
+        assert_eq!(decoded[3], 255); // Alpha always 255
+    }
+
+    #[test]
+    fn test_rgb24_big_endian_conversion() {
+        let pf = PixelFormat {
+            bits_per_pixel: 24,
+            depth: 24,
+            big_endian: true,
+            true_color: true,
+            red_max: 255,
+            green_max: 255,
+            blue_max: 255,
+            red_shift: 16,
+            green_shift: 8,
+            blue_shift: 0,
+        };
+
+        // Test conversion with big endian
+        let rgba = [0xAA, 0xBB, 0xCC, 0xFF];
+        let encoded = pf.from_rgb888(rgba);
+        assert_eq!(encoded.len(), 3);
+
+        // Value should be 0xAABBCC big-endian = [0xAA, 0xBB, 0xCC]
+        assert_eq!(encoded, vec![0xAA, 0xBB, 0xCC]);
+
+        let decoded = pf.to_rgb888(&encoded);
+        assert_eq!(decoded, [0xAA, 0xBB, 0xCC, 0xFF]);
+    }
 }
