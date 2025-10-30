@@ -234,18 +234,22 @@ pub async fn spawn(
                 last_heartbeat = Instant::now();
             }
             tracing::info!("MAIN: iter={} waiting for server message", iteration);
-            match tokio::time::timeout(std::time::Duration::from_millis(500), protocol::read_message_type(&mut input)).await {
+            // Baseline: read type byte, handle 0-3 only, fail on unknown
+            match tokio::time::timeout(std::time::Duration::from_millis(2000), protocol::read_message_type(&mut input)).await {
                 Ok(Ok(msg_type)) => {
                     tracing::info!("MAIN: got server message type {}", msg_type);
                     match msg_type {
                         0 => {
+                            // FramebufferUpdate: pipeline next incremental request first (at-most-one outstanding)
                             tracing::debug!("Pipelining incremental FramebufferUpdateRequest");
                             let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            last_request = Instant::now();
                             let damage = {
                                 let mut fb = framebuffer.lock().await;
                                 match fb.apply_update_stream(&mut input).await {
                                     Ok(d) => d,
                                     Err(e) => {
+                                        tracing::error!("Failed to decode FramebufferUpdate: {}", e);
                                         let _ = events.send(ServerEvent::Error { message: e.to_string() });
                                         let _ = events.send(ServerEvent::ConnectionClosed);
                                         break;
@@ -259,67 +263,59 @@ pub async fn spawn(
                             }
                         }
                         1 => {
-                            let _ = rfb_protocol::messages::server::SetColorMapEntries::read_from(&mut input).await;
-                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
-                            last_request = Instant::now();
+                            // SetColorMapEntries: read and discard (not used in true-color)
+                            if let Err(e) = rfb_protocol::messages::server::SetColorMapEntries::read_from(&mut input).await {
+                                tracing::error!("Failed to read SetColorMapEntries: {}", e);
+                                let _ = events.send(ServerEvent::Error { message: format!("SetColorMapEntries parse: {}", e) });
+                                let _ = events.send(ServerEvent::ConnectionClosed);
+                                break;
+                            }
                         }
                         2 => {
+                            // Bell: no body
                             let _ = events.send(ServerEvent::Bell);
-                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
-                            last_request = Instant::now();
                         }
                         3 => {
-                            if let Ok(cut) = rfb_protocol::messages::server::ServerCutText::read_from(&mut input).await {
-                                use bytes::Bytes;
-                                let _ = events.send(ServerEvent::ServerCutText { text: Bytes::from(cut.text) });
-                            }
-                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
-                            last_request = Instant::now();
-                        }
-                        150 => {
-                            tracing::info!("MAIN: received EndOfContinuousUpdates (150) -> re-enabling CU and requesting FULL+incremental");
-                            let _ = protocol::write_enable_continuous_updates(&mut output, true, 0, 0, fb_width, fb_height).await;
-                            let _ = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await;
-                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
-                            last_request = Instant::now();
-                        }
-                        248 => {
-                            tracing::info!("MAIN: received ServerFence (248) -> re-enabling CU and requesting FULL+incremental");
-                            use tokio::io::AsyncReadExt as _;
-                            let _ = input.skip(3).await;
-                            if let Ok(_flags) = input.read_u32().await {
-                                if let Ok(len) = input.read_u8().await {
-                                    let mut buf = vec![0u8; len as usize];
-                                    let _ = input.read_bytes(&mut buf).await;
+                            // ServerCutText
+                            match rfb_protocol::messages::server::ServerCutText::read_from(&mut input).await {
+                                Ok(cut) => {
+                                    use bytes::Bytes;
+                                    let _ = events.send(ServerEvent::ServerCutText { text: Bytes::from(cut.text) });
+                                }
+                                Err(e) => {
+                                    tracing::error!("Failed to read ServerCutText: {}", e);
+                                    let _ = events.send(ServerEvent::Error { message: format!("ServerCutText parse: {}", e) });
+                                    let _ = events.send(ServerEvent::ConnectionClosed);
+                                    break;
                                 }
                             }
-                            let _ = protocol::write_enable_continuous_updates(&mut output, true, 0, 0, fb_width, fb_height).await;
-                            let _ = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await;
-                            let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
-                            last_request = Instant::now();
                         }
-                        _ => {
-                            tracing::debug!("Ignoring unsupported server message type: {}", msg_type);
+                        other => {
+                            // Baseline: unknown message types are a fatal error (no CU/Fence)
+                            tracing::error!("Unexpected server message type {} in baseline mode (no CU/Fence/Cache)", other);
+                            let _ = events.send(ServerEvent::Error { message: format!("Unsupported message type {}", other) });
+                            let _ = events.send(ServerEvent::ConnectionClosed);
+                            break;
                         }
                     }
                 }
                 Ok(Err(e)) => {
-                    tracing::info!("MAIN: exiting on read error: {}", e);
+                    tracing::error!("MAIN: read error: {}", e);
                     let _ = events.send(ServerEvent::Error { message: e.to_string() });
                     let _ = events.send(ServerEvent::ConnectionClosed);
                     break;
                 }
                 Err(_elapsed) => {
-                    tracing::info!("MAIN: timeout 500ms -> sending {} FBU req", if last_update.elapsed() > std::time::Duration::from_secs(1) { "FULL" } else { "incremental" });
-                    let _ = protocol::write_framebuffer_update_request(
-                        &mut output,
-                        !(last_update.elapsed() > std::time::Duration::from_secs(1)),
-                        0, 0, fb_width, fb_height
-                    ).await;
-                    last_request = Instant::now();
+                    // Timeout (2s): watchdog; send one incremental request if idle
+                    if last_update.elapsed() > std::time::Duration::from_secs(2) {
+                        tracing::warn!("MAIN: watchdog timeout (no FBU in 2s) -> sending incremental request");
+                        let _ = protocol::write_framebuffer_update_request(&mut output, true, 0, 0, fb_width, fb_height).await;
+                        last_request = Instant::now();
+                    }
+                    // Handle commands from app
                     if let Ok(command) = commands.try_recv() {
                         if let Err(e) = handle_command(&mut output, &events, command).await {
-                            tracing::info!("MAIN: exiting on command error: {}", e);
+                            tracing::error!("MAIN: command error: {}", e);
                             let _ = events.send(ServerEvent::Error { message: e.to_string() });
                             let _ = events.send(ServerEvent::ConnectionClosed);
                             break;
