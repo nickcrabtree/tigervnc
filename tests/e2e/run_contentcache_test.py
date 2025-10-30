@@ -109,6 +109,8 @@ def main():
                        help='Window manager (default: openbox)')
     parser.add_argument('--verbose', action='store_true',
                        help='Verbose output')
+    parser.add_argument('--animated', action='store_true',
+                        help='Use animated scenario (xclock) to force frequent updates')
     parser.add_argument('--skip-rust', action='store_true',
                        help='Skip Rust viewer run (baseline only)')
     parser.add_argument('--server-modes', default='auto',
@@ -269,7 +271,10 @@ def main():
             
             # 9. Run scenario for C++
             try:
-                stats = runner.cache_hits_minimal(duration_sec=args.duration)
+                if args.animated:
+                    stats = runner.cache_hits_with_clock(duration_sec=args.duration)
+                else:
+                    stats = runner.cache_hits_minimal(duration_sec=args.duration)
                 print(f"  Scenario completed: {stats['windows_opened']} windows, {stats['commands_typed']} commands")
             except Exception as e:
                 print(f"\n✗ FAIL: Scenario execution failed: {e}")
@@ -319,7 +324,10 @@ def main():
                 
                 # 13. Replay scenario for Rust
                 try:
-                    stats = runner.cache_hits_minimal(duration_sec=args.duration)
+                    if args.animated:
+                        stats = runner.cache_hits_with_clock(duration_sec=args.duration)
+                    else:
+                        stats = runner.cache_hits_minimal(duration_sec=args.duration)
                     print(f"  Scenario completed: {stats['windows_opened']} windows, {stats['commands_typed']} commands")
                 except Exception as e:
                     print(f"\n✗ FAIL: Scenario execution failed: {e}")

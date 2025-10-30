@@ -53,3 +53,6 @@ pretty_assertions = "1.4"
 [features]
 default = []
 cli = ["dep:clap"]
+# Debug-only feature to parse server messages with high-level API in main loop
+# instead of byte-type path; use for diagnostics only.
+debug_read_server_message = []
