@@ -39,6 +39,9 @@ pub mod client;
 pub mod server;
 pub mod types;
 
+#[cfg(test)]
+mod proptest_framing;
+
 // Re-export commonly used types
 pub use types::{
     PixelFormat, Rectangle, ENCODING_CACHED_RECT, ENCODING_CACHED_RECT_INIT, ENCODING_COPYRECT,

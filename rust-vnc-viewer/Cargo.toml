@@ -63,6 +63,9 @@ once_cell = "1.19"
 bitflags = "2.4"
 num_cpus = "1.16"
 
+# Testing
+proptest = "1.4"
+
 # Internal dependencies
 rfb-common = { path = "rfb-common" }
 rfb-pixelbuffer = { path = "rfb-pixelbuffer" }
