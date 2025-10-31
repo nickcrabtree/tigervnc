@@ -110,9 +110,9 @@
 
 use crate::{Decoder, MutablePixelBuffer, PixelFormat, Rectangle, RfbInStream, ENCODING_ZRLE};
 use anyhow::{anyhow, bail, Context, Result};
-use flate2::read::ZlibDecoder;
+use flate2::{Decompress, FlushDecompress};
 use rfb_common::Rect;
-use std::io::Read;
+use std::sync::Mutex;
 use tokio::io::AsyncRead;
 
 /// ZRLE tile size (64x64 pixels, smaller at rectangle edges).
@@ -130,23 +130,48 @@ const MAX_PALETTE_SIZE: u8 = 127;
 ///
 /// # Zlib Stream
 ///
-/// Each rectangle contains a fresh zlib stream (with header). The stream is stateless -
-/// each rectangle is decompressed independently.
+/// **Important**: ZRLE uses a CONTINUOUS zlib stream across multiple rectangles within
+/// the same FramebufferUpdate message. Only the first rectangle starts with a zlib header (0x78);
+/// subsequent rectangles contain raw deflate continuation data. The zlib inflater state
+/// persists across rectangles and is only reset when the decoder is reset or dropped.
+///
+/// This matches the C++ TigerVNC implementation where `rdr::ZlibInStream zis` is a member
+/// variable that maintains state across multiple `decodeRect` calls.
 ///
 /// # Example
 ///
 /// ```no_run
 /// # use rfb_encodings::{Decoder, ZRLEDecoder, ENCODING_ZRLE};
-/// let decoder = ZRLEDecoder::default();
+/// let decoder = ZRLEDecoder::new();
 /// assert_eq!(decoder.encoding_type(), ENCODING_ZRLE);
 /// ```
-#[derive(Default)]
-pub struct ZRLEDecoder;
+pub struct ZRLEDecoder {
+    /// Zlib decompressor state that persists across rectangles within the same FBU.
+    /// Uses Mutex for interior mutability and thread safety since Decoder::decode takes &self.
+    inflater: Mutex<Decompress>,
+}
+
+impl Default for ZRLEDecoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ZRLEDecoder {
-    /// Create a new ZRLE decoder.
+    /// Create a new ZRLE decoder with a fresh zlib inflater.
     pub fn new() -> Self {
-        Self
+        Self {
+            inflater: Mutex::new(Decompress::new(true)), // true = zlib wrapper
+        }
+    }
+
+    /// Reset the zlib inflater state.
+    ///
+    /// This should be called at the start of each FramebufferUpdate message to prepare
+    /// for a new zlib stream with header. The inflater state persists across rectangles
+    /// within a single FBU.
+    pub fn reset(&self) {
+        self.inflater.lock().unwrap().reset(true); // true = zlib wrapper
     }
 }
 
@@ -240,24 +265,73 @@ impl Decoder for ZRLEDecoder {
 }
 
 impl ZRLEDecoder {
-    /// Decompress zlib-compressed data.
+    /// Decompress zlib-compressed data using the persistent inflater.
     ///
-    /// Uses the high-level ZlibDecoder from flate2 to decompress the data.
-    /// Each ZRLE rectangle contains a complete, independent zlib stream.
+    /// This method uses the inflater state maintained across rectangles within a single FBU.
+    /// The first rectangle should have a zlib header (0x78); subsequent rectangles are
+    /// raw deflate continuation data. The inflater state carries over automatically.
     fn decompress_zlib(&self, compressed: &[u8]) -> Result<Vec<u8>> {
-        let mut decoder = ZlibDecoder::new(compressed);
         let mut decompressed = Vec::new();
+        let mut inflater = self.inflater.lock().unwrap();
         
-        decoder
-            .read_to_end(&mut decompressed)
-            .with_context(|| {
-                format!(
-                    "ZRLE: zlib decompression failed (input {} bytes starting with {:02x?}, output {} bytes so far)",
-                    compressed.len(),
-                    &compressed[..compressed.len().min(16)],
-                    decompressed.len()
+        // Process all input bytes
+        let mut in_pos = 0;
+        let mut out_buf = vec![0u8; 64 * 1024]; // 64KB output buffer
+        
+        loop {
+            let before_in = inflater.total_in();
+            let before_out = inflater.total_out();
+            
+            let status = inflater
+                .decompress(
+                    &compressed[in_pos..],
+                    &mut out_buf,
+                    FlushDecompress::Sync,
                 )
-            })?;
+                .with_context(|| {
+                    format!(
+                        "ZRLE: zlib decompression failed (input {} bytes at offset {}, first 16 bytes: {:02x?})",
+                        compressed.len(),
+                        in_pos,
+                        &compressed[..compressed.len().min(16)]
+                    )
+                })?;
+            
+            let consumed = (inflater.total_in() - before_in) as usize;
+            let produced = (inflater.total_out() - before_out) as usize;
+            
+            in_pos += consumed;
+            decompressed.extend_from_slice(&out_buf[..produced]);
+            
+            // Check if we're done
+            if in_pos >= compressed.len() {
+                break;
+            }
+            
+            // Check for unexpected status
+            match status {
+                flate2::Status::Ok => continue,
+                flate2::Status::BufError => {
+                    // Need more output space, continue with fresh buffer
+                    continue;
+                }
+                flate2::Status::StreamEnd => {
+                    // Stream ended but we have more input - this shouldn't happen within one rectangle
+                    tracing::warn!(
+                        "ZRLE: zlib stream ended early, consumed {}/{} bytes",
+                        in_pos,
+                        compressed.len()
+                    );
+                    break;
+                }
+            }
+        }
+        
+        tracing::trace!(
+            "ZRLE: decompressed {} -> {} bytes",
+            compressed.len(),
+            decompressed.len()
+        );
         
         Ok(decompressed)
     }
