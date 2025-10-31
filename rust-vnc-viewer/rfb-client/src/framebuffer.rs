@@ -159,6 +159,22 @@ impl Framebuffer {
         Self { buffer, server_pixel_format, registry: reg }
     }
 
+    /// Create a new framebuffer with both ContentCache and PersistentCache support.
+    pub fn with_both_caches(
+        width: u16,
+        height: u16,
+        server_pixel_format: ServerPixelFormat,
+        ccache: Arc<Mutex<ContentCache>>,
+        pcache: Arc<Mutex<enc::PersistentClientCache>>,
+    ) -> Self {
+        let local_format = LocalPixelFormat::rgb888();
+        let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
+        let mut reg = DecoderRegistry::with_content_cache(ccache);
+        reg.register(DecoderEntry::PersistentCachedRect(enc::PersistentCachedRectDecoder::new(pcache.clone())));
+        reg.register(DecoderEntry::PersistentCachedRectInit(enc::PersistentCachedRectInitDecoder::new(pcache)));
+        Self { buffer, server_pixel_format, registry: reg }
+    }
+
     /// Returns the current dimensions.
     pub fn size(&self) -> (u16, u16) {
         let (w, h) = self.buffer.dimensions();

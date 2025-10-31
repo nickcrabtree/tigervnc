@@ -153,7 +153,7 @@ fn default_jitter() -> f32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContentCacheConfig {
     /// Enable ContentCache protocol for bandwidth reduction.
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub enabled: bool,
     /// Maximum cache size in megabytes.
     #[serde(default = "default_cache_size_mb")]
@@ -230,14 +230,14 @@ impl Default for Config {
                 jitter: default_jitter(),
             },
             content_cache: ContentCacheConfig {
-                enabled: default_false(),
+                enabled: default_true(),
                 size_mb: default_cache_size_mb(),
                 max_age_seconds: default_max_age_seconds(),
                 min_rect_size: default_min_rect_size(),
                 cleanup_threshold: default_cleanup_threshold(),
             },
             persistent_cache: PersistentCacheConfig {
-                enabled: false,
+                enabled: true,
                 size_mb: default_persistent_cache_size_mb(),
             },
         }
@@ -303,16 +303,28 @@ impl Config {
         Duration::from_millis(self.connection.timeout_ms)
     }
     
-    /// Returns the complete encodings list for baseline operation.
+    /// Returns the complete encodings list including cache protocols if enabled.
     #[must_use]
     pub fn effective_encodings(&self) -> Vec<i32> {
-        // Baseline: strictly minimal, known-good list
-        // Raw(0), CopyRect(1), ZRLE(16)
-        vec![
+        let mut encodings = vec![
             rfb_encodings::ENCODING_RAW,
             rfb_encodings::ENCODING_COPY_RECT,
             rfb_encodings::ENCODING_ZRLE,
-        ]
+        ];
+        
+        // Add ContentCache encodings if enabled
+        if self.content_cache.enabled {
+            encodings.push(rfb_encodings::ENCODING_CACHED_RECT);
+            encodings.push(rfb_encodings::ENCODING_CACHED_RECT_INIT);
+        }
+        
+        // Add PersistentCache encodings if enabled
+        if self.persistent_cache.enabled {
+            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT);
+            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT_INIT);
+        }
+        
+        encodings
     }
 }
 
@@ -394,13 +406,31 @@ mod tests {
     }
 
     #[test]
-    fn test_effective_encodings_baseline() {
-        // Test baseline: minimal encodings (Raw, CopyRect, ZRLE)
+    fn test_effective_encodings_with_caches_enabled() {
+        // Default now enables ContentCache and PersistentCache; verify ordering
         let config = Config::default();
         let encodings = config.effective_encodings();
-        assert_eq!(encodings.len(), 3);
+        assert_eq!(encodings.len(), 7);
         assert_eq!(encodings[0], rfb_encodings::ENCODING_RAW);
         assert_eq!(encodings[1], rfb_encodings::ENCODING_COPY_RECT);
         assert_eq!(encodings[2], rfb_encodings::ENCODING_ZRLE);
+        assert_eq!(encodings[3], rfb_encodings::ENCODING_CACHED_RECT);
+        assert_eq!(encodings[4], rfb_encodings::ENCODING_CACHED_RECT_INIT);
+        assert_eq!(encodings[5], rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT);
+        assert_eq!(encodings[6], rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT_INIT);
+    }
+
+    #[test]
+    fn test_effective_encodings_no_caches() {
+        // When caches are disabled, we should only advertise the baseline 3 encodings
+        let mut config = Config::default();
+        config.content_cache.enabled = false;
+        config.persistent_cache.enabled = false;
+        let encodings = config.effective_encodings();
+        assert_eq!(encodings, vec![
+            rfb_encodings::ENCODING_RAW,
+            rfb_encodings::ENCODING_COPY_RECT,
+            rfb_encodings::ENCODING_ZRLE,
+        ]);
     }
 }

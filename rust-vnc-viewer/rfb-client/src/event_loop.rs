@@ -33,7 +33,14 @@ pub async fn spawn(
     let pixel_format = conn.server_init.pixel_format.clone();
 
     // Initialize shared framebuffer with server pixel format and optional caches
-    let framebuffer = if config.persistent_cache.enabled {
+    let framebuffer = if config.persistent_cache.enabled && config.content_cache.enabled {
+        // Both caches enabled - need custom registry
+        let pcache = Arc::new(Mutex::new(rfb_encodings::PersistentClientCache::new(config.persistent_cache.size_mb)));
+        let ccache = Arc::new(Mutex::new(ContentCache::new(config.content_cache.size_mb)));
+        Arc::new(tokio::sync::Mutex::new(
+            Framebuffer::with_both_caches(width, height, pixel_format.clone(), ccache, pcache)
+        ))
+    } else if config.persistent_cache.enabled {
         let pcache = Arc::new(Mutex::new(rfb_encodings::PersistentClientCache::new(config.persistent_cache.size_mb)));
         Arc::new(tokio::sync::Mutex::new(
             Framebuffer::with_persistent_cache(width, height, pixel_format.clone(), pcache)
