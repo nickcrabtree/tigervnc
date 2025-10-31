@@ -110,9 +110,9 @@
 
 use crate::{Decoder, MutablePixelBuffer, PixelFormat, Rectangle, RfbInStream, ENCODING_ZRLE};
 use anyhow::{anyhow, bail, Context, Result};
-use flate2::{Decompress, FlushDecompress, Status};
+use flate2::read::ZlibDecoder;
 use rfb_common::Rect;
-use std::sync::Mutex;
+use std::io::Read;
 use tokio::io::AsyncRead;
 
 /// ZRLE tile size (64x64 pixels, smaller at rectangle edges).
@@ -130,8 +130,8 @@ const MAX_PALETTE_SIZE: u8 = 127;
 ///
 /// # Zlib Stream
 ///
-/// Each rectangle contains a fresh zlib stream (with header). The stream is reset
-/// per rectangle, not preserved across updates.
+/// Each rectangle contains a fresh zlib stream (with header). The stream is stateless -
+/// each rectangle is decompressed independently.
 ///
 /// # Example
 ///
@@ -140,18 +140,13 @@ const MAX_PALETTE_SIZE: u8 = 127;
 /// let decoder = ZRLEDecoder::default();
 /// assert_eq!(decoder.encoding_type(), ENCODING_ZRLE);
 /// ```
-pub struct ZRLEDecoder {
-    /// Zlib decompressor state. Uses Mutex for thread-safe interior mutability since
-    /// decode() takes &self but needs to reset decompressor per rectangle.
-    inflater: Mutex<Decompress>,
-}
+#[derive(Default)]
+pub struct ZRLEDecoder;
 
-impl Default for ZRLEDecoder {
-    fn default() -> Self {
-        Self {
-            // zlib format (with header), not raw deflate
-            inflater: Mutex::new(Decompress::new(true)),
-        }
+impl ZRLEDecoder {
+    /// Create a new ZRLE decoder.
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -218,40 +213,23 @@ impl Decoder for ZRLEDecoder {
 impl ZRLEDecoder {
     /// Decompress zlib-compressed data.
     ///
-    /// Resets the decompressor state and inflates the entire input.
+    /// Uses the high-level ZlibDecoder from flate2 to decompress the data.
+    /// Each ZRLE rectangle contains a complete, independent zlib stream.
     fn decompress_zlib(&self, compressed: &[u8]) -> Result<Vec<u8>> {
-        let mut inflater = self.inflater.lock().unwrap();
-
-        // Reset decompressor for fresh rectangle
-        inflater.reset(true);
-
-        // Start with reasonable buffer size, grow as needed
-        let mut output = vec![0u8; compressed.len() * 4];
-
-        loop {
-            let _before_in = inflater.total_in();
-            let before_out = inflater.total_out();
-
-            let status = inflater
-                .decompress(compressed, &mut output[before_out as usize..], FlushDecompress::Finish)
-                .context("ZRLE: zlib decompress error")?;
-
-            match status {
-                Status::StreamEnd => {
-                    output.truncate(inflater.total_out() as usize);
-                    return Ok(output);
-                }
-                Status::Ok => {
-                    // Need more output space
-                    let new_size = output.len() * 2;
-                    output.resize(new_size, 0);
-                    continue;
-                }
-                Status::BufError => {
-                    bail!("ZRLE: zlib BufError (need more input or output space)");
-                }
-            }
-        }
+        let mut decoder = ZlibDecoder::new(compressed);
+        let mut decompressed = Vec::new();
+        
+        decoder
+            .read_to_end(&mut decompressed)
+            .with_context(|| {
+                format!(
+                    "ZRLE: zlib decompression failed (input {} bytes, output {} bytes)",
+                    compressed.len(),
+                    decompressed.len()
+                )
+            })?;
+        
+        Ok(decompressed)
     }
 
     /// Decode all tiles in the rectangle from decompressed data.
