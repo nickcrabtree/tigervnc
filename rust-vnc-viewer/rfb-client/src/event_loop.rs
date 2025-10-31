@@ -297,9 +297,31 @@ pub async fn spawn(
                                 }
                             }
                         }
+                        150 => {
+                            // EndOfContinuousUpdates: server stopped sending continuous updates
+                            tracing::debug!("Received EndOfContinuousUpdates (150)");
+                            // Re-enable continuous updates and request a full update
+                            let _ = protocol::write_enable_continuous_updates(&mut output, true, 0, 0, fb_width, fb_height).await;
+                            let _ = protocol::write_framebuffer_update_request(&mut output, false, 0, 0, fb_width, fb_height).await;
+                            last_request = Instant::now();
+                        }
+                        248 => {
+                            // ServerFence: synchronization fence
+                            tracing::debug!("Received ServerFence (248)");
+                            use tokio::io::AsyncReadExt as _;
+                            // Read fence message: padding(3) + flags(4) + length(1) + data(length)
+                            let _ = input.skip(3).await; // padding
+                            if let Ok(_flags) = input.read_u32().await {
+                                if let Ok(len) = input.read_u8().await {
+                                    let mut buf = vec![0u8; len as usize];
+                                    let _ = input.read_bytes(&mut buf).await;
+                                }
+                            }
+                            // Fence doesn't require immediate response in our implementation
+                        }
                         other => {
-                            // Baseline: unknown message types are a fatal error (no CU/Fence)
-                            tracing::error!("Unexpected server message type {} in baseline mode (no CU/Fence/Cache)", other);
+                            // Unknown message types are a fatal error
+                            tracing::error!("Unexpected server message type {} (unsupported)", other);
                             let _ = events.send(ServerEvent::Error { message: format!("Unsupported message type {}", other) });
                             let _ = events.send(ServerEvent::ConnectionClosed);
                             break;

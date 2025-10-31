@@ -312,16 +312,23 @@ impl Config {
             rfb_encodings::ENCODING_ZRLE,
         ];
         
+        // Add pseudo-encodings for protocol features
+        // Fence is required for reliable ContentCache operation
+        encodings.push(-312); // pseudoEncodingFence
+        encodings.push(-313); // pseudoEncodingContinuousUpdates
+        
         // Add ContentCache encodings if enabled
         if self.content_cache.enabled {
-            encodings.push(rfb_encodings::ENCODING_CACHED_RECT);
-            encodings.push(rfb_encodings::ENCODING_CACHED_RECT_INIT);
+            encodings.push(-320); // pseudoEncodingContentCache
+            encodings.push(rfb_encodings::ENCODING_CACHED_RECT);  // 100
+            encodings.push(rfb_encodings::ENCODING_CACHED_RECT_INIT);  // 101
         }
         
         // Add PersistentCache encodings if enabled
         if self.persistent_cache.enabled {
-            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT);
-            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT_INIT);
+            encodings.push(-321); // pseudoEncodingPersistentCache
+            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT);  // 102
+            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT_INIT);  // 103
         }
         
         encodings
@@ -410,19 +417,24 @@ mod tests {
         // Default now enables ContentCache and PersistentCache; verify ordering
         let config = Config::default();
         let encodings = config.effective_encodings();
-        assert_eq!(encodings.len(), 7);
+        // 3 base + 2 pseudo (Fence, CU) + 3 ContentCache + 3 PersistentCache = 11
+        assert_eq!(encodings.len(), 11);
         assert_eq!(encodings[0], rfb_encodings::ENCODING_RAW);
         assert_eq!(encodings[1], rfb_encodings::ENCODING_COPY_RECT);
         assert_eq!(encodings[2], rfb_encodings::ENCODING_ZRLE);
-        assert_eq!(encodings[3], rfb_encodings::ENCODING_CACHED_RECT);
-        assert_eq!(encodings[4], rfb_encodings::ENCODING_CACHED_RECT_INIT);
-        assert_eq!(encodings[5], rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT);
-        assert_eq!(encodings[6], rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT_INIT);
+        assert_eq!(encodings[3], -312); // Fence
+        assert_eq!(encodings[4], -313); // ContinuousUpdates
+        assert_eq!(encodings[5], -320); // ContentCache pseudo
+        assert_eq!(encodings[6], rfb_encodings::ENCODING_CACHED_RECT);
+        assert_eq!(encodings[7], rfb_encodings::ENCODING_CACHED_RECT_INIT);
+        assert_eq!(encodings[8], -321); // PersistentCache pseudo
+        assert_eq!(encodings[9], rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT);
+        assert_eq!(encodings[10], rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT_INIT);
     }
 
     #[test]
     fn test_effective_encodings_no_caches() {
-        // When caches are disabled, we should only advertise the baseline 3 encodings
+        // When caches are disabled, we still advertise Fence and CU pseudo-encodings
         let mut config = Config::default();
         config.content_cache.enabled = false;
         config.persistent_cache.enabled = false;
@@ -431,6 +443,8 @@ mod tests {
             rfb_encodings::ENCODING_RAW,
             rfb_encodings::ENCODING_COPY_RECT,
             rfb_encodings::ENCODING_ZRLE,
+            -312, // Fence
+            -313, // ContinuousUpdates
         ]);
     }
 }
