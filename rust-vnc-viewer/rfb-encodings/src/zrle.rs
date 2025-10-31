@@ -181,6 +181,11 @@ impl Decoder for ZRLEDecoder {
             .await
             .context("ZRLE: failed to read compressed data length")?;
 
+        tracing::debug!(
+            "ZRLE: rect [{},{}+{}x{}] compressed_len={}, stream buffer has {} bytes",
+            rect.x, rect.y, rect.width, rect.height, compressed_len, stream.available()
+        );
+
         // Read compressed data
         let mut compressed_data = vec![0u8; compressed_len as usize];
         stream
@@ -188,10 +193,26 @@ impl Decoder for ZRLEDecoder {
             .await
             .context("ZRLE: failed to read compressed data")?;
 
+        tracing::debug!(
+            "ZRLE: after read, stream buffer has {} bytes remaining",
+            stream.available()
+        );
+
+        tracing::debug!(
+            "ZRLE: read {} compressed bytes, first 16 bytes: {:02x?}",
+            compressed_data.len(),
+            &compressed_data[..compressed_data.len().min(16)]
+        );
+
         // Decompress the zlib stream
         let decompressed = self
             .decompress_zlib(&compressed_data)
             .context("ZRLE: zlib decompression failed")?;
+
+        tracing::debug!(
+            "ZRLE: decompressed {} bytes",
+            decompressed.len()
+        );
 
         // Decode tiles from decompressed data
         let mut cursor = DataCursor::new(&decompressed);
@@ -199,12 +220,20 @@ impl Decoder for ZRLEDecoder {
             .context("ZRLE: tile decoding failed")?;
 
         // Verify all data consumed (no trailing bytes)
-        if cursor.remaining() > 0 {
+        let remaining = cursor.remaining();
+        if remaining > 0 {
+            tracing::warn!(
+                "ZRLE: {} trailing bytes after decoding rectangle - data: {:02x?}",
+                remaining,
+                &cursor.data[cursor.pos..cursor.pos + remaining.min(32)]
+            );
             bail!(
                 "ZRLE: {} trailing bytes after decoding rectangle",
-                cursor.remaining()
+                remaining
             );
         }
+        tracing::debug!("ZRLE: all tile data consumed, no trailing bytes");
+        tracing::debug!("ZRLE: decode complete, stream buffer has {} bytes", stream.available());
 
         Ok(())
     }
@@ -223,8 +252,9 @@ impl ZRLEDecoder {
             .read_to_end(&mut decompressed)
             .with_context(|| {
                 format!(
-                    "ZRLE: zlib decompression failed (input {} bytes, output {} bytes)",
+                    "ZRLE: zlib decompression failed (input {} bytes starting with {:02x?}, output {} bytes so far)",
                     compressed.len(),
+                    &compressed[..compressed.len().min(16)],
                     decompressed.len()
                 )
             })?;
