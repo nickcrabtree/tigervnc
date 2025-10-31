@@ -54,8 +54,20 @@ def count_fbus_in_log(log_path):
     return fbu_count, unknown_types
 
 
-def run_viewer(viewer_path, port, artifacts, tracker, duration=5):
-    """Run Rust viewer for specified duration."""
+def run_viewer(viewer_path, port, artifacts, tracker, display_for_viewer, duration=5):
+    """Run Rust viewer for specified duration.
+    
+    Args:
+        viewer_path: Path to viewer binary
+        port: VNC server port to connect to
+        artifacts: ArtifactManager instance
+        tracker: ProcessTracker instance
+        display_for_viewer: X display number for viewer window
+        duration: Test duration in seconds
+    
+    Returns:
+        Path to viewer log file
+    """
     import os
     import subprocess
     
@@ -68,11 +80,11 @@ def run_viewer(viewer_path, port, artifacts, tracker, duration=5):
     
     log_path = artifacts.logs_dir / 'rust_viewer.log'
     
-    # Set DISPLAY to nothing (headless)
+    # Set DISPLAY to viewer display server
     env = os.environ.copy()
-    env.pop('DISPLAY', None)
+    env['DISPLAY'] = f':{display_for_viewer}'
     
-    print(f"  Starting Rust viewer (headless)...")
+    print(f"  Starting Rust viewer (display :{display_for_viewer})...")
     print(f"  Command: {' '.join(cmd)}")
     log_file = open(log_path, 'w')
     
@@ -92,7 +104,7 @@ def run_viewer(viewer_path, port, artifacts, tracker, duration=5):
     
     # Terminate
     print("  Terminating viewer...")
-    tracker.terminate('rust_viewer')
+    tracker.cleanup('rust_viewer')
     log_file.close()
     
     return log_path
@@ -102,10 +114,14 @@ def main():
     parser = argparse.ArgumentParser(
         description='Baseline RFB test for Rust viewer (P11)'
     )
-    parser.add_argument('--display', type=int, default=998,
-                       help='Display number for test server (default: 998)')
-    parser.add_argument('--port', type=int, default=6898,
-                       help='Port for test server (default: 6898)')
+    parser.add_argument('--display-content', type=int, default=998,
+                       help='Display number for content server (default: 998)')
+    parser.add_argument('--port-content', type=int, default=6898,
+                       help='Port for content server (default: 6898)')
+    parser.add_argument('--display-viewer', type=int, default=999,
+                       help='Display number for viewer window (default: 999)')
+    parser.add_argument('--port-viewer', type=int, default=6899,
+                       help='Port for viewer window server (default: 6899)')
     parser.add_argument('--duration', type=int, default=5,
                        help='Test duration in seconds (default: 5)')
     parser.add_argument('--verbose', action='store_true',
@@ -133,11 +149,17 @@ def main():
         return 1
     
     # Check port/display availability
-    if not check_port_available(args.port):
-        print(f"\n✗ FAIL: Port {args.port} already in use")
+    if not check_port_available(args.port_content):
+        print(f"\n✗ FAIL: Port {args.port_content} already in use")
         return 1
-    if not check_display_available(args.display):
-        print(f"\n✗ FAIL: Display :{args.display} already in use")
+    if not check_port_available(args.port_viewer):
+        print(f"\n✗ FAIL: Port {args.port_viewer} already in use")
+        return 1
+    if not check_display_available(args.display_content):
+        print(f"\n✗ FAIL: Display :{args.display_content} already in use")
+        return 1
+    if not check_display_available(args.display_viewer):
+        print(f"\n✗ FAIL: Display :{args.display_viewer} already in use")
         return 1
     
     print("✓ All preflight checks passed")
@@ -146,27 +168,41 @@ def main():
     tracker = ProcessTracker()
     
     try:
-        # 4. Start VNC server with animated content
-        print(f"\n[3/6] Starting VNC server (:{args.display})...")
-        server = VNCServer(
-            args.display, args.port, "baseline_server",
+        # 4. Start content server with animated content
+        print(f"\n[3/7] Starting content server (:{args.display_content})...")
+        server_content = VNCServer(
+            args.display_content, args.port_content, "baseline_content",
             artifacts, tracker,
             geometry="800x600",
             log_level="*:stderr:30",
             server_choice='system'  # Use system TigerVNC for stable baseline
         )
         
-        if not server.start():
-            print("\n✗ FAIL: Could not start VNC server")
+        if not server_content.start():
+            print("\n✗ FAIL: Could not start content server")
             return 1
         
-        # 5. Start animated content (xclock)
-        print("\n[4/6] Starting animated content (xclock)...")
+        # 5. Start viewer window server
+        print(f"\n[4/7] Starting viewer window server (:{args.display_viewer})...")
+        server_viewer = VNCServer(
+            args.display_viewer, args.port_viewer, "baseline_viewer_window",
+            artifacts, tracker,
+            geometry="800x600",
+            log_level="*:stderr:30",
+            server_choice='system'
+        )
+        
+        if not server_viewer.start():
+            print("\n✗ FAIL: Could not start viewer window server")
+            return 1
+        
+        # 6. Start animated content (xclock) on content server
+        print("\n[5/7] Starting animated content (xclock)...")
         import subprocess
         import os
         
         env = os.environ.copy()
-        env['DISPLAY'] = f':{args.display}'
+        env['DISPLAY'] = f':{args.display_content}'
         
         xclock_log = artifacts.logs_dir / 'xclock.log'
         xclock_file = open(xclock_log, 'w')
@@ -181,17 +217,18 @@ def main():
         tracker.register('xclock', xclock_proc)
         time.sleep(1.0)  # Let xclock start
         
-        # 6. Run Rust viewer and collect metrics
-        print(f"\n[5/6] Running Rust viewer test...")
+        # 7. Run Rust viewer and collect metrics
+        print(f"\n[6/7] Running Rust viewer test...")
         rust_viewer = binaries.get('rust_viewer')
         if not rust_viewer:
             print("\n✗ FAIL: Rust viewer not found")
             return 1
         
-        log_path = run_viewer(rust_viewer, args.port, artifacts, tracker, args.duration)
+        log_path = run_viewer(rust_viewer, args.port_content, artifacts, tracker, 
+                            args.display_viewer, args.duration)
         
-        # 7. Analyze results
-        print("\n[6/6] Analyzing results...")
+        # 8. Analyze results
+        print("\n[7/7] Analyzing results...")
         fbu_count, unknown_types = count_fbus_in_log(log_path)
         
         print()
@@ -227,7 +264,7 @@ def main():
         
     finally:
         print("\nCleaning up...")
-        tracker.cleanup()
+        tracker.cleanup_all()
 
 
 if __name__ == '__main__':
