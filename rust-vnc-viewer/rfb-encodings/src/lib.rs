@@ -85,7 +85,7 @@ pub use zrle::ZRLEDecoder;
 
 // ContentCache for caching decoded pixel data and decoders
 pub mod content_cache;
-pub use content_cache::{ContentCache, CachedPixels, CacheStats};
+pub use content_cache::{CacheStats, CachedPixels, ContentCache};
 
 pub mod cached_rect;
 pub use cached_rect::CachedRectDecoder;
@@ -95,7 +95,7 @@ pub use cached_rect_init::CachedRectInitDecoder;
 
 // PersistentCache
 pub mod persistent_cache;
-pub use persistent_cache::{PersistentClientCache, PersistentCachedPixels};
+pub use persistent_cache::{PersistentCachedPixels, PersistentClientCache};
 
 pub mod persistent_cached_rect;
 pub use persistent_cached_rect::PersistentCachedRectDecoder;

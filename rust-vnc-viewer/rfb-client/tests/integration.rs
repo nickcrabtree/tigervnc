@@ -83,7 +83,10 @@ async fn test_framebuffer_updates() -> anyhow::Result<()> {
     for _ in 0..10 {
         match timeout(Duration::from_secs(2), handle.events().recv_async()).await {
             Ok(Ok(ServerEvent::FramebufferUpdated { damage })) => {
-                println!("Received framebuffer update with {} damage regions", damage.len());
+                println!(
+                    "Received framebuffer update with {} damage regions",
+                    damage.len()
+                );
                 received_update = true;
                 break;
             }

@@ -76,12 +76,7 @@
 //! This crate is `#![forbid(unsafe_code)]` and uses only safe Rust.
 
 #![forbid(unsafe_code)]
-#![deny(
-    missing_docs,
-    clippy::all,
-    clippy::pedantic,
-    clippy::cargo
-)]
+#![deny(missing_docs, clippy::all, clippy::pedantic, clippy::cargo)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::missing_errors_doc)] // TODO: Remove once docs are complete
 
@@ -110,7 +105,6 @@ pub use transport::TlsConfig;
 
 // Internal use
 use rfb_pixelbuffer::PixelBuffer;
-
 
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -171,7 +165,8 @@ impl ClientBuilder {
         let (event_tx, event_rx) = flume::bounded(64);
 
         // Spawn event loop
-        let (join_handle, framebuffer_handle) = event_loop::spawn(self.config, cmd_rx, event_tx).await?;
+        let (join_handle, framebuffer_handle) =
+            event_loop::spawn(self.config, cmd_rx, event_tx).await?;
 
         Ok(Client {
             handle: ClientHandle {
@@ -276,7 +271,11 @@ impl ClientHandle {
     /// # Errors
     ///
     /// Returns an error if the client has been shut down.
-    pub fn request_update(&self, incremental: bool, rect: Option<rfb_common::Rect>) -> Result<(), RfbClientError> {
+    pub fn request_update(
+        &self,
+        incremental: bool,
+        rect: Option<rfb_common::Rect>,
+    ) -> Result<(), RfbClientError> {
         self.send(ClientCommand::RequestUpdate { incremental, rect })
     }
 
@@ -288,12 +287,12 @@ impl ClientHandle {
     pub fn close(&self) -> Result<(), RfbClientError> {
         self.send(ClientCommand::Close)
     }
-    
+
     /// Alias for close() to match the naming used in app.rs
     pub fn disconnect(&self) -> Result<(), RfbClientError> {
         self.close()
     }
-    
+
     /// Returns a handle to the shared framebuffer for rendering.
     ///
     /// Returns `None` if not yet connected or connection has been closed.
@@ -303,7 +302,7 @@ impl ClientHandle {
     pub fn framebuffer(&self) -> Option<FramebufferHandle> {
         self.framebuffer.clone()
     }
-    
+
     /// Convenience method to read framebuffer dimensions.
     ///
     /// Returns `None` if not connected or if the framebuffer lock cannot be acquired.
@@ -319,7 +318,7 @@ impl ClientHandle {
             }
         })
     }
-    
+
     /// Convenience method to get framebuffer pixel format.
     ///
     /// Returns `None` if not connected or if the framebuffer lock cannot be acquired.
@@ -333,7 +332,7 @@ impl ClientHandle {
             }
         })
     }
-    
+
     /// Convenience method to read framebuffer pixels for rendering.
     ///
     /// Returns the raw pixel data as a byte slice. The format is always RGB888
@@ -345,7 +344,8 @@ impl ClientHandle {
         self.framebuffer.as_ref().and_then(|fb| {
             if let Ok(fb) = fb.try_lock() {
                 let buffer = fb.buffer();
-                let rect = rfb_common::Rect::new(0, 0, buffer.width() as u32, buffer.height() as u32);
+                let rect =
+                    rfb_common::Rect::new(0, 0, buffer.width() as u32, buffer.height() as u32);
                 let mut stride = 0;
                 if let Some(pixels) = buffer.get_buffer(rect, &mut stride) {
                     let bytes_per_pixel = buffer.format().bytes_per_pixel();

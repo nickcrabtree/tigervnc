@@ -400,7 +400,6 @@ mod tests {
         }
     }
 
-
     // Buffer format (rfb_pixelbuffer)
     fn buffer_format() -> rfb_pixelbuffer::PixelFormat {
         rfb_pixelbuffer::PixelFormat::rgb888()

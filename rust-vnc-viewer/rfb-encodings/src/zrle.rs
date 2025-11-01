@@ -208,7 +208,12 @@ impl Decoder for ZRLEDecoder {
 
         tracing::debug!(
             "ZRLE: rect [{},{}+{}x{}] compressed_len={}, stream buffer has {} bytes",
-            rect.x, rect.y, rect.width, rect.height, compressed_len, stream.available()
+            rect.x,
+            rect.y,
+            rect.width,
+            rect.height,
+            compressed_len,
+            stream.available()
         );
 
         // Read compressed data
@@ -234,10 +239,7 @@ impl Decoder for ZRLEDecoder {
             .decompress_zlib(&compressed_data)
             .context("ZRLE: zlib decompression failed")?;
 
-        tracing::debug!(
-            "ZRLE: decompressed {} bytes",
-            decompressed.len()
-        );
+        tracing::debug!("ZRLE: decompressed {} bytes", decompressed.len());
 
         // Decode tiles from decompressed data
         let mut cursor = DataCursor::new(&decompressed);
@@ -258,7 +260,10 @@ impl Decoder for ZRLEDecoder {
             );
         }
         tracing::debug!("ZRLE: all tile data consumed, no trailing bytes");
-        tracing::debug!("ZRLE: decode complete, stream buffer has {} bytes", stream.available());
+        tracing::debug!(
+            "ZRLE: decode complete, stream buffer has {} bytes",
+            stream.available()
+        );
 
         Ok(())
     }
@@ -273,15 +278,15 @@ impl ZRLEDecoder {
     fn decompress_zlib(&self, compressed: &[u8]) -> Result<Vec<u8>> {
         let mut decompressed = Vec::new();
         let mut inflater = self.inflater.lock().unwrap();
-        
+
         // Process all input bytes
         let mut in_pos = 0;
         let mut out_buf = vec![0u8; 64 * 1024]; // 64KB output buffer
-        
+
         loop {
             let before_in = inflater.total_in();
             let before_out = inflater.total_out();
-            
+
             let status = inflater
                 .decompress(
                     &compressed[in_pos..],
@@ -296,18 +301,18 @@ impl ZRLEDecoder {
                         &compressed[..compressed.len().min(16)]
                     )
                 })?;
-            
+
             let consumed = (inflater.total_in() - before_in) as usize;
             let produced = (inflater.total_out() - before_out) as usize;
-            
+
             in_pos += consumed;
             decompressed.extend_from_slice(&out_buf[..produced]);
-            
+
             // Check if we're done
             if in_pos >= compressed.len() {
                 break;
             }
-            
+
             // Check for unexpected status
             match status {
                 flate2::Status::Ok => continue,
@@ -326,13 +331,13 @@ impl ZRLEDecoder {
                 }
             }
         }
-        
+
         tracing::trace!(
             "ZRLE: decompressed {} -> {} bytes",
             compressed.len(),
             decompressed.len()
         );
-        
+
         Ok(decompressed)
     }
 
@@ -1090,7 +1095,9 @@ mod tests {
 
         // Verify pixel is red
         let mut stride = 0;
-        let data = buffer.get_buffer(Rect::new(0, 0, 1, 1), &mut stride).unwrap();
+        let data = buffer
+            .get_buffer(Rect::new(0, 0, 1, 1), &mut stride)
+            .unwrap();
         assert_eq!(&data[0..4], &[0xFF, 0x00, 0x00, 0xFF]);
     }
 
@@ -1128,7 +1135,9 @@ mod tests {
 
         // Verify colors
         let mut stride = 0;
-        let data = buffer.get_buffer(Rect::new(0, 0, 2, 2), &mut stride).unwrap();
+        let data = buffer
+            .get_buffer(Rect::new(0, 0, 2, 2), &mut stride)
+            .unwrap();
         assert_eq!(stride, 2);
         assert_eq!(&data[0..4], &[0xFF, 0x00, 0x00, 0xFF]); // red
         assert_eq!(&data[4..8], &[0x00, 0xFF, 0x00, 0xFF]); // green
@@ -1170,14 +1179,26 @@ mod tests {
 
         // Verify: first 5 pixels red, next 4 blue
         let mut stride = 0;
-        let data = buffer.get_buffer(Rect::new(0, 0, 3, 3), &mut stride).unwrap();
+        let data = buffer
+            .get_buffer(Rect::new(0, 0, 3, 3), &mut stride)
+            .unwrap();
         for i in 0..5 {
             let offset = i * 4;
-            assert_eq!(&data[offset..offset + 3], &[0xFF, 0x00, 0x00], "pixel {} should be red", i);
+            assert_eq!(
+                &data[offset..offset + 3],
+                &[0xFF, 0x00, 0x00],
+                "pixel {} should be red",
+                i
+            );
         }
         for i in 5..9 {
             let offset = i * 4;
-            assert_eq!(&data[offset..offset + 3], &[0x00, 0x00, 0xFF], "pixel {} should be blue", i);
+            assert_eq!(
+                &data[offset..offset + 3],
+                &[0x00, 0x00, 0xFF],
+                "pixel {} should be blue",
+                i
+            );
         }
     }
 
@@ -1219,7 +1240,9 @@ mod tests {
 
         // Verify colors
         let mut stride = 0;
-        let data = buffer.get_buffer(Rect::new(0, 0, 4, 1), &mut stride).unwrap();
+        let data = buffer
+            .get_buffer(Rect::new(0, 0, 4, 1), &mut stride)
+            .unwrap();
         assert_eq!(&data[0..4], &[0xFF, 0x00, 0x00, 0xFF]); // red
         assert_eq!(&data[4..8], &[0x00, 0xFF, 0x00, 0xFF]); // green
         assert_eq!(&data[8..12], &[0x00, 0x00, 0xFF, 0xFF]); // blue
@@ -1267,7 +1290,9 @@ mod tests {
 
         // Verify colors
         let mut stride = 0;
-        let data = buffer.get_buffer(Rect::new(0, 0, 2, 1), &mut stride).unwrap();
+        let data = buffer
+            .get_buffer(Rect::new(0, 0, 2, 1), &mut stride)
+            .unwrap();
         assert_eq!(&data[0..4], &[0xFF, 0x00, 0x00, 0xFF]); // red
         assert_eq!(&data[4..8], &[0x00, 0xFF, 0x00, 0xFF]); // green
     }
@@ -1309,7 +1334,9 @@ mod tests {
 
         // Verify pattern: red, blue, blue, blue, blue, red
         let mut stride = 0;
-        let data = buffer.get_buffer(Rect::new(0, 0, 6, 1), &mut stride).unwrap();
+        let data = buffer
+            .get_buffer(Rect::new(0, 0, 6, 1), &mut stride)
+            .unwrap();
         assert_eq!(&data[0..4], &[0xFF, 0x00, 0x00, 0xFF]); // red
         assert_eq!(&data[4..8], &[0x00, 0x00, 0xFF, 0xFF]); // blue
         assert_eq!(&data[8..12], &[0x00, 0x00, 0xFF, 0xFF]); // blue
@@ -1447,7 +1474,7 @@ mod tests {
         // Tile 1 (64 pixels)
         tile_data.push(0x80); // palSize=0, RLE=1
         tile_data.extend_from_slice(&[0xFF, 0x00, 0x00, 0x00, 63]); // red x 64 (1+63)
-        // Tile 2 (36 pixels)
+                                                                    // Tile 2 (36 pixels)
         tile_data.push(0x80); // palSize=0, RLE=1
         tile_data.extend_from_slice(&[0xFF, 0x00, 0x00, 0x00, 35]); // red x 36 (1+35)
 
@@ -1472,10 +1499,17 @@ mod tests {
 
         // Verify all 100 pixels are red
         let mut stride = 0;
-        let data = buffer.get_buffer(Rect::new(0, 0, 100, 1), &mut stride).unwrap();
+        let data = buffer
+            .get_buffer(Rect::new(0, 0, 100, 1), &mut stride)
+            .unwrap();
         for i in 0..100 {
             let offset = i * 4;
-            assert_eq!(&data[offset..offset + 3], &[0xFF, 0x00, 0x00], "pixel {} should be red", i);
+            assert_eq!(
+                &data[offset..offset + 3],
+                &[0xFF, 0x00, 0x00],
+                "pixel {} should be red",
+                i
+            );
         }
     }
 
@@ -1514,14 +1548,26 @@ mod tests {
 
         // Verify first 64 pixels are red, next 64 are blue
         let mut stride = 0;
-        let data = buffer.get_buffer(Rect::new(0, 0, 128, 1), &mut stride).unwrap();
+        let data = buffer
+            .get_buffer(Rect::new(0, 0, 128, 1), &mut stride)
+            .unwrap();
         for i in 0..64 {
             let offset = i * 4;
-            assert_eq!(&data[offset..offset + 3], &[0xFF, 0x00, 0x00], "pixel {} should be red", i);
+            assert_eq!(
+                &data[offset..offset + 3],
+                &[0xFF, 0x00, 0x00],
+                "pixel {} should be red",
+                i
+            );
         }
         for i in 64..128 {
             let offset = i * 4;
-            assert_eq!(&data[offset..offset + 3], &[0x00, 0x00, 0xFF], "pixel {} should be blue", i);
+            assert_eq!(
+                &data[offset..offset + 3],
+                &[0x00, 0x00, 0xFF],
+                "pixel {} should be blue",
+                i
+            );
         }
     }
 }

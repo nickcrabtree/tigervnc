@@ -5,8 +5,8 @@
 
 use crate::keyboard::Modifier;
 use std::collections::HashMap;
-use winit::event::{VirtualKeyCode, KeyboardInput, ElementState};
 use tracing::trace;
+use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 
 /// Actions that can be triggered by keyboard shortcuts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -69,12 +69,12 @@ impl Shortcut {
             description: description.to_string(),
         }
     }
-    
+
     /// Create shortcut with single modifier.
     pub fn with_modifier(modifier: Modifier, key: VirtualKeyCode, description: &str) -> Self {
         Self::new(vec![modifier], key, description)
     }
-    
+
     /// Create shortcut with no modifiers.
     pub fn key_only(key: VirtualKeyCode, description: &str) -> Self {
         Self::new(vec![], key, description)
@@ -85,14 +85,14 @@ impl Shortcut {
         if self.key != key {
             return false;
         }
-        
+
         // Check that all required modifiers are present
         for required_mod in &self.modifiers {
             if !active_modifiers.contains(required_mod) {
                 return false;
             }
         }
-        
+
         // Check that no extra modifiers are present (strict matching)
         active_modifiers.len() == self.modifiers.len()
     }
@@ -113,7 +113,7 @@ impl Default for ShortcutsConfig {
             shortcuts: HashMap::new(),
             enabled: true,
         };
-        
+
         config.load_defaults();
         config
     }
@@ -124,158 +124,159 @@ impl ShortcutsConfig {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Enable or disable shortcuts globally.
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
     }
-    
+
     /// Check if shortcuts are enabled.
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
-    
+
     /// Add or update a shortcut.
     pub fn add_shortcut(&mut self, shortcut: Shortcut, action: ShortcutAction) {
         self.shortcuts.insert(shortcut, action);
     }
-    
+
     /// Remove a shortcut.
     pub fn remove_shortcut(&mut self, shortcut: &Shortcut) {
         self.shortcuts.remove(shortcut);
     }
-    
+
     /// Get all shortcuts for a specific action.
     pub fn shortcuts_for_action(&self, action: ShortcutAction) -> Vec<&Shortcut> {
-        self.shortcuts.iter()
+        self.shortcuts
+            .iter()
             .filter(|(_, &a)| a == action)
             .map(|(s, _)| s)
             .collect()
     }
-    
+
     /// Get all configured shortcuts.
     pub fn all_shortcuts(&self) -> &HashMap<Shortcut, ShortcutAction> {
         &self.shortcuts
     }
-    
+
     /// Process a keyboard input and return the triggered action, if any.
     pub fn process_key_input(
-        &self, 
-        input: &KeyboardInput, 
-        active_modifiers: &[Modifier]
+        &self,
+        input: &KeyboardInput,
+        active_modifiers: &[Modifier],
     ) -> Option<ShortcutAction> {
         if !self.enabled || !matches!(input.state, ElementState::Pressed) {
             return None;
         }
-        
+
         let key = input.virtual_keycode?;
-        
+
         for (shortcut, &action) in &self.shortcuts {
             if shortcut.matches(key, active_modifiers) {
                 trace!("Shortcut triggered: {:?} -> {:?}", shortcut, action);
                 return Some(action);
             }
         }
-        
+
         None
     }
-    
+
     /// Load default shortcuts (can be overridden).
     pub fn load_defaults(&mut self) {
-        use VirtualKeyCode::*;
         use Modifier::*;
-        
+        use VirtualKeyCode::*;
+
         // Fullscreen
         self.add_shortcut(
             Shortcut::key_only(F11, "Toggle fullscreen"),
-            ShortcutAction::ToggleFullscreen
+            ShortcutAction::ToggleFullscreen,
         );
         self.add_shortcut(
             Shortcut::with_modifier(Alt, Return, "Toggle fullscreen"),
-            ShortcutAction::ToggleFullscreen
+            ShortcutAction::ToggleFullscreen,
         );
-        
+
         // Scaling
         self.add_shortcut(
             Shortcut::with_modifier(Control, Key0, "Reset zoom to 100%"),
-            ShortcutAction::ResetZoom
+            ShortcutAction::ResetZoom,
         );
         self.add_shortcut(
             Shortcut::with_modifier(Control, Equals, "Zoom in"),
-            ShortcutAction::ZoomIn
+            ShortcutAction::ZoomIn,
         );
         self.add_shortcut(
             Shortcut::with_modifier(Control, Minus, "Zoom out"),
-            ShortcutAction::ZoomOut
+            ShortcutAction::ZoomOut,
         );
         self.add_shortcut(
             Shortcut::with_modifier(Control, Key1, "Native scaling (1:1)"),
-            ShortcutAction::ScaleNative
+            ShortcutAction::ScaleNative,
         );
         self.add_shortcut(
             Shortcut::with_modifier(Control, Key2, "Fit to window"),
-            ShortcutAction::ScaleFit
+            ShortcutAction::ScaleFit,
         );
         self.add_shortcut(
             Shortcut::with_modifier(Control, Key3, "Fill window"),
-            ShortcutAction::ScaleFill
+            ShortcutAction::ScaleFill,
         );
-        
+
         // View control
         self.add_shortcut(
             Shortcut::with_modifier(Control, R, "Refresh screen"),
-            ShortcutAction::RefreshScreen
+            ShortcutAction::RefreshScreen,
         );
         self.add_shortcut(
             Shortcut::with_modifier(Control, I, "Toggle connection info"),
-            ShortcutAction::ToggleConnectionInfo
+            ShortcutAction::ToggleConnectionInfo,
         );
         self.add_shortcut(
             Shortcut::with_modifier(Control, V, "Toggle view-only mode"),
-            ShortcutAction::ToggleViewOnly
+            ShortcutAction::ToggleViewOnly,
         );
-        
+
         // Special key combinations
         self.add_shortcut(
             Shortcut::new(vec![Control, Alt], Delete, "Send Ctrl+Alt+Del"),
-            ShortcutAction::SendCtrlAltDel
+            ShortcutAction::SendCtrlAltDel,
         );
-        
+
         // Application control
         self.add_shortcut(
             Shortcut::with_modifier(Control, Q, "Disconnect"),
-            ShortcutAction::Disconnect
+            ShortcutAction::Disconnect,
         );
         self.add_shortcut(
             Shortcut::with_modifier(Control, Comma, "Show preferences"),
-            ShortcutAction::ShowPreferences
+            ShortcutAction::ShowPreferences,
         );
         self.add_shortcut(
             Shortcut::key_only(F1, "Show help"),
-            ShortcutAction::ShowHelp
+            ShortcutAction::ShowHelp,
         );
-        
+
         // Screenshots and clipboard
         self.add_shortcut(
             Shortcut::key_only(F12, "Take screenshot"),
-            ShortcutAction::TakeScreenshot
+            ShortcutAction::TakeScreenshot,
         );
         self.add_shortcut(
             Shortcut::with_modifier(Control, C, "Toggle clipboard sync"),
-            ShortcutAction::ToggleClipboard
+            ShortcutAction::ToggleClipboard,
         );
-        
+
         // Viewport
         self.add_shortcut(
             Shortcut::with_modifier(Control, Home, "Center viewport"),
-            ShortcutAction::CenterViewport
+            ShortcutAction::CenterViewport,
         );
     }
-    
+
     /// Get a human-readable description of a key combination.
     pub fn format_key_combination(shortcut: &Shortcut) -> String {
         let mut parts = Vec::new();
-        
+
         for modifier in &shortcut.modifiers {
             let name = match modifier {
                 Modifier::Control => "Ctrl",
@@ -287,10 +288,10 @@ impl ShortcutsConfig {
             };
             parts.push(name);
         }
-        
+
         let key_name = format_key_name(shortcut.key);
         parts.push(&key_name);
-        
+
         parts.join("+")
     }
 }
@@ -380,60 +381,51 @@ fn format_key_name(key: VirtualKeyCode) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_shortcut_matching() {
         let shortcut = Shortcut::new(
             vec![Modifier::Control, Modifier::Shift],
             VirtualKeyCode::A,
-            "Test shortcut"
+            "Test shortcut",
         );
-        
+
         // Should match exact combination
-        assert!(shortcut.matches(
-            VirtualKeyCode::A,
-            &[Modifier::Control, Modifier::Shift]
-        ));
-        
+        assert!(shortcut.matches(VirtualKeyCode::A, &[Modifier::Control, Modifier::Shift]));
+
         // Should not match with extra modifier
         assert!(!shortcut.matches(
             VirtualKeyCode::A,
             &[Modifier::Control, Modifier::Shift, Modifier::Alt]
         ));
-        
+
         // Should not match with missing modifier
-        assert!(!shortcut.matches(
-            VirtualKeyCode::A,
-            &[Modifier::Control]
-        ));
-        
+        assert!(!shortcut.matches(VirtualKeyCode::A, &[Modifier::Control]));
+
         // Should not match different key
-        assert!(!shortcut.matches(
-            VirtualKeyCode::B,
-            &[Modifier::Control, Modifier::Shift]
-        ));
+        assert!(!shortcut.matches(VirtualKeyCode::B, &[Modifier::Control, Modifier::Shift]));
     }
-    
+
     #[test]
     fn test_default_shortcuts() {
         let config = ShortcutsConfig::default();
-        
+
         // Should have F11 for fullscreen
         let f11_shortcuts = config.shortcuts_for_action(ShortcutAction::ToggleFullscreen);
         assert!(!f11_shortcuts.is_empty());
-        
+
         // Should have multiple shortcuts for some actions
         assert!(f11_shortcuts.len() >= 1);
     }
-    
+
     #[test]
     fn test_format_key_combination() {
         let shortcut = Shortcut::new(
             vec![Modifier::Control, Modifier::Alt],
             VirtualKeyCode::Delete,
-            "Ctrl+Alt+Del"
+            "Ctrl+Alt+Del",
         );
-        
+
         let formatted = ShortcutsConfig::format_key_combination(&shortcut);
         assert_eq!(formatted, "Ctrl+Alt+Del");
     }

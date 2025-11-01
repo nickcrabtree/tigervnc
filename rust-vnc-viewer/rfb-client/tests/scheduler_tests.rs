@@ -26,7 +26,7 @@ async fn two_full_fbu_requests_issued_after_setpixelformat() {
     // 4. Second FULL FBU request (incremental=false)
     //
     // TODO: Add mock server test that captures and verifies this sequence
-    
+
     // For now, verify config construction doesn't panic
     let _config = Config::builder()
         .host("localhost")
@@ -56,7 +56,7 @@ async fn outstanding_incremental_leq_one_invariant() {
     // 1. Delays FBU response
     // 2. Verifies client doesn't send multiple incremental requests
     // 3. After FBU arrives, verifies exactly one new incremental is sent
-    
+
     // For now, verify config construction
     let _config = Config::builder()
         .host("localhost")
@@ -89,7 +89,7 @@ async fn watchdog_triggers_single_incremental_after_timeout() {
     // 3. Waits >2s
     // 4. Verifies exactly one incremental request arrives
     // 5. Verifies warning is logged
-    
+
     // For now, verify config construction
     let _config = Config::builder()
         .host("localhost")
@@ -115,7 +115,7 @@ async fn baseline_scheduling_no_cu_fence() {
     //
     // TODO: Add test with mock server sending type 150 or 248
     // Verify client closes connection with error
-    
+
     let _config = Config::builder()
         .host("localhost")
         .port(5900)

@@ -52,11 +52,12 @@ pub fn enumerate_monitors() -> Vec<MonitorInfo> {
 
     info!("Detected {} monitor(s)", result.len());
     for m in &result {
-        info!("  Monitor {}: '{}' {}x{} @{}x{}", 
-            m.index, 
-            m.name, 
-            m.size.0, 
-            m.size.1, 
+        info!(
+            "  Monitor {}: '{}' {}x{} @{}x{}",
+            m.index,
+            m.name,
+            m.size.0,
+            m.size.1,
             m.scale_factor,
             if m.is_primary { " (primary)" } else { "" }
         );
@@ -68,11 +69,18 @@ pub fn enumerate_monitors() -> Vec<MonitorInfo> {
 /// Select a monitor based on selector string: "primary", index, or name substring.
 pub fn select_monitor(monitors: &[MonitorInfo], selector: &str) -> Option<MonitorInfo> {
     if selector.eq_ignore_ascii_case("primary") {
-        return monitors.iter().find(|m| m.is_primary).cloned().or_else(|| monitors.first().cloned());
+        return monitors
+            .iter()
+            .find(|m| m.is_primary)
+            .cloned()
+            .or_else(|| monitors.first().cloned());
     }
     if let Ok(idx) = selector.parse::<usize>() {
         return monitors.iter().find(|m| m.index == idx).cloned();
     }
     let s = selector.to_lowercase();
-    monitors.iter().find(|m| m.name.to_lowercase().contains(&s)).cloned()
+    monitors
+        .iter()
+        .find(|m| m.name.to_lowercase().contains(&s))
+        .cloned()
 }

@@ -26,7 +26,7 @@
 //!
 //! // Or server sends initial cached content
 //! let cached_rect_init = CachedRectInit::read_from(stream).await?;
-//! println!("Cache ID: {}, Encoding: {}", 
+//! println!("Cache ID: {}, Encoding: {}",
 //!          cached_rect_init.cache_id,
 //!          cached_rect_init.actual_encoding);
 //! # Ok(())
@@ -111,7 +111,10 @@ impl CachedRect {
     /// # Errors
     ///
     /// Returns an error if cache_id is 0.
-    pub fn write_to<W: AsyncWrite + Unpin>(&self, stream: &mut RfbOutStream<W>) -> std::io::Result<()> {
+    pub fn write_to<W: AsyncWrite + Unpin>(
+        &self,
+        stream: &mut RfbOutStream<W>,
+    ) -> std::io::Result<()> {
         if self.cache_id == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -161,7 +164,7 @@ impl CachedRect {
 ///
 /// // Read CachedRectInit metadata
 /// let init = CachedRectInit::read_from(stream).await?;
-/// 
+///
 /// // Dispatch to appropriate decoder based on actual_encoding
 /// match init.actual_encoding {
 ///     ENCODING_TIGHT => {
@@ -278,7 +281,10 @@ impl CachedRectInit {
     /// Returns an error if:
     /// - cache_id is 0
     /// - actual_encoding is ENCODING_CACHED_RECT or ENCODING_CACHED_RECT_INIT
-    pub fn write_to<W: AsyncWrite + Unpin>(&self, stream: &mut RfbOutStream<W>) -> std::io::Result<()> {
+    pub fn write_to<W: AsyncWrite + Unpin>(
+        &self,
+        stream: &mut RfbOutStream<W>,
+    ) -> std::io::Result<()> {
         if self.cache_id == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,

@@ -1,5 +1,5 @@
-use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 use tracing::trace;
+use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 
 /// X11 keysym values
 pub mod keysyms {
@@ -136,7 +136,7 @@ pub fn map_virtual_keycode_to_keysym(vk: VirtualKeyCode) -> u32 {
         VK::RControl => XK_Control_R,
         VK::LAlt => XK_Alt_L,
         VK::RAlt => XK_Alt_R,
-        VK::LWin => XK_Super_L,   // Super
+        VK::LWin => XK_Super_L, // Super
         VK::RWin => XK_Super_R,
 
         // Punctuation (common subset)
@@ -177,7 +177,7 @@ pub struct KeyMapper {
 
 impl KeyMapper {
     /// Create a new key mapper with default settings.
-    pub fn new() -> Self { 
+    pub fn new() -> Self {
         Self {
             shift: false,
             control: false,
@@ -207,10 +207,10 @@ impl KeyMapper {
     pub fn process_key(&mut self, input: &KeyboardInput) -> Option<(u32, bool)> {
         let down = matches!(input.state, ElementState::Pressed);
         let vk = input.virtual_keycode?;
-        
+
         // Map virtual keycode to keysym
         let keysym = map_virtual_keycode_to_keysym(vk);
-        
+
         // Update modifier state
         match (vk, down) {
             (VirtualKeyCode::LShift | VirtualKeyCode::RShift, true) => self.shift = true,
@@ -254,10 +254,18 @@ impl KeyMapper {
     /// Get current modifier state as a bitmask (for use in protocol messages).
     pub fn modifier_mask(&self) -> u8 {
         let mut mask = 0;
-        if self.shift { mask |= 1 }
-        if self.control { mask |= 4 }
-        if self.alt { mask |= 8 }
-        if self.super_key { mask |= 64 }
+        if self.shift {
+            mask |= 1
+        }
+        if self.control {
+            mask |= 4
+        }
+        if self.alt {
+            mask |= 8
+        }
+        if self.super_key {
+            mask |= 64
+        }
         mask
     }
 
@@ -286,7 +294,7 @@ pub enum Modifier {
     Shift,
     Control,
     Alt,
-    Super,  // Windows/Command key
+    Super, // Windows/Command key
     CapsLock,
     NumLock,
 }
@@ -303,9 +311,19 @@ mod tests {
 
     #[test]
     fn test_ascii_letters_and_return() {
-        let ev = KeyboardInput { scancode: 0, state: ElementState::Pressed, virtual_keycode: Some(VirtualKeyCode::A), modifiers: Default::default() };
+        let ev = KeyboardInput {
+            scancode: 0,
+            state: ElementState::Pressed,
+            virtual_keycode: Some(VirtualKeyCode::A),
+            modifiers: Default::default(),
+        };
         assert_eq!(map_keyboard_input(&ev), Some(('a' as u32, true)));
-        let ret = KeyboardInput { scancode: 0, state: ElementState::Pressed, virtual_keycode: Some(VirtualKeyCode::Return), modifiers: Default::default() };
+        let ret = KeyboardInput {
+            scancode: 0,
+            state: ElementState::Pressed,
+            virtual_keycode: Some(VirtualKeyCode::Return),
+            modifiers: Default::default(),
+        };
         assert_eq!(map_keyboard_input(&ret), Some((0xFF0D, true)));
     }
 }

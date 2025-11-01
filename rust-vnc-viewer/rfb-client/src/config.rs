@@ -185,7 +185,9 @@ fn default_cleanup_threshold() -> f64 {
     0.8 // Start cleanup at 80% utilization
 }
 
-fn default_false() -> bool { false }
+fn default_false() -> bool {
+    false
+}
 
 /// PersistentCache configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -198,7 +200,9 @@ pub struct PersistentCacheConfig {
     pub size_mb: usize,
 }
 
-fn default_persistent_cache_size_mb() -> usize { 2048 }
+fn default_persistent_cache_size_mb() -> usize {
+    2048
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -287,7 +291,7 @@ impl Config {
                 "ContentCache size cannot be 0 when enabled".to_string(),
             ));
         }
-        
+
         if !(0.0..=1.0).contains(&self.content_cache.cleanup_threshold) {
             return Err(RfbClientError::Config(
                 "ContentCache cleanup threshold must be between 0.0 and 1.0".to_string(),
@@ -302,41 +306,42 @@ impl Config {
     pub fn timeout(&self) -> Duration {
         Duration::from_millis(self.connection.timeout_ms)
     }
-    
+
     /// Returns the complete encodings list including cache protocols if enabled.
-    /// 
+    ///
     /// NOTE: Encodings are listed in PREFERENCE ORDER. The server's EncodeManager
     /// selects encodings based on the order they appear in this list.
     /// Pseudo-encodings (negative values) should generally come BEFORE real encodings.
     #[must_use]
     pub fn effective_encodings(&self) -> Vec<i32> {
         let mut encodings = Vec::new();
-        
+
         // Pseudo-encodings FIRST (server prefers encodings listed earlier)
-        
+
         // Add pseudo-encodings for protocol features
         encodings.push(-312); // pseudoEncodingFence
         encodings.push(-313); // pseudoEncodingContinuousUpdates
-        
+
         // Add ContentCache encodings if enabled
         if self.content_cache.enabled {
             encodings.push(-320); // pseudoEncodingContentCache - tells server we support cache protocol
-            encodings.push(rfb_encodings::ENCODING_CACHED_RECT);  // 100 - cache hit (reference)
-            encodings.push(rfb_encodings::ENCODING_CACHED_RECT_INIT);  // 101 - cache miss (data + store)
+            encodings.push(rfb_encodings::ENCODING_CACHED_RECT); // 100 - cache hit (reference)
+            encodings.push(rfb_encodings::ENCODING_CACHED_RECT_INIT); // 101 - cache miss (data + store)
         }
-        
-        // Add PersistentCache encodings if enabled  
+
+        // Add PersistentCache encodings if enabled
         if self.persistent_cache.enabled {
             encodings.push(-321); // pseudoEncodingPersistentCache - tells server we support persistent cache
-            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT);  // 102
-            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT_INIT);  // 103
+            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT); // 102
+            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT_INIT);
+            // 103
         }
-        
+
         // Real encodings AFTER pseudo-encodings
         encodings.push(rfb_encodings::ENCODING_RAW);
         encodings.push(rfb_encodings::ENCODING_COPY_RECT);
         encodings.push(rfb_encodings::ENCODING_ZRLE);
-        
+
         encodings
     }
 }
@@ -420,26 +425,23 @@ mod tests {
 
     #[test]
     fn test_effective_encodings_with_caches_enabled() {
-        // Default now enables ContentCache and PersistentCache; verify ordering
+        // Default now enables ContentCache (but PersistentCache disabled); verify ordering
         // CRITICAL: Pseudo-encodings MUST come BEFORE real encodings
         // (server selects encodings based on list order)
         let config = Config::default();
         let encodings = config.effective_encodings();
-        // 2 proto pseudo + 3 ContentCache + 3 PersistentCache + 3 base = 11
-        assert_eq!(encodings.len(), 11);
+        // 2 proto pseudo + 3 ContentCache + 3 base = 8 (PersistentCache disabled by default)
+        assert_eq!(encodings.len(), 8);
         // Pseudo-encodings first
         assert_eq!(encodings[0], -312); // Fence
         assert_eq!(encodings[1], -313); // ContinuousUpdates
         assert_eq!(encodings[2], -320); // ContentCache pseudo
         assert_eq!(encodings[3], rfb_encodings::ENCODING_CACHED_RECT); // 100
         assert_eq!(encodings[4], rfb_encodings::ENCODING_CACHED_RECT_INIT); // 101
-        assert_eq!(encodings[5], -321); // PersistentCache pseudo
-        assert_eq!(encodings[6], rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT); // 102
-        assert_eq!(encodings[7], rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT_INIT); // 103
         // Real encodings last
-        assert_eq!(encodings[8], rfb_encodings::ENCODING_RAW);
-        assert_eq!(encodings[9], rfb_encodings::ENCODING_COPY_RECT);
-        assert_eq!(encodings[10], rfb_encodings::ENCODING_ZRLE);
+        assert_eq!(encodings[5], rfb_encodings::ENCODING_RAW);
+        assert_eq!(encodings[6], rfb_encodings::ENCODING_COPY_RECT);
+        assert_eq!(encodings[7], rfb_encodings::ENCODING_ZRLE);
     }
 
     #[test]
@@ -450,12 +452,15 @@ mod tests {
         config.content_cache.enabled = false;
         config.persistent_cache.enabled = false;
         let encodings = config.effective_encodings();
-        assert_eq!(encodings, vec![
-            -312, // Fence
-            -313, // ContinuousUpdates  
-            rfb_encodings::ENCODING_RAW,
-            rfb_encodings::ENCODING_COPY_RECT,
-            rfb_encodings::ENCODING_ZRLE,
-        ]);
+        assert_eq!(
+            encodings,
+            vec![
+                -312, // Fence
+                -313, // ContinuousUpdates
+                rfb_encodings::ENCODING_RAW,
+                rfb_encodings::ENCODING_COPY_RECT,
+                rfb_encodings::ENCODING_ZRLE,
+            ]
+        );
     }
 }

@@ -39,7 +39,6 @@ pub enum ServerEvent {
     },
 
     // TODO: Add CursorUpdated variant once Cursor type is implemented in rfb-common
-
     /// Server sent a bell notification.
     Bell,
 
@@ -125,6 +124,12 @@ mod tests {
             down: true,
         };
         let cmd2 = cmd.clone();
-        assert!(matches!(cmd2, ClientCommand::Key { key: 0x61, down: true }));
+        assert!(matches!(
+            cmd2,
+            ClientCommand::Key {
+                key: 0x61,
+                down: true
+            }
+        ));
     }
 }

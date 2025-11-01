@@ -33,12 +33,16 @@ pub fn in_msg(name: &str, fields: &str) {
 }
 
 pub fn hexdump(prefix: &str, data: &[u8], max: usize) {
-    if !enabled() || data.is_empty() { return; }
+    if !enabled() || data.is_empty() {
+        return;
+    }
     let max = max.min(data.len());
     let mut line = String::new();
     for (i, b) in data[..max].iter().enumerate() {
         if i % 16 == 0 {
-            if !line.is_empty() { tracing::info!(target: "protocol_trace", "{}{}", prefix, line); }
+            if !line.is_empty() {
+                tracing::info!(target: "protocol_trace", "{}{}", prefix, line);
+            }
             line.clear();
         }
         use std::fmt::Write as _;

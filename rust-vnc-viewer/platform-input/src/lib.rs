@@ -1,5 +1,5 @@
 //! platform-input: Map winit events to rfb_client::ClientCommand
-//! 
+//!
 //! This crate provides InputDispatcher, which translates window/input events
 //! into VNC client commands suitable for sending to the server.
 
@@ -13,10 +13,10 @@ mod gestures;
 use rfb_client::ClientCommand;
 use winit::event::{MouseScrollDelta, WindowEvent};
 
-pub use keyboard::{map_key_event_to_keysym, KeyMapper, Modifier, keysyms};
+pub use gestures::{GestureAction, GestureConfig, GestureEvent, GestureProcessor};
+pub use keyboard::{keysyms, map_key_event_to_keysym, KeyMapper, Modifier};
 pub use mouse::{ButtonMask, MouseState, ThrottleConfig};
-pub use shortcuts::{ShortcutAction, ShortcutsConfig, Shortcut};
-pub use gestures::{GestureEvent, GestureAction, GestureConfig, GestureProcessor};
+pub use shortcuts::{Shortcut, ShortcutAction, ShortcutsConfig};
 
 /// Coordinate mapper for translating window coordinates to framebuffer coords.
 /// Defaults to identity mapping (clamped to u16).
@@ -70,12 +70,24 @@ impl InputDispatcher {
             MouseInput { state, button, .. } => {
                 let (x, y) = self.mouse.pos();
                 match (state, button) {
-                    (ElementState::Pressed, MouseButton::Left) => self.mouse.buttons.insert(ButtonMask::LEFT),
-                    (ElementState::Released, MouseButton::Left) => self.mouse.buttons.remove(ButtonMask::LEFT),
-                    (ElementState::Pressed, MouseButton::Middle) => self.mouse.buttons.insert(ButtonMask::MIDDLE),
-                    (ElementState::Released, MouseButton::Middle) => self.mouse.buttons.remove(ButtonMask::MIDDLE),
-                    (ElementState::Pressed, MouseButton::Right) => self.mouse.buttons.insert(ButtonMask::RIGHT),
-                    (ElementState::Released, MouseButton::Right) => self.mouse.buttons.remove(ButtonMask::RIGHT),
+                    (ElementState::Pressed, MouseButton::Left) => {
+                        self.mouse.buttons.insert(ButtonMask::LEFT)
+                    }
+                    (ElementState::Released, MouseButton::Left) => {
+                        self.mouse.buttons.remove(ButtonMask::LEFT)
+                    }
+                    (ElementState::Pressed, MouseButton::Middle) => {
+                        self.mouse.buttons.insert(ButtonMask::MIDDLE)
+                    }
+                    (ElementState::Released, MouseButton::Middle) => {
+                        self.mouse.buttons.remove(ButtonMask::MIDDLE)
+                    }
+                    (ElementState::Pressed, MouseButton::Right) => {
+                        self.mouse.buttons.insert(ButtonMask::RIGHT)
+                    }
+                    (ElementState::Released, MouseButton::Right) => {
+                        self.mouse.buttons.remove(ButtonMask::RIGHT)
+                    }
                     _ => {}
                 }
                 let (fx, fy) = (self.coord_mapper)(x, y);
@@ -91,8 +103,16 @@ impl InputDispatcher {
                 let (fx, fy) = (self.coord_mapper)(x, y);
                 let activate = |mask: u8| -> (ClientCommand, ClientCommand) {
                     (
-                        ClientCommand::Pointer { x: fx, y: fy, buttons: self.mouse.buttons.bits() | mask },
-                        ClientCommand::Pointer { x: fx, y: fy, buttons: self.mouse.buttons.bits() },
+                        ClientCommand::Pointer {
+                            x: fx,
+                            y: fy,
+                            buttons: self.mouse.buttons.bits() | mask,
+                        },
+                        ClientCommand::Pointer {
+                            x: fx,
+                            y: fy,
+                            buttons: self.mouse.buttons.bits(),
+                        },
                     )
                 };
                 match delta {
@@ -130,8 +150,14 @@ impl InputDispatcher {
                 // Send printable Unicode characters as key press+release using their UCS keysym.
                 if !ch.is_control() {
                     let keysym = *ch as u32;
-                    out.push(ClientCommand::Key { key: keysym, down: true });
-                    out.push(ClientCommand::Key { key: keysym, down: false });
+                    out.push(ClientCommand::Key {
+                        key: keysym,
+                        down: true,
+                    });
+                    out.push(ClientCommand::Key {
+                        key: keysym,
+                        down: false,
+                    });
                 }
             }
             _ => {}

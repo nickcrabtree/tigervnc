@@ -7,7 +7,7 @@ use crate::errors::RfbClientError;
 use anyhow::Result as AnyResult;
 use rfb_common::Rect;
 use rfb_encodings as enc;
-use rfb_encodings::{Decoder, MutablePixelBuffer, RfbInStream, ContentCache};
+use rfb_encodings::{ContentCache, Decoder, MutablePixelBuffer, RfbInStream};
 use rfb_pixelbuffer::{ManagedPixelBuffer, PixelBuffer as _, PixelFormat as LocalPixelFormat};
 use rfb_protocol::messages::types::{PixelFormat as ServerPixelFormat, Rectangle};
 use std::collections::HashMap;
@@ -32,17 +32,19 @@ impl DecoderRegistry {
         reg.register(DecoderEntry::ZRLE(enc::ZRLEDecoder::default()));
         reg
     }
-    
+
     /// Create a registry with all standard encodings plus ContentCache support.
     pub fn with_content_cache(
         cache: Arc<Mutex<ContentCache>>,
         misses: Arc<Mutex<Vec<u64>>>,
     ) -> Self {
         let mut reg = Self::with_standard();
-        reg.register(DecoderEntry::CachedRect(enc::CachedRectDecoder::new_with_miss_reporter(
-            cache.clone(), misses,
-        )));
-        reg.register(DecoderEntry::CachedRectInit(enc::CachedRectInitDecoder::new(cache)));
+        reg.register(DecoderEntry::CachedRect(
+            enc::CachedRectDecoder::new_with_miss_reporter(cache.clone(), misses),
+        ));
+        reg.register(DecoderEntry::CachedRectInit(
+            enc::CachedRectInitDecoder::new(cache),
+        ));
         reg
     }
 
@@ -135,7 +137,7 @@ impl Framebuffer {
             pending_misses: None,
         }
     }
-    
+
     /// Create a new framebuffer with ContentCache support.
     pub fn with_content_cache(
         width: u16,
@@ -164,9 +166,18 @@ impl Framebuffer {
         let local_format = LocalPixelFormat::rgb888();
         let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
         let mut reg = DecoderRegistry::with_standard();
-        reg.register(DecoderEntry::PersistentCachedRect(enc::PersistentCachedRectDecoder::new(pcache.clone())));
-        reg.register(DecoderEntry::PersistentCachedRectInit(enc::PersistentCachedRectInitDecoder::new(pcache)));
-        Self { buffer, server_pixel_format, registry: reg, pending_misses: None }
+        reg.register(DecoderEntry::PersistentCachedRect(
+            enc::PersistentCachedRectDecoder::new(pcache.clone()),
+        ));
+        reg.register(DecoderEntry::PersistentCachedRectInit(
+            enc::PersistentCachedRectInitDecoder::new(pcache),
+        ));
+        Self {
+            buffer,
+            server_pixel_format,
+            registry: reg,
+            pending_misses: None,
+        }
     }
 
     /// Create a new framebuffer with both ContentCache and PersistentCache support.
@@ -181,9 +192,18 @@ impl Framebuffer {
         let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
         let misses: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
         let mut reg = DecoderRegistry::with_content_cache(ccache, misses.clone());
-        reg.register(DecoderEntry::PersistentCachedRect(enc::PersistentCachedRectDecoder::new(pcache.clone())));
-        reg.register(DecoderEntry::PersistentCachedRectInit(enc::PersistentCachedRectInitDecoder::new(pcache)));
-        Self { buffer, server_pixel_format, registry: reg, pending_misses: Some(misses) }
+        reg.register(DecoderEntry::PersistentCachedRect(
+            enc::PersistentCachedRectDecoder::new(pcache.clone()),
+        ));
+        reg.register(DecoderEntry::PersistentCachedRectInit(
+            enc::PersistentCachedRectInitDecoder::new(pcache),
+        ));
+        Self {
+            buffer,
+            server_pixel_format,
+            registry: reg,
+            pending_misses: Some(misses),
+        }
     }
 
     /// Returns the current dimensions.
@@ -215,8 +235,7 @@ impl Framebuffer {
             }
             enc::ENCODING_DESKTOP_SIZE => {
                 // Resize framebuffer
-                self.buffer
-                    .resize(rect.width as u32, rect.height as u32);
+                self.buffer.resize(rect.width as u32, rect.height as u32);
                 return Ok(());
             }
             other => {
@@ -240,7 +259,12 @@ impl Framebuffer {
                 };
                 tracing::debug!(
                     "Decoder selected: {} (encoding={}) for rect x={}, y={}, w={}, h={}",
-                    decoder_name, other, rect.x, rect.y, rect.width, rect.height
+                    decoder_name,
+                    other,
+                    rect.x,
+                    rect.y,
+                    rect.width,
+                    rect.height
                 );
 
                 let pf = &self.server_pixel_format;
@@ -260,43 +284,68 @@ impl Framebuffer {
         stream: &mut RfbInStream<R>,
     ) -> Result<Vec<Rect>, RfbClientError> {
         // FramebufferUpdate header: 1 byte padding + 2 bytes rect count
-        stream
-            .skip(1)
-            .await
-            .map_err(|e| RfbClientError::Protocol(format!("failed to read FramebufferUpdate padding: {}", e)))?;
-        let num_raw = stream
-            .read_u16()
-            .await
-            .map_err(|e| RfbClientError::Protocol(format!("failed to read FramebufferUpdate rect count: {}", e)))?;
+        stream.skip(1).await.map_err(|e| {
+            RfbClientError::Protocol(format!("failed to read FramebufferUpdate padding: {}", e))
+        })?;
+        let num_raw = stream.read_u16().await.map_err(|e| {
+            RfbClientError::Protocol(format!(
+                "failed to read FramebufferUpdate rect count: {}",
+                e
+            ))
+        })?;
 
         let mut damage: Vec<Rect> = Vec::new();
         if num_raw == 0xFFFF {
             // Unknown number of rectangles; terminated by LastRect pseudo-encoding
             loop {
-                let rect = Rectangle::read_from(stream)
-                    .await
-                    .map_err(|e| RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e)))?;
-                tracing::info!("FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}", rect.x, rect.y, rect.width, rect.height, rect.encoding);
+                let rect = Rectangle::read_from(stream).await.map_err(|e| {
+                    RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e))
+                })?;
+                tracing::info!(
+                    "FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}",
+                    rect.x,
+                    rect.y,
+                    rect.width,
+                    rect.height,
+                    rect.encoding
+                );
                 if rect.encoding == enc::ENCODING_LAST_RECT {
                     // End of this update
                     break;
                 }
                 self.apply_rectangle(stream, &rect).await?;
                 if rect.encoding >= 0 {
-                    damage.push(Rect::new(rect.x as i32, rect.y as i32, rect.width as u32, rect.height as u32));
+                    damage.push(Rect::new(
+                        rect.x as i32,
+                        rect.y as i32,
+                        rect.width as u32,
+                        rect.height as u32,
+                    ));
                 }
             }
         } else {
             let num = num_raw as usize;
             damage.reserve(num);
             for _ in 0..num {
-                let rect = Rectangle::read_from(stream)
-                    .await
-                    .map_err(|e| RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e)))?;
-                tracing::info!("FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}", rect.x, rect.y, rect.width, rect.height, rect.encoding);
+                let rect = Rectangle::read_from(stream).await.map_err(|e| {
+                    RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e))
+                })?;
+                tracing::info!(
+                    "FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}",
+                    rect.x,
+                    rect.y,
+                    rect.width,
+                    rect.height,
+                    rect.encoding
+                );
                 self.apply_rectangle(stream, &rect).await?;
                 if rect.encoding >= 0 {
-                    damage.push(Rect::new(rect.x as i32, rect.y as i32, rect.width as u32, rect.height as u32));
+                    damage.push(Rect::new(
+                        rect.x as i32,
+                        rect.y as i32,
+                        rect.width as u32,
+                        rect.height as u32,
+                    ));
                 }
             }
         }
@@ -311,10 +360,22 @@ impl Framebuffer {
     ) -> Result<Vec<Rect>, RfbClientError> {
         let mut damage = Vec::with_capacity(rects.len());
         for rect in rects {
-            tracing::info!("FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}", rect.x, rect.y, rect.width, rect.height, rect.encoding);
+            tracing::info!(
+                "FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}",
+                rect.x,
+                rect.y,
+                rect.width,
+                rect.height,
+                rect.encoding
+            );
             self.apply_rectangle(stream, rect).await?;
             if rect.encoding >= 0 {
-                damage.push(Rect::new(rect.x as i32, rect.y as i32, rect.width as u32, rect.height as u32));
+                damage.push(Rect::new(
+                    rect.x as i32,
+                    rect.y as i32,
+                    rect.width as u32,
+                    rect.height as u32,
+                ));
             }
         }
         Ok(damage)

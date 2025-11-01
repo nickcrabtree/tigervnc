@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use tracing::info;
 
 mod app;
-mod ui;
 mod display;
 mod fullscreen;
+mod ui;
 
 #[derive(Parser, Debug)]
 #[command(name = "njcvncviewer-rs")]
@@ -52,13 +52,13 @@ struct Args {
 pub struct AppConfig {
     /// Default connection settings
     pub connection: ConnectionConfig,
-    
+
     /// Display settings
     pub display: DisplayConfig,
-    
+
     /// Input settings  
     pub input: InputConfig,
-    
+
     /// UI settings
     pub ui: UiConfig,
 }
@@ -67,14 +67,14 @@ pub struct AppConfig {
 pub struct ConnectionConfig {
     /// Default server address
     pub default_server: Option<String>,
-    
+
     /// Default shared session setting
     pub shared: bool,
-    
+
     /// Reconnection settings
     pub max_retries: u32,
     pub retry_delay_ms: u64,
-    
+
     /// TLS settings
     pub verify_certificates: bool,
     pub allow_self_signed: bool,
@@ -84,14 +84,14 @@ pub struct ConnectionConfig {
 pub struct DisplayConfig {
     /// Default scaling mode
     pub scale_mode: String, // "native", "fit", "fill"
-    
+
     /// Window dimensions  
     pub window_width: u32,
     pub window_height: u32,
-    
+
     /// Fullscreen on connect
     pub fullscreen: bool,
-    
+
     /// Cursor mode
     pub cursor_mode: String, // "local", "remote", "dot"
 }
@@ -101,14 +101,14 @@ pub struct InputConfig {
     /// Middle button emulation
     pub middle_button_emulation: bool,
     pub middle_button_timeout_ms: u64,
-    
+
     /// Mouse throttling
     pub mouse_throttle_ms: u64,
     pub mouse_distance_threshold: f32,
-    
+
     /// Keyboard settings
     pub key_repeat_throttle_ms: u64,
-    
+
     /// Gesture settings
     pub gestures_enabled: bool,
     pub scroll_momentum_decay: f32,
@@ -119,13 +119,13 @@ pub struct InputConfig {
 pub struct UiConfig {
     /// Show status bar
     pub show_status_bar: bool,
-    
+
     /// Show menu bar
     pub show_menu_bar: bool,
-    
+
     /// Theme
     pub dark_mode: bool,
-    
+
     /// Statistics refresh rate
     pub stats_refresh_ms: u64,
 }
@@ -171,15 +171,11 @@ impl Default for AppConfig {
 fn parse_server_address(server: &str) -> Result<(String, u16)> {
     if let Some((host, port_or_display)) = server.split_once("::") {
         // host::port format
-        let port: u16 = port_or_display
-            .parse()
-            .context("Invalid port number")?;
+        let port: u16 = port_or_display.parse().context("Invalid port number")?;
         Ok((host.to_string(), port))
     } else if let Some((host, display)) = server.split_once(':') {
         // host:display format (display number adds to 5900)
-        let display_num: u16 = display
-            .parse()
-            .context("Invalid display number")?;
+        let display_num: u16 = display.parse().context("Invalid display number")?;
         Ok((host.to_string(), 5900 + display_num))
     } else {
         // Just hostname, assume display :0
@@ -210,8 +206,7 @@ fn load_config(config_path: Option<PathBuf>) -> Result<AppConfig> {
         // Use default config directory
         if let Some(proj_dirs) = ProjectDirs::from("org", "tigervnc", "njcvncviewer-rs") {
             let config_dir = proj_dirs.config_dir();
-            std::fs::create_dir_all(config_dir)
-                .context("Failed to create config directory")?;
+            std::fs::create_dir_all(config_dir).context("Failed to create config directory")?;
             config_dir.join("config.toml")
         } else {
             return Ok(AppConfig::default());
@@ -219,10 +214,10 @@ fn load_config(config_path: Option<PathBuf>) -> Result<AppConfig> {
     };
 
     if config_file.exists() {
-        let config_str = std::fs::read_to_string(&config_file)
-            .context("Failed to read config file")?;
-        let config: AppConfig = toml::from_str(&config_str)
-            .context("Failed to parse config file")?;
+        let config_str =
+            std::fs::read_to_string(&config_file).context("Failed to read config file")?;
+        let config: AppConfig =
+            toml::from_str(&config_str).context("Failed to parse config file")?;
         info!("Loaded config from: {}", config_file.display());
         Ok(config)
     } else {
@@ -230,8 +225,7 @@ fn load_config(config_path: Option<PathBuf>) -> Result<AppConfig> {
         let default_config = AppConfig::default();
         let config_str = toml::to_string_pretty(&default_config)
             .context("Failed to serialize default config")?;
-        std::fs::write(&config_file, config_str)
-            .context("Failed to write default config file")?;
+        std::fs::write(&config_file, config_str).context("Failed to write default config file")?;
         info!("Created default config at: {}", config_file.display());
         Ok(default_config)
     }
@@ -242,34 +236,33 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     init_logging(args.verbose);
-    
+
     // Load configuration
-    let mut config = load_config(args.config)
-        .context("Failed to load configuration")?;
-    
+    let mut config = load_config(args.config).context("Failed to load configuration")?;
+
     // Override config with command line arguments
     if args.shared {
         config.connection.shared = true;
     }
-    
+
     if args.fullscreen {
         config.display.fullscreen = true;
     }
-    
+
     if args.width != 1024 {
         config.display.window_width = args.width;
     }
-    
+
     if args.height != 768 {
         config.display.window_height = args.height;
     }
 
     let initial_server = args.server.or(config.connection.default_server.clone());
-    
+
     info!("Starting TigerVNC Rust Viewer");
     if let Some(ref server) = initial_server {
-        let (host, port) = parse_server_address(server)
-            .context("Failed to parse server address")?;
+        let (host, port) =
+            parse_server_address(server).context("Failed to parse server address")?;
         info!("Initial server: {}:{}", host, port);
     }
 
@@ -287,7 +280,14 @@ async fn main() -> Result<()> {
     eframe::run_native(
         "TigerVNC Rust Viewer",
         native_options,
-        Box::new(move |cc| Box::new(app::VncViewerApp::new(cc, config, initial_server, args.monitor.clone()))),
+        Box::new(move |cc| {
+            Box::new(app::VncViewerApp::new(
+                cc,
+                config,
+                initial_server,
+                args.monitor.clone(),
+            ))
+        }),
     )
     .map_err(|e| anyhow::anyhow!("GUI error: {}", e))
 }

@@ -18,14 +18,14 @@
 //! - **CPU**: Zero decode cost (memory blit vs decompression)
 //! - **Latency**: Sub-millisecond cache lookup vs decode time
 
-use crate::{Decoder, MutablePixelBuffer, PixelFormat, Rectangle, RfbInStream};
 use crate::content_cache::ContentCache;
+use crate::{Decoder, MutablePixelBuffer, PixelFormat, Rectangle, RfbInStream};
 use anyhow::{Context, Result};
+use rfb_common::Rect;
 use rfb_protocol::messages::cache::CachedRect;
 use rfb_protocol::messages::types::ENCODING_CACHED_RECT;
 use std::sync::{Arc, Mutex};
 use tokio::io::AsyncRead;
-use rfb_common::Rect;
 
 /// CachedRect decoder - handles cache hits for ContentCache protocol.
 ///
@@ -45,7 +45,10 @@ impl CachedRectDecoder {
     /// The cache should be shared with CachedRectInit decoder and
     /// other components that need cache access.
     pub fn new(cache: Arc<Mutex<ContentCache>>) -> Self {
-        Self { cache, pending_misses: None }
+        Self {
+            cache,
+            pending_misses: None,
+        }
     }
 
     /// Create a new CachedRect decoder with the given cache and a miss reporter queue.
@@ -53,7 +56,10 @@ impl CachedRectDecoder {
         cache: Arc<Mutex<ContentCache>>,
         misses: Arc<Mutex<Vec<u64>>>,
     ) -> Self {
-        Self { cache, pending_misses: Some(misses) }
+        Self {
+            cache,
+            pending_misses: Some(misses),
+        }
     }
 
     /// Get a reference to the shared cache.
@@ -83,10 +89,11 @@ impl Decoder for CachedRectDecoder {
 
         // Look up the cached pixels and clone them to avoid borrowing issues
         let cache_hit = {
-            let mut cache = self.cache
+            let mut cache = self
+                .cache
                 .lock()
                 .map_err(|e| anyhow::anyhow!("Failed to lock ContentCache: {}", e))?;
-            
+
             cache.lookup(cached_rect.cache_id).cloned()
         };
 
@@ -101,16 +108,21 @@ impl Decoder for CachedRectDecoder {
                 );
 
                 // Verify dimensions match what the server claims
-                if cached_pixels.width != rect.width as u32 || cached_pixels.height != rect.height as u32 {
+                if cached_pixels.width != rect.width as u32
+                    || cached_pixels.height != rect.height as u32
+                {
                     anyhow::bail!(
                         "Cached pixel dimensions {}x{} don't match rectangle {}x{}",
-                        cached_pixels.width, cached_pixels.height,
-                        rect.width, rect.height
+                        cached_pixels.width,
+                        cached_pixels.height,
+                        rect.width,
+                        rect.height
                     );
                 }
 
                 // Blit cached pixels to framebuffer
-                buffer.image_rect(dest_rect, &cached_pixels.pixels, cached_pixels.stride)
+                buffer
+                    .image_rect(dest_rect, &cached_pixels.pixels, cached_pixels.stride)
                     .with_context(|| {
                         format!(
                             "Failed to blit cached pixels (cache_id={}) to framebuffer at {:?}",
@@ -121,14 +133,20 @@ impl Decoder for CachedRectDecoder {
                 tracing::info!(
                     "ContentCache HIT: cache_id={}, rect={}x{} at ({},{}), {} bytes → framebuffer",
                     cached_rect.cache_id,
-                    rect.width, rect.height,
-                    rect.x, rect.y,
+                    rect.width,
+                    rect.height,
+                    rect.x,
+                    rect.y,
                     cached_pixels.pixels.len()
                 );
                 // Emit a canonical protocol trace line for e2e parser
                 tracing::info!(
                     "CachedRect: cacheId={} rect=[{},{} {}x{}]",
-                    cached_rect.cache_id, rect.x, rect.y, rect.width, rect.height
+                    cached_rect.cache_id,
+                    rect.x,
+                    rect.y,
+                    rect.width,
+                    rect.height
                 );
 
                 Ok(())
@@ -145,7 +163,11 @@ impl Decoder for CachedRectDecoder {
                 // Additional canonical line for e2e parser
                 tracing::warn!(
                     "Cache miss: cacheId={} rect=[{},{} {}x{}]",
-                    cached_rect.cache_id, rect.x, rect.y, rect.width, rect.height
+                    cached_rect.cache_id,
+                    rect.x,
+                    rect.y,
+                    rect.width,
+                    rect.height
                 );
 
                 // Report miss to a shared queue for the event loop to act upon.
@@ -165,8 +187,8 @@ impl Decoder for CachedRectDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::content_cache::{ContentCache, CachedPixels};
-    use rfb_pixelbuffer::{PixelFormat, ManagedPixelBuffer};
+    use crate::content_cache::{CachedPixels, ContentCache};
+    use rfb_pixelbuffer::{ManagedPixelBuffer, PixelFormat};
     use rfb_protocol::io::RfbOutStream;
     use std::io::Cursor;
 
@@ -174,16 +196,20 @@ mod tests {
     async fn test_cached_rect_decoder_hit() {
         // Create cache and populate with test data
         let cache = Arc::new(Mutex::new(ContentCache::new(100))); // 100MB limit
-        
+
         let test_cache_id = 12345u64;
-        let test_pixels: Vec<u8> = (0..64 * 64).flat_map(|_| vec![0xFF, 0x00, 0x00, 0xFF]).collect(); // Red pixels (RGBA)
+        let test_pixels: Vec<u8> = (0..64 * 64)
+            .flat_map(|_| vec![0xFF, 0x00, 0x00, 0xFF])
+            .collect(); // Red pixels (RGBA)
         let cached_pixels = CachedPixels::new(
             test_cache_id,
             test_pixels.clone(),
             PixelFormat::rgb888(), // Format is still RGB888, but ManagedPixelBuffer might expect RGBA internally
-            64, 64, 64 // stride in pixels (tightly packed)
+            64,
+            64,
+            64, // stride in pixels (tightly packed)
         );
-        
+
         {
             let mut c = cache.lock().unwrap();
             c.insert(test_cache_id, cached_pixels).unwrap();
@@ -217,7 +243,7 @@ mod tests {
         // Decode should succeed (cache hit) - wire format is 32-bit to match RGBA data
         let wire_format = crate::PixelFormat {
             bits_per_pixel: 32,
-            depth: 24, 
+            depth: 24,
             big_endian: 0,
             true_color: 1,
             red_max: 255,
@@ -227,7 +253,9 @@ mod tests {
             green_shift: 8,
             blue_shift: 0,
         };
-        let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
+        let result = decoder
+            .decode(&mut stream, &rect, &wire_format, &mut buffer)
+            .await;
         assert!(result.is_ok());
 
         // Verify cache statistics
@@ -271,7 +299,7 @@ mod tests {
         // Decode should NOT fail on cache miss; framing must be preserved
         let wire_format = crate::PixelFormat {
             bits_per_pixel: 32,
-            depth: 24, 
+            depth: 24,
             big_endian: 0,
             true_color: 1,
             red_max: 255,
@@ -281,7 +309,9 @@ mod tests {
             green_shift: 8,
             blue_shift: 0,
         };
-        let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
+        let result = decoder
+            .decode(&mut stream, &rect, &wire_format, &mut buffer)
+            .await;
         assert!(result.is_ok());
 
         // Verify cache statistics
@@ -324,8 +354,21 @@ mod tests {
         };
 
         // Decode should succeed and report miss
-        let wire_format = crate::PixelFormat { bits_per_pixel: 32, depth: 24, big_endian: 0, true_color: 1, red_max: 255, green_max: 255, blue_max: 255, red_shift: 16, green_shift: 8, blue_shift: 0 };
-        let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
+        let wire_format = crate::PixelFormat {
+            bits_per_pixel: 32,
+            depth: 24,
+            big_endian: 0,
+            true_color: 1,
+            red_max: 255,
+            green_max: 255,
+            blue_max: 255,
+            red_shift: 16,
+            green_shift: 8,
+            blue_shift: 0,
+        };
+        let result = decoder
+            .decode(&mut stream, &rect, &wire_format, &mut buffer)
+            .await;
         assert!(result.is_ok());
         // Miss should be recorded
         let recorded = misses.lock().unwrap().clone();
@@ -336,16 +379,20 @@ mod tests {
     async fn test_cached_rect_decoder_dimension_mismatch() {
         // Create cache with 64x64 pixel data
         let cache = Arc::new(Mutex::new(ContentCache::new(100)));
-        
+
         let test_cache_id = 54321u64;
-        let test_pixels: Vec<u8> = (0..64 * 64).flat_map(|_| vec![0x00, 0xFF, 0x00, 0xFF]).collect(); // Green pixels (RGBA)
+        let test_pixels: Vec<u8> = (0..64 * 64)
+            .flat_map(|_| vec![0x00, 0xFF, 0x00, 0xFF])
+            .collect(); // Green pixels (RGBA)
         let cached_pixels = CachedPixels::new(
             test_cache_id,
             test_pixels,
             PixelFormat::rgb888(), // Format is still RGB888, but ManagedPixelBuffer expects RGBA internally
-            64, 64, 64 // stride in pixels (tightly packed)
+            64,
+            64,
+            64, // stride in pixels (tightly packed)
         );
-        
+
         {
             let mut c = cache.lock().unwrap();
             c.insert(test_cache_id, cached_pixels).unwrap();
@@ -368,7 +415,7 @@ mod tests {
         let rect = Rectangle {
             x: 0,
             y: 0,
-            width: 32,  // Cached data is 64x64, but rectangle claims 32x32
+            width: 32, // Cached data is 64x64, but rectangle claims 32x32
             height: 32,
             encoding: ENCODING_CACHED_RECT,
         };
@@ -376,7 +423,7 @@ mod tests {
         // Decode should fail (dimension mismatch)
         let wire_format = crate::PixelFormat {
             bits_per_pixel: 32,
-            depth: 24, 
+            depth: 24,
             big_endian: 0,
             true_color: 1,
             red_max: 255,
@@ -386,7 +433,9 @@ mod tests {
             green_shift: 8,
             blue_shift: 0,
         };
-        let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
+        let result = decoder
+            .decode(&mut stream, &rect, &wire_format, &mut buffer)
+            .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("don't match"));
     }
