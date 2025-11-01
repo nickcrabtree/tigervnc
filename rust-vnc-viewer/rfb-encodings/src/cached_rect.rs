@@ -35,6 +35,8 @@ use rfb_common::Rect;
 pub struct CachedRectDecoder {
     /// Shared cache instance for looking up cached pixels.
     cache: Arc<Mutex<ContentCache>>,
+    /// Optional reporter queue to record cache IDs that missed during decode.
+    pending_misses: Option<Arc<Mutex<Vec<u64>>>>,
 }
 
 impl CachedRectDecoder {
@@ -43,7 +45,15 @@ impl CachedRectDecoder {
     /// The cache should be shared with CachedRectInit decoder and
     /// other components that need cache access.
     pub fn new(cache: Arc<Mutex<ContentCache>>) -> Self {
-        Self { cache }
+        Self { cache, pending_misses: None }
+    }
+
+    /// Create a new CachedRect decoder with the given cache and a miss reporter queue.
+    pub fn new_with_miss_reporter(
+        cache: Arc<Mutex<ContentCache>>,
+        misses: Arc<Mutex<Vec<u64>>>,
+    ) -> Self {
+        Self { cache, pending_misses: Some(misses) }
     }
 
     /// Get a reference to the shared cache.
@@ -127,6 +137,13 @@ impl Decoder for CachedRectDecoder {
                     rect.width, rect.height,
                     rect.x, rect.y
                 );
+
+                // Report miss to a shared queue for the event loop to act upon.
+                if let Some(m) = &self.pending_misses {
+                    if let Ok(mut v) = m.lock() {
+                        v.push(cached_rect.cache_id);
+                    }
+                }
 
                 // Successfully consume bytes for this rectangle; rendering is deferred
                 Ok(())
@@ -264,6 +281,45 @@ mod tests {
         };
         assert_eq!(stats.hit_count, 0);
         assert_eq!(stats.miss_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_cached_rect_decoder_reports_miss() {
+        // Create empty cache and a miss-reporter queue
+        let cache = Arc::new(Mutex::new(ContentCache::new(100)));
+        let misses: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
+        let decoder = CachedRectDecoder::new_with_miss_reporter(cache.clone(), misses.clone());
+
+        // Create test buffer
+        let mut buffer = ManagedPixelBuffer::new(1024, 768, PixelFormat::rgb888());
+
+        // Create stream with CachedRect data for non-existent cache_id
+        let missing_cache_id = 424242u64;
+        let cached_rect = CachedRect::new(missing_cache_id);
+        let mut stream_data = Vec::new();
+        {
+            let mut out_stream = RfbOutStream::new(&mut stream_data);
+            cached_rect.write_to(&mut out_stream).unwrap();
+            out_stream.flush().await.unwrap();
+        }
+        let mut stream = RfbInStream::new(Cursor::new(stream_data));
+
+        // Create rectangle
+        let rect = Rectangle {
+            x: 0,
+            y: 0,
+            width: 16,
+            height: 16,
+            encoding: ENCODING_CACHED_RECT,
+        };
+
+        // Decode should succeed and report miss
+        let wire_format = crate::PixelFormat { bits_per_pixel: 32, depth: 24, big_endian: 0, true_color: 1, red_max: 255, green_max: 255, blue_max: 255, red_shift: 16, green_shift: 8, blue_shift: 0 };
+        let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
+        assert!(result.is_ok());
+        // Miss should be recorded
+        let recorded = misses.lock().unwrap().clone();
+        assert_eq!(recorded, vec![missing_cache_id]);
     }
 
     #[tokio::test]
