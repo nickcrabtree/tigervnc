@@ -63,11 +63,24 @@ impl Decoder for RawDecoder {
         pixel_format: &PixelFormat,
         buffer: &mut dyn MutablePixelBuffer,
     ) -> Result<()> {
+        let buffer_before = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "Raw decode start: rect=[{},{} {}x{}] buffer_before={}",
+            rect.x, rect.y, rect.width, rect.height,
+            buffer_before
+        );
+
         // Calculate dimensions and validate
         let width = rect.width as usize;
         let height = rect.height as usize;
 
         if width == 0 || height == 0 {
+            tracing::debug!(
+                target: "rfb_encodings::framing",
+                "Raw decode end: empty rectangle, bytes_consumed=0, buffer_after={}",
+                stream.available()
+            );
             return Ok(()); // Empty rectangle - nothing to decode
         }
 
@@ -94,6 +107,14 @@ impl Decoder for RawDecoder {
         buffer
             .image_rect(dest_rect, &pixel_data, width)
             .context("Failed to write raw pixel data to buffer")?;
+
+        let buffer_after = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "Raw decode end: bytes_consumed={}, buffer_after={}",
+            buffer_before.saturating_sub(buffer_after),
+            buffer_after
+        );
 
         Ok(())
     }

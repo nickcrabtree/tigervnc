@@ -524,8 +524,21 @@ impl Decoder for TightDecoder {
         pixel_format: &PixelFormat,
         buffer: &mut dyn MutablePixelBuffer,
     ) -> Result<()> {
+        let buffer_before = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "Tight decode start: rect=[{},{} {}x{}] buffer_before={}",
+            rect.x, rect.y, rect.width, rect.height,
+            buffer_before
+        );
+
         // Empty rectangle - nothing to decode
         if rect.width == 0 || rect.height == 0 {
+            tracing::debug!(
+                target: "rfb_encodings::framing",
+                "Tight decode end: empty rectangle, bytes_consumed=0, buffer_after={}",
+                stream.available()
+            );
             return Ok(());
         }
 
@@ -589,6 +602,14 @@ impl Decoder for TightDecoder {
             buffer
                 .fill_rect(fill_rect, &pixel_data)
                 .context("Failed to fill Tight FILL rectangle")?;
+
+            let buffer_after = stream.available();
+            tracing::debug!(
+                target: "rfb_encodings::framing",
+                "Tight decode end (FILL): bytes_consumed={}, buffer_after={}",
+                buffer_before.saturating_sub(buffer_after),
+                buffer_after
+            );
             return Ok(());
         }
 
@@ -646,6 +667,14 @@ impl Decoder for TightDecoder {
 
             let dest_rect = Rect::new(rect.x as i32, rect.y as i32, width as u32, height as u32);
             buffer.image_rect(dest_rect, &converted, width)?;
+
+            let buffer_after = stream.available();
+            tracing::debug!(
+                target: "rfb_encodings::framing",
+                "Tight decode end (JPEG): bytes_consumed={}, buffer_after={}",
+                buffer_before.saturating_sub(buffer_after),
+                buffer_after
+            );
             return Ok(());
         }
 
@@ -748,9 +777,18 @@ impl Decoder for TightDecoder {
             let cursor = Cursor::new(temp_data);
             let mut temp_stream = RfbInStream::new(cursor);
 
-            return self
+            let result = self
                 .filter_palette(&mut temp_stream, rect, pixel_format, buffer, &data)
                 .await;
+
+            let buffer_after = stream.available();
+            tracing::debug!(
+                target: "rfb_encodings::framing",
+                "Tight decode end (PALETTE): bytes_consumed={}, buffer_after={}",
+                buffer_before.saturating_sub(buffer_after),
+                buffer_after
+            );
+            return result;
         }
 
         // Read or decompress data
@@ -786,6 +824,15 @@ impl Decoder for TightDecoder {
             }
             _ => bail!("Unexpected filter type {} in non-palette path", filter_type),
         }
+
+        let buffer_after = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "Tight decode end (BASIC): filter_type={}, bytes_consumed={}, buffer_after={}",
+            filter_type,
+            buffer_before.saturating_sub(buffer_after),
+            buffer_after
+        );
 
         Ok(())
     }

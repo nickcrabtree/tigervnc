@@ -2,6 +2,48 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
+## ⚠️ CRITICAL SAFETY WARNINGS
+
+### Production Servers and Viewers
+
+**DO NOT kill, restart, or interfere with production VNC servers or viewers!**
+
+This system has production VNC servers running on displays `:1`, `:2`, and `:3` that are actively in use:
+- `Xtigervnc :1` (port 5901) - PRODUCTION
+- `Xnjcvnc :2` (port 5902) - PRODUCTION  
+- `Xtigervnc :3` (port 5903) - PRODUCTION
+
+**Rules for safe process management:**
+1. **NEVER use pattern-based killing** like `pkill -f Xnjcvnc` or `killall` - these will kill ALL matching processes including production!
+2. **ALWAYS verify process details before killing**:
+   ```bash
+   # Find candidate processes
+   ps aux | grep Xnjcvnc
+   # Verify working directory and display number
+   pwdx <PID>
+   # Only kill specific PIDs after verification
+   kill <specific-pid>
+   ```
+3. **Test servers only on isolated displays**: Use `:998` and `:999` (managed by `tests/e2e/` framework)
+4. **Never manually start viewers on display `:2`** - this is the user's working desktop
+5. **Use the e2e test framework** which properly manages isolated test servers
+
+### Safe Testing Approach
+
+```bash
+# Good: Use e2e framework for testing
+cd tests/e2e
+python3 run_contentcache_test.py --server-modes local
+
+# Good: Kill only specific test server PIDs
+ps aux | grep "Xnjcvnc :99[89]"
+kill <specific-test-pid>
+
+# BAD: Pattern-based killing (will kill production!)
+pkill -f Xnjcvnc  # ❌ NEVER DO THIS
+killall Xnjcvnc   # ❌ NEVER DO THIS
+```
+
 ## Build Commands
 
 TigerVNC uses CMake for configuration with a convenience Makefile for building.
@@ -385,30 +427,54 @@ There are **two different VNC server binaries** running on the same machine:
 
 ```bash
 # Standard TigerVNC (system-installed)
-Xtigervnc :1  # Display :1, port 5901
-Xtigervnc :3  # Display :3, port 5903
+Xtigervnc :1  # Display :1, port 5901 - PRODUCTION
+Xtigervnc :3  # Display :3, port 5903 - PRODUCTION
 
 # Custom fork (Xnjcvnc) - PRODUCTION
-Xnjcvnc  :2   # Display :2, port 5902
+Xnjcvnc :2    # Display :2, port 5902 - PRODUCTION (USER'S ACTIVE DESKTOP)
 ```
 
-**CRITICAL**: All of the above are **production servers**. DO NOT:
+**🔴 CRITICAL**: All of the above are **production servers in active use**. DO NOT:
 - Stop or restart these processes
-- Modify their configuration
-- Kill these processes
+- Modify their configuration  
+- Kill these processes (even temporarily!)
 - Send them test traffic
+- Connect test viewers to them
+- Display test windows on display :2 (user's working desktop)
+
+**Why this matters**: Display :2 is the user's active working desktop. Interrupting it or
+popping up test windows will disrupt their work. The other displays are also production services.
 
 #### Test Architecture
 
 Use the end-to-end test framework under `tests/e2e`, which launches isolated VNC servers on high-numbered displays (e.g., `:998`, `:999`). See `tests/e2e/README.md`.
 
+**Test servers are safe to manage**:
+- Displays: `:998` (port 6898), `:999` (port 6899)
+- Managed by e2e framework
+- Can be safely killed by specific PID after verification
+
+**⚠️ NEVER run test binaries on production displays**:
+- Do NOT run viewers that connect to display `:2` 
+- Do NOT start test servers on displays `:1`, `:2`, or `:3`
+- Do NOT pop up GUI windows on display `:2` (user's working desktop)
+
 Note: The local build binary exists at `/home/nickc/code/tigervnc/build/unix/vncserver/Xnjcvnc`. Do not run it on display `:2`.
 
 ### SSH Tunnels
 
-Do not tunnel to production display `:2`.
+**⚠️ Do not tunnel to production displays** `:1`, `:2`, or `:3`.
 
-For testing, use the e2e framework (which starts servers on high-numbered displays) or set up tunnels only to those test displays as needed. See `tests/e2e/README.md`.
+For testing, use the e2e framework (which starts servers on high-numbered displays `:998`, `:999`) or set up tunnels only to those test displays as needed. See `tests/e2e/README.md`.
+
+**Safe tunnel example** (test servers only):
+```bash
+# Connect to test server on :998
+ssh -L 5998:localhost:6898 user@host
+
+# Connect to test server on :999  
+ssh -L 5999:localhost:6899 user@host
+```
 
 ### Safely Identifying Processes
 
@@ -416,15 +482,32 @@ For testing, use the e2e framework (which starts servers on high-numbered displa
 
 ```bash
 # List all VNC servers
-ssh nickc@birdsurvey.hopto.org "ps aux | grep -E 'Xnjcvnc|Xtigervnc' | grep -v grep"
+ps aux | grep -E 'Xnjcvnc|Xtigervnc' | grep -v grep
 
-# Check specific process working directory
-ssh nickc@birdsurvey.hopto.org "pwdx <PID>"
+# Check specific process details
+pwdx <PID>                    # Working directory
+ps -p <PID> -o pid,args       # Full command line
+
+# Safe identification of test servers
+ps aux | grep -E "Xnjcvnc :99[89]"  # Only matches test displays :998, :999
 
 # Example output:
-# nickc 2039996  Xnjcvnc :2        <- PRODUCTION (do not touch)
-# nickc  515252  Xtigervnc :3      <- PRODUCTION (do not touch)
-# nickc  900511  Xtigervnc :1      <- PRODUCTION (do not touch)
+# nickc 2039996  Xnjcvnc :2        <- PRODUCTION (display :2, do not touch!)
+# nickc  515252  Xtigervnc :3      <- PRODUCTION (display :3, do not touch!)
+# nickc  900511  Xtigervnc :1      <- PRODUCTION (display :1, do not touch!)
+# nickc 3250351  Xnjcvnc :998      <- TEST SERVER (safe to kill by PID only)
+# nickc 3250371  Xnjcvnc :999      <- TEST SERVER (safe to kill by PID only)
+```
+
+**Safe process termination**:
+```bash
+# ✅ Good: Kill specific test server by verified PID
+kill 3250351 3250371
+
+# ❌ Bad: Pattern matching (kills production!)
+pkill -f "Xnjcvnc"           # Kills :2, :998, :999 - WRONG!
+killall Xnjcvnc              # Kills all Xnjcvnc - WRONG!
+pkill -f "display_number"    # Still dangerous
 ```
 
 ### Test Architecture Management
@@ -503,23 +586,31 @@ size_t byteLen = rect.height() * stride * bytesPerPixel;
 
 ### Process Management Safety
 
-**Critical**: When killing processes, always verify working directory and exact PID to avoid killing unrelated instances.
+**🔴 Critical**: When killing processes, always verify working directory and exact PID to avoid killing production instances.
 
 ```bash
-# Find candidate processes
-ps aux | grep "pattern" | grep -v grep
+# Step 1: Find candidate processes
+ps aux | grep Xnjcvnc | grep -v grep
 
-# Verify working directory of each PID
-pwdx <PID>
+# Step 2: Verify EACH PID before killing
+pwdx <PID>                          # Check working directory
+ps -p <PID> -o pid,args             # Check display number
 
-# Only kill the specific verified PID
-kill -TERM <PID>
+# Step 3: Only kill specific verified test PIDs
+kill -TERM <verified-test-pid>
 
-# NEVER use pattern-based killing like:
-# pkill -f script_name.py  # FORBIDDEN - kills ALL matching processes!
+# ❌ FORBIDDEN: Pattern-based killing
+# pkill -f Xnjcvnc              # Kills ALL Xnjcvnc including production!
+# killall Xnjcvnc               # Kills ALL Xnjcvnc including production!
+# pkill -f "script_name.py"     # Kills ALL matching scripts!
 ```
 
-**Why this matters**: Multiple VNC servers, experiments, or scripts may run simultaneously on the same machine. Pattern-based killing can destroy long-running jobs, corrupt data, or interrupt production services.
+**Why this is critical**:
+- Multiple VNC servers run simultaneously (production `:1`, `:2`, `:3` + test `:998`, `:999`)
+- Pattern-based killing will destroy production servers and interrupt user's work
+- Display `:2` is the user's active desktop - ANY interruption is disruptive
+- Recovery from killing production servers requires manual restart and may lose state
+- The user has explicitly warned about this multiple times - it's very important to them!
 
 ### PixelBuffer Access Patterns
 
