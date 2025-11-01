@@ -119,19 +119,17 @@ impl Decoder for CachedRectDecoder {
                 Ok(())
             }
             None => {
-                // Cache miss! The client needs to request a refresh
+                // Cache miss: do NOT error out (keeps stream framing intact).
+                // The caller/event loop should issue a RequestCachedData message for this ID.
                 tracing::warn!(
-                    "ContentCache MISS: cache_id={} not found for rect {}x{} at ({},{})",
+                    "ContentCache MISS: cache_id={} not found for rect {}x{} at ({},{}) — will request cached data",
                     cached_rect.cache_id,
                     rect.width, rect.height,
                     rect.x, rect.y
                 );
 
-                // Return an error to signal that the client should request a refresh
-                anyhow::bail!(
-                    "Cache miss for cache_id {}: rectangle {}x{} at ({},{}) not in cache",
-                    cached_rect.cache_id, rect.width, rect.height, rect.x, rect.y
-                )
+                // Successfully consume bytes for this rectangle; rendering is deferred
+                Ok(())
             }
         }
     }
@@ -243,7 +241,7 @@ mod tests {
             encoding: ENCODING_CACHED_RECT,
         };
 
-        // Decode should fail (cache miss)
+        // Decode should NOT fail on cache miss; framing must be preserved
         let wire_format = crate::PixelFormat {
             bits_per_pixel: 32,
             depth: 24, 
@@ -257,8 +255,7 @@ mod tests {
             blue_shift: 0,
         };
         let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Cache miss"));
+        assert!(result.is_ok());
 
         // Verify cache statistics
         let stats = {
