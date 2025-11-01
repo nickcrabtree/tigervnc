@@ -237,7 +237,7 @@ impl Default for Config {
                 cleanup_threshold: default_cleanup_threshold(),
             },
             persistent_cache: PersistentCacheConfig {
-                enabled: true,
+                enabled: false,
                 size_mb: default_persistent_cache_size_mb(),
             },
         }
