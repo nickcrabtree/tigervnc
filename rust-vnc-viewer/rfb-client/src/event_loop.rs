@@ -149,6 +149,16 @@ pub async fn spawn(
                                 let _ = events.send(ServerEvent::ConnectionClosed);
                                 break;
                             }
+                            // After applying FBU, request any missing cache data that were reported
+                            {
+                                let fb = framebuffer.lock().await;
+                                let misses = fb.drain_pending_cache_misses();
+                                drop(fb);
+                                for cache_id in misses {
+                                    let _ = protocol::write_request_cached_data(&mut output, cache_id).await;
+                                    tracing::info!("Requested cached data for cache_id={}", cache_id);
+                                }
+                            }
                             last_update = Instant::now();
                         }
                         SetColorMapEntries(_cm) => {
@@ -263,6 +273,16 @@ pub async fn spawn(
                                     }
                                 }
                             };
+                            // After applying FBU, request any missing cache data that were reported
+                            {
+                                let fb = framebuffer.lock().await;
+                                let misses = fb.drain_pending_cache_misses();
+                                drop(fb);
+                                for cache_id in misses {
+                                    let _ = protocol::write_request_cached_data(&mut output, cache_id).await;
+                                    tracing::info!("Requested cached data for cache_id={}", cache_id);
+                                }
+                            }
                             tracing::debug!("Decoded FramebufferUpdate with {} damaged rects", damage.len());
                             if !damage.is_empty() {
                                 last_update = Instant::now();

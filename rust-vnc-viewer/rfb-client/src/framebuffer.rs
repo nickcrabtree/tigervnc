@@ -34,9 +34,14 @@ impl DecoderRegistry {
     }
     
     /// Create a registry with all standard encodings plus ContentCache support.
-    pub fn with_content_cache(cache: Arc<Mutex<ContentCache>>) -> Self {
+    pub fn with_content_cache(
+        cache: Arc<Mutex<ContentCache>>,
+        misses: Arc<Mutex<Vec<u64>>>,
+    ) -> Self {
         let mut reg = Self::with_standard();
-        reg.register(DecoderEntry::CachedRect(enc::CachedRectDecoder::new(cache.clone())));
+        reg.register(DecoderEntry::CachedRect(enc::CachedRectDecoder::new_with_miss_reporter(
+            cache.clone(), misses,
+        )));
         reg.register(DecoderEntry::CachedRectInit(enc::CachedRectInitDecoder::new(cache)));
         reg
     }
@@ -112,6 +117,8 @@ pub struct Framebuffer {
     server_pixel_format: ServerPixelFormat,
     /// Decoder registry.
     registry: DecoderRegistry,
+    /// Queue of cache IDs that missed during decoding and should be requested.
+    pending_misses: Option<Arc<Mutex<Vec<u64>>>>,
 }
 
 impl Framebuffer {
@@ -125,6 +132,7 @@ impl Framebuffer {
             buffer,
             server_pixel_format,
             registry: DecoderRegistry::with_standard(),
+            pending_misses: None,
         }
     }
     
@@ -137,10 +145,12 @@ impl Framebuffer {
     ) -> Self {
         let local_format = LocalPixelFormat::rgb888();
         let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
+        let misses: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
         Self {
             buffer,
             server_pixel_format,
-            registry: DecoderRegistry::with_content_cache(cache),
+            registry: DecoderRegistry::with_content_cache(cache, misses.clone()),
+            pending_misses: Some(misses),
         }
     }
 
@@ -156,7 +166,7 @@ impl Framebuffer {
         let mut reg = DecoderRegistry::with_standard();
         reg.register(DecoderEntry::PersistentCachedRect(enc::PersistentCachedRectDecoder::new(pcache.clone())));
         reg.register(DecoderEntry::PersistentCachedRectInit(enc::PersistentCachedRectInitDecoder::new(pcache)));
-        Self { buffer, server_pixel_format, registry: reg }
+        Self { buffer, server_pixel_format, registry: reg, pending_misses: None }
     }
 
     /// Create a new framebuffer with both ContentCache and PersistentCache support.
@@ -169,10 +179,11 @@ impl Framebuffer {
     ) -> Self {
         let local_format = LocalPixelFormat::rgb888();
         let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
-        let mut reg = DecoderRegistry::with_content_cache(ccache);
+        let misses: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
+        let mut reg = DecoderRegistry::with_content_cache(ccache, misses.clone());
         reg.register(DecoderEntry::PersistentCachedRect(enc::PersistentCachedRectDecoder::new(pcache.clone())));
         reg.register(DecoderEntry::PersistentCachedRectInit(enc::PersistentCachedRectInitDecoder::new(pcache)));
-        Self { buffer, server_pixel_format, registry: reg }
+        Self { buffer, server_pixel_format, registry: reg, pending_misses: Some(misses) }
     }
 
     /// Returns the current dimensions.
@@ -307,5 +318,17 @@ impl Framebuffer {
             }
         }
         Ok(damage)
+    }
+
+    /// Drain and return any pending cache miss IDs reported during the last decode.
+    pub fn drain_pending_cache_misses(&self) -> Vec<u64> {
+        if let Some(m) = &self.pending_misses {
+            if let Ok(mut v) = m.lock() {
+                let out = v.clone();
+                v.clear();
+                return out;
+            }
+        }
+        Vec::new()
     }
 }
