@@ -156,7 +156,7 @@ pub async fn spawn(
                                 drop(fb);
                                 for cache_id in misses {
                                     let _ = protocol::write_request_cached_data(&mut output, cache_id).await;
-                                    tracing::info!("Requested cached data for cache_id={}", cache_id);
+                                    tracing::info!("RequestCachedData cacheId={}", cache_id);
                                 }
                             }
                             last_update = Instant::now();
@@ -280,7 +280,7 @@ pub async fn spawn(
                                 drop(fb);
                                 for cache_id in misses {
                                     let _ = protocol::write_request_cached_data(&mut output, cache_id).await;
-                                    tracing::info!("Requested cached data for cache_id={}", cache_id);
+                                    tracing::info!("RequestCachedData cacheId={}", cache_id);
                                 }
                             }
                             tracing::debug!("Decoded FramebufferUpdate with {} damaged rects", damage.len());

@@ -125,6 +125,11 @@ impl Decoder for CachedRectDecoder {
                     rect.x, rect.y,
                     cached_pixels.pixels.len()
                 );
+                // Emit a canonical protocol trace line for e2e parser
+                tracing::info!(
+                    "CachedRect: cacheId={} rect=[{},{} {}x{}]",
+                    cached_rect.cache_id, rect.x, rect.y, rect.width, rect.height
+                );
 
                 Ok(())
             }
@@ -136,6 +141,11 @@ impl Decoder for CachedRectDecoder {
                     cached_rect.cache_id,
                     rect.width, rect.height,
                     rect.x, rect.y
+                );
+                // Additional canonical line for e2e parser
+                tracing::warn!(
+                    "Cache miss: cacheId={} rect=[{},{} {}x{}]",
+                    cached_rect.cache_id, rect.x, rect.y, rect.width, rect.height
                 );
 
                 // Report miss to a shared queue for the event loop to act upon.
