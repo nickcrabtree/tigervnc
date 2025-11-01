@@ -57,7 +57,7 @@ pub use server::{
 
 pub use client::{
     ClientCutText, ClientInit, FramebufferUpdateRequest, KeyEvent, PointerEvent, SetEncodings,
-    SetPixelFormat,
+    SetPixelFormat, RequestCachedData,
 };
 
 use crate::io::{RfbInStream, RfbOutStream};

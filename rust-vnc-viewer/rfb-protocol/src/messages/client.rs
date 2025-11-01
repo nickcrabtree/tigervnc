@@ -277,6 +277,24 @@ pub struct ClientCutText {
     pub text: String,
 }
 
+/// RequestCachedData message - request full data for a missing cache ID (ContentCache protocol).
+///
+/// # Wire Format
+/// - 1 byte: message type (254)
+/// - 8 bytes: cache_id (u64, big-endian)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RequestCachedData {
+    pub cache_id: u64,
+}
+
+impl RequestCachedData {
+    /// Write RequestCachedData to an RFB output stream.
+    pub fn write_to<W: AsyncWrite + Unpin>(&self, stream: &mut RfbOutStream<W>) {
+        stream.write_u8(254); // msgTypeRequestCachedData
+        stream.write_u64(self.cache_id);
+    }
+}
+
 impl ClientCutText {
     /// Read ClientCutText from an RFB input stream.
     pub async fn read_from<R: AsyncRead + Unpin>(

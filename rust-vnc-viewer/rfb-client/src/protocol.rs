@@ -238,6 +238,20 @@ pub async fn write_client_cut_text<W: AsyncWrite + Unpin>(
         .map_err(|e| RfbClientError::Transport(e))
 }
 
+/// Write RequestCachedData (ContentCache miss) and flush.
+pub async fn write_request_cached_data<W: AsyncWrite + Unpin>(
+    outstream: &mut RfbOutStream<W>,
+    cache_id: u64,
+) -> Result<(), RfbClientError> {
+    let msg = msg::RequestCachedData { cache_id };
+    if protocol_trace::enabled() { protocol_trace::out_msg("RequestCachedData", &format!("cache_id={}", cache_id)); }
+    msg.write_to(outstream);
+    outstream
+        .flush()
+        .await
+        .map_err(|e| RfbClientError::Transport(e))
+}
+
 /// Enable or disable continuous updates over a specified rectangle and flush.
 pub async fn write_enable_continuous_updates<W: AsyncWrite + Unpin>(
     outstream: &mut RfbOutStream<W>,
