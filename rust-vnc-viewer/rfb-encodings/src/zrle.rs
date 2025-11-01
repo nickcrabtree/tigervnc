@@ -214,10 +214,50 @@ impl Decoder for ZRLEDecoder {
         }
 
         // Read compressed data length (u32 big-endian)
+        // First, check what bytes we're about to read for debugging
+        let available_before_len_read = stream.available();
+        
         let compressed_len = stream
             .read_u32()
             .await
             .context("ZRLE: failed to read compressed data length")?;
+
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "ZRLE compressed_len read: value={}, buffer_before_len={}, buffer_after_len={}",
+            compressed_len,
+            available_before_len_read,
+            stream.available()
+        );
+
+        // Sanity check: compressed_len should be reasonable
+        let pixel_count = (rect.width as usize) * (rect.height as usize);
+        let max_reasonable_size = pixel_count * (bytes_per_pixel as usize) + 1024; // pixels + overhead
+        if compressed_len as usize > max_reasonable_size {
+            tracing::warn!(
+                "ZRLE: compressed_len={} seems unreasonably large for {}x{} rect ({} pixels, {} bpp). Max expected: ~{}",
+                compressed_len,
+                rect.width,
+                rect.height,
+                pixel_count,
+                bytes_per_pixel,
+                max_reasonable_size
+            );
+        }
+        
+        // Bounds check: ensure we don't try to read more than available
+        let available = stream.available();
+        if compressed_len as usize > available {
+            bail!(
+                "ZRLE: compressed_len={} exceeds available buffer ({} bytes) for rect [{}{}+{}x{}]",
+                compressed_len,
+                available,
+                rect.x,
+                rect.y,
+                rect.width,
+                rect.height
+            );
+        }
 
         tracing::debug!(
             "ZRLE: rect [{},{}+{}x{}] compressed_len={}, stream buffer has {} bytes",
