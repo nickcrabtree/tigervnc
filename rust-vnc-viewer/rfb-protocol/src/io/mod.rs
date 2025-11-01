@@ -30,6 +30,8 @@
 //! # }
 //! ```
 
+pub mod counting;
+
 use bytes::{Buf, BufMut, BytesMut};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
