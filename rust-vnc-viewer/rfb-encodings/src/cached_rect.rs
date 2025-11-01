@@ -82,10 +82,27 @@ impl Decoder for CachedRectDecoder {
         _pixel_format: &PixelFormat,
         buffer: &mut dyn MutablePixelBuffer,
     ) -> Result<()> {
-        // Read the CachedRect message (just the cache_id)
+        let buffer_before = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "CachedRect decode start: rect=[{},{} {}x{}] buffer_before={}",
+            rect.x, rect.y, rect.width, rect.height,
+            buffer_before
+        );
+
+        // Read the CachedRect message (just the cache_id - 8 bytes)
         let cached_rect = CachedRect::read_from(stream)
             .await
             .context("Failed to read CachedRect from stream")?;
+
+        let buffer_after_read = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "CachedRect read cache_id={}, bytes_consumed={}, buffer_after={}",
+            cached_rect.cache_id,
+            buffer_before.saturating_sub(buffer_after_read),
+            buffer_after_read
+        );
 
         // Look up the cached pixels and clone them to avoid borrowing issues
         let cache_hit = {

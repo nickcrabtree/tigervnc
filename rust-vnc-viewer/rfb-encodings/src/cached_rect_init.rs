@@ -152,10 +152,28 @@ impl Decoder for CachedRectInitDecoder {
         pixel_format: &PixelFormat,
         buffer: &mut dyn MutablePixelBuffer,
     ) -> Result<()> {
-        // Read the CachedRectInit header (cache_id + actual_encoding)
+        let buffer_before = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "CachedRectInit decode start: rect=[{},{} {}x{}] buffer_before={}",
+            rect.x, rect.y, rect.width, rect.height,
+            buffer_before
+        );
+
+        // Read the CachedRectInit header (cache_id + actual_encoding) - 12 bytes total
         let cached_rect_init = CachedRectInit::read_from(stream)
             .await
             .context("Failed to read CachedRectInit from stream")?;
+
+        let buffer_after_header = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "CachedRectInit header read: cache_id={}, actual_encoding={}, bytes_consumed={}, buffer_after={}",
+            cached_rect_init.cache_id,
+            cached_rect_init.actual_encoding,
+            buffer_before.saturating_sub(buffer_after_header),
+            buffer_after_header
+        );
 
         tracing::info!(
             "CachedRectInit: cache_id={}, actual_encoding={}, rect={}x{} at ({},{})",
