@@ -294,10 +294,21 @@ impl Framebuffer {
             ))
         })?;
 
+        // Framing instrumentation: log FBU start with declared rect count
+        tracing::debug!(
+            target: "rfb_client::framing",
+            "FBU start: declared_rects={}, available_buffer_bytes={}",
+            num_raw,
+            stream.available()
+        );
+
         let mut damage: Vec<Rect> = Vec::new();
+        let mut rects_decoded = 0;
+
         if num_raw == 0xFFFF {
             // Unknown number of rectangles; terminated by LastRect pseudo-encoding
             loop {
+                let buffer_before = stream.available();
                 let rect = Rectangle::read_from(stream).await.map_err(|e| {
                     RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e))
                 })?;
@@ -310,10 +321,36 @@ impl Framebuffer {
                     rect.encoding
                 );
                 if rect.encoding == enc::ENCODING_LAST_RECT {
+                    tracing::debug!(
+                        target: "rfb_client::framing",
+                        "FBU rect {}: LastRect marker (end of update)",
+                        rects_decoded
+                    );
                     // End of this update
                     break;
                 }
+
+                tracing::debug!(
+                    target: "rfb_client::framing",
+                    "FBU rect {}: enc={} rect=[{},{} {}x{}] buffer_before={}",
+                    rects_decoded,
+                    rect.encoding,
+                    rect.x, rect.y, rect.width, rect.height,
+                    buffer_before
+                );
+
                 self.apply_rectangle(stream, &rect).await?;
+
+                let buffer_after = stream.available();
+                tracing::debug!(
+                    target: "rfb_client::framing",
+                    "FBU rect {}: decoded, buffer_after={}",
+                    rects_decoded,
+                    buffer_after
+                );
+
+                rects_decoded += 1;
+
                 if rect.encoding >= 0 {
                     damage.push(Rect::new(
                         rect.x as i32,
@@ -326,7 +363,8 @@ impl Framebuffer {
         } else {
             let num = num_raw as usize;
             damage.reserve(num);
-            for _ in 0..num {
+            for i in 0..num {
+                let buffer_before = stream.available();
                 let rect = Rectangle::read_from(stream).await.map_err(|e| {
                     RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e))
                 })?;
@@ -338,7 +376,30 @@ impl Framebuffer {
                     rect.height,
                     rect.encoding
                 );
+
+                tracing::debug!(
+                    target: "rfb_client::framing",
+                    "FBU rect {}/{}: enc={} rect=[{},{} {}x{}] buffer_before={}",
+                    i,
+                    num,
+                    rect.encoding,
+                    rect.x, rect.y, rect.width, rect.height,
+                    buffer_before
+                );
+
                 self.apply_rectangle(stream, &rect).await?;
+
+                let buffer_after = stream.available();
+                tracing::debug!(
+                    target: "rfb_client::framing",
+                    "FBU rect {}/{}: decoded, buffer_after={}",
+                    i,
+                    num,
+                    buffer_after
+                );
+
+                rects_decoded += 1;
+
                 if rect.encoding >= 0 {
                     damage.push(Rect::new(
                         rect.x as i32,
@@ -349,6 +410,23 @@ impl Framebuffer {
                 }
             }
         }
+
+        // Framing instrumentation: verify rect count matches
+        if (num_raw != 0xFFFF && rects_decoded != num_raw as usize) {
+            tracing::warn!(
+                target: "rfb_client::framing",
+                "FBU end: MISMATCH! declared_rects={} decoded_rects={}",
+                num_raw,
+                rects_decoded
+            );
+        } else {
+            tracing::debug!(
+                target: "rfb_client::framing",
+                "FBU end: rects_decoded={} (matches declared count)",
+                rects_decoded
+            );
+        }
+
         Ok(damage)
     }
 
