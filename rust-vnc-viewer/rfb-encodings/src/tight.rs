@@ -698,7 +698,8 @@ impl Decoder for TightDecoder {
 
         // Handle BASIC mode (zlib-compressed with optional filter)
         let stream_id = (comp_ctl >> 4) & 0x03;
-        let explicit_filter = (comp_ctl & TIGHT_EXPLICIT_FILTER) != 0;
+        // Explicit filter is bit 2 of upper nibble (bit 6 of comp_ctl)
+        let explicit_filter = (comp_ctl & 0x40) != 0;
 
         let width = rect.width as usize;
         let height = rect.height as usize;
