@@ -220,15 +220,44 @@ impl Decoder for CachedRectInitDecoder {
         // those wrapped in CachedRectInit) contain raw deflate continuation data.
         // The persistent inflater state must be maintained across all rectangles.
 
-        self.decode_with_actual_encoding(
+        // Decode the actual pixel data
+        let decode_result = self.decode_with_actual_encoding(
             stream,
             &actual_rect,
             cached_rect_init.actual_encoding,
             pixel_format,
             buffer,
         )
-        .await
-        .with_context(|| {
+        .await;
+        
+        // If decode failed, log the full error chain before propagating
+        if let Err(ref e) = decode_result {
+            tracing::error!(
+                "CachedRectInit decode FAILED: cache_id={}, actual_encoding={}, rect={}x{} at ({},{})",
+                cached_rect_init.cache_id,
+                cached_rect_init.actual_encoding,
+                rect.width,
+                rect.height,
+                rect.x,
+                rect.y
+            );
+            tracing::error!("Root error: {:?}", e);
+            tracing::error!("Error chain:");
+            let mut current_error: &dyn std::error::Error = e.as_ref();
+            let mut depth = 0;
+            loop {
+                tracing::error!("  [{}] {}", depth, current_error);
+                match current_error.source() {
+                    Some(source) => {
+                        current_error = source;
+                        depth += 1;
+                    }
+                    None => break,
+                }
+            }
+        }
+        
+        decode_result.with_context(|| {
             format!(
                 "Failed to decode actual_encoding {} for CachedRectInit cache_id={}",
                 cached_rect_init.actual_encoding, cached_rect_init.cache_id
