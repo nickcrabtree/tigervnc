@@ -248,19 +248,11 @@ impl Decoder for ZRLEDecoder {
             );
         }
         
-        // Bounds check: ensure we don't try to read more than available
-        let available = stream.available();
-        if compressed_len as usize > available {
-            bail!(
-                "ZRLE: compressed_len={} exceeds available buffer ({} bytes) for rect [{}{}+{}x{}]",
-                compressed_len,
-                available,
-                rect.x,
-                rect.y,
-                rect.width,
-                rect.height
-            );
-        }
+        // Do NOT compare against stream.available() here. available() only reflects bytes
+        // currently buffered, not the total bytes available on the socket. read_bytes()
+        // will call ensure_bytes() internally and pull more data from the network as needed.
+        // We rely on read_bytes() to fail with EOF if compressed_len bytes are not actually
+        // available for this rectangle.
 
         tracing::debug!(
             "ZRLE: rect [{},{}+{}x{}] compressed_len={}, stream buffer has {} bytes",
