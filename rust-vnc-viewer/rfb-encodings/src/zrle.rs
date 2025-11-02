@@ -194,6 +194,9 @@ impl Decoder for ZRLEDecoder {
             rect.x, rect.y, rect.width, rect.height,
             buffer_before
         );
+        
+        // Track exact byte consumption for verification
+        let decode_start_pos = buffer_before;
 
         // Empty rectangle - nothing to decode
         if rect.width == 0 || rect.height == 0 {
@@ -319,12 +322,29 @@ impl Decoder for ZRLEDecoder {
         );
 
         let buffer_after = stream.available();
+        let actual_consumed = buffer_before.saturating_sub(buffer_after);
+        let expected_consumed = 4 + compressed_len as usize; // 4-byte length + data
+        
         tracing::debug!(
             target: "rfb_encodings::framing",
-            "ZRLE decode end: bytes_consumed={}, buffer_after={}",
-            buffer_before.saturating_sub(buffer_after),
+            "ZRLE decode end: bytes_consumed={}, expected={}, buffer_after={}",
+            actual_consumed,
+            expected_consumed,
             buffer_after
         );
+        
+        // Verify byte consumption matches expectation
+        if actual_consumed != expected_consumed {
+            bail!(
+                "ZRLE byte consumption mismatch for rect [{}{}+{}x{}]: \
+                 consumed {} bytes but expected {} (4-byte len + {} compressed data). \
+                 This indicates stream misalignment.",
+                rect.x, rect.y, rect.width, rect.height,
+                actual_consumed,
+                expected_consumed,
+                compressed_len
+            );
+        }
 
         Ok(())
     }
