@@ -705,6 +705,8 @@ impl Decoder for TightDecoder {
         let bytes_per_pixel = (pixel_format.bits_per_pixel / 8) as usize;
 
         // Determine filter and data size
+        // For BASIC mode without explicit filter, data is RGB888 (3 bpp)
+        let rgb888_implicit = !explicit_filter;  // Track if RGB888 format is implicit
         let (filter_type, data_size, use_palette) = if explicit_filter {
             let filter_id = stream
                 .read_u8()
@@ -727,13 +729,15 @@ impl Decoder for TightDecoder {
                 _ => bail!("Tight: invalid filter type {}", filter_id),
             }
         } else {
-            // No explicit filter - implicit COPY in native format
-            let data_size = width * height * bytes_per_pixel;
+            // No explicit filter - implicit COPY in RGB888 format (3 bytes/pixel)
+            // Tight protocol: BASIC mode without filter bit always uses RGB888,
+            // regardless of negotiated pixel format
+            let data_size = width * height * 3;  // Always RGB888
             tracing::debug!(
-                "Tight BASIC (no filter): width={} height={} bpp={} data_size={}",
-                width, height, bytes_per_pixel, data_size
+                "Tight BASIC (no filter/RGB888): width={} height={} data_size={}",
+                width, height, data_size
             );
-            (TIGHT_FILTER_COPY, data_size, false)
+            (TIGHT_FILTER_COPY, data_size, false)  // Not palette mode
         };
 
         // Special handling for palette mode
@@ -835,7 +839,8 @@ impl Decoder for TightDecoder {
         // Apply filter
         match filter_type {
             TIGHT_FILTER_COPY => {
-                let rgb888_mode = explicit_filter;
+                // RGB888 mode if explicit filter OR implicit (no filter byte in BASIC mode)
+                let rgb888_mode = explicit_filter || rgb888_implicit;
                 self.filter_copy(&data, rect, pixel_format, buffer, rgb888_mode)?;
             }
             TIGHT_FILTER_GRADIENT => {
