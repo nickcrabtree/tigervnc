@@ -39,6 +39,14 @@ use tokio::io::AsyncRead;
 /// 2. Dispatches to the appropriate decoder for the pixel data
 /// 3. Stores the decoded result in the cache for future reference
 /// 4. Blits the pixels to the framebuffer
+///
+/// # IMPORTANT: ZRLE Decoder Sharing
+///
+/// The ZRLE decoder MUST be shared between this decoder and the main decoder registry
+/// because ZRLE uses a continuous zlib stream across ALL rectangles in a FramebufferUpdate.
+/// If each decoder has its own inflater, subsequent rectangles will fail with
+/// "incorrect header check" errors when they receive deflate continuation data instead
+/// of a fresh zlib header.
 pub struct CachedRectInitDecoder {
     /// Shared cache instance for storing decoded pixels.
     cache: Arc<Mutex<ContentCache>>,
@@ -58,16 +66,17 @@ pub struct CachedRectInitDecoder {
     /// Tight decoder for ENCODING_TIGHT.
     tight_decoder: TightDecoder,
 
-    /// ZRLE decoder for ENCODING_ZRLE.
-    zrle_decoder: ZRLEDecoder,
+    /// ZRLE decoder for ENCODING_ZRLE (MUST be shared with main registry!).
+    zrle_decoder: Arc<ZRLEDecoder>,
 }
 
 impl CachedRectInitDecoder {
-    /// Create a new CachedRectInit decoder with the given cache.
+    /// Create a new CachedRectInit decoder with the given cache and shared ZRLE decoder.
     ///
-    /// The cache should be shared with CachedRect decoder and other
-    /// components that need cache access.
-    pub fn new(cache: Arc<Mutex<ContentCache>>) -> Self {
+    /// The cache should be shared with CachedRect decoder and other components.
+    /// The ZRLE decoder MUST be the same instance used in the main decoder registry
+    /// to maintain continuous zlib stream state across rectangles.
+    pub fn new(cache: Arc<Mutex<ContentCache>>, zrle_decoder: Arc<ZRLEDecoder>) -> Self {
         Self {
             cache,
             raw_decoder: RawDecoder,
@@ -75,7 +84,7 @@ impl CachedRectInitDecoder {
             rre_decoder: RREDecoder,
             hextile_decoder: HextileDecoder,
             tight_decoder: TightDecoder::default(),
-            zrle_decoder: ZRLEDecoder::default(),
+            zrle_decoder,
         }
     }
 
@@ -292,7 +301,8 @@ mod tests {
     #[tokio::test]
     async fn test_cached_rect_init_decoder_raw() {
         let cache = Arc::new(Mutex::new(ContentCache::new(100)));
-        let decoder = CachedRectInitDecoder::new(cache.clone());
+        let zrle = Arc::new(ZRLEDecoder::default());
+        let decoder = CachedRectInitDecoder::new(cache.clone(), zrle);
 
         let mut buffer = ManagedPixelBuffer::new(1024, 768, PixelFormat::rgb888());
 
@@ -370,7 +380,8 @@ mod tests {
     #[tokio::test]
     async fn test_cached_rect_init_decoder_unsupported_encoding() {
         let cache = Arc::new(Mutex::new(ContentCache::new(100)));
-        let decoder = CachedRectInitDecoder::new(cache);
+        let zrle = Arc::new(ZRLEDecoder::default());
+        let decoder = CachedRectInitDecoder::new(cache, zrle);
         let mut buffer = ManagedPixelBuffer::new(1024, 768, PixelFormat::rgb888());
 
         // Create CachedRectInit with unsupported encoding
@@ -419,7 +430,8 @@ mod tests {
     #[test]
     fn test_cached_rect_init_decoder_encoding_type() {
         let cache = Arc::new(Mutex::new(ContentCache::new(1)));
-        let decoder = CachedRectInitDecoder::new(cache);
+        let zrle = Arc::new(ZRLEDecoder::default());
+        let decoder = CachedRectInitDecoder::new(cache, zrle);
         assert_eq!(decoder.encoding_type(), ENCODING_CACHED_RECT_INIT);
     }
 }

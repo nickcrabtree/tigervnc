@@ -196,7 +196,7 @@ impl Decoder for ZRLEDecoder {
         );
         
         // Track exact byte consumption for verification
-        let decode_start_pos = buffer_before;
+        let _decode_start_pos = buffer_before;
 
         // Empty rectangle - nothing to decode
         if rect.width == 0 || rect.height == 0 {
@@ -366,13 +366,34 @@ impl ZRLEDecoder {
         let mut decompressed = Vec::new();
         let mut inflater = self.inflater.lock().unwrap();
 
+        // Log inflater state before decompression
+        let total_in_before = inflater.total_in();
+        let total_out_before = inflater.total_out();
+        tracing::debug!(
+            "ZRLE decompress: input_len={}, inflater state: total_in={}, total_out={}, first 8 bytes: {:02x?}",
+            compressed.len(),
+            total_in_before,
+            total_out_before,
+            &compressed[..compressed.len().min(8)]
+        );
+
         // Process all input bytes
         let mut in_pos = 0;
         let mut out_buf = vec![0u8; 64 * 1024]; // 64KB output buffer
+        let mut iteration = 0;
 
         loop {
             let before_in = inflater.total_in();
             let before_out = inflater.total_out();
+
+            tracing::trace!(
+                "ZRLE decompress iteration {}: in_pos={}/{}, total_in={}, total_out={}",
+                iteration,
+                in_pos,
+                compressed.len(),
+                before_in,
+                before_out
+            );
 
             let status = inflater
                 .decompress(
@@ -380,9 +401,28 @@ impl ZRLEDecoder {
                     &mut out_buf,
                     FlushDecompress::Sync,
                 )
-                .with_context(|| {
-                    format!(
-                        "ZRLE: zlib decompression failed (input {} bytes at offset {}, first 16 bytes: {:02x?})",
+                .map_err(|e| {
+                    tracing::error!(
+                        "ZRLE: zlib decompression error at iteration {}: {:?}",
+                        iteration,
+                        e
+                    );
+                    tracing::error!(
+                        "  input: {} bytes at offset {}, first 16: {:02x?}",
+                        compressed.len(),
+                        in_pos,
+                        &compressed[..compressed.len().min(16)]
+                    );
+                    tracing::error!(
+                        "  inflater state: total_in={} (started at {}), total_out={} (started at {})",
+                        inflater.total_in(),
+                        total_in_before,
+                        inflater.total_out(),
+                        total_out_before
+                    );
+                    anyhow::anyhow!(
+                        "ZRLE: zlib decompression failed: {:?} (input {} bytes at offset {}, first 16 bytes: {:02x?})",
+                        e,
                         compressed.len(),
                         in_pos,
                         &compressed[..compressed.len().min(16)]
@@ -394,6 +434,15 @@ impl ZRLEDecoder {
 
             in_pos += consumed;
             decompressed.extend_from_slice(&out_buf[..produced]);
+            iteration += 1;
+
+            tracing::trace!(
+                "ZRLE decompress iteration {} result: consumed={}, produced={}, status={:?}",
+                iteration - 1,
+                consumed,
+                produced,
+                status
+            );
 
             // Check if we're done
             if in_pos >= compressed.len() {
@@ -419,10 +468,12 @@ impl ZRLEDecoder {
             }
         }
 
-        tracing::trace!(
-            "ZRLE: decompressed {} -> {} bytes",
+        tracing::debug!(
+            "ZRLE decompress complete: {} -> {} bytes (total_in now {}, total_out now {})",
             compressed.len(),
-            decompressed.len()
+            decompressed.len(),
+            inflater.total_in(),
+            inflater.total_out()
         );
 
         Ok(decompressed)
@@ -439,6 +490,22 @@ impl ZRLEDecoder {
     ) -> Result<()> {
         // Determine CPixel optimization mode
         let cpixel_mode = CPixelMode::detect(pixel_format, bytes_per_pixel);
+
+        // Calculate total number of tiles
+        let tiles_x = (rect.width + TILE_SIZE - 1) / TILE_SIZE;
+        let tiles_y = (rect.height + TILE_SIZE - 1) / TILE_SIZE;
+        let total_tiles = tiles_x as usize * tiles_y as usize;
+        let mut tile_num = 0;
+
+        tracing::debug!(
+            "ZRLE decode_tiles: rect {}x{} -> {} tiles ({}x{}), decompressed buffer {} bytes",
+            rect.width,
+            rect.height,
+            total_tiles,
+            tiles_x,
+            tiles_y,
+            cursor.remaining()
+        );
 
         // Iterate over 64x64 tiles in row-major order
         let mut ty = 0u16;
@@ -459,6 +526,18 @@ impl ZRLEDecoder {
                     .checked_add(ty)
                     .ok_or_else(|| anyhow!("ZRLE: tile y coordinate overflows"))?;
 
+                let cursor_before = cursor.remaining();
+                tracing::trace!(
+                    "ZRLE tile {}/{}: pos=({},{}) size={}x{}, cursor_before={}",
+                    tile_num,
+                    total_tiles,
+                    tx,
+                    ty,
+                    tile_w,
+                    tile_h,
+                    cursor_before
+                );
+
                 // Decode single tile
                 self.decode_tile(
                     cursor,
@@ -471,11 +550,22 @@ impl ZRLEDecoder {
                 )
                 .with_context(|| {
                     format!(
-                        "ZRLE: failed to decode tile at ({}, {}) size {}x{}",
-                        tx, ty, tile_w, tile_h
+                        "ZRLE: failed to decode tile {}/{} at ({}, {}) size {}x{}",
+                        tile_num, total_tiles, tx, ty, tile_w, tile_h
                     )
                 })?;
 
+                let cursor_after = cursor.remaining();
+                let consumed = cursor_before - cursor_after;
+                tracing::trace!(
+                    "ZRLE tile {}/{} complete: consumed {} bytes, cursor_after={}",
+                    tile_num,
+                    total_tiles,
+                    consumed,
+                    cursor_after
+                );
+
+                tile_num += 1;
                 tx += TILE_SIZE;
             }
             ty += TILE_SIZE;

@@ -38,12 +38,26 @@ impl DecoderRegistry {
         cache: Arc<Mutex<ContentCache>>,
         misses: Arc<Mutex<Vec<u64>>>,
     ) -> Self {
-        let mut reg = Self::with_standard();
+        // CRITICAL: Share the ZRLE decoder between registry and CachedRectInit!
+        // ZRLE uses a continuous zlib stream across all rectangles in a FramebufferUpdate.
+        // If each decoder has its own inflater, subsequent rectangles will fail.
+        let zrle_decoder = Arc::new(enc::ZRLEDecoder::default());
+        
+        let mut reg = Self::default();
+        // Register standard encodings with shared ZRLE
+        reg.register(DecoderEntry::Raw(enc::RawDecoder));
+        reg.register(DecoderEntry::CopyRect(enc::CopyRectDecoder));
+        reg.register(DecoderEntry::RRE(enc::RREDecoder));
+        reg.register(DecoderEntry::Hextile(enc::HextileDecoder));
+        reg.register(DecoderEntry::Tight(enc::TightDecoder::default()));
+        reg.register(DecoderEntry::ZRLEShared(zrle_decoder.clone()));
+        
+        // Register cache decoders with shared ZRLE
         reg.register(DecoderEntry::CachedRect(
             enc::CachedRectDecoder::new_with_miss_reporter(cache.clone(), misses),
         ));
         reg.register(DecoderEntry::CachedRectInit(
-            enc::CachedRectInitDecoder::new(cache),
+            enc::CachedRectInitDecoder::new(cache, zrle_decoder),
         ));
         reg
     }
@@ -67,6 +81,8 @@ enum DecoderEntry {
     Hextile(enc::HextileDecoder),
     Tight(enc::TightDecoder),
     ZRLE(enc::ZRLEDecoder),
+    /// Shared ZRLE decoder (Arc-wrapped for sharing with CachedRectInitDecoder)
+    ZRLEShared(Arc<enc::ZRLEDecoder>),
     CachedRect(enc::CachedRectDecoder),
     CachedRectInit(enc::CachedRectInitDecoder),
     PersistentCachedRect(enc::PersistentCachedRectDecoder),
@@ -82,6 +98,7 @@ impl DecoderEntry {
             Self::Hextile(d) => d.encoding_type(),
             Self::Tight(d) => d.encoding_type(),
             Self::ZRLE(d) => d.encoding_type(),
+            Self::ZRLEShared(d) => d.encoding_type(),
             Self::CachedRect(d) => d.encoding_type(),
             Self::CachedRectInit(d) => d.encoding_type(),
             Self::PersistentCachedRect(d) => d.encoding_type(),
@@ -103,6 +120,7 @@ impl DecoderEntry {
             Self::Hextile(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::Tight(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::ZRLE(d) => d.decode(stream, rect, pixel_format, buffer).await,
+            Self::ZRLEShared(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::CachedRect(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::CachedRectInit(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::PersistentCachedRect(d) => d.decode(stream, rect, pixel_format, buffer).await,
@@ -252,6 +270,7 @@ impl Framebuffer {
                     DecoderEntry::Hextile(_) => "Hextile",
                     DecoderEntry::Tight(_) => "Tight",
                     DecoderEntry::ZRLE(_) => "ZRLE",
+                    DecoderEntry::ZRLEShared(_) => "ZRLE",
                     DecoderEntry::CachedRect(_) => "CachedRect",
                     DecoderEntry::CachedRectInit(_) => "CachedRectInit",
                     DecoderEntry::PersistentCachedRect(_) => "PersistentCachedRect",
