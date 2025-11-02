@@ -338,10 +338,14 @@ impl Config {
             // 103
         }
 
-        // Real encodings AFTER pseudo-encodings
-        encodings.push(rfb_encodings::ENCODING_RAW);
-        encodings.push(rfb_encodings::ENCODING_COPY_RECT);
-        encodings.push(rfb_encodings::ENCODING_ZRLE);
+        // Real encodings AFTER pseudo-encodings (in preference order)
+        // TigerVNC servers prefer Tight for most content, so list it first
+        encodings.push(rfb_encodings::ENCODING_TIGHT);     // 7 - Most efficient for photos/complex images
+        encodings.push(rfb_encodings::ENCODING_ZRLE);      // 16 - Good general purpose
+        encodings.push(rfb_encodings::ENCODING_HEXTILE);   // 5 - Simple RLE encoding
+        encodings.push(rfb_encodings::ENCODING_RRE);       // 2 - Rise-and-run encoding
+        encodings.push(rfb_encodings::ENCODING_COPY_RECT); // 1 - Copy from existing area
+        encodings.push(rfb_encodings::ENCODING_RAW);       // 0 - Uncompressed fallback
 
         encodings
     }
@@ -431,8 +435,8 @@ mod tests {
         // (server selects encodings based on list order)
         let config = Config::default();
         let encodings = config.effective_encodings();
-        // 3 proto pseudo + 3 ContentCache + 3 base = 9 (PersistentCache disabled by default)
-        assert_eq!(encodings.len(), 9);
+        // 3 proto pseudo + 3 ContentCache + 6 real = 12 (PersistentCache disabled by default)
+        assert_eq!(encodings.len(), 12);
         // Pseudo-encodings first
         assert_eq!(encodings[0], -312); // Fence
         assert_eq!(encodings[1], -313); // ContinuousUpdates
@@ -440,16 +444,19 @@ mod tests {
         assert_eq!(encodings[3], -320); // ContentCache pseudo
         assert_eq!(encodings[4], rfb_encodings::ENCODING_CACHED_RECT); // 100
         assert_eq!(encodings[5], rfb_encodings::ENCODING_CACHED_RECT_INIT); // 101
-        // Real encodings last
-        assert_eq!(encodings[6], rfb_encodings::ENCODING_RAW);
-        assert_eq!(encodings[7], rfb_encodings::ENCODING_COPY_RECT);
-        assert_eq!(encodings[8], rfb_encodings::ENCODING_ZRLE);
+        // Real encodings last (in preference order: Tight, ZRLE, Hextile, RRE, CopyRect, Raw)
+        assert_eq!(encodings[6], rfb_encodings::ENCODING_TIGHT);
+        assert_eq!(encodings[7], rfb_encodings::ENCODING_ZRLE);
+        assert_eq!(encodings[8], rfb_encodings::ENCODING_HEXTILE);
+        assert_eq!(encodings[9], rfb_encodings::ENCODING_RRE);
+        assert_eq!(encodings[10], rfb_encodings::ENCODING_COPY_RECT);
+        assert_eq!(encodings[11], rfb_encodings::ENCODING_RAW);
     }
 
     #[test]
     fn test_effective_encodings_no_caches() {
         // When caches are disabled, we still advertise Fence, CU, and LastRect pseudo-encodings
-        // Pseudo-encodings come FIRST, then real encodings
+        // Pseudo-encodings come FIRST, then real encodings (in preference order)
         let mut config = Config::default();
         config.content_cache.enabled = false;
         config.persistent_cache.enabled = false;
@@ -460,9 +467,12 @@ mod tests {
                 -312, // Fence
                 -313, // ContinuousUpdates
                 -224, // LastRect
-                rfb_encodings::ENCODING_RAW,
-                rfb_encodings::ENCODING_COPY_RECT,
-                rfb_encodings::ENCODING_ZRLE,
+                rfb_encodings::ENCODING_TIGHT,      // Preferred for most content
+                rfb_encodings::ENCODING_ZRLE,       // Good general purpose
+                rfb_encodings::ENCODING_HEXTILE,    // Simple RLE
+                rfb_encodings::ENCODING_RRE,        // Rise-and-run
+                rfb_encodings::ENCODING_COPY_RECT,  // Copy existing
+                rfb_encodings::ENCODING_RAW,        // Uncompressed fallback
             ]
         );
     }
