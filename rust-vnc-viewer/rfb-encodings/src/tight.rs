@@ -564,6 +564,10 @@ impl Decoder for TightDecoder {
             let mut streams = self.zlib_streams.lock().unwrap();
             for i in 0..4 {
                 if (comp_ctl & (1 << i)) != 0 {
+                    tracing::debug!(
+                        "Tight: reset zlib stream {} requested (comp_ctl={:#04x})",
+                        i, comp_ctl
+                    );
                     streams[i] = None; // Reset stream
                 }
             }
@@ -571,6 +575,11 @@ impl Decoder for TightDecoder {
 
         // Determine compression type (upper 4 bits)
         let comp_type = comp_ctl >> 4;
+        
+        tracing::debug!(
+            "Tight: comp_ctl={:#04x} comp_type={:#x} reset_bits={:#x}",
+            comp_ctl, comp_type, comp_ctl & 0x0F
+        );
 
         // Handle FILL mode
         if comp_type == TIGHT_FILL {
@@ -719,7 +728,12 @@ impl Decoder for TightDecoder {
             }
         } else {
             // No explicit filter - implicit COPY in native format
-            (TIGHT_FILTER_COPY, width * height * bytes_per_pixel, false)
+            let data_size = width * height * bytes_per_pixel;
+            tracing::debug!(
+                "Tight BASIC (no filter): width={} height={} bpp={} data_size={}",
+                width, height, bytes_per_pixel, data_size
+            );
+            (TIGHT_FILTER_COPY, data_size, false)
         };
 
         // Special handling for palette mode
@@ -803,6 +817,10 @@ impl Decoder for TightDecoder {
             d
         } else {
             let compressed_len = Self::read_compact_length(stream).await?;
+            tracing::debug!(
+                "Tight: reading {} compressed bytes for {} uncompressed bytes (stream_id={})",
+                compressed_len, data_size, stream_id
+            );
             let mut compressed = vec![0u8; compressed_len];
             stream.read_bytes(&mut compressed).await.with_context(|| {
                 format!(
@@ -810,6 +828,7 @@ impl Decoder for TightDecoder {
                     compressed_len
                 )
             })?;
+            tracing::debug!("Tight: decompressing {} bytes", compressed_len);
             self.decompress_zlib(stream_id as usize, &compressed, data_size)?
         };
 
