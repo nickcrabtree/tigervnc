@@ -321,6 +321,7 @@ impl Config {
         // Add pseudo-encodings for protocol features
         encodings.push(-312); // pseudoEncodingFence
         encodings.push(-313); // pseudoEncodingContinuousUpdates
+        encodings.push(-224); // pseudoEncodingLastRect - enables variable rect count in FBU
 
         // Add ContentCache encodings if enabled
         if self.content_cache.enabled {
@@ -430,23 +431,24 @@ mod tests {
         // (server selects encodings based on list order)
         let config = Config::default();
         let encodings = config.effective_encodings();
-        // 2 proto pseudo + 3 ContentCache + 3 base = 8 (PersistentCache disabled by default)
-        assert_eq!(encodings.len(), 8);
+        // 3 proto pseudo + 3 ContentCache + 3 base = 9 (PersistentCache disabled by default)
+        assert_eq!(encodings.len(), 9);
         // Pseudo-encodings first
         assert_eq!(encodings[0], -312); // Fence
         assert_eq!(encodings[1], -313); // ContinuousUpdates
-        assert_eq!(encodings[2], -320); // ContentCache pseudo
-        assert_eq!(encodings[3], rfb_encodings::ENCODING_CACHED_RECT); // 100
-        assert_eq!(encodings[4], rfb_encodings::ENCODING_CACHED_RECT_INIT); // 101
+        assert_eq!(encodings[2], -224); // LastRect
+        assert_eq!(encodings[3], -320); // ContentCache pseudo
+        assert_eq!(encodings[4], rfb_encodings::ENCODING_CACHED_RECT); // 100
+        assert_eq!(encodings[5], rfb_encodings::ENCODING_CACHED_RECT_INIT); // 101
         // Real encodings last
-        assert_eq!(encodings[5], rfb_encodings::ENCODING_RAW);
-        assert_eq!(encodings[6], rfb_encodings::ENCODING_COPY_RECT);
-        assert_eq!(encodings[7], rfb_encodings::ENCODING_ZRLE);
+        assert_eq!(encodings[6], rfb_encodings::ENCODING_RAW);
+        assert_eq!(encodings[7], rfb_encodings::ENCODING_COPY_RECT);
+        assert_eq!(encodings[8], rfb_encodings::ENCODING_ZRLE);
     }
 
     #[test]
     fn test_effective_encodings_no_caches() {
-        // When caches are disabled, we still advertise Fence and CU pseudo-encodings
+        // When caches are disabled, we still advertise Fence, CU, and LastRect pseudo-encodings
         // Pseudo-encodings come FIRST, then real encodings
         let mut config = Config::default();
         config.content_cache.enabled = false;
@@ -457,6 +459,7 @@ mod tests {
             vec![
                 -312, // Fence
                 -313, // ContinuousUpdates
+                -224, // LastRect
                 rfb_encodings::ENCODING_RAW,
                 rfb_encodings::ENCODING_COPY_RECT,
                 rfb_encodings::ENCODING_ZRLE,
