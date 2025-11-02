@@ -204,6 +204,13 @@ impl Decoder for CachedRectInitDecoder {
             encoding: cached_rect_init.actual_encoding,
         };
 
+        // NOTE: Do NOT reset the ZRLE inflater here!
+        // The server sends ZRLE data in CachedRectInit as part of the SAME continuous
+        // zlib stream used for regular ZRLE rectangles within the FBU. Only the first
+        // rectangle in an FBU has a zlib header (0x78); subsequent rectangles (including
+        // those wrapped in CachedRectInit) contain raw deflate continuation data.
+        // The persistent inflater state must be maintained across all rectangles.
+
         self.decode_with_actual_encoding(
             stream,
             &actual_rect,
