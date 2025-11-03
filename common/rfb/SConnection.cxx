@@ -360,12 +360,11 @@ void SConnection::clientInit(bool shared)
 
 void SConnection::setEncodings(int nEncodings, const int32_t* encodings)
 {
-  int i;
   bool firstFence, firstContinuousUpdates, firstLEDState,
        firstQEMUKeyEvent, firstExtMouseButtonsEvent;
 
   preferredEncoding = encodingRaw;
-  for (i = 0;i < nEncodings;i++) {
+  for (int i = 0;i < nEncodings;i++) {
     if (EncodeManager::supported(encodings[i])) {
       preferredEncoding = encodings[i];
       break;

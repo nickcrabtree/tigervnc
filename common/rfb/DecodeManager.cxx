@@ -279,7 +279,7 @@ void DecodeManager::logStats()
   
   // Log client-side PersistentCache statistics
   if (persistentCache != nullptr) {
-    auto stats = persistentCache->getStats();
+    auto pcStats = persistentCache->getStats();
     vlog.info(" ");
     vlog.info("Client-side PersistentCache statistics:");
     vlog.info("  Protocol operations (PersistentCachedRect received):");
@@ -293,18 +293,18 @@ void DecodeManager::logStats()
               persistentCacheStats.queries_sent);
     vlog.info("  ARC cache performance:");
     vlog.info("    Total entries: %zu, Total bytes: %s",
-              stats.totalEntries,
-              core::iecPrefix(stats.totalBytes, "B").c_str());
+              pcStats.totalEntries,
+              core::iecPrefix(pcStats.totalBytes, "B").c_str());
     vlog.info("    Cache hits: %llu, Cache misses: %llu, Evictions: %llu",
-              (unsigned long long)stats.cacheHits,
-              (unsigned long long)stats.cacheMisses,
-              (unsigned long long)stats.evictions);
+              (unsigned long long)pcStats.cacheHits,
+              (unsigned long long)pcStats.cacheMisses,
+              (unsigned long long)pcStats.evictions);
     vlog.info("    T1 (recency): %zu entries, T2 (frequency): %zu entries",
-              stats.t1Size, stats.t2Size);
+              pcStats.t1Size, pcStats.t2Size);
     vlog.info("    B1 (ghost-T1): %zu entries, B2 (ghost-T2): %zu entries",
-              stats.b1Size, stats.b2Size);
+              pcStats.b1Size, pcStats.b2Size);
     vlog.info("    ARC parameter p (target T1 bytes): %s",
-              core::iecPrefix(stats.targetT1Size, "B").c_str());
+              core::iecPrefix(pcStats.targetT1Size, "B").c_str());
   }
 }
 
