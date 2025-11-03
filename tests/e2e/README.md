@@ -229,6 +229,40 @@ If pixel-perfect comparison is not critical, the test can still pass on log comp
 
 **Solution**: Install missing packages as listed in Requirements section above.
 
+## Specific Bug Tests
+
+### CachedRectInit Propagation Test
+
+**Issue**: Server has ContentCache hits but sends 0 `CachedRect` references to clients.
+
+**Test**: `test_cachedrectin it_propagation.py`
+
+Validates that when the server has a cache hit, it properly communicates it to the client via either:
+- `CachedRect` (if client knows the cacheId)
+- `CachedRectInit` (if client doesn't know the cacheId yet)
+
+**Usage**:
+```bash
+# Server-side validation only
+python3 tests/e2e/test_cachedrectin\ it_propagation.py --display 998 --port 6898
+
+# Full protocol flow validation with viewer
+python3 tests/e2e/test_cachedrectin\ it_propagation.py --display 998 --port 6898 --with-viewer
+
+# Custom duration
+python3 tests/e2e/test_cachedrectin\ it_propagation.py --duration 120 --with-viewer
+```
+
+**Test will FAIL if**:
+- Server performs cache lookups but sends 0 references
+- Client receives no `CachedRect` or `CachedRectInit` messages despite server cache hits
+
+**Test will PASS if**:
+- Server cache lookups result in cache reference messages being sent
+- Client receives matching number of cache protocol messages
+
+**Bug identified**: 2025-11-03 - Server queues `CachedRectInit` messages when client doesn't know a cacheId, but those queued messages are not being transmitted properly.
+
 ## Extending Scenarios
 
 To add new test scenarios:

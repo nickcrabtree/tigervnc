@@ -386,10 +386,10 @@ There are **two different VNC server binaries** running on the same machine:
 ```bash
 # Standard TigerVNC (system-installed)
 Xtigervnc :1  # Display :1, port 5901
-Xtigervnc :3  # Display :3, port 5903
+Xtigervnc :2  # Display :2, port 5902
 
 # Custom fork (Xnjcvnc) - PRODUCTION
-Xnjcvnc  :2   # Display :2, port 5902
+Xnjcvnc  :3   # Display :3, port 5903 (with ContentCache/PersistentCache)
 ```
 
 **CRITICAL**: All of the above are **production servers**. DO NOT:
@@ -402,11 +402,11 @@ Xnjcvnc  :2   # Display :2, port 5902
 
 Use the end-to-end test framework under `tests/e2e`, which launches isolated VNC servers on high-numbered displays (e.g., `:998`, `:999`). See `tests/e2e/README.md`.
 
-Note: The local build binary exists at `/home/nickc/code/tigervnc/build/unix/vncserver/Xnjcvnc`. Do not run it on display `:2`.
+Note: The local build binary exists at `/home/nickc/code/tigervnc/build/unix/vncserver/Xnjcvnc`. Do not run it on display `:3`.
 
 ### SSH Tunnels
 
-Do not tunnel to production display `:2`.
+Do not tunnel to production display `:3`.
 
 For testing, use the e2e framework (which starts servers on high-numbered displays) or set up tunnels only to those test displays as needed. See `tests/e2e/README.md`.
 
@@ -422,9 +422,9 @@ ssh nickc@birdsurvey.hopto.org "ps aux | grep -E 'Xnjcvnc|Xtigervnc' | grep -v g
 ssh nickc@birdsurvey.hopto.org "pwdx <PID>"
 
 # Example output:
-# nickc 2039996  Xnjcvnc :2        <- PRODUCTION (do not touch)
-# nickc  515252  Xtigervnc :3      <- PRODUCTION (do not touch)
-# nickc  900511  Xtigervnc :1      <- PRODUCTION (do not touch)
+# nickc 1497451  Xnjcvnc :3        <- PRODUCTION (do not touch)
+# nickc 3221111  Xtigervnc :2      <- PRODUCTION (do not touch)
+# nickc  849543  Xtigervnc :1      <- PRODUCTION (do not touch)
 ```
 
 ### Test Architecture Management
