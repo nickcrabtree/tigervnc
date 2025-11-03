@@ -104,11 +104,7 @@ mod tests {
             0u16..=1080,
             1u16..=640,
             1u16..=480,
-            prop::sample::select(vec![
-                ENCODING_RAW,
-                ENCODING_COPYRECT,
-                ENCODING_ZRLE,
-            ]),
+            prop::sample::select(vec![ENCODING_RAW, ENCODING_COPYRECT, ENCODING_ZRLE]),
         )
             .prop_map(|(x, y, w, h, enc)| Rectangle {
                 x,

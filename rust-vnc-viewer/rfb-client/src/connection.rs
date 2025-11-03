@@ -47,7 +47,9 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Connection<R, W> {
 /// 4) Negotiate security (currently supports None only per rfb-protocol)
 /// 5) Send ClientInit (shared session)
 /// 6) Read ServerInit (framebuffer params)
-pub async fn establish(config: &Config) -> Result<Connection<impl AsyncRead + Unpin, impl AsyncWrite + Unpin>, RfbClientError> {
+pub async fn establish(
+    config: &Config,
+) -> Result<Connection<impl AsyncRead + Unpin, impl AsyncWrite + Unpin>, RfbClientError> {
     // 1) Transport
     let host = &config.connection.host;
     let port = config.connection.port;
@@ -60,7 +62,7 @@ pub async fn establish(config: &Config) -> Result<Connection<impl AsyncRead + Un
     };
 
     // 2) Streams
-let (mut input, mut output) = transport.split();
+    let (mut input, mut output) = transport.split();
 
     // 3) Version negotiation
     let version = negotiate_version(&mut input, &mut output)

@@ -10,20 +10,32 @@ use tracing::trace;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GestureEvent {
     /// Pinch gesture for zoom (scale factor, location)
-    Pinch { scale: f64, center_x: f64, center_y: f64 },
+    Pinch {
+        scale: f64,
+        center_x: f64,
+        center_y: f64,
+    },
     /// Two-finger scroll (delta_x, delta_y)
     Scroll { delta_x: f64, delta_y: f64 },
     /// Pan gesture (delta_x, delta_y)
     Pan { delta_x: f64, delta_y: f64 },
     /// Rotation gesture (angle in radians, center)
-    Rotation { angle: f64, center_x: f64, center_y: f64 },
+    Rotation {
+        angle: f64,
+        center_x: f64,
+        center_y: f64,
+    },
 }
 
 /// Actions that can be triggered by gestures.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GestureAction {
     /// Zoom the viewport by a scale factor
-    Zoom { factor: f64, center_x: f64, center_y: f64 },
+    Zoom {
+        factor: f64,
+        center_x: f64,
+        center_y: f64,
+    },
     /// Pan the viewport by a delta
     Pan { delta_x: f64, delta_y: f64 },
     /// Scroll content (different from pan - sends scroll wheel events)
@@ -59,14 +71,14 @@ impl Default for GestureConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            min_zoom_scale: 0.01,     // 1% minimum scale change
-            max_zoom_scale: 10.0,     // 10x maximum zoom in single gesture
-            min_scroll_delta: 1.0,    // Minimum scroll distance
-            scroll_sensitivity: 1.0,  // Default sensitivity
+            min_zoom_scale: 0.01,    // 1% minimum scale change
+            max_zoom_scale: 10.0,    // 10x maximum zoom in single gesture
+            min_scroll_delta: 1.0,   // Minimum scroll distance
+            scroll_sensitivity: 1.0, // Default sensitivity
             pan_sensitivity: 1.0,
             zoom_sensitivity: 1.0,
             momentum_scroll: true,
-            momentum_decay: 0.95,     // 5% decay per frame
+            momentum_decay: 0.95, // 5% decay per frame
         }
     }
 }
@@ -75,22 +87,22 @@ impl Default for GestureConfig {
 #[derive(Debug)]
 pub struct GestureProcessor {
     config: GestureConfig,
-    
+
     // Current gesture state
     active_gesture: Option<GestureEvent>,
     last_gesture_time: Instant,
     _gesture_start_time: Instant,
-    
+
     // Momentum tracking
     momentum_velocity_x: f64,
     momentum_velocity_y: f64,
     last_momentum_update: Instant,
-    
+
     // Accumulated deltas for threshold checking
     accumulated_scroll_x: f64,
     accumulated_scroll_y: f64,
     accumulated_zoom: f64,
-    
+
     // Zoom state
     last_zoom_scale: f64,
     zoom_center_x: f64,
@@ -146,16 +158,18 @@ impl GestureProcessor {
         self.last_gesture_time = now;
 
         match event {
-            GestureEvent::Pinch { scale, center_x, center_y } => {
-                self.process_pinch(scale, center_x, center_y, now)
-            }
-            GestureEvent::Scroll { delta_x, delta_y } => {
-                self.process_scroll(delta_x, delta_y, now)
-            }
-            GestureEvent::Pan { delta_x, delta_y } => {
-                self.process_pan(delta_x, delta_y, now)
-            }
-            GestureEvent::Rotation { angle: _, center_x: _, center_y: _ } => {
+            GestureEvent::Pinch {
+                scale,
+                center_x,
+                center_y,
+            } => self.process_pinch(scale, center_x, center_y, now),
+            GestureEvent::Scroll { delta_x, delta_y } => self.process_scroll(delta_x, delta_y, now),
+            GestureEvent::Pan { delta_x, delta_y } => self.process_pan(delta_x, delta_y, now),
+            GestureEvent::Rotation {
+                angle: _,
+                center_x: _,
+                center_y: _,
+            } => {
                 // Rotation not implemented yet
                 GestureAction::None
             }
@@ -163,7 +177,13 @@ impl GestureProcessor {
     }
 
     /// Process pinch gesture for zooming.
-    fn process_pinch(&mut self, scale: f64, center_x: f64, center_y: f64, _now: Instant) -> GestureAction {
+    fn process_pinch(
+        &mut self,
+        scale: f64,
+        center_x: f64,
+        center_y: f64,
+        _now: Instant,
+    ) -> GestureAction {
         // Track zoom accumulation
         let scale_delta = scale - self.last_zoom_scale;
         self.accumulated_zoom += scale_delta.abs();
@@ -174,7 +194,7 @@ impl GestureProcessor {
         // Check if we've accumulated enough change to trigger zoom
         if self.accumulated_zoom >= self.config.min_zoom_scale {
             let zoom_factor = 1.0 + (scale_delta * self.config.zoom_sensitivity);
-            
+
             // Clamp zoom factor to reasonable limits
             let clamped_factor = if zoom_factor > self.config.max_zoom_scale {
                 self.config.max_zoom_scale
@@ -184,9 +204,15 @@ impl GestureProcessor {
                 zoom_factor
             };
 
-            if (clamped_factor - 1.0).abs() > 0.001 {  // Avoid tiny zoom changes
-                trace!("Pinch zoom: factor={:.3}, center=({:.1}, {:.1})", clamped_factor, center_x, center_y);
-                self.accumulated_zoom = 0.0;  // Reset accumulation
+            if (clamped_factor - 1.0).abs() > 0.001 {
+                // Avoid tiny zoom changes
+                trace!(
+                    "Pinch zoom: factor={:.3}, center=({:.1}, {:.1})",
+                    clamped_factor,
+                    center_x,
+                    center_y
+                );
+                self.accumulated_zoom = 0.0; // Reset accumulation
                 return GestureAction::Zoom {
                     factor: clamped_factor,
                     center_x,
@@ -218,7 +244,11 @@ impl GestureProcessor {
         // Check if we've scrolled enough to trigger action
         let total_scroll = (self.accumulated_scroll_x + self.accumulated_scroll_y) / 2.0;
         if total_scroll >= self.config.min_scroll_delta {
-            trace!("Scroll gesture: delta=({:.1}, {:.1})", scaled_delta_x, scaled_delta_y);
+            trace!(
+                "Scroll gesture: delta=({:.1}, {:.1})",
+                scaled_delta_x,
+                scaled_delta_y
+            );
             self.accumulated_scroll_x = 0.0;
             self.accumulated_scroll_y = 0.0;
             return GestureAction::Scroll {
@@ -237,7 +267,11 @@ impl GestureProcessor {
 
         // Pan immediately without accumulation (for responsive viewport movement)
         if scaled_delta_x.abs() > 0.1 || scaled_delta_y.abs() > 0.1 {
-            trace!("Pan gesture: delta=({:.1}, {:.1})", scaled_delta_x, scaled_delta_y);
+            trace!(
+                "Pan gesture: delta=({:.1}, {:.1})",
+                scaled_delta_x,
+                scaled_delta_y
+            );
             return GestureAction::Pan {
                 delta_x: scaled_delta_x,
                 delta_y: scaled_delta_y,
@@ -256,7 +290,7 @@ impl GestureProcessor {
 
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_momentum_update);
-        
+
         // Only apply momentum if we're not receiving active gestures
         let time_since_gesture = now.duration_since(self.last_gesture_time);
         if time_since_gesture < Duration::from_millis(50) {
@@ -265,15 +299,24 @@ impl GestureProcessor {
         }
 
         // Apply momentum decay
-        let decay_factor = self.config.momentum_decay.powf(elapsed.as_secs_f64() * 60.0); // 60fps baseline
+        let decay_factor = self
+            .config
+            .momentum_decay
+            .powf(elapsed.as_secs_f64() * 60.0); // 60fps baseline
         self.momentum_velocity_x *= decay_factor;
         self.momentum_velocity_y *= decay_factor;
         self.last_momentum_update = now;
 
         // Check if momentum is significant enough to continue
-        let momentum_magnitude = (self.momentum_velocity_x.powi(2) + self.momentum_velocity_y.powi(2)).sqrt();
-        if momentum_magnitude > 0.5 {  // Minimum momentum threshold
-            trace!("Momentum scroll: velocity=({:.1}, {:.1})", self.momentum_velocity_x, self.momentum_velocity_y);
+        let momentum_magnitude =
+            (self.momentum_velocity_x.powi(2) + self.momentum_velocity_y.powi(2)).sqrt();
+        if momentum_magnitude > 0.5 {
+            // Minimum momentum threshold
+            trace!(
+                "Momentum scroll: velocity=({:.1}, {:.1})",
+                self.momentum_velocity_x,
+                self.momentum_velocity_y
+            );
             return GestureAction::Scroll {
                 delta_x: self.momentum_velocity_x,
                 delta_y: self.momentum_velocity_y,
@@ -302,10 +345,11 @@ impl GestureProcessor {
     pub fn momentum_velocity(&self) -> (f64, f64) {
         (self.momentum_velocity_x, self.momentum_velocity_y)
     }
-    
+
     /// Check if momentum is active.
     pub fn has_momentum(&self) -> bool {
-        let magnitude = (self.momentum_velocity_x.powi(2) + self.momentum_velocity_y.powi(2)).sqrt();
+        let magnitude =
+            (self.momentum_velocity_x.powi(2) + self.momentum_velocity_y.powi(2)).sqrt();
         magnitude > 0.1
     }
 }
@@ -317,18 +361,18 @@ mod tests {
     #[test]
     fn test_pinch_zoom_threshold() {
         let mut processor = GestureProcessor::new();
-        
+
         // Small pinch should not trigger zoom
         let action = processor.process_gesture(GestureEvent::Pinch {
-            scale: 1.005,  // 0.5% scale change
+            scale: 1.005, // 0.5% scale change
             center_x: 100.0,
             center_y: 100.0,
         });
         assert_eq!(action, GestureAction::None);
-        
+
         // Larger pinch should trigger zoom
         let action = processor.process_gesture(GestureEvent::Pinch {
-            scale: 1.05,   // 5% scale change
+            scale: 1.05, // 5% scale change
             center_x: 100.0,
             center_y: 100.0,
         });
@@ -338,16 +382,16 @@ mod tests {
     #[test]
     fn test_scroll_accumulation() {
         let mut processor = GestureProcessor::new();
-        
+
         // Small scrolls should accumulate
         let action1 = processor.process_gesture(GestureEvent::Scroll {
             delta_x: 0.5,
             delta_y: 0.0,
         });
         assert_eq!(action1, GestureAction::None);
-        
+
         let action2 = processor.process_gesture(GestureEvent::Scroll {
-            delta_x: 0.6,  // Total: 1.1, should trigger
+            delta_x: 0.6, // Total: 1.1, should trigger
             delta_y: 0.0,
         });
         matches!(action2, GestureAction::Scroll { .. });
@@ -356,17 +400,17 @@ mod tests {
     #[test]
     fn test_momentum_decay() {
         let mut processor = GestureProcessor::new();
-        
+
         // Set up momentum
         processor.momentum_velocity_x = 10.0;
         processor.momentum_velocity_y = 5.0;
-        
+
         // Simulate time passing
         std::thread::sleep(Duration::from_millis(50));
-        
+
         let action = processor.update_momentum();
         matches!(action, GestureAction::Scroll { .. });
-        
+
         // Velocity should have decayed
         assert!(processor.momentum_velocity_x < 10.0);
         assert!(processor.momentum_velocity_y < 5.0);
@@ -378,9 +422,9 @@ mod tests {
             enabled: false,
             ..Default::default()
         };
-        
+
         let mut processor = GestureProcessor::with_config(config);
-        
+
         // Should not process gestures when disabled
         let action = processor.process_gesture(GestureEvent::Scroll {
             delta_x: 10.0,
@@ -392,7 +436,7 @@ mod tests {
     #[test]
     fn test_pan_immediate_response() {
         let mut processor = GestureProcessor::new();
-        
+
         // Pan should respond immediately without accumulation
         let action = processor.process_gesture(GestureEvent::Pan {
             delta_x: 5.0,
@@ -408,16 +452,16 @@ mod tests {
             ..Default::default()
         };
         let mut processor = GestureProcessor::with_config(config);
-        
+
         // Extreme zoom should be clamped
         let action = processor.process_gesture(GestureEvent::Pinch {
-            scale: 10.0,  // Would be 10x zoom
+            scale: 10.0, // Would be 10x zoom
             center_x: 0.0,
             center_y: 0.0,
         });
-        
+
         if let GestureAction::Zoom { factor, .. } = action {
-            assert!(factor <= 2.0);  // Should be clamped to max
+            assert!(factor <= 2.0); // Should be clamped to max
         }
     }
 }

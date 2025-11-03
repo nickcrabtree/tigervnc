@@ -12,20 +12,23 @@ pub struct FullscreenController {
 }
 
 impl FullscreenController {
-    pub fn new() -> Self { 
-        Self { 
-            state: FullscreenState::default() 
-        } 
+    pub fn new() -> Self {
+        Self {
+            state: FullscreenState::default(),
+        }
     }
 
-    pub fn state(&self) -> &FullscreenState { 
-        &self.state 
+    pub fn state(&self) -> &FullscreenState {
+        &self.state
     }
 
     pub fn set_target(&mut self, monitors: &[MonitorInfo], selector: Option<&str>) {
         self.state.target = selector.and_then(|s| select_monitor(monitors, s));
         if let Some(t) = &self.state.target {
-            info!("Fullscreen target monitor: {} '{}', {}x{} @{}x", t.index, t.name, t.size.0, t.size.1, t.scale_factor);
+            info!(
+                "Fullscreen target monitor: {} '{}', {}x{} @{}x",
+                t.index, t.name, t.size.0, t.size.1, t.scale_factor
+            );
         }
     }
 
@@ -36,35 +39,54 @@ impl FullscreenController {
         ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(self.state.enabled));
         if self.state.enabled {
             if let Some(t) = &self.state.target {
-                warn!("Per-monitor fullscreen placement pending (requested '{}')", t.name);
+                warn!(
+                    "Per-monitor fullscreen placement pending (requested '{}')",
+                    t.name
+                );
             }
         }
     }
 
-    pub fn toggle(&mut self) { 
-        self.state.enabled = !self.state.enabled; 
+    pub fn toggle(&mut self) {
+        self.state.enabled = !self.state.enabled;
     }
-    
-    pub fn set_enabled(&mut self, enabled: bool) { 
-        self.state.enabled = enabled; 
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.state.enabled = enabled;
     }
 
     /// Move to next monitor in list (cycling)
     pub fn next_monitor(&mut self, monitors: &[MonitorInfo]) {
-        if monitors.is_empty() { return; }
+        if monitors.is_empty() {
+            return;
+        }
         let current_idx = self.state.target.as_ref().map(|m| m.index).unwrap_or(0);
         let next_idx = (current_idx + 1) % monitors.len();
         self.state.target = monitors.iter().find(|m| m.index == next_idx).cloned();
-        info!("Switched to monitor {}: '{}'", next_idx, self.state.target.as_ref().unwrap().name);
+        info!(
+            "Switched to monitor {}: '{}'",
+            next_idx,
+            self.state.target.as_ref().unwrap().name
+        );
     }
 
     /// Move to previous monitor in list (cycling)
     pub fn prev_monitor(&mut self, monitors: &[MonitorInfo]) {
-        if monitors.is_empty() { return; }
+        if monitors.is_empty() {
+            return;
+        }
         let current_idx = self.state.target.as_ref().map(|m| m.index).unwrap_or(0);
-        let prev_idx = if current_idx == 0 { monitors.len() - 1 } else { current_idx - 1 };
+        let prev_idx = if current_idx == 0 {
+            monitors.len() - 1
+        } else {
+            current_idx - 1
+        };
         self.state.target = monitors.iter().find(|m| m.index == prev_idx).cloned();
-        info!("Switched to monitor {}: '{}'", prev_idx, self.state.target.as_ref().unwrap().name);
+        info!(
+            "Switched to monitor {}: '{}'",
+            prev_idx,
+            self.state.target.as_ref().unwrap().name
+        );
     }
 
     /// Jump to monitor by index

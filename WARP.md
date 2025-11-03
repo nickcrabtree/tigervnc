@@ -2,6 +2,48 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
+## ⚠️ CRITICAL SAFETY WARNINGS
+
+### Production Servers and Viewers
+
+**DO NOT kill, restart, or interfere with production VNC servers or viewers!**
+
+This system has production VNC servers running on displays `:1`, `:2`, and `:3` that are actively in use:
+- `Xtigervnc :1` (port 5901) - PRODUCTION
+- `Xnjcvnc :2` (port 5902) - PRODUCTION  
+- `Xtigervnc :3` (port 5903) - PRODUCTION
+
+**Rules for safe process management:**
+1. **NEVER use pattern-based killing** like `pkill -f Xnjcvnc` or `killall` - these will kill ALL matching processes including production!
+2. **ALWAYS verify process details before killing**:
+   ```bash
+   # Find candidate processes
+   ps aux | grep Xnjcvnc
+   # Verify working directory and display number
+   pwdx <PID>
+   # Only kill specific PIDs after verification
+   kill <specific-pid>
+   ```
+3. **Test servers only on isolated displays**: Use `:998` and `:999` (managed by `tests/e2e/` framework)
+4. **Never manually start viewers on displays ':1', `:2` or ':3' ** - these are the user's working desktop - note this is what will happen if you don't manually specify a display.
+5. **Use the e2e test framework** which properly manages isolated test servers
+
+### Safe Testing Approach
+
+```bash
+# Good: Use e2e framework for testing
+cd tests/e2e
+python3 run_contentcache_test.py --server-modes local
+
+# Good: Kill only specific test server PIDs
+ps aux | grep "Xnjcvnc :99[89]"
+kill <specific-test-pid>
+
+# BAD: Pattern-based killing (will kill production!)
+pkill -f Xnjcvnc  # ❌ NEVER DO THIS
+killall Xnjcvnc   # ❌ NEVER DO THIS
+```
+
 ## Build Commands
 
 TigerVNC uses CMake for configuration with a convenience Makefile for building.
@@ -111,150 +153,47 @@ ls -la build/unix/xserver/hw/vnc/Makefile
 
 ### Building
 
-The top-level `Makefile` provides convenience targets:
-
 ```bash
-# Build both viewer and server (default)
-make
-
-# Build viewer only (njcvncviewer)
-make viewer
-
-# Build server only (Xnjcvnc)
-make server
+make              # Build viewer + server (default)
+make viewer       # C++ viewer only
+make rust_viewer  # Rust viewer only  
+make server       # Server only (requires xserver setup)
 ```
-
-**How it works:**
-- `make viewer`: Builds njcvncviewer (C++/FLTK) via CMake, automatically rebuilding dependent libraries as needed
-- `make rust_viewer`: Builds njcvncviewer-rs (Rust) via Cargo, automatically rebuilding dependent Rust crates as needed
-- `make server`: Builds CMake libraries (rfb, rdr, network, core, unixcommon) then invokes the Xorg autotools build
-- `make` (or `make all`): Builds both C++ viewer and server (does not build Rust viewer)
-
-**Prerequisites:**
-- Viewer: CMake configuration only
-- Server: CMake configuration + one-time xserver setup (see "Xserver Setup" above)
-
-**Build timestamps:**
-- Viewer: Timestamp is generated at build time in `build/vncviewer/build_timestamp.h`
-- Server: Timestamp uses `__DATE__` and `__TIME__` macros in `buildtime.c`
-- Both are updated automatically on each build
 
 ### Build System Architecture
 
-TigerVNC has **two separate build systems** working together:
-
-1. **CMake** (for common libraries, njcvncviewer, utilities)
-2. **Autotools** (for Xnjcvnc server - integrates with Xorg source)
-
-The top-level Makefile coordinates both systems:
-- CMake builds: `build/vncviewer/njcvncviewer`
-- Xorg builds: `build/unix/xserver/hw/vnc/Xnjcvnc`
-
-**Critical**: The server build passes `TIGERVNC_SRCDIR` and `TIGERVNC_BUILDDIR` to the xserver Makefile, which are required for finding headers and libraries.
-
-### Advanced: Direct CMake/Make Commands
-
-If you need more control, you can invoke the build systems directly:
-
-```bash
-# Build viewer with CMake directly
-cmake --build build --target njcvncviewer
-
-# Build server manually (requires xserver setup first)
-cmake --build build --target rfb rdr network core unixcommon
-make -C build/unix/xserver TIGERVNC_SRCDIR=$(pwd) TIGERVNC_BUILDDIR=$(pwd)/build
-
-# Build everything via CMake (libraries + viewer, but not Xnjcvnc server)
-cmake --build build
-```
+TigerVNC uses **CMake** (common libraries, viewer) and **Autotools** (Xnjcvnc server). Top-level Makefile coordinates both.
 
 ### Binary Locations
 
-After building, executables are located at:
-
 ```bash
-# C++ Viewer
-build/vncviewer/njcvncviewer
-
-# Rust Viewer (actual binary)
-rust-vnc-viewer/target/release/njcvncviewer-rs
-
-# Rust Viewer (symlink for convenience)
-build/vncviewer/njcvncviewer-rs -> rust-vnc-viewer/target/release/njcvncviewer-rs
-
-# Server (actual binary)
-build/unix/xserver/hw/vnc/Xnjcvnc
-
-# Server (symlink for wrapper compatibility)
-build/unix/vncserver/Xnjcvnc -> build/unix/xserver/hw/vnc/Xnjcvnc
+build/vncviewer/njcvncviewer                    # C++ viewer
+rust-vnc-viewer/target/release/njcvncviewer-rs  # Rust viewer
+build/unix/xserver/hw/vnc/Xnjcvnc               # Server
 ```
 
-**Important**: Don't confuse your build with system binaries:
-
-```bash
-# Your build (what you want to test)
-build/unix/xserver/hw/vnc/Xnjcvnc
-
-# System binary (not your build!)
-/usr/bin/Xnjcvnc
-/usr/bin/Xtigervnc  # Old name, may still be installed
-```
-
-**Verify which binary is running**:
-```bash
-# Check running server
-ps aux | grep Xnjcvnc
-
-# Verify it's your build
-ls -lh build/unix/xserver/hw/vnc/Xnjcvnc
-
-# Check symlink target
-readlink -f build/unix/vncserver/Xnjcvnc
-```
+**Don't confuse with system binaries** (`/usr/bin/Xnjcvnc`, `/usr/bin/Xtigervnc`).
 
 ### Running Tests
 
 ```bash
 # Run all unit tests (requires GTest)
-ctest --test-dir build/tests/unit/ --output-on-failure
-
-# Run all tests with parallel execution
 ctest --test-dir build --output-on-failure -j$(sysctl -n hw.ncpu 2>/dev/null || nproc)
 
-# Run specific test by name
+# Run specific test
 ctest --test-dir build -R <test_pattern> -V
 
-# Examples of individual unit tests
-ctest --test-dir build -R pixelformat -V
-ctest --test-dir build -R hostport -V
-```
-
-### Performance Benchmarks
-
-The `tests/perf/` directory contains performance benchmarking tools:
-
-```bash
-# After building, run performance tests manually
-./build/tests/perf/encperf   # Encoding performance
-./build/tests/perf/decperf   # Decoding performance
-./build/tests/perf/convperf  # Conversion performance
-./build/tests/perf/fbperf    # Framebuffer performance (requires BUILD_VIEWER=ON)
+# Performance benchmarks
+./build/tests/perf/encperf   # Encoding
+./build/tests/perf/decperf   # Decoding
 ```
 
 ### Creating Release Packages
 
 ```bash
-# Linux/Unix: Binary tarball
-make -C build tarball
-# Creates: build/tigervnc-<system>-<arch>-<version>.tar.gz
-
-# macOS: DMG disk image
-make -C build dmg
-# Creates: build/release/TigerVNC-<version>.dmg
-
-# Windows: Installer (requires Inno Setup)
-make -C build installer
-# Creates: build/release/tigervnc<suffix>-<version>.exe
+make -C build tarball    # Linux/Unix tarball
+make -C build dmg        # macOS DMG
+make -C build installer  # Windows installer (requires Inno Setup)
 ```
 
 ## Code Architecture
@@ -282,34 +221,14 @@ These are static libraries that provide the foundation for both viewers and serv
 ### Platform-Specific Components
 
 - **vncviewer/**: Cross-platform VNC viewer (FLTK-based GUI, produces njcvncviewer)
-  - Platform-specific keyboard handling (KeyboardMacOS, KeyboardWin32, KeyboardX11)
-  - Platform-specific surface rendering (Surface_OSX, Surface_Win32, Surface_X11)
-  - Touch handling (Win32TouchHandler, XInputTouchHandler)
-  - Connection management (CConn), desktop window (DesktopWindow), viewport (Viewport)
-
-- **unix/**: Unix/Linux server components
-  - `x0vncserver/`: Polls existing X11 display and serves it via VNC
-  - `vncpasswd/`: Password management utility
-  - `vncconfig/`: Configuration tool for running Xnjcvnc
-  - `vncserver/`: Service wrapper scripts
-  - `w0vncserver/`: Wayland display server (requires Wayland libraries)
-  - `xserver/`: Contains patches for integrating with Xorg source to build Xnjcvnc
-
-- **win/**: Windows server components
-  - `winvnc/`: Windows VNC server (NOTE: currently unmaintained)
-  - `vncconfig/`: Windows configuration GUI
-  - `wm_hooks/`: Windows message hooks
-
+- **unix/**: Unix/Linux server components (x0vncserver, vncpasswd, vncconfig, xserver patches)
+- **win/**: Windows server components (winvnc - unmaintained)
 - **java/**: Java-based VNC viewer (optional, requires `-DBUILD_JAVA=ON`)
 
 ### Testing Structure
 
-- **tests/unit/**: GoogleTest-based unit tests for individual components
-  - Tests for pixel formats, host/port parsing, parameters, encodings, gesture handling, etc.
-  - Invoked via `ctest` after building with GTest available
-
-- **tests/perf/**: Performance benchmarking executables
-  - Manual execution for measuring encoding/decoding/framebuffer performance
+- **tests/unit/**: GoogleTest unit tests
+- **tests/perf/**: Performance benchmarks
 
 ## Key Conventions
 
@@ -328,39 +247,19 @@ These are static libraries that provide the foundation for both viewers and serv
 
 ### Optional Features
 
-CMake options control optional functionality:
+CMake options: `ENABLE_NLS`, `ENABLE_GNUTLS`, `ENABLE_NETTLE`, `ENABLE_H264`, `BUILD_VIEWER`, `BUILD_JAVA`, `ENABLE_ASAN`, `ENABLE_TSAN`
 
-- `ENABLE_NLS`: Native language support via gettext (default: AUTO)
-- `ENABLE_GNUTLS`: TLS encryption via GnuTLS (default: AUTO)
-- `ENABLE_NETTLE`: RSA-AES security types via Nettle (default: AUTO)
-- `ENABLE_H264`: H.264 encoding support (default: AUTO, uses ffmpeg on Unix/macOS, Media Foundation on Windows)
-- `BUILD_VIEWER`: Build the vncviewer client (default: AUTO, requires FLTK)
-- `BUILD_JAVA`: Build Java viewer (default: OFF)
-- `ENABLE_ASAN`: Address sanitizer support (default: OFF)
-- `ENABLE_TSAN`: Thread sanitizer support (default: OFF)
-
-Use `AUTO` to build with the feature if dependencies are found, or `ON`/`OFF` to require or disable it.
+Use `AUTO` (build if found), `ON` (require), or `OFF` (disable).
 
 ### Dependencies
 
-**Required**:
-- zlib
-- pixman
-- libjpeg (libjpeg-turbo strongly recommended for performance)
+**Required**: zlib, pixman, libjpeg
 
-**Optional** (for full features):
-- FLTK 1.3.3+ (for njcvncviewer)
-- GnuTLS 3.x (for TLS support)
-- Nettle 3.0+ (for RSA-AES)
-- PAM (Unix/Linux, for authentication)
-- Xorg development libraries (Unix/Linux, for viewer and x0vncserver)
-- ffmpeg/libav (for H.264 on Unix/Linux)
-- GoogleTest (for unit tests)
+**Optional**: FLTK 1.3.3+, GnuTLS 3.x, Nettle 3.0+, PAM, Xorg dev libs, ffmpeg, GoogleTest
 
-### Cross-Compilation Notes
+### Cross-Compilation
 
-- See `BUILDING.txt` for detailed MinGW cross-compilation recipes (Cygwin, Windows native, Linux host)
-- When building Xnjcvnc, you must patch Xorg server source (patches in `unix/xserver*.patch`)
+See `BUILDING.txt` for MinGW details. Xnjcvnc requires patching Xorg source (`unix/xserver*.patch`).
 
 ### Compiler Flags
 
@@ -385,30 +284,54 @@ There are **two different VNC server binaries** running on the same machine:
 
 ```bash
 # Standard TigerVNC (system-installed)
-Xtigervnc :1  # Display :1, port 5901
-Xtigervnc :2  # Display :2, port 5902
+Xtigervnc :1  # Display :1, port 5901 - PRODUCTION
+Xtigervnc :2  # Display :2, port 5902 - PRODUCTION (USER'S ACTIVE DESKTOP)
 
 # Custom fork (Xnjcvnc) - PRODUCTION
-Xnjcvnc  :3   # Display :3, port 5903 (with ContentCache/PersistentCache)
+Xnjcvnc  :3   # Display :3, port 5903 - PRODUCTION (with ContentCache/PersistentCache)
 ```
 
-**CRITICAL**: All of the above are **production servers**. DO NOT:
+**🔴 CRITICAL**: All of the above are **production servers in active use**. DO NOT:
 - Stop or restart these processes
-- Modify their configuration
-- Kill these processes
+- Modify their configuration  
+- Kill these processes (even temporarily!)
 - Send them test traffic
+- Connect test viewers to them
+- Display test windows on display :2 (user's working desktop)
+
+**Why this matters**: Display :2 is the user's active working desktop. Interrupting it or
+popping up test windows will disrupt their work. The other displays are also production services.
 
 #### Test Architecture
 
 Use the end-to-end test framework under `tests/e2e`, which launches isolated VNC servers on high-numbered displays (e.g., `:998`, `:999`). See `tests/e2e/README.md`.
 
-Note: The local build binary exists at `/home/nickc/code/tigervnc/build/unix/vncserver/Xnjcvnc`. Do not run it on display `:3`.
+**Test servers are safe to manage**:
+- Displays: `:998` (port 6898), `:999` (port 6899)
+- Managed by e2e framework
+- Can be safely killed by specific PID after verification
+
+**⚠️ NEVER run test binaries on production displays**:
+- Do NOT run viewers that connect to displays `:1`, `:2`, or `:3`
+- Do NOT start test servers on displays `:1`, `:2`, or `:3`
+- Do NOT pop up GUI windows on display :2 (user's working desktop)
+
+Note: The local build binary exists at `/home/nickc/code/tigervnc/build/unix/vncserver/Xnjcvnc`. Do not run it on displays `:1`, `:2`, or `:3`.
 
 ### SSH Tunnels
 
-Do not tunnel to production display `:3`.
+**⚠️ Do not tunnel to production displays** `:1`, `:2`, or `:3`.
 
-For testing, use the e2e framework (which starts servers on high-numbered displays) or set up tunnels only to those test displays as needed. See `tests/e2e/README.md`.
+For testing, use the e2e framework (which starts servers on high-numbered displays `:998`, `:999`) or set up tunnels only to those test displays as needed. See `tests/e2e/README.md`.
+
+**Safe tunnel example** (test servers only):
+```bash
+# Connect to test server on :998
+ssh -L 5998:localhost:6898 user@host
+
+# Connect to test server on :999  
+ssh -L 5999:localhost:6899 user@host
+```
 
 ### Safely Identifying Processes
 
@@ -416,15 +339,32 @@ For testing, use the e2e framework (which starts servers on high-numbered displa
 
 ```bash
 # List all VNC servers
-ssh nickc@birdsurvey.hopto.org "ps aux | grep -E 'Xnjcvnc|Xtigervnc' | grep -v grep"
+ps aux | grep -E 'Xnjcvnc|Xtigervnc' | grep -v grep
 
-# Check specific process working directory
-ssh nickc@birdsurvey.hopto.org "pwdx <PID>"
+# Check specific process details
+pwdx <PID>                    # Working directory
+ps -p <PID> -o pid,args       # Full command line
+
+# Safe identification of test servers
+ps aux | grep -E "Xnjcvnc :99[89]"  # Only matches test displays :998, :999
 
 # Example output:
-# nickc 1497451  Xnjcvnc :3        <- PRODUCTION (do not touch)
-# nickc 3221111  Xtigervnc :2      <- PRODUCTION (do not touch)
-# nickc  849543  Xtigervnc :1      <- PRODUCTION (do not touch)
+# nickc  849543  Xtigervnc :1      <- PRODUCTION (display :1, do not touch!)
+# nickc 3221111  Xtigervnc :2      <- PRODUCTION (display :2, user's desktop, do not touch!)
+# nickc 1497451  Xnjcvnc :3        <- PRODUCTION (display :3, do not touch!)
+# nickc 3250351  Xnjcvnc :998      <- TEST SERVER (safe to kill by PID only)
+# nickc 3250371  Xnjcvnc :999      <- TEST SERVER (safe to kill by PID only)
+```
+
+**Safe process termination**:
+```bash
+# ✅ Good: Kill specific test server by verified PID
+kill 3250351 3250371
+
+# ❌ Bad: Pattern matching (kills production!)
+pkill -f "Xnjcvnc"           # Kills :3, :998, :999 - WRONG!
+killall Xnjcvnc              # Kills all Xnjcvnc - WRONG!
+pkill -f "display_number"    # Still dangerous
 ```
 
 ### Test Architecture Management
@@ -503,23 +443,31 @@ size_t byteLen = rect.height() * stride * bytesPerPixel;
 
 ### Process Management Safety
 
-**Critical**: When killing processes, always verify working directory and exact PID to avoid killing unrelated instances.
+**🔴 Critical**: When killing processes, always verify working directory and exact PID to avoid killing production instances.
 
 ```bash
-# Find candidate processes
-ps aux | grep "pattern" | grep -v grep
+# Step 1: Find candidate processes
+ps aux | grep Xnjcvnc | grep -v grep
 
-# Verify working directory of each PID
-pwdx <PID>
+# Step 2: Verify EACH PID before killing
+pwdx <PID>                          # Check working directory
+ps -p <PID> -o pid,args             # Check display number
 
-# Only kill the specific verified PID
-kill -TERM <PID>
+# Step 3: Only kill specific verified test PIDs
+kill -TERM <verified-test-pid>
 
-# NEVER use pattern-based killing like:
-# pkill -f script_name.py  # FORBIDDEN - kills ALL matching processes!
+# ❌ FORBIDDEN: Pattern-based killing
+# pkill -f Xnjcvnc              # Kills ALL Xnjcvnc including production!
+# killall Xnjcvnc               # Kills ALL Xnjcvnc including production!
+# pkill -f "script_name.py"     # Kills ALL matching scripts!
 ```
 
-**Why this matters**: Multiple VNC servers, experiments, or scripts may run simultaneously on the same machine. Pattern-based killing can destroy long-running jobs, corrupt data, or interrupt production services.
+**Why this is critical**:
+- Multiple VNC servers run simultaneously (production `:1`, `:2`, `:3` + test `:998`, `:999`)
+- Pattern-based killing will destroy production servers and interrupt user's work
+- Display `:2` is the user's active desktop - ANY interruption is disruptive
+- Recovery from killing production servers requires manual restart and may lose state
+- The user has explicitly warned about this multiple times - it's very important to them!
 
 ### PixelBuffer Access Patterns
 

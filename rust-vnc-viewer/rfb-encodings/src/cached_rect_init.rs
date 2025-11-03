@@ -19,18 +19,18 @@
 //! - Use content hash as cache_id to ensure addressability
 //! - Store in local RGB888 format for fast blitting regardless of server format
 
+use crate::content_cache::{CachedPixels, ContentCache};
 use crate::{
-    Decoder, MutablePixelBuffer, PixelFormat, Rectangle, RfbInStream,
-    RawDecoder, CopyRectDecoder, RREDecoder, HextileDecoder, TightDecoder, ZRLEDecoder,
-    ENCODING_RAW, ENCODING_COPY_RECT, ENCODING_RRE, ENCODING_HEXTILE, ENCODING_TIGHT, ENCODING_ZRLE,
+    CopyRectDecoder, Decoder, HextileDecoder, MutablePixelBuffer, PixelFormat, RREDecoder,
+    RawDecoder, Rectangle, RfbInStream, TightDecoder, ZRLEDecoder, ENCODING_COPY_RECT,
+    ENCODING_HEXTILE, ENCODING_RAW, ENCODING_RRE, ENCODING_TIGHT, ENCODING_ZRLE,
 };
-use crate::content_cache::{ContentCache, CachedPixels};
 use anyhow::{Context, Result};
+use rfb_common::Rect;
 use rfb_protocol::messages::cache::CachedRectInit;
 use rfb_protocol::messages::types::ENCODING_CACHED_RECT_INIT;
 use std::sync::{Arc, Mutex};
 use tokio::io::AsyncRead;
-use rfb_common::Rect;
 
 /// CachedRectInit decoder - handles cache misses and stores new content.
 ///
@@ -39,35 +39,44 @@ use rfb_common::Rect;
 /// 2. Dispatches to the appropriate decoder for the pixel data
 /// 3. Stores the decoded result in the cache for future reference
 /// 4. Blits the pixels to the framebuffer
+///
+/// # IMPORTANT: ZRLE Decoder Sharing
+///
+/// The ZRLE decoder MUST be shared between this decoder and the main decoder registry
+/// because ZRLE uses a continuous zlib stream across ALL rectangles in a FramebufferUpdate.
+/// If each decoder has its own inflater, subsequent rectangles will fail with
+/// "incorrect header check" errors when they receive deflate continuation data instead
+/// of a fresh zlib header.
 pub struct CachedRectInitDecoder {
     /// Shared cache instance for storing decoded pixels.
     cache: Arc<Mutex<ContentCache>>,
-    
+
     /// Raw decoder for ENCODING_RAW.
     raw_decoder: RawDecoder,
-    
+
     /// CopyRect decoder for ENCODING_COPY_RECT.
     copyrect_decoder: CopyRectDecoder,
-    
+
     /// RRE decoder for ENCODING_RRE.
     rre_decoder: RREDecoder,
-    
+
     /// Hextile decoder for ENCODING_HEXTILE.
     hextile_decoder: HextileDecoder,
-    
+
     /// Tight decoder for ENCODING_TIGHT.
     tight_decoder: TightDecoder,
-    
-    /// ZRLE decoder for ENCODING_ZRLE.
-    zrle_decoder: ZRLEDecoder,
+
+    /// ZRLE decoder for ENCODING_ZRLE (MUST be shared with main registry!).
+    zrle_decoder: Arc<ZRLEDecoder>,
 }
 
 impl CachedRectInitDecoder {
-    /// Create a new CachedRectInit decoder with the given cache.
+    /// Create a new CachedRectInit decoder with the given cache and shared ZRLE decoder.
     ///
-    /// The cache should be shared with CachedRect decoder and other
-    /// components that need cache access.
-    pub fn new(cache: Arc<Mutex<ContentCache>>) -> Self {
+    /// The cache should be shared with CachedRect decoder and other components.
+    /// The ZRLE decoder MUST be the same instance used in the main decoder registry
+    /// to maintain continuous zlib stream state across rectangles.
+    pub fn new(cache: Arc<Mutex<ContentCache>>, zrle_decoder: Arc<ZRLEDecoder>) -> Self {
         Self {
             cache,
             raw_decoder: RawDecoder,
@@ -75,7 +84,7 @@ impl CachedRectInitDecoder {
             rre_decoder: RREDecoder,
             hextile_decoder: HextileDecoder,
             tight_decoder: TightDecoder::default(),
-            zrle_decoder: ZRLEDecoder::default(),
+            zrle_decoder,
         }
     }
 
@@ -85,7 +94,7 @@ impl CachedRectInitDecoder {
     pub fn cache(&self) -> &Arc<Mutex<ContentCache>> {
         &self.cache
     }
-    
+
     /// Dispatch to the appropriate decoder based on encoding type.
     async fn decode_with_actual_encoding<R: AsyncRead + Unpin>(
         &self,
@@ -97,27 +106,43 @@ impl CachedRectInitDecoder {
     ) -> Result<()> {
         match actual_encoding {
             ENCODING_RAW => {
-                self.raw_decoder.decode(stream, rect, pixel_format, buffer).await
+                self.raw_decoder
+                    .decode(stream, rect, pixel_format, buffer)
+                    .await
             }
             ENCODING_COPY_RECT => {
-                self.copyrect_decoder.decode(stream, rect, pixel_format, buffer).await
+                self.copyrect_decoder
+                    .decode(stream, rect, pixel_format, buffer)
+                    .await
             }
             ENCODING_RRE => {
-                self.rre_decoder.decode(stream, rect, pixel_format, buffer).await
+                self.rre_decoder
+                    .decode(stream, rect, pixel_format, buffer)
+                    .await
             }
             ENCODING_HEXTILE => {
-                self.hextile_decoder.decode(stream, rect, pixel_format, buffer).await
+                self.hextile_decoder
+                    .decode(stream, rect, pixel_format, buffer)
+                    .await
             }
             ENCODING_TIGHT => {
-                self.tight_decoder.decode(stream, rect, pixel_format, buffer).await
+                self.tight_decoder
+                    .decode(stream, rect, pixel_format, buffer)
+                    .await
             }
             ENCODING_ZRLE => {
-                self.zrle_decoder.decode(stream, rect, pixel_format, buffer).await
+                self.zrle_decoder
+                    .decode(stream, rect, pixel_format, buffer)
+                    .await
             }
             _ => {
                 anyhow::bail!(
                     "Unsupported actual_encoding {} in CachedRectInit for rect {}x{} at ({},{})",
-                    actual_encoding, rect.width, rect.height, rect.x, rect.y
+                    actual_encoding,
+                    rect.width,
+                    rect.height,
+                    rect.x,
+                    rect.y
                 )
             }
         }
@@ -136,17 +161,37 @@ impl Decoder for CachedRectInitDecoder {
         pixel_format: &PixelFormat,
         buffer: &mut dyn MutablePixelBuffer,
     ) -> Result<()> {
-        // Read the CachedRectInit header (cache_id + actual_encoding)
+        let buffer_before = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "CachedRectInit decode start: rect=[{},{} {}x{}] buffer_before={}",
+            rect.x, rect.y, rect.width, rect.height,
+            buffer_before
+        );
+
+        // Read the CachedRectInit header (cache_id + actual_encoding) - 12 bytes total
         let cached_rect_init = CachedRectInit::read_from(stream)
             .await
             .context("Failed to read CachedRectInit from stream")?;
+
+        let buffer_after_header = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "CachedRectInit header read: cache_id={}, actual_encoding={}, bytes_consumed={}, buffer_after={}",
+            cached_rect_init.cache_id,
+            cached_rect_init.actual_encoding,
+            buffer_before.saturating_sub(buffer_after_header),
+            buffer_after_header
+        );
 
         tracing::info!(
             "CachedRectInit: cache_id={}, actual_encoding={}, rect={}x{} at ({},{})",
             cached_rect_init.cache_id,
             cached_rect_init.actual_encoding,
-            rect.width, rect.height,
-            rect.x, rect.y
+            rect.width,
+            rect.height,
+            rect.x,
+            rect.y
         );
 
         // Create a temporary buffer to decode into and then extract pixels for caching
@@ -168,15 +213,51 @@ impl Decoder for CachedRectInitDecoder {
             encoding: cached_rect_init.actual_encoding,
         };
 
-        self.decode_with_actual_encoding(
+        // NOTE: Do NOT reset the ZRLE inflater here!
+        // The server sends ZRLE data in CachedRectInit as part of the SAME continuous
+        // zlib stream used for regular ZRLE rectangles within the FBU. Only the first
+        // rectangle in an FBU has a zlib header (0x78); subsequent rectangles (including
+        // those wrapped in CachedRectInit) contain raw deflate continuation data.
+        // The persistent inflater state must be maintained across all rectangles.
+
+        // Decode the actual pixel data
+        let decode_result = self.decode_with_actual_encoding(
             stream,
             &actual_rect,
             cached_rect_init.actual_encoding,
             pixel_format,
             buffer,
         )
-        .await
-        .with_context(|| {
+        .await;
+        
+        // If decode failed, log the full error chain before propagating
+        if let Err(ref e) = decode_result {
+            tracing::error!(
+                "CachedRectInit decode FAILED: cache_id={}, actual_encoding={}, rect={}x{} at ({},{})",
+                cached_rect_init.cache_id,
+                cached_rect_init.actual_encoding,
+                rect.width,
+                rect.height,
+                rect.x,
+                rect.y
+            );
+            tracing::error!("Root error: {:?}", e);
+            tracing::error!("Error chain:");
+            let mut current_error: &dyn std::error::Error = e.as_ref();
+            let mut depth = 0;
+            loop {
+                tracing::error!("  [{}] {}", depth, current_error);
+                match current_error.source() {
+                    Some(source) => {
+                        current_error = source;
+                        depth += 1;
+                    }
+                    None => break,
+                }
+            }
+        }
+        
+        decode_result.with_context(|| {
             format!(
                 "Failed to decode actual_encoding {} for CachedRectInit cache_id={}",
                 cached_rect_init.actual_encoding, cached_rect_init.cache_id
@@ -190,12 +271,12 @@ impl Decoder for CachedRectInitDecoder {
             let format = buffer.pixel_format();
             let bytes_per_pixel = format.bytes_per_pixel() as usize;
             let pixel_data_len = rect.height as usize * stride * bytes_per_pixel;
-            
+
             // Create cached pixel entry
             let cached_pixels = CachedPixels::new(
                 cached_rect_init.cache_id,
                 pixels[..pixel_data_len].to_vec(),
-                format.clone(),
+                *format,
                 rect.width as u32,
                 rect.height as u32,
                 stride,
@@ -203,13 +284,18 @@ impl Decoder for CachedRectInitDecoder {
 
             // Store in cache
             {
-                let mut cache = self.cache
+                let mut cache = self
+                    .cache
                     .lock()
                     .map_err(|e| anyhow::anyhow!("Failed to lock ContentCache: {}", e))?;
-                
-                cache.insert(cached_rect_init.cache_id, cached_pixels)
+
+                cache
+                    .insert(cached_rect_init.cache_id, cached_pixels)
                     .with_context(|| {
-                        format!("Failed to store cache_id {} in ContentCache", cached_rect_init.cache_id)
+                        format!(
+                            "Failed to store cache_id {} in ContentCache",
+                            cached_rect_init.cache_id
+                        )
                     })?;
             }
 
@@ -217,8 +303,10 @@ impl Decoder for CachedRectInitDecoder {
                 "ContentCache STORE: cache_id={}, {} bytes stored for rect {}x{} at ({},{})",
                 cached_rect_init.cache_id,
                 pixel_data_len,
-                rect.width, rect.height,
-                rect.x, rect.y
+                rect.width,
+                rect.height,
+                rect.x,
+                rect.y
             );
         } else {
             tracing::warn!(
@@ -235,28 +323,29 @@ impl Decoder for CachedRectInitDecoder {
 mod tests {
     use super::*;
     use crate::content_cache::ContentCache;
-    use rfb_pixelbuffer::{PixelFormat, ManagedPixelBuffer};
+    use rfb_pixelbuffer::{ManagedPixelBuffer, PixelFormat};
     use rfb_protocol::io::RfbOutStream;
     use std::io::Cursor;
 
     #[tokio::test]
     async fn test_cached_rect_init_decoder_raw() {
         let cache = Arc::new(Mutex::new(ContentCache::new(100)));
-        let decoder = CachedRectInitDecoder::new(cache.clone());
+        let zrle = Arc::new(ZRLEDecoder::default());
+        let decoder = CachedRectInitDecoder::new(cache.clone(), zrle);
 
         let mut buffer = ManagedPixelBuffer::new(1024, 768, PixelFormat::rgb888());
 
         // Create test data: CachedRectInit header + Raw pixel data
         let test_cache_id = 98765u64;
         let cached_rect_init = CachedRectInit::new(test_cache_id, ENCODING_RAW);
-        
+
         // Raw pixel data: 2x2 red pixels (4 pixels * 4 bytes each = 16 bytes for RGBA)
         // Note: ManagedPixelBuffer internally expects RGBA even when configured as RGB888
         let raw_pixels = vec![
-            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 1 (RGBA)
-            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 2 (RGBA)
-            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 3 (RGBA)
-            0xFF, 0x00, 0x00, 0xFF,  // Red pixel 4 (RGBA)
+            0xFF, 0x00, 0x00, 0xFF, // Red pixel 1 (RGBA)
+            0xFF, 0x00, 0x00, 0xFF, // Red pixel 2 (RGBA)
+            0xFF, 0x00, 0x00, 0xFF, // Red pixel 3 (RGBA)
+            0xFF, 0x00, 0x00, 0xFF, // Red pixel 4 (RGBA)
         ];
 
         // Create stream data
@@ -267,7 +356,7 @@ mod tests {
             out_stream.flush().await.unwrap();
         }
         stream_data.extend_from_slice(&raw_pixels);
-        
+
         let mut stream = RfbInStream::new(Cursor::new(stream_data));
 
         // Create rectangle
@@ -282,7 +371,7 @@ mod tests {
         // Decode should succeed - wire format is 32-bit RGBA to match raw pixel data
         let wire_format = crate::PixelFormat {
             bits_per_pixel: 32,
-            depth: 24, 
+            depth: 24,
             big_endian: 0,
             true_color: 1,
             red_max: 255,
@@ -292,12 +381,9 @@ mod tests {
             green_shift: 8,
             blue_shift: 0,
         };
-        let result = decoder.decode(
-            &mut stream,
-            &rect,
-            &wire_format,
-            &mut buffer,
-        ).await;
+        let result = decoder
+            .decode(&mut stream, &rect, &wire_format, &mut buffer)
+            .await;
         assert!(result.is_ok());
 
         // Verify that data was stored in cache
@@ -310,7 +396,8 @@ mod tests {
         // Verify we can look up the cached data
         let cached_pixels = {
             let mut c = cache.lock().unwrap();
-            c.lookup(test_cache_id).map(|cp| (cp.width, cp.height, cp.cache_id))
+            c.lookup(test_cache_id)
+                .map(|cp| (cp.width, cp.height, cp.cache_id))
         };
         assert!(cached_pixels.is_some());
         let (width, height, cache_id) = cached_pixels.unwrap();
@@ -322,12 +409,13 @@ mod tests {
     #[tokio::test]
     async fn test_cached_rect_init_decoder_unsupported_encoding() {
         let cache = Arc::new(Mutex::new(ContentCache::new(100)));
-        let decoder = CachedRectInitDecoder::new(cache);
+        let zrle = Arc::new(ZRLEDecoder::default());
+        let decoder = CachedRectInitDecoder::new(cache, zrle);
         let mut buffer = ManagedPixelBuffer::new(1024, 768, PixelFormat::rgb888());
 
         // Create CachedRectInit with unsupported encoding
         let cached_rect_init = CachedRectInit::new(11111, 999); // Invalid encoding
-        
+
         let mut stream_data = Vec::new();
         {
             let mut out_stream = RfbOutStream::new(&mut stream_data);
@@ -335,7 +423,7 @@ mod tests {
             out_stream.flush().await.unwrap();
         }
         // No pixel data needed since this should fail early
-        
+
         let mut stream = RfbInStream::new(Cursor::new(stream_data));
 
         let rect = Rectangle {
@@ -349,7 +437,7 @@ mod tests {
         // Decode should fail
         let wire_format = crate::PixelFormat {
             bits_per_pixel: 32,
-            depth: 24, 
+            depth: 24,
             big_endian: 0,
             true_color: 1,
             red_max: 255,
@@ -359,7 +447,9 @@ mod tests {
             green_shift: 8,
             blue_shift: 0,
         };
-        let result = decoder.decode(&mut stream, &rect, &wire_format, &mut buffer).await;
+        let result = decoder
+            .decode(&mut stream, &rect, &wire_format, &mut buffer)
+            .await;
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         // Error message includes "Failed to decode actual_encoding 999"
@@ -369,7 +459,8 @@ mod tests {
     #[test]
     fn test_cached_rect_init_decoder_encoding_type() {
         let cache = Arc::new(Mutex::new(ContentCache::new(1)));
-        let decoder = CachedRectInitDecoder::new(cache);
+        let zrle = Arc::new(ZRLEDecoder::default());
+        let decoder = CachedRectInitDecoder::new(cache, zrle);
         assert_eq!(decoder.encoding_type(), ENCODING_CACHED_RECT_INIT);
     }
 }

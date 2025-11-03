@@ -32,10 +32,10 @@ pub mod socket;
 
 // Re-export commonly used types
 pub use connection::{ConnectionState, RfbConnection};
+pub use handshake::NegotiatedVersion;
 pub use io::{RfbInStream, RfbOutStream};
 pub use messages::{ClientMessage, ServerMessage};
 pub use socket::{TcpSocket, VncSocket};
-pub use handshake::NegotiatedVersion;
 
 #[cfg(unix)]
 pub use socket::UnixSocket;

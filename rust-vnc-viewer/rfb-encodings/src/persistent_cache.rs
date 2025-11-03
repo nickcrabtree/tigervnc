@@ -17,22 +17,29 @@ pub struct PersistentCachedPixels {
 }
 
 impl PersistentCachedPixels {
-    pub fn bytes(&self) -> usize { self.pixels.len() }
+    pub fn bytes(&self) -> usize {
+        self.pixels.len()
+    }
 }
 
 #[derive(Debug, Default)]
 pub struct PersistentClientCache {
     map: HashMap<[u8; 16], PersistentCachedPixels>,
+    #[allow(dead_code)]
     max_size_mb: usize,
     current_bytes: usize,
 }
 
 impl PersistentClientCache {
     pub fn new(max_size_mb: usize) -> Self {
-        Self { map: HashMap::new(), max_size_mb, current_bytes: 0 }
+        Self {
+            map: HashMap::new(),
+            max_size_mb,
+            current_bytes: 0,
+        }
     }
 
-    pub fn lookup(&mut self, id: &[u8;16]) -> Option<&PersistentCachedPixels> {
+    pub fn lookup(&mut self, id: &[u8; 16]) -> Option<&PersistentCachedPixels> {
         self.map.get(id)
     }
 

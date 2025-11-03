@@ -274,16 +274,19 @@ impl Transport {
         let connector = TlsConnector::from(Arc::new(config));
 
         // Parse server name for SNI
-        let server_name = ServerName::try_from(host.to_string()).map_err(|e| {
-            RfbClientError::TlsError(format!("Invalid hostname '{}': {}", host, e))
-        })?;
+        let server_name = ServerName::try_from(host.to_string())
+            .map_err(|e| RfbClientError::TlsError(format!("Invalid hostname '{}': {}", host, e)))?;
 
         // Perform TLS handshake
-        let tls_stream = connector.connect(server_name, stream).await.map_err(|e| {
-            RfbClientError::TlsError(format!("TLS handshake failed: {}", e))
-        })?;
+        let tls_stream = connector
+            .connect(server_name, stream)
+            .await
+            .map_err(|e| RfbClientError::TlsError(format!("TLS handshake failed: {}", e)))?;
 
-        if let (Ok(local), Ok(peer)) = (tls_stream.get_ref().0.local_addr(), tls_stream.get_ref().0.peer_addr()) {
+        if let (Ok(local), Ok(peer)) = (
+            tls_stream.get_ref().0.local_addr(),
+            tls_stream.get_ref().0.peer_addr(),
+        ) {
             tracing::info!("Connected via TLS: local={} -> remote={}", local, peer);
         } else {
             tracing::info!("Connected to {} via TLS", addr);

@@ -115,10 +115,7 @@ pub async fn negotiate_version<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     if major < 3 || (major == 3 && minor < 3) {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
-            format!(
-                "unsupported RFB version {}.{} (< 003.003)",
-                major, minor
-            ),
+            format!("unsupported RFB version {}.{} (< 003.003)", major, minor),
         ));
     }
 
@@ -153,7 +150,7 @@ async fn negotiate_security_3_8<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     outstream: &mut RfbOutStream<W>,
 ) -> std::io::Result<()> {
     let count = instream.read_u8().await?;
-    
+
     if count == 0 {
         let reason_len = instream.read_u32().await? as usize;
         let mut reason_buf = vec![0u8; reason_len];
@@ -252,25 +249,40 @@ mod tests {
     use crate::messages::types::PixelFormat;
 
     fn create_duplex_pair() -> (
-        (RfbInStream<tokio::io::DuplexStream>, RfbOutStream<tokio::io::DuplexStream>),
-        (RfbInStream<tokio::io::DuplexStream>, RfbOutStream<tokio::io::DuplexStream>),
+        (
+            RfbInStream<tokio::io::DuplexStream>,
+            RfbOutStream<tokio::io::DuplexStream>,
+        ),
+        (
+            RfbInStream<tokio::io::DuplexStream>,
+            RfbOutStream<tokio::io::DuplexStream>,
+        ),
     ) {
         let (client_read, server_write) = tokio::io::duplex(1024);
         let (server_read, client_write) = tokio::io::duplex(1024);
         (
-            (RfbInStream::new(client_read), RfbOutStream::new(client_write)),
-            (RfbInStream::new(server_read), RfbOutStream::new(server_write)),
+            (
+                RfbInStream::new(client_read),
+                RfbOutStream::new(client_write),
+            ),
+            (
+                RfbInStream::new(server_read),
+                RfbOutStream::new(server_write),
+            ),
         )
     }
 
     #[tokio::test]
     async fn test_version_negotiation_3_8() {
-        let ((mut client_in, mut client_out), (mut server_in, mut server_out)) = create_duplex_pair();
+        let ((mut client_in, mut client_out), (mut server_in, mut server_out)) =
+            create_duplex_pair();
 
         server_out.write_bytes(b"RFB 003.008\n");
         server_out.flush().await.unwrap();
 
-        let negotiated = negotiate_version(&mut client_in, &mut client_out).await.unwrap();
+        let negotiated = negotiate_version(&mut client_in, &mut client_out)
+            .await
+            .unwrap();
         assert_eq!(negotiated, NegotiatedVersion::V3_8);
 
         let mut buf = [0u8; 12];
@@ -280,12 +292,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_version_negotiation_3_3() {
-        let ((mut client_in, mut client_out), (mut server_in, mut server_out)) = create_duplex_pair();
+        let ((mut client_in, mut client_out), (mut server_in, mut server_out)) =
+            create_duplex_pair();
 
         server_out.write_bytes(b"RFB 003.003\n");
         server_out.flush().await.unwrap();
 
-        let negotiated = negotiate_version(&mut client_in, &mut client_out).await.unwrap();
+        let negotiated = negotiate_version(&mut client_in, &mut client_out)
+            .await
+            .unwrap();
         assert_eq!(negotiated, NegotiatedVersion::V3_3);
 
         let mut buf = [0u8; 12];
@@ -308,7 +323,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_security_none_3_8() {
-        let ((mut client_in, mut client_out), (mut server_in, mut server_out)) = create_duplex_pair();
+        let ((mut client_in, mut client_out), (mut server_in, mut server_out)) =
+            create_duplex_pair();
 
         server_out.write_u8(1);
         server_out.write_u8(SECURITY_TYPE_NONE);
@@ -320,7 +336,9 @@ mod tests {
             server_out.flush().await.unwrap();
         });
 
-        negotiate_security(&mut client_in, &mut client_out, NegotiatedVersion::V3_8).await.unwrap();
+        negotiate_security(&mut client_in, &mut client_out, NegotiatedVersion::V3_8)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -330,7 +348,9 @@ mod tests {
         server_out.write_u32(1);
         server_out.flush().await.unwrap();
 
-        negotiate_security(&mut client_in, &mut client_out, NegotiatedVersion::V3_3).await.unwrap();
+        negotiate_security(&mut client_in, &mut client_out, NegotiatedVersion::V3_3)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

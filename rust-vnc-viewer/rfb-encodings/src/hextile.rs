@@ -101,8 +101,21 @@ impl Decoder for HextileDecoder {
         pixel_format: &PixelFormat,
         buffer: &mut dyn MutablePixelBuffer,
     ) -> Result<()> {
+        let buffer_before = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "Hextile decode start: rect=[{},{} {}x{}] buffer_before={}",
+            rect.x, rect.y, rect.width, rect.height,
+            buffer_before
+        );
+
         // Empty rectangle - nothing to decode
         if rect.width == 0 || rect.height == 0 {
+            tracing::debug!(
+                target: "rfb_encodings::framing",
+                "Hextile decode end: empty rectangle, bytes_consumed=0, buffer_after={}",
+                stream.available()
+            );
             return Ok(());
         }
 
@@ -321,6 +334,14 @@ impl Decoder for HextileDecoder {
             ty += TILE_SIZE;
         }
 
+        let buffer_after = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "Hextile decode end: bytes_consumed={}, buffer_after={}",
+            buffer_before.saturating_sub(buffer_after),
+            buffer_after
+        );
+
         Ok(())
     }
 }
@@ -399,7 +420,6 @@ mod tests {
             blue_shift: 0,
         }
     }
-
 
     // Buffer format (rfb_pixelbuffer)
     fn buffer_format() -> rfb_pixelbuffer::PixelFormat {

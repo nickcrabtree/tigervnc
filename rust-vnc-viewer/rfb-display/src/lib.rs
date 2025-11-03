@@ -21,7 +21,7 @@
 //! # async fn example() -> anyhow::Result<()> {
 //! // This example shows how to use the display renderer (requires actual window)
 //! // In practice, you'd create an Arc<Window> from winit
-//! // 
+//! //
 //! // let window = Arc::new(window); // from winit
 //! // let mut renderer = DisplayRenderer::new()
 //! //     .scale_mode(ScaleMode::Fit)
@@ -30,23 +30,23 @@
 //! //
 //! // let pixel_format = rfb_pixelbuffer::PixelFormat::rgb888();
 //! // let mut framebuffer = ManagedPixelBuffer::new(1920, 1080, pixel_format)?;
-//! // 
+//! //
 //! // renderer.present(&framebuffer)?;
 //! # Ok(())
 //! # }
 //! ```
 
-mod renderer;
-mod viewport;
 mod cursor;
-mod scaling;
 mod monitor;
+mod renderer;
+mod scaling;
+mod viewport;
 
+pub use cursor::{CursorImage, CursorMode, CursorRenderer, CursorState};
+pub use monitor::{MonitorInfo, MonitorManager, WindowPlacement};
 pub use renderer::{DisplayRenderer, DisplayRendererBuilder, RenderError};
-pub use viewport::{Viewport, ViewportConfig, ViewportState, PanZoomState};
-pub use cursor::{CursorRenderer, CursorMode, CursorState, CursorImage};
-pub use scaling::{ScaleMode, ScaleFilter, DpiConfig, ScaleParams, ScaleUtils};
-pub use monitor::{MonitorManager, MonitorInfo, WindowPlacement};
+pub use scaling::{DpiConfig, ScaleFilter, ScaleMode, ScaleParams, ScaleUtils};
+pub use viewport::{PanZoomState, Viewport, ViewportConfig, ViewportState};
 
 // Re-export commonly needed types from dependencies
 pub use winit::{

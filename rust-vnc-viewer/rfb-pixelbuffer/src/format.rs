@@ -305,16 +305,16 @@ impl PixelFormat {
     /// assert!(pf.is_rgb888());
     /// ```
     pub fn is_rgb888(&self) -> bool {
-        self.bits_per_pixel == 32 &&
-        self.depth == 24 &&
-        !self.big_endian &&
-        self.true_color &&
-        self.red_max == 255 &&
-        self.green_max == 255 &&
-        self.blue_max == 255 &&
-        self.red_shift == 16 &&
-        self.green_shift == 8 &&
-        self.blue_shift == 0
+        self.bits_per_pixel == 32
+            && self.depth == 24
+            && !self.big_endian
+            && self.true_color
+            && self.red_max == 255
+            && self.green_max == 255
+            && self.blue_max == 255
+            && self.red_shift == 16
+            && self.green_shift == 8
+            && self.blue_shift == 0
     }
 }
 
@@ -621,8 +621,8 @@ mod tests {
         let encoded = pf.from_rgb888(red);
         let decoded = pf.to_rgb888(&encoded);
         assert_eq!(decoded[0], 255); // Red channel preserved
-        assert_eq!(decoded[1], 0);   // Green zero
-        assert_eq!(decoded[2], 0);   // Blue zero
+        assert_eq!(decoded[1], 0); // Green zero
+        assert_eq!(decoded[2], 0); // Blue zero
         assert_eq!(decoded[3], 255); // Alpha always 255
     }
 

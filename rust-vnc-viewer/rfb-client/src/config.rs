@@ -153,7 +153,7 @@ fn default_jitter() -> f32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContentCacheConfig {
     /// Enable ContentCache protocol for bandwidth reduction.
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub enabled: bool,
     /// Maximum cache size in megabytes.
     #[serde(default = "default_cache_size_mb")]
@@ -185,7 +185,9 @@ fn default_cleanup_threshold() -> f64 {
     0.8 // Start cleanup at 80% utilization
 }
 
-fn default_false() -> bool { false }
+fn default_false() -> bool {
+    false
+}
 
 /// PersistentCache configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -198,7 +200,9 @@ pub struct PersistentCacheConfig {
     pub size_mb: usize,
 }
 
-fn default_persistent_cache_size_mb() -> usize { 2048 }
+fn default_persistent_cache_size_mb() -> usize {
+    2048
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -230,7 +234,7 @@ impl Default for Config {
                 jitter: default_jitter(),
             },
             content_cache: ContentCacheConfig {
-                enabled: default_false(),
+                enabled: default_true(),
                 size_mb: default_cache_size_mb(),
                 max_age_seconds: default_max_age_seconds(),
                 min_rect_size: default_min_rect_size(),
@@ -287,7 +291,7 @@ impl Config {
                 "ContentCache size cannot be 0 when enabled".to_string(),
             ));
         }
-        
+
         if !(0.0..=1.0).contains(&self.content_cache.cleanup_threshold) {
             return Err(RfbClientError::Config(
                 "ContentCache cleanup threshold must be between 0.0 and 1.0".to_string(),
@@ -302,17 +306,48 @@ impl Config {
     pub fn timeout(&self) -> Duration {
         Duration::from_millis(self.connection.timeout_ms)
     }
-    
-    /// Returns the complete encodings list for baseline operation.
+
+    /// Returns the complete encodings list including cache protocols if enabled.
+    ///
+    /// NOTE: Encodings are listed in PREFERENCE ORDER. The server's EncodeManager
+    /// selects encodings based on the order they appear in this list.
+    /// Pseudo-encodings (negative values) should generally come BEFORE real encodings.
     #[must_use]
     pub fn effective_encodings(&self) -> Vec<i32> {
-        // Baseline: strictly minimal, known-good list
-        // Raw(0), CopyRect(1), ZRLE(16)
-        vec![
-            rfb_encodings::ENCODING_RAW,
-            rfb_encodings::ENCODING_COPY_RECT,
-            rfb_encodings::ENCODING_ZRLE,
-        ]
+        let mut encodings = Vec::new();
+
+        // Pseudo-encodings FIRST (server prefers encodings listed earlier)
+
+        // Add pseudo-encodings for protocol features
+        encodings.push(-312); // pseudoEncodingFence
+        encodings.push(-313); // pseudoEncodingContinuousUpdates
+        encodings.push(-224); // pseudoEncodingLastRect - enables variable rect count in FBU
+
+        // Add ContentCache encodings if enabled
+        if self.content_cache.enabled {
+            encodings.push(-320); // pseudoEncodingContentCache - tells server we support cache protocol
+            encodings.push(rfb_encodings::ENCODING_CACHED_RECT); // 100 - cache hit (reference)
+            encodings.push(rfb_encodings::ENCODING_CACHED_RECT_INIT); // 101 - cache miss (data + store)
+        }
+
+        // Add PersistentCache encodings if enabled
+        if self.persistent_cache.enabled {
+            encodings.push(-321); // pseudoEncodingPersistentCache - tells server we support persistent cache
+            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT); // 102
+            encodings.push(rfb_encodings::ENCODING_PERSISTENT_CACHED_RECT_INIT);
+            // 103
+        }
+
+        // Real encodings AFTER pseudo-encodings (in preference order)
+        // TigerVNC servers prefer Tight for most content, so list it first
+        encodings.push(rfb_encodings::ENCODING_TIGHT);     // 7 - Most efficient for photos/complex images
+        encodings.push(rfb_encodings::ENCODING_ZRLE);      // 16 - Good general purpose
+        encodings.push(rfb_encodings::ENCODING_HEXTILE);   // 5 - Simple RLE encoding
+        encodings.push(rfb_encodings::ENCODING_RRE);       // 2 - Rise-and-run encoding
+        encodings.push(rfb_encodings::ENCODING_COPY_RECT); // 1 - Copy from existing area
+        encodings.push(rfb_encodings::ENCODING_RAW);       // 0 - Uncompressed fallback
+
+        encodings
     }
 }
 
@@ -394,13 +429,51 @@ mod tests {
     }
 
     #[test]
-    fn test_effective_encodings_baseline() {
-        // Test baseline: minimal encodings (Raw, CopyRect, ZRLE)
+    fn test_effective_encodings_with_caches_enabled() {
+        // Default now enables ContentCache (but PersistentCache disabled); verify ordering
+        // CRITICAL: Pseudo-encodings MUST come BEFORE real encodings
+        // (server selects encodings based on list order)
         let config = Config::default();
         let encodings = config.effective_encodings();
-        assert_eq!(encodings.len(), 3);
-        assert_eq!(encodings[0], rfb_encodings::ENCODING_RAW);
-        assert_eq!(encodings[1], rfb_encodings::ENCODING_COPY_RECT);
-        assert_eq!(encodings[2], rfb_encodings::ENCODING_ZRLE);
+        // 3 proto pseudo + 3 ContentCache + 6 real = 12 (PersistentCache disabled by default)
+        assert_eq!(encodings.len(), 12);
+        // Pseudo-encodings first
+        assert_eq!(encodings[0], -312); // Fence
+        assert_eq!(encodings[1], -313); // ContinuousUpdates
+        assert_eq!(encodings[2], -224); // LastRect
+        assert_eq!(encodings[3], -320); // ContentCache pseudo
+        assert_eq!(encodings[4], rfb_encodings::ENCODING_CACHED_RECT); // 100
+        assert_eq!(encodings[5], rfb_encodings::ENCODING_CACHED_RECT_INIT); // 101
+        // Real encodings last (in preference order: Tight, ZRLE, Hextile, RRE, CopyRect, Raw)
+        assert_eq!(encodings[6], rfb_encodings::ENCODING_TIGHT);
+        assert_eq!(encodings[7], rfb_encodings::ENCODING_ZRLE);
+        assert_eq!(encodings[8], rfb_encodings::ENCODING_HEXTILE);
+        assert_eq!(encodings[9], rfb_encodings::ENCODING_RRE);
+        assert_eq!(encodings[10], rfb_encodings::ENCODING_COPY_RECT);
+        assert_eq!(encodings[11], rfb_encodings::ENCODING_RAW);
+    }
+
+    #[test]
+    fn test_effective_encodings_no_caches() {
+        // When caches are disabled, we still advertise Fence, CU, and LastRect pseudo-encodings
+        // Pseudo-encodings come FIRST, then real encodings (in preference order)
+        let mut config = Config::default();
+        config.content_cache.enabled = false;
+        config.persistent_cache.enabled = false;
+        let encodings = config.effective_encodings();
+        assert_eq!(
+            encodings,
+            vec![
+                -312, // Fence
+                -313, // ContinuousUpdates
+                -224, // LastRect
+                rfb_encodings::ENCODING_TIGHT,      // Preferred for most content
+                rfb_encodings::ENCODING_ZRLE,       // Good general purpose
+                rfb_encodings::ENCODING_HEXTILE,    // Simple RLE
+                rfb_encodings::ENCODING_RRE,        // Rise-and-run
+                rfb_encodings::ENCODING_COPY_RECT,  // Copy existing
+                rfb_encodings::ENCODING_RAW,        // Uncompressed fallback
+            ]
+        );
     }
 }

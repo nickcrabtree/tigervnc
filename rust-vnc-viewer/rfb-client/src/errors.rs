@@ -94,8 +94,10 @@ mod tests {
 
     #[test]
     fn test_error_categorization() {
-        assert!(RfbClientError::Transport(io::Error::from(io::ErrorKind::ConnectionRefused))
-            .is_retryable());
+        assert!(
+            RfbClientError::Transport(io::Error::from(io::ErrorKind::ConnectionRefused))
+                .is_retryable()
+        );
         assert!(RfbClientError::Timeout(std::time::Duration::from_secs(10)).is_retryable());
         assert!(RfbClientError::Handshake("test".to_string()).is_retryable());
 

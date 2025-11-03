@@ -1,7 +1,7 @@
 use bitflags::bitflags;
-use winit::event::ModifiersState;
 use std::time::{Duration, Instant};
 use tracing::trace;
+use winit::event::ModifiersState;
 
 bitflags! {
     /// VNC pointer button mask (bits).
@@ -51,12 +51,12 @@ pub struct MouseState {
     y: i32,
     pub buttons: ButtonMask,
     pub modifiers: ModifiersState,
-    
+
     // Throttling state
     config: ThrottleConfig,
     last_position_sent: Option<(i32, i32)>,
     last_move_time: Instant,
-    
+
     // Middle button emulation state
     left_pressed_time: Option<Instant>,
     right_pressed_time: Option<Instant>,
@@ -123,10 +123,10 @@ impl MouseState {
 
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_move_time);
-        
+
         let time_threshold = Duration::from_millis(self.config.min_interval_ms);
         let time_expired = elapsed >= time_threshold;
-        
+
         let distance_exceeded = if let Some((last_x, last_y)) = self.last_position_sent {
             let dx = (x - last_x) as f64;
             let dy = (y - last_y) as f64;
@@ -147,12 +147,16 @@ impl MouseState {
 
     /// Handle button press/release with middle-button emulation.
     /// Returns (should_send_event, final_button_mask)
-    pub fn handle_button(&mut self, button: winit::event::MouseButton, pressed: bool) -> Option<u8> {
+    pub fn handle_button(
+        &mut self,
+        button: winit::event::MouseButton,
+        pressed: bool,
+    ) -> Option<u8> {
         use winit::event::MouseButton;
-        
+
         let now = Instant::now();
         let timeout = Duration::from_millis(self.config.emulation_timeout_ms);
-        
+
         if self.config.middle_button_emulation {
             match (button, pressed) {
                 (MouseButton::Left, true) => {
@@ -221,7 +225,7 @@ impl MouseState {
                 _ => return None,
             }
         }
-        
+
         Some(self.buttons.bits())
     }
 
@@ -235,7 +239,7 @@ impl MouseState {
     pub fn wheel_button_mask(&self, delta_x: f32, delta_y: f32) -> Vec<u8> {
         let mut events = Vec::new();
         let base_buttons = self.buttons.bits();
-        
+
         // Vertical scroll
         if delta_y > 0.0 {
             events.push(base_buttons | ButtonMask::WHEEL_UP.bits());
@@ -244,7 +248,7 @@ impl MouseState {
             events.push(base_buttons | ButtonMask::WHEEL_DOWN.bits());
             events.push(base_buttons); // Release
         }
-        
+
         // Horizontal scroll (if supported)
         if delta_x > 0.0 {
             events.push(base_buttons | ButtonMask::WHEEL_RIGHT.bits());
@@ -253,7 +257,7 @@ impl MouseState {
             events.push(base_buttons | ButtonMask::WHEEL_LEFT.bits());
             events.push(base_buttons); // Release
         }
-        
+
         events
     }
 }

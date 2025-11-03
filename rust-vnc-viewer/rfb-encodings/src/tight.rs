@@ -524,8 +524,21 @@ impl Decoder for TightDecoder {
         pixel_format: &PixelFormat,
         buffer: &mut dyn MutablePixelBuffer,
     ) -> Result<()> {
+        let buffer_before = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "Tight decode start: rect=[{},{} {}x{}] buffer_before={}",
+            rect.x, rect.y, rect.width, rect.height,
+            buffer_before
+        );
+
         // Empty rectangle - nothing to decode
         if rect.width == 0 || rect.height == 0 {
+            tracing::debug!(
+                target: "rfb_encodings::framing",
+                "Tight decode end: empty rectangle, bytes_consumed=0, buffer_after={}",
+                stream.available()
+            );
             return Ok(());
         }
 
@@ -551,6 +564,10 @@ impl Decoder for TightDecoder {
             let mut streams = self.zlib_streams.lock().unwrap();
             for i in 0..4 {
                 if (comp_ctl & (1 << i)) != 0 {
+                    tracing::debug!(
+                        "Tight: reset zlib stream {} requested (comp_ctl={:#04x})",
+                        i, comp_ctl
+                    );
                     streams[i] = None; // Reset stream
                 }
             }
@@ -558,6 +575,11 @@ impl Decoder for TightDecoder {
 
         // Determine compression type (upper 4 bits)
         let comp_type = comp_ctl >> 4;
+        
+        tracing::debug!(
+            "Tight: comp_ctl={:#04x} comp_type={:#x} reset_bits={:#x}",
+            comp_ctl, comp_type, comp_ctl & 0x0F
+        );
 
         // Handle FILL mode
         if comp_type == TIGHT_FILL {
@@ -589,6 +611,14 @@ impl Decoder for TightDecoder {
             buffer
                 .fill_rect(fill_rect, &pixel_data)
                 .context("Failed to fill Tight FILL rectangle")?;
+
+            let buffer_after = stream.available();
+            tracing::debug!(
+                target: "rfb_encodings::framing",
+                "Tight decode end (FILL): bytes_consumed={}, buffer_after={}",
+                buffer_before.saturating_sub(buffer_after),
+                buffer_after
+            );
             return Ok(());
         }
 
@@ -646,6 +676,14 @@ impl Decoder for TightDecoder {
 
             let dest_rect = Rect::new(rect.x as i32, rect.y as i32, width as u32, height as u32);
             buffer.image_rect(dest_rect, &converted, width)?;
+
+            let buffer_after = stream.available();
+            tracing::debug!(
+                target: "rfb_encodings::framing",
+                "Tight decode end (JPEG): bytes_consumed={}, buffer_after={}",
+                buffer_before.saturating_sub(buffer_after),
+                buffer_after
+            );
             return Ok(());
         }
 
@@ -660,13 +698,16 @@ impl Decoder for TightDecoder {
 
         // Handle BASIC mode (zlib-compressed with optional filter)
         let stream_id = (comp_ctl >> 4) & 0x03;
-        let explicit_filter = (comp_ctl & TIGHT_EXPLICIT_FILTER) != 0;
+        // Explicit filter is bit 2 of upper nibble (bit 6 of comp_ctl)
+        let explicit_filter = (comp_ctl & 0x40) != 0;
 
         let width = rect.width as usize;
         let height = rect.height as usize;
         let bytes_per_pixel = (pixel_format.bits_per_pixel / 8) as usize;
 
         // Determine filter and data size
+        // For BASIC mode without explicit filter, data is RGB888 (3 bpp)
+        let rgb888_implicit = !explicit_filter;  // Track if RGB888 format is implicit
         let (filter_type, data_size, use_palette) = if explicit_filter {
             let filter_id = stream
                 .read_u8()
@@ -689,8 +730,15 @@ impl Decoder for TightDecoder {
                 _ => bail!("Tight: invalid filter type {}", filter_id),
             }
         } else {
-            // No explicit filter - implicit COPY in native format
-            (TIGHT_FILTER_COPY, width * height * bytes_per_pixel, false)
+            // No explicit filter - implicit COPY in RGB888 format (3 bytes/pixel)
+            // Tight protocol: BASIC mode without filter bit always uses RGB888,
+            // regardless of negotiated pixel format
+            let data_size = width * height * 3;  // Always RGB888
+            tracing::debug!(
+                "Tight BASIC (no filter/RGB888): width={} height={} data_size={}",
+                width, height, data_size
+            );
+            (TIGHT_FILTER_COPY, data_size, false)  // Not palette mode
         };
 
         // Special handling for palette mode
@@ -748,9 +796,18 @@ impl Decoder for TightDecoder {
             let cursor = Cursor::new(temp_data);
             let mut temp_stream = RfbInStream::new(cursor);
 
-            return self
+            let result = self
                 .filter_palette(&mut temp_stream, rect, pixel_format, buffer, &data)
                 .await;
+
+            let buffer_after = stream.available();
+            tracing::debug!(
+                target: "rfb_encodings::framing",
+                "Tight decode end (PALETTE): bytes_consumed={}, buffer_after={}",
+                buffer_before.saturating_sub(buffer_after),
+                buffer_after
+            );
+            return result;
         }
 
         // Read or decompress data
@@ -765,6 +822,10 @@ impl Decoder for TightDecoder {
             d
         } else {
             let compressed_len = Self::read_compact_length(stream).await?;
+            tracing::debug!(
+                "Tight: reading {} compressed bytes for {} uncompressed bytes (stream_id={})",
+                compressed_len, data_size, stream_id
+            );
             let mut compressed = vec![0u8; compressed_len];
             stream.read_bytes(&mut compressed).await.with_context(|| {
                 format!(
@@ -772,13 +833,15 @@ impl Decoder for TightDecoder {
                     compressed_len
                 )
             })?;
+            tracing::debug!("Tight: decompressing {} bytes", compressed_len);
             self.decompress_zlib(stream_id as usize, &compressed, data_size)?
         };
 
         // Apply filter
         match filter_type {
             TIGHT_FILTER_COPY => {
-                let rgb888_mode = explicit_filter;
+                // RGB888 mode if explicit filter OR implicit (no filter byte in BASIC mode)
+                let rgb888_mode = explicit_filter || rgb888_implicit;
                 self.filter_copy(&data, rect, pixel_format, buffer, rgb888_mode)?;
             }
             TIGHT_FILTER_GRADIENT => {
@@ -786,6 +849,15 @@ impl Decoder for TightDecoder {
             }
             _ => bail!("Unexpected filter type {} in non-palette path", filter_type),
         }
+
+        let buffer_after = stream.available();
+        tracing::debug!(
+            target: "rfb_encodings::framing",
+            "Tight decode end (BASIC): filter_type={}, bytes_consumed={}, buffer_after={}",
+            filter_type,
+            buffer_before.saturating_sub(buffer_after),
+            buffer_after
+        );
 
         Ok(())
     }

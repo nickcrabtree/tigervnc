@@ -14,7 +14,7 @@ use rfb_client::{ClientBuilder, ClientCommand, Config, ServerEvent};
 use std::env;
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{info, error, debug};
+use tracing::{debug, error, info};
 use tracing_subscriber;
 
 #[tokio::main]
@@ -41,10 +41,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Connecting to {}:{}", host, port);
 
     // Create configuration
-    let config = Config::builder()
-        .host(&host)
-        .port(port)
-        .build()?;
+    let config = Config::builder().host(&host).port(port).build()?;
 
     // Build and connect client
     let client = match ClientBuilder::new(config).build().await {
@@ -90,7 +87,11 @@ async fn main() -> anyhow::Result<()> {
             ServerEvent::FramebufferUpdated { damage } => {
                 update_count += 1;
                 if update_count % 10 == 0 {
-                    debug!("Received {} updates (damage regions: {})", update_count, damage.len());
+                    debug!(
+                        "Received {} updates (damage regions: {})",
+                        update_count,
+                        damage.len()
+                    );
                 }
             }
             ServerEvent::DesktopResized { width, height } => {

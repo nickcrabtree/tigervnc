@@ -214,9 +214,10 @@ fn parse_encodings(names: &[String]) -> Result<Vec<i32>, crate::errors::RfbClien
             "tight" => ENCODING_TIGHT,
             "zrle" => ENCODING_ZRLE,
             _ => {
-                return Err(crate::errors::RfbClientError::Config(
-                    format!("Unknown encoding: {}", name),
-                ))
+                return Err(crate::errors::RfbClientError::Config(format!(
+                    "Unknown encoding: {}",
+                    name
+                )))
             }
         };
         encodings.push(encoding);
