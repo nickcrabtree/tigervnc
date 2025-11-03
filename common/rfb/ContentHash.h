@@ -23,7 +23,7 @@
 #include <cstring>
 #include <vector>
 
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 
 #include <core/Rect.h>
 #include <rfb/PixelBuffer.h>
@@ -42,12 +42,21 @@ namespace rfb {
     static std::vector<uint8_t> compute(const uint8_t* data, size_t len) {
       std::vector<uint8_t> hash(16);
 
-      SHA256_CTX ctx;
-      SHA256_Init(&ctx);
-      SHA256_Update(&ctx, data, len);
+      EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+      if (!ctx)
+        return hash;
+
+      if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
+        EVP_MD_CTX_free(ctx);
+        return hash;
+      }
+
+      EVP_DigestUpdate(ctx, data, len);
 
       uint8_t full_hash[32];
-      SHA256_Final(full_hash, &ctx);
+      unsigned int hash_len;
+      EVP_DigestFinal_ex(ctx, full_hash, &hash_len);
+      EVP_MD_CTX_free(ctx);
 
       // Truncate to 16 bytes
       memcpy(hash.data(), full_hash, 16);
@@ -66,16 +75,24 @@ namespace rfb {
       size_t strideBytes = stride * bytesPerPixel;  // CRITICAL: multiply by bytesPerPixel!
 
       // Hash row-major pixel data (only the actual pixels, not padding)
-      SHA256_CTX ctx;
-      SHA256_Init(&ctx);
+      EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+      if (!ctx)
+        return std::vector<uint8_t>(16);
+
+      if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
+        EVP_MD_CTX_free(ctx);
+        return std::vector<uint8_t>(16);
+      }
 
       for (int y = 0; y < r.height(); y++) {
         const uint8_t* row = pixels + (y * strideBytes);
-        SHA256_Update(&ctx, row, rowBytes);
+        EVP_DigestUpdate(ctx, row, rowBytes);
       }
 
       uint8_t full_hash[32];
-      SHA256_Final(full_hash, &ctx);
+      unsigned int hash_len;
+      EVP_DigestFinal_ex(ctx, full_hash, &hash_len);
+      EVP_MD_CTX_free(ctx);
 
       std::vector<uint8_t> hash(16);
       memcpy(hash.data(), full_hash, 16);
