@@ -54,10 +54,12 @@ def parse_server_cache_stats(log_path: Path) -> dict:
         content = f.read()
     
     # Server logs: "Lookups: 251, References sent: 0 (0.0%)"
-    match = re.search(r'Lookups:\s*(\d+),\s*References sent:\s*(\d+)', content)
-    if match:
-        stats['cache_lookups'] = int(match.group(1))
-        stats['references_sent'] = int(match.group(2))
+    # Use findall to get all matches, then take the last one (most recent stats)
+    matches = re.findall(r'Lookups:\s*(\d+),\s*References sent:\s*(\d+)', content)
+    if matches:
+        last_match = matches[-1]  # Get the last occurrence
+        stats['cache_lookups'] = int(last_match[0])
+        stats['references_sent'] = int(last_match[1])
         stats['cache_hits'] = stats['references_sent']
     
     return stats
@@ -149,7 +151,7 @@ def run_test(display_num: int = 998, port_num: int = 6898, duration: int = 60) -
         
         # Start window manager
         print("[2/4] Starting window manager...")
-        server.start_wm("openbox")
+        server.start_session("openbox")
         time.sleep(2)
         
         # Run scenario with repeated content
@@ -157,9 +159,9 @@ def run_test(display_num: int = 998, port_num: int = 6898, duration: int = 60) -
         print("  Generating repeated rectangles to trigger cache hits...")
         runner = ScenarioRunner(display_num, verbose=False)
         
-        # Use xterm_cycles scenario - opens/closes xterm repeatedly
+        # Use cache_hits_minimal scenario - opens/closes xterm repeatedly
         # This creates repeated content (same xterm window appearance)
-        runner.xterm_cycles(duration_sec=duration, cycle_count=10)
+        runner.cache_hits_minimal(duration_sec=duration)
         
         print("[4/4] Analyzing logs...")
         
@@ -201,18 +203,35 @@ def run_test(display_num: int = 998, port_num: int = 6898, duration: int = 60) -
         
     finally:
         print("\nCleaning up...")
-        tracker.cleanup()
+        if server.proc:
+            tracker.cleanup(f"vnc_{server.name}")
+        if server.wm_proc:
+            tracker.cleanup(f"wm_{server.name}")
 
 
-def run_test_with_viewer(display_num: int = 998, port_num: int = 6898, duration: int = 60) -> bool:
+def run_test_with_viewer(display_num: int = 998, port_num: int = 6898, 
+                         viewer_display_num: int = 999, viewer_port_num: int = 6899,
+                         duration: int = 60) -> bool:
     """
     Run test with an actual viewer client to track client-side messages.
+    
+    Uses VNC-in-VNC architecture per WARP.md:
+    - Display :998 (port 6898): Test server with ContentCache
+    - Display :999 (port 6899): Viewer window server for FLTK GUI
+    - Viewer runs with DISPLAY=:999 and connects to 127.0.0.1::6898
     
     This validates the full protocol flow:
     1. Server has cache hit
     2. Server sends CachedRect OR CachedRectInit
     3. Client receives the message
+    
+    SAFETY: Only uses test displays :998 and :999. Never touches production :1, :2, :3.
     """
+    # Safety check: prevent accidental use of production displays
+    if display_num in (1, 2, 3) or viewer_display_num in (1, 2, 3):
+        print("✗ ABORT: Cannot use production displays :1, :2, or :3 (see WARP.md)")
+        return False
+    
     print("=" * 70)
     print("TDD Test: CachedRectInit Propagation (with viewer)")
     print("=" * 70)
@@ -224,16 +243,23 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898, duration:
     
     tracker = ProcessTracker()
     
+    # Check both test and viewer servers are available
     if not check_port_available(port_num):
         print(f"✗ FAIL: Port {port_num} in use")
+        return False
+    if not check_port_available(viewer_port_num):
+        print(f"✗ FAIL: Port {viewer_port_num} in use")
         return False
     if not check_display_available(display_num):
         print(f"✗ FAIL: Display :{display_num} in use")
         return False
+    if not check_display_available(viewer_display_num):
+        print(f"✗ FAIL: Display :{viewer_display_num} in use")
+        return False
     
     try:
-        # Start server
-        print(f"\n[1/5] Starting VNC server (:{display_num})...")
+        # Start test server (content source)
+        print(f"\n[1/6] Starting test server (:{display_num})...")
         server = VNCServer(
             display_num, port_num, "contentcache_viewer_test",
             artifacts, tracker,
@@ -243,14 +269,31 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898, duration:
         )
         
         if not server.start():
-            print("✗ FAIL: Could not start server")
+            print("✗ FAIL: Could not start test server")
             return False
         
-        server.start_wm("openbox")
+        server.start_session("openbox")
         time.sleep(2)
         
-        # Start viewer
-        print("[2/5] Starting viewer...")
+        # Start viewer window server (for FLTK GUI)
+        print(f"[2/6] Starting viewer window server (:{viewer_display_num})...")
+        viewer_server = VNCServer(
+            viewer_display_num, viewer_port_num, "viewer_window",
+            artifacts, tracker,
+            geometry="1280x800",
+            log_level="*:stderr:30",
+            server_choice="local",
+        )
+        
+        if not viewer_server.start():
+            print("✗ FAIL: Could not start viewer window server")
+            return False
+        
+        viewer_server.start_session("openbox")
+        time.sleep(2)
+        
+        # Start viewer (GUI on :999, connects to :998)
+        print("[3/6] Starting viewer...")
         import subprocess
         import os
         
@@ -264,29 +307,50 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898, duration:
             'Log=*:stderr:100',
         ]
         
+        # Set DISPLAY to viewer window server
+        env = os.environ.copy()
+        env['DISPLAY'] = f':{viewer_display_num}'
+        
         log_file = open(viewer_log, 'w')
         viewer_proc = subprocess.Popen(
             cmd,
             stdout=log_file,
             stderr=subprocess.STDOUT,
             preexec_fn=os.setpgrp,
-            env={**os.environ, 'DISPLAY': ''}  # Headless
+            env=env
         )
         tracker.register('viewer', viewer_proc)
         time.sleep(3)
         
         # Run scenario
-        print(f"[3/5] Running scenario ({duration}s)...")
+        print(f"[4/6] Running scenario ({duration}s)...")
         runner = ScenarioRunner(display_num, verbose=False)
-        runner.xterm_cycles(duration_sec=duration, cycle_count=10)
+        runner.cache_hits_minimal(duration_sec=duration)
         
         # Let viewer finish processing
         time.sleep(2)
         
-        print("[4/5] Analyzing logs...")
+        # Stop viewer to trigger server stats output
+        print("[5/6] Stopping viewer and servers...")
+        tracker.cleanup('viewer')
+        time.sleep(1)  # Let server write final statistics
         
-        # Parse logs
-        server_log = artifacts.logs_dir / "contentcache_viewer_test.log"
+        # Stop servers (which writes final statistics to logs)
+        if viewer_server.proc:
+            tracker.cleanup(f"vnc_{viewer_server.name}")
+        if viewer_server.wm_proc:
+            tracker.cleanup(f"wm_{viewer_server.name}")
+        if server.proc:
+            tracker.cleanup(f"vnc_{server.name}")
+        if server.wm_proc:
+            tracker.cleanup(f"wm_{server.name}")
+        
+        time.sleep(1)  # Ensure logs are flushed
+        
+        print("[6/6] Analyzing logs...")
+        
+        # Parse logs (framework creates logs as: {name}_server_{display}.log)
+        server_log = artifacts.logs_dir / f"contentcache_viewer_test_server_{display_num}.log"
         server_stats = parse_server_cache_stats(server_log)
         client_stats = parse_client_cache_messages(viewer_log)
         
@@ -300,7 +364,7 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898, duration:
         print(f"  RequestCachedData sent: {client_stats['request_cached_data_sent']}")
         
         # Validation
-        print("\n[5/5] Validating...")
+        print("\nValidating...")
         
         total_client_messages = (client_stats['cached_rect_received'] + 
                                  client_stats['cached_rect_init_received'])
@@ -316,32 +380,66 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898, duration:
             print("  Client received no CachedRect or CachedRectInit messages")
             return False
         
-        # Expected: references sent should match client messages received
-        if server_stats['references_sent'] != total_client_messages:
-            print(f"\n✗ FAIL: Mismatch!")
-            print(f"  Server sent {server_stats['references_sent']} references")
-            print(f"  Client received {total_client_messages} messages")
+        # Validation: server's "References sent" counts CachedRect messages
+        # Client may receive additional CachedRectInit messages
+        # So: client_cached_rect should match server_references_sent
+        # And: total messages >= references sent
+        
+        if client_stats['cached_rect_received'] != server_stats['references_sent']:
+            print(f"\n✗ FAIL: CachedRect mismatch!")
+            print(f"  Server sent {server_stats['references_sent']} CachedRect references")
+            print(f"  Client received {client_stats['cached_rect_received']} CachedRect messages")
             print("  These should be equal")
             return False
         
+        if total_client_messages < server_stats['references_sent']:
+            print(f"\n✗ FAIL: Client received fewer messages than server sent!")
+            print(f"  Server: {server_stats['references_sent']} references")
+            print(f"  Client: {total_client_messages} total messages")
+            return False
+        
         print(f"\n✓ PASS: Protocol flow validated")
-        print(f"  Server sent {server_stats['references_sent']} references")
-        print(f"  Client received {total_client_messages} cache messages")
+        print(f"  Server lookups: {server_stats['cache_lookups']}")
+        print(f"  Server sent: {server_stats['references_sent']} CachedRect references")
+        print(f"  Client received: {client_stats['cached_rect_received']} CachedRect + {client_stats['cached_rect_init_received']} CachedRectInit")
+        print(f"  Cache hit rate: {100.0 * server_stats['references_sent'] / server_stats['cache_lookups']:.1f}%")
         return True
         
     finally:
-        print("\nCleaning up...")
+        print("\nFinal cleanup...")
         log_file.close()
-        tracker.cleanup()
+        
+        # Cleanup any remaining processes (most should already be stopped)
+        if 'viewer_proc' in locals() and viewer_proc.poll() is None:
+            tracker.cleanup('viewer')
+        
+        if 'viewer_server' in locals():
+            if viewer_server.proc and viewer_server.proc.poll() is None:
+                tracker.cleanup(f"vnc_{viewer_server.name}")
+            if viewer_server.wm_proc and viewer_server.wm_proc.poll() is None:
+                tracker.cleanup(f"wm_{viewer_server.name}")
+        
+        if 'server' in locals():
+            if server.proc and server.proc.poll() is None:
+                tracker.cleanup(f"vnc_{server.name}")
+            if server.wm_proc and server.wm_proc.poll() is None:
+                tracker.cleanup(f"wm_{server.name}")
 
 
 if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--display', type=int, default=998)
-    parser.add_argument('--port', type=int, default=6898)
-    parser.add_argument('--duration', type=int, default=60)
+    parser.add_argument('--display', type=int, default=998,
+                       help='Test server display number (default: 998)')
+    parser.add_argument('--port', type=int, default=6898,
+                       help='Test server port (default: 6898)')
+    parser.add_argument('--viewer-display', type=int, default=999,
+                       help='Viewer window server display (default: 999)')
+    parser.add_argument('--viewer-port', type=int, default=6899,
+                       help='Viewer window server port (default: 6899)')
+    parser.add_argument('--duration', type=int, default=60,
+                       help='Scenario duration in seconds (default: 60)')
     parser.add_argument('--with-viewer', action='store_true',
                        help='Run test with actual viewer client')
     args = parser.parse_args()
@@ -355,7 +453,11 @@ if __name__ == '__main__':
     
     # Run appropriate test
     if args.with_viewer:
-        success = run_test_with_viewer(args.display, args.port, args.duration)
+        success = run_test_with_viewer(
+            args.display, args.port,
+            args.viewer_display, args.viewer_port,
+            args.duration
+        )
     else:
         success = run_test(args.display, args.port, args.duration)
     
