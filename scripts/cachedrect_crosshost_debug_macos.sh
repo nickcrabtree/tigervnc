@@ -13,6 +13,8 @@ VIEWER_LOG="${LOCAL_LOG_DIR}/viewer_$(date +%Y%m%d_%H%M%S).log"
 SERVER_STDOUT_REMOTE="/tmp/cachedrect_server_stdout.log"
 TUNNEL_PORT=6898
 SERVER_PORT=6898
+VIEWER_DURATION="${VIEWER_DURATION:-60}"  # How long to run viewer (seconds)
+NONINTERACTIVE="${NONINTERACTIVE:-0}"  # Set to 1 for non-interactive mode
 
 mkdir -p "${LOCAL_LOG_DIR}"
 
@@ -70,15 +72,46 @@ fi
 echo "[4/6] Starting local viewer..."
 echo "      Logs: ${VIEWER_LOG}"
 echo "      Target: ${TARGET_HOST}::${SERVER_PORT}"
-echo ""
-echo "  The TigerVNC viewer window will appear on your desktop."
-echo "  Use it normally, then close it when done testing."
-echo ""
 
-set +e
-"${VIEWER_BIN}" -Log="*:stderr:100" "${TARGET_HOST}::${SERVER_PORT}" 2>&1 | tee "${VIEWER_LOG}"
-VIEWER_RC=$?
-set -e
+if [[ "${NONINTERACTIVE}" == "1" ]]; then
+  echo "      Mode: Non-interactive (${VIEWER_DURATION}s timeout)"
+  echo ""
+  
+  # Start viewer in background
+  set +e
+  "${VIEWER_BIN}" -Log="*:stderr:100" "${TARGET_HOST}::${SERVER_PORT}" 2>&1 | tee "${VIEWER_LOG}" &
+  VIEWER_PID=$!
+  set -e
+  
+  echo "  Viewer started (PID ${VIEWER_PID}), running for ${VIEWER_DURATION}s..."
+  
+  # Wait for specified duration
+  sleep "${VIEWER_DURATION}"
+  
+  # Kill viewer
+  echo "  Stopping viewer after ${VIEWER_DURATION}s..."
+  if kill -0 "${VIEWER_PID}" 2>/dev/null; then
+    kill "${VIEWER_PID}" 2>/dev/null || true
+    sleep 2
+    # Force kill if still running
+    if kill -0 "${VIEWER_PID}" 2>/dev/null; then
+      kill -9 "${VIEWER_PID}" 2>/dev/null || true
+    fi
+  fi
+  VIEWER_RC=0
+else
+  echo "      Mode: Interactive"
+  echo ""
+  echo "  The TigerVNC viewer window will appear on your desktop."
+  echo "  Use it normally, then close it when done testing."
+  echo ""
+  
+  set +e
+  "${VIEWER_BIN}" -Log="*:stderr:100" "${TARGET_HOST}::${SERVER_PORT}" 2>&1 | tee "${VIEWER_LOG}"
+  VIEWER_RC=$?
+  set -e
+fi
+
 echo "[viewer exit code] ${VIEWER_RC}"
 
 echo "[5/6] Retrieving server log..."
@@ -105,14 +138,22 @@ if [[ -n "${TUNNEL_PID}" ]]; then
   kill "${TUNNEL_PID}" 2>/dev/null || true
 fi
 
-# Ask user if they want to stop the remote server
-echo ""
-read -p "Stop the remote test server? (y/N) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-  echo "Stopping remote server..."
+# Stop remote server
+if [[ "${NONINTERACTIVE}" == "1" ]]; then
+  echo ""
+  echo "Stopping remote test server..."
   ssh "${REMOTE}" "pkill -f 'server_only_cachedrect_test.py' || true"
   ssh "${REMOTE}" "ps aux | grep 'Xnjcvnc :998' | grep -v grep | awk '{print \$2}' | xargs -r kill 2>/dev/null || true"
+else
+  # Ask user if they want to stop the remote server
+  echo ""
+  read -p "Stop the remote test server? (y/N) " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Stopping remote server..."
+    ssh "${REMOTE}" "pkill -f 'server_only_cachedrect_test.py' || true"
+    ssh "${REMOTE}" "ps aux | grep 'Xnjcvnc :998' | grep -v grep | awk '{print \$2}' | xargs -r kill 2>/dev/null || true"
+  fi
 fi
 
 echo ""
