@@ -26,7 +26,7 @@ This will:
 1. Start a test VNC server on your Linux machine (quartz)
 2. Auto-detect if direct LAN connection is possible (or use SSH tunnel)
 3. Launch the macOS viewer with verbose logging
-4. Display the viewer window on your Mac (via XQuartz)
+4. Display the viewer window on your Mac
 5. Retrieve server logs when done
 6. Compare client and server logs automatically
 
@@ -36,10 +36,9 @@ This will:
 
 ### 1. `scripts/cachedrect_crosshost_debug_macos.sh` ⭐ Recommended
 
-**Purpose**: Simplified macOS-specific cross-platform test with automatic XQuartz management
+**Purpose**: Simplified macOS-specific cross-platform test
 
 **Features**:
-- ✅ Automatically starts XQuartz if not running
 - ✅ Auto-detects LAN vs SSH tunnel mode
 - ✅ Manages remote server lifecycle
 - ✅ Retrieves and compares logs automatically
@@ -151,7 +150,7 @@ python3 scripts/compare_cachedrect_logs.py \
 │     └─ No:  SSH tunnel (localhost::6898 → remote:6898)         │
 │     ↓                                                            │
 │  5. Launch local viewer                                         │
-│     - XQuartz display :0                                        │
+│     - macOS native viewer                                       │
 │     - Verbose logging: Log=*:stderr:100                         │
 │     - Logs to: /tmp/cachedrect_debug/viewer_YYYYMMDD.log       │
 │     ↓                                                            │
@@ -335,17 +334,6 @@ _artifacts/
 
 ## Troubleshooting
 
-### XQuartz Not Starting
-
-**Symptom**: Script fails with "XQuartz failed to start"
-
-**Solution**:
-```bash
-# Manually start XQuartz first
-open -a XQuartz
-# Wait a few seconds, then run script
-./scripts/cachedrect_crosshost_debug_macos.sh
-```
 
 ### Remote Server Not Reachable
 
@@ -436,13 +424,12 @@ pkill -f "ssh -fN -L 6898"
 
 **Check**:
 1. Viewer binary exists and is executable
-2. XQuartz is running (for GUI)
-3. Server is actually ready before viewer starts
+2. Server is actually ready before viewer starts
 
 **Debug**:
 ```bash
 # Test viewer directly
-DISPLAY=:0 build/vncviewer/njcvncviewer --help
+build/vncviewer/njcvncviewer --help
 # Should show help text
 
 # Check viewer log for errors
@@ -561,9 +548,9 @@ runner.cache_hits_minimal(duration_sec=60)  # Longer periodic runs
    ```
 
 2. **Check prerequisites**:
-   - XQuartz installed and can start
    - SSH key auth configured (no password prompts)
    - Network connectivity to remote host
+   - macOS viewer binary built
 
 3. **Clean up previous tests**:
    ```bash

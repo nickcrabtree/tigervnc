@@ -21,26 +21,7 @@ if [[ ! -x "${VIEWER_BIN}" ]]; then
   exit 1
 fi
 
-# Ensure XQuartz is running
-if ! pgrep -x "Xquartz" > /dev/null; then
-  echo "[0/6] Starting XQuartz..."
-  open -a XQuartz
-  echo "  Waiting for XQuartz to initialize..."
-  for i in {1..30}; do
-    if pgrep -x "Xquartz" > /dev/null; then
-      sleep 2  # Give it a moment to fully start
-      break
-    fi
-    sleep 1
-  done
-  if ! pgrep -x "Xquartz" > /dev/null; then
-    echo "ERROR: XQuartz failed to start" >&2
-    exit 1
-  fi
-fi
-
-# Set DISPLAY for XQuartz (usually :0 on macOS)
-export DISPLAY=:0
+# macOS native viewer doesn't require X11/XQuartz
 
 echo "[1/6] Starting remote server on ${REMOTE}..."
 ssh "${REMOTE}" "cd ${REMOTE_DIR} && python3 scripts/server_only_cachedrect_test.py --display 998 --port 6898 --duration 60 </dev/null >/tmp/cachedrect_server_stdout.log 2>&1 &"
@@ -86,7 +67,7 @@ else
   TARGET_HOST="${REMOTE#*@}"
 fi
 
-echo "[4/6] Starting local viewer (XQuartz display :0)..."
+echo "[4/6] Starting local viewer..."
 echo "      Logs: ${VIEWER_LOG}"
 echo "      Target: ${TARGET_HOST}::${SERVER_PORT}"
 echo ""
