@@ -36,6 +36,8 @@
 
 #include <rdr/MemOutStream.h>
 
+namespace core { class IntParameter; }
+
 using namespace rfb;
 
 static core::LogWriter vlog("DecodeManager");
@@ -52,9 +54,12 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   memset(&persistentCacheStats, 0, sizeof(persistentCacheStats));
   
   // Initialize client-side content cache (2GB default, unlimited age)
+  // Can be overridden with ContentCacheSize parameter from viewer
   // Let ARC algorithm handle eviction without time-based constraints
-  contentCache = new ContentCache(2048, 0);
-  vlog.info("Client ContentCache initialized: 2048MB, unlimited age (ARC-managed)");
+  extern core::IntParameter contentCacheSize __attribute__((weak));
+  size_t cacheSize = (&contentCacheSize != nullptr) ? (size_t)contentCacheSize : 2048;
+  contentCache = new ContentCache(cacheSize, 0);
+  vlog.info("Client ContentCache initialized: %zuMB, unlimited age (ARC-managed)", cacheSize);
   
   // Initialize client-side persistent cache (2GB default)
   // TODO: Read size from parameters in Phase 4

@@ -244,6 +244,12 @@ core::StringParameter
   via("via", "Gateway to tunnel via", "");
 #endif
 
+// ContentCache parameter (per-session, cache IDs)
+core::IntParameter
+  contentCacheSize("ContentCacheSize",
+                   "Maximum size of content cache in MB",
+                   2048, 1, 8192);
+
 // PersistentCache parameters (cross-session, content hashes)
 core::BoolParameter
   persistentCache("PersistentCache",

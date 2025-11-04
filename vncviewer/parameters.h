@@ -83,7 +83,8 @@ extern core::BoolParameter reconnectOnError;
 extern core::StringParameter via;
 #endif
 
-// PersistentCache parameters
+// ContentCache and PersistentCache parameters
+extern core::IntParameter contentCacheSize;
 extern core::BoolParameter persistentCache;
 extern core::IntParameter persistentCacheSize;
 extern core::StringParameter persistentCachePath;

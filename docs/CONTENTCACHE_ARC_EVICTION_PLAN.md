@@ -284,39 +284,39 @@
 ## Progress Checklist
 
 ### Phase 1: Byte Size Tracking
-- [ ] 1.1 Add getTotalBytes() method
-- [ ] 1.2 Update DecodeManager statistics
-- [ ] 1.3 Update EncodeManager statistics
-- [ ] 1.4 Test and commit
+- [x] 1.1 Add getTotalBytes() method
+- [x] 1.2 Update DecodeManager statistics
+- [x] 1.3 Update EncodeManager statistics
+- [x] 1.4 Test and commit
 
 ### Phase 2: Protocol Extension
-- [ ] 2.1 Define encoding constant
-- [ ] 2.2 Add CMsgWriter::writeCacheEviction()
-- [ ] 2.3 Add SMsgReader::readCacheEviction()
-- [ ] 2.4 Add SConnection::handleCacheEviction()
-- [ ] 2.5 Implement VNCSConnectionST handler
-- [ ] 2.6 Test and commit
+- [x] 2.1 Define encoding constant
+- [x] 2.2 Add CMsgWriter::writeCacheEviction()
+- [x] 2.3 Add SMsgReader::readCacheEviction()
+- [x] 2.4 Add SConnection::handleCacheEviction()
+- [x] 2.5 Implement VNCSConnectionST handler
+- [x] 2.6 Test and commit
 
 ### Phase 3: Client ARC Integration
-- [ ] 3.1 Create PixelCacheEntry struct
-- [ ] 3.2 Change pixelCache_ to ARC
-- [ ] 3.3 Update storeDecodedPixels()
-- [ ] 3.4 Update getDecodedPixels()
-- [ ] 3.5 Add ARC eviction callback
-- [ ] 3.6 Register callback in ContentCache
-- [ ] 3.7 Add pendingEvictions_ vector
-- [ ] 3.8 Add flushEvictionNotifications()
-- [ ] 3.9 Wire up flush calls
-- [ ] 3.10 Test and commit
+- [x] 3.1 Create PixelCacheEntry struct
+- [x] 3.2 Change pixelCache_ to ARC
+- [x] 3.3 Update storeDecodedPixels()
+- [x] 3.4 Update getDecodedPixels()
+- [x] 3.5 Add ARC eviction callback
+- [x] 3.6 Register callback in ContentCache
+- [x] 3.7 Add pendingEvictions_ vector
+- [x] 3.8 Add flushEvictionNotifications()
+- [x] 3.9 Wire up flush calls
+- [x] 3.10 Test and commit
 
 ### Phase 4: Server Enhancements
-- [ ] 4.1 Add byte size to server insertions
-- [ ] 4.2 Verify cleanup on disconnect
-- [ ] 4.3 Add periodic logging
-- [ ] 4.4 Test and commit
+- [x] 4.1 Add byte size to server insertions
+- [x] 4.2 Verify cleanup on disconnect
+- [x] 4.3 Add periodic logging
+- [x] 4.4 Test and commit
 
 ### Phase 5: Testing
-- [ ] 5.1 Update test script
+- [x] 5.1 Update test script
 - [ ] 5.2 Add unit test
 - [ ] 5.3 Add multi-viewer test
 - [ ] 5.4 Test reconnection
