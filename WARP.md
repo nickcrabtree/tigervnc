@@ -6,27 +6,60 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ### Production Servers and Viewers
 
-**DO NOT kill, restart, or interfere with production VNC servers or viewers!**
+**🔴 ABSOLUTELY FORBIDDEN: pkill, killall, pkill -f, killall -f 🔴**
 
-This system has production VNC servers running on displays `:1`, `:2`, and `:3` that are actively in use:
-- `Xtigervnc :1` (port 5901) - PRODUCTION
-- `Xnjcvnc :2` (port 5902) - PRODUCTION  
-- `Xtigervnc :3` (port 5903) - PRODUCTION
+**NEVER, UNDER ANY CIRCUMSTANCES, use pkill or killall commands!**
 
-**Rules for safe process management:**
-1. **NEVER use pattern-based killing** like `pkill -f Xnjcvnc` or `killall` - these will kill ALL matching processes including production!
-2. **ALWAYS verify process details before killing**:
+These commands will kill ALL matching processes across the ENTIRE system, including:
+- Production VNC servers on Linux (quartz)
+- Production VNC viewers on macOS (user's desktop)
+- Any other user processes that match the pattern
+
+**This system has production processes that must NEVER be killed:**
+
+On Linux (quartz):
+- `Xtigervnc :1` (port 5901) - PRODUCTION SERVER
+- `Xnjcvnc :2` (port 5902) - PRODUCTION SERVER
+- `Xtigervnc :3` (port 5903) - PRODUCTION SERVER
+
+On macOS (user's desktop):
+- `njcvncviewer` - User's active VNC viewer sessions
+- `Xvfb` - May be used for legitimate purposes
+
+**MANDATORY Rules for safe process management:**
+
+1. **🚫 ABSOLUTELY FORBIDDEN COMMANDS:**
    ```bash
-   # Find candidate processes
-   ps aux | grep Xnjcvnc
-   # Verify working directory and display number
-   pwdx <PID>
-   # Only kill specific PIDs after verification
-   kill <specific-pid>
+   pkill <anything>        # ❌ NEVER - kills ALL matching processes
+   pkill -f <anything>     # ❌ NEVER - kills ALL matching patterns  
+   killall <anything>      # ❌ NEVER - kills ALL matching processes
+   pkill -9 <anything>     # ❌ NEVER - force kills ALL matching
    ```
-3. **Test servers only on isolated displays**: Use `:998` and `:999` (managed by `tests/e2e/` framework)
-4. **Never manually start viewers on displays ':1', `:2` or ':3' ** - these are the user's working desktop - note this is what will happen if you don't manually specify a display.
-5. **Use the e2e test framework** which properly manages isolated test servers
+   **These commands are COMPLETELY BANNED. Do not use them for ANY reason.**
+
+2. **✅ ONLY ACCEPTABLE METHOD - Kill by specific verified PID:**
+   ```bash
+   # Step 1: Find candidate processes
+   ps aux | grep "Xnjcvnc :99[89]"
+   
+   # Step 2: Verify EACH PID individually
+   ps -p <PID> -o pid,args=    # Check full command
+   pwdx <PID>                  # Verify working directory
+   
+   # Step 3: Only after manual verification, kill specific PID
+   kill <specific-verified-pid>
+   
+   # If it doesn't stop, use SIGKILL on that SPECIFIC PID only
+   kill -9 <specific-verified-pid>
+   ```
+
+3. **Test servers only on isolated displays**: Use `:997`, `:998`, `:999` (managed by `tests/e2e/` framework)
+
+4. **Never manually start viewers on displays `:1`, `:2` or `:3`** - these are the user's working desktop
+
+5. **On macOS**: User may have production viewers running. NEVER kill any viewer process without explicit user confirmation of the specific PID
+
+6. **Use the e2e test framework** which properly manages isolated test servers with specific PID tracking
 
 ### Safe Testing Approach
 
