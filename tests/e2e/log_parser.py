@@ -42,6 +42,11 @@ class ARCSnapshot:
     cache_hits: int = 0
     cache_misses: int = 0
     evictions: int = 0
+    
+    # Client-side pixel cache ARC
+    pixel_t1_size: int = 0
+    pixel_t2_size: int = 0
+    pixel_cache_mb: float = 0.0
 
 
 @dataclass
@@ -62,6 +67,8 @@ class ParsedLog:
     cached_rect_count: int = 0
     cached_rect_init_count: int = 0
     request_cached_data_count: int = 0
+    cache_eviction_count: int = 0  # Number of eviction notifications sent
+    evicted_ids_count: int = 0  # Total number of cache IDs evicted
     
     # Final ARC state
     final_arc: Optional[ARCSnapshot] = None
@@ -181,6 +188,22 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 )
                 parsed.request_cached_data_count += 1
             
+            # Eviction notifications
+            elif 'sending' in message.lower() and 'cache eviction' in message.lower():
+                # Parse: "Sending 5 cache eviction notifications to server"
+                match = re.search(r'sending\s+(\d+)\s+cache\s+eviction', message, re.IGNORECASE)
+                if match:
+                    count = int(match.group(1))
+                    parsed.cache_eviction_count += 1
+                    parsed.evicted_ids_count += count
+            
+            elif 'evicted' in message.lower() and 'cache' in message.lower():
+                # Client or server eviction logging
+                cache_id = parse_cache_id(message)
+                parsed.cache_operations.append(
+                    CacheOperation('eviction', cache_id=cache_id, details=message)
+                )
+            
             # ARC statistics (end of session)
             if 'client-side contentcache statistics' in message.lower():
                 # Start of stats block, parse following lines
@@ -255,6 +278,8 @@ def compute_metrics(parsed: ParsedLog) -> Dict:
             'CachedRect': parsed.cached_rect_count,
             'CachedRectInit': parsed.cached_rect_init_count,
             'RequestCachedData': parsed.request_cached_data_count,
+            'CacheEviction': parsed.cache_eviction_count,
+            'EvictedIDs': parsed.evicted_ids_count,
         },
         'arc_state': {},
         'errors': len(parsed.errors),
@@ -287,6 +312,7 @@ def format_metrics_summary(metrics: Dict) -> str:
     lines.append(f"  CachedRect: {proto['CachedRect']}")
     lines.append(f"  CachedRectInit: {proto['CachedRectInit']}")
     lines.append(f"  RequestCachedData: {proto['RequestCachedData']}")
+    lines.append(f"  CacheEviction: {proto['CacheEviction']} ({proto['EvictedIDs']} IDs evicted)")
     
     if metrics['arc_state']:
         lines.append("\nARC State:")
