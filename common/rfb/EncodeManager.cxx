@@ -511,8 +511,6 @@ void EncodeManager::doUpdate(bool allowLossy, const
           conn->writer()->endRect();
           // Mark this cacheId as known to this client
           conn->markCacheIdKnown(cacheId);
-          // NOW insert into cache since client has the data
-          insertIntoContentCache(r, pb);
         }
       }
 
@@ -1053,8 +1051,39 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
 
   endRect();
 
-  // DO NOT insert into cache here - client doesn't know about this content yet.
-  // Only insert when sending CachedRectInit (after which we mark the ID as known).
+  // Insert into content cache and queue CachedRectInit for client notification
+  // Client will learn about this cache ID on the next update
+  if (contentCache != nullptr && 
+      rect.area() >= Server::contentCacheMinRectSize &&
+      conn->client.supportsEncoding(pseudoEncodingContentCache)) {
+    
+    // Compute hash
+    const uint8_t* buffer;
+    int stride;
+    buffer = pb->getBuffer(rect, &stride);
+    
+    uint64_t hash;
+    size_t bytesPerPixel = pb->getPF().bpp / 8;
+    
+    if (rect.area() > 262144) { // 512x512
+      hash = computeSampledHash(buffer, rect.width(), rect.height(),
+                                stride, bytesPerPixel, 4);
+    } else {
+      size_t dataLen = rect.height() * stride * bytesPerPixel;
+      hash = computeContentHash(buffer, dataLen);
+    }
+    
+    // Insert and get cache ID
+    size_t dataLen = rect.height() * stride * bytesPerPixel;
+    uint64_t cacheId = contentCache->insertContent(hash, rect, nullptr, dataLen, false);
+    
+    // Queue CachedRectInit so client learns about this ID
+    conn->queueCachedInit(cacheId, rect);
+    
+    vlog.debug("ContentCache insert: rect [%d,%d-%d,%d], hash=%llx, cacheId=%llu (CachedRectInit queued)",
+               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
+               (unsigned long long)hash, (unsigned long long)cacheId);
+  }
 }
 
 bool EncodeManager::checkSolidTile(const core::Rect& r,
