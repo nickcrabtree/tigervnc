@@ -244,6 +244,22 @@ void CMsgWriter::writeRequestCachedData(uint64_t cacheId)
   endMsg();
 }
 
+void CMsgWriter::writeCacheEviction(const std::vector<uint64_t>& cacheIds)
+{
+  if (cacheIds.empty())
+    return;
+  
+  startMsg(msgTypeCacheEviction);
+  os->writeU32(cacheIds.size());
+  
+  for (uint64_t cacheId : cacheIds) {
+    os->writeU32((uint32_t)(cacheId >> 32));  // High 32 bits
+    os->writeU32((uint32_t)(cacheId & 0xFFFFFFFF));  // Low 32 bits
+  }
+  
+  endMsg();
+}
+
 void CMsgWriter::writePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes)
 {
   if (hashes.empty())

@@ -111,6 +111,9 @@ bool SMsgReader::readMsg()
   case msgTypeRequestCachedData:
     ret = readRequestCachedData();
     break;
+  case msgTypeCacheEviction:
+    ret = readCacheEviction();
+    break;
   case msgTypePersistentCacheQuery:
     ret = readPersistentCacheQuery();
     break;
@@ -540,6 +543,36 @@ bool SMsgReader::readRequestCachedData()
              (unsigned long long)cacheId);
 
   handler->handleRequestCachedData(cacheId);
+  return true;
+}
+
+bool SMsgReader::readCacheEviction()
+{
+  if (!is->hasData(4))
+    return false;
+
+  is->setRestorePoint();
+
+  uint32_t count = is->readU32();
+
+  if (!is->hasDataOrRestore(count * 8))
+    return false;
+
+  is->clearRestorePoint();
+
+  std::vector<uint64_t> cacheIds;
+  cacheIds.reserve(count);
+
+  for (uint32_t i = 0; i < count; i++) {
+    uint32_t hi = is->readU32();
+    uint32_t lo = is->readU32();
+    uint64_t cacheId = ((uint64_t)hi << 32) | lo;
+    cacheIds.push_back(cacheId);
+  }
+
+  vlog.debug("Client evicted %u cache entries", count);
+
+  handler->handleCacheEviction(cacheIds);
   return true;
 }
 

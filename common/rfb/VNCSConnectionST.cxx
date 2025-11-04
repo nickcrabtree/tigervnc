@@ -851,6 +851,20 @@ void VNCSConnectionST::handleRequestCachedData(uint64_t cacheId)
   server->handleRequestCachedData(this, cacheId);
 }
 
+void VNCSConnectionST::handleCacheEviction(const std::vector<uint64_t>& cacheIds)
+{
+  vlog.debug("Client evicted %u cache entries", (unsigned)cacheIds.size());
+  
+  // Remove evicted cache IDs from our tracking set
+  for (uint64_t cacheId : cacheIds) {
+    knownCacheIds_.erase(cacheId);
+    lastCachedRectRef_.erase(cacheId);
+  }
+  
+  vlog.info("Updated knownCacheIds_: removed %u IDs, %u remaining",
+            (unsigned)cacheIds.size(), (unsigned)knownCacheIds_.size());
+}
+
 void VNCSConnectionST::handleTimeout(core::Timer* t)
 {
   try {

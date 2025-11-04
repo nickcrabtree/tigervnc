@@ -69,6 +69,7 @@ namespace rfb {
                                         const uint8_t* const* data) = 0;
 
     virtual void handleRequestCachedData(uint64_t cacheId) = 0;
+    virtual void handleCacheEviction(const std::vector<uint64_t>& cacheIds) = 0;
 
     virtual void handlePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes) = 0;
     virtual void handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,

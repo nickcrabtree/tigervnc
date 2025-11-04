@@ -148,6 +148,7 @@ namespace rfb {
     void supportsContinuousUpdates() override;
     void supportsLEDState() override;
     void handleRequestCachedData(uint64_t cacheId) override;
+    void handleCacheEviction(const std::vector<uint64_t>& cacheIds) override;
     void onCachedRectRef(uint64_t cacheId, const core::Rect& r) override;
     void handlePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes) override;
     void handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,

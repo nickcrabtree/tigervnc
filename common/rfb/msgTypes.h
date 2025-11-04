@@ -48,6 +48,7 @@ namespace rfb {
 
   // ContentCache protocol (session-only)
   const int msgTypeRequestCachedData = 254;
+  const int msgTypeCacheEviction = 250;
 
   // PersistentCache protocol (cross-session)
   const int msgTypePersistentCacheQuery = 253;

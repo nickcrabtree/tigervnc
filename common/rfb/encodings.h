@@ -39,6 +39,11 @@ namespace rfb {
   // TigerVNC persistent cache encoding extension (PersistentCache - cross-session)
   const int encodingPersistentCachedRect = 102;
   const int encodingPersistentCachedRectInit = 103;
+  
+  // TigerVNC cache eviction notification (client→server)
+  // Sent by client to notify server when cache entries are evicted
+  // Format: U32 count, followed by count U64 cache IDs
+  const int encodingCacheEviction = 104;
 
   const int encodingMax = 255;
 

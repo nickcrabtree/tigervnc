@@ -58,6 +58,7 @@ namespace rfb {
     bool readClientCutText();
     bool readExtendedClipboard(int32_t len);
     bool readRequestCachedData();
+    bool readCacheEviction();
     bool readPersistentCacheQuery();
     bool readPersistentHashList();
 

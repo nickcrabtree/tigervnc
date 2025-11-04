@@ -65,6 +65,7 @@ namespace rfb {
 
     // ContentCache protocol (session-only)
     void writeRequestCachedData(uint64_t cacheId);
+    void writeCacheEviction(const std::vector<uint64_t>& cacheIds);
     
     // PersistentCache protocol (cross-session)
     void writePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes);

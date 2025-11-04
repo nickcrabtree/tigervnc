@@ -173,6 +173,7 @@ namespace rfb {
     void handleClipboardProvide(uint32_t flags, const size_t* lengths,
                                 const uint8_t* const* data) override;
     void handleRequestCachedData(uint64_t cacheId) override;
+    void handleCacheEviction(const std::vector<uint64_t>& cacheIds) override;
     void handlePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes) override;
     void handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
                                   uint16_t chunkIndex,
