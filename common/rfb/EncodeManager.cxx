@@ -511,6 +511,8 @@ void EncodeManager::doUpdate(bool allowLossy, const
           conn->writer()->endRect();
           // Mark this cacheId as known to this client
           conn->markCacheIdKnown(cacheId);
+          // NOW insert into cache since client has the data
+          insertIntoContentCache(r, pb);
         }
       }
 
@@ -1051,11 +1053,8 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
 
   endRect();
 
-  // Insert into content cache for future lookups
-  // Note: Per ContentCache protocol, new content is sent as normal encoded rectangles.
-  // Only when client sends RequestCachedData for a cache miss should server respond
-  // with CachedRectInit containing the full data.
-  insertIntoContentCache(rect, pb);
+  // DO NOT insert into cache here - client doesn't know about this content yet.
+  // Only insert when sending CachedRectInit (after which we mark the ID as known).
 }
 
 bool EncodeManager::checkSolidTile(const core::Rect& r,
