@@ -52,6 +52,7 @@ def run_viewer_with_small_cache(viewer_path, port, artifacts, tracker, name,
         f'127.0.0.1::{port}',
         'Shared=1',
         'Log=*:stderr:100',
+        f'ContentCacheSize={cache_size_mb}',
     ]
     
     log_path = artifacts.logs_dir / f'{name}.log'
