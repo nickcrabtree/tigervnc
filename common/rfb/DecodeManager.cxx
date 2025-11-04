@@ -26,6 +26,7 @@
 #include <core/LogWriter.h>
 #include <core/Region.h>
 #include <core/string.h>
+#include <core/Configuration.h>
 
 #include <rfb/CConnection.h>
 #include <rfb/CMsgWriter.h>
@@ -35,8 +36,6 @@
 #include <rfb/PixelBuffer.h>
 
 #include <rdr/MemOutStream.h>
-
-namespace core { class IntParameter; }
 
 using namespace rfb;
 
@@ -56,8 +55,14 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   // Initialize client-side content cache (2GB default, unlimited age)
   // Can be overridden with ContentCacheSize parameter from viewer
   // Let ARC algorithm handle eviction without time-based constraints
-  extern core::IntParameter contentCacheSize __attribute__((weak));
-  size_t cacheSize = (&contentCacheSize != nullptr) ? (size_t)contentCacheSize : 2048;
+  size_t cacheSize = 2048; // Default
+  core::VoidParameter* param = core::Configuration::getParam("ContentCacheSize");
+  if (param) {
+    core::IntParameter* intParam = dynamic_cast<core::IntParameter*>(param);
+    if (intParam) {
+      cacheSize = (size_t)(*intParam);
+    }
+  }
   contentCache = new ContentCache(cacheSize, 0);
   vlog.info("Client ContentCache initialized: %zuMB, unlimited age (ARC-managed)", cacheSize);
   
