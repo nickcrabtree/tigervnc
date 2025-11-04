@@ -65,8 +65,8 @@ VNCSConnectionST::VNCSConnectionST(VNCServerST* server_, network::Socket *s,
     fenceDataLen(0), fenceData(nullptr), congestionTimer(this),
     losslessTimer(this), server(server_),
     updateRenderedCursor(false), removeRenderedCursor(false),
-    continuousUpdates(false), encodeManager(this), idleTimer(this),
-    pointerEventTime(0), clientHasCursor(false)
+    continuousUpdates(false), encodeManager(this), updateCount_(0),
+    idleTimer(this), pointerEventTime(0), clientHasCursor(false)
 {
   setStreams(&sock->inStream(), &sock->outStream());
   peerEndpoint = sock->getPeerEndpoint();
@@ -88,6 +88,14 @@ VNCSConnectionST::~VNCSConnectionST()
   if (!closeReason.empty())
     vlog.info("Closing %s: %s", peerEndpoint.c_str(),
               closeReason.c_str());
+
+  // Log cache cleanup
+  if (!knownCacheIds_.empty() || !lastCachedRectRef_.empty()) {
+    vlog.debug("Cleaning up cache tracking: %zu known cache IDs, %zu cached rect refs",
+               knownCacheIds_.size(), lastCachedRectRef_.size());
+  }
+  // knownCacheIds_ and lastCachedRectRef_ will be automatically cleared
+  // by their destructors (unordered_set and unordered_map)
 
   // Release any keys the client still had pressed
   while (!pressedKeys.empty()) {
@@ -1144,6 +1152,14 @@ void VNCSConnectionST::writeDataUpdate()
   updates.subtract(req);
 
   requested.clear();
+  
+  // Periodic cache tracking logging (every 100 updates)
+  updateCount_++;
+  if (updateCount_ % 100 == 0) {
+    vlog.debug("%s: Sent %u updates, tracking %zu cache IDs, %zu cached rect refs",
+               peerEndpoint.c_str(), updateCount_,
+               knownCacheIds_.size(), lastCachedRectRef_.size());
+  }
 }
 
 void VNCSConnectionST::writeLosslessRefresh()

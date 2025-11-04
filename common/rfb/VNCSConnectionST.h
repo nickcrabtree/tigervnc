@@ -219,6 +219,9 @@ namespace rfb {
     std::unordered_map<uint64_t, core::Rect> lastCachedRectRef_;
     std::vector<std::pair<uint64_t, core::Rect>> pendingCacheInit_;
     std::unordered_set<uint64_t> knownCacheIds_;
+    
+    // Update counter for periodic cache statistics logging
+    unsigned updateCount_;
 
     std::map<uint32_t, uint32_t> pressedKeys;
 
