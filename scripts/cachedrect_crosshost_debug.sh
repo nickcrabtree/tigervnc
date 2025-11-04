@@ -73,10 +73,10 @@ safe_kill_tests() {
 
 safe_kill_tests
 
-echo "[remote] Starting server-only e2e test (will target :998 / port 6898)..."
+echo \"[remote] Starting server-only e2e test (will target :998 / port 6898)...\"
 # Use our custom server-only script that keeps the server running
-: > ${SERVER_STDOUT_REMOTE}
-( cd "${REMOTE_DIR}" && python3 scripts/server_only_cachedrect_test.py --display 998 --port 6898 --duration 60 ) >> ${SERVER_STDOUT_REMOTE} 2>&1 &
+: > /tmp/cachedrect_server_stdout.log
+( cd \"${REMOTE_DIR}\" && python3 scripts/server_only_cachedrect_test.py --display 998 --port 6898 --duration 60 ) >> /tmp/cachedrect_server_stdout.log 2>&1 &
 
 echo \$! > /tmp/cachedrect_server_pid
 
