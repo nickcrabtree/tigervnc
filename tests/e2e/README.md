@@ -335,6 +335,17 @@ To complete the implementation:
 4. Test the full pipeline end-to-end
 5. Iterate on log parsing patterns as actual log format is refined
 
+## Cross-Platform Testing
+
+For testing the **macOS viewer against Linux server** or other cross-platform scenarios, see:
+
+**→ [CROSS_PLATFORM_TESTING.md](CROSS_PLATFORM_TESTING.md)** - Complete guide to cross-platform tests
+
+Key scripts:
+- `scripts/cachedrect_crosshost_debug_macos.sh` - Automated macOS→Linux testing
+- `scripts/server_only_cachedrect_test.py` - Remote server management
+- `scripts/compare_cachedrect_logs.py` - Log analysis and comparison
+
 ## Contact
 
 For questions or issues with the e2e test framework, refer to the project's WARP.md for ContentCache documentation and known issues.
