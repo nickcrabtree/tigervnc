@@ -161,14 +161,21 @@ namespace rfb {
       int width;
       int height;
       int stridePixels;  // Stride in pixels, NOT bytes
+      size_t bytes;      // Total byte size (for ARC tracking)
       uint32_t lastUsedTime;
       
-      CachedPixels() : cacheId(0), width(0), height(0), stridePixels(0), lastUsedTime(0) {}
+      CachedPixels() : cacheId(0), width(0), height(0), stridePixels(0), bytes(0), lastUsedTime(0) {}
     };
     
     void storeDecodedPixels(uint64_t cacheId, const uint8_t* pixels,
                            const PixelFormat& pf, int width, int height, int stridePixels);
     const CachedPixels* getDecodedPixels(uint64_t cacheId);
+    
+    // Eviction notification management
+    // Returns vector of evicted cache IDs that need to be sent to server
+    // Clears the pending list after returning
+    std::vector<uint64_t> getPendingEvictions();
+    bool hasPendingEvictions() const { return !pendingEvictions_.empty(); }
     
   private:
     // Main cache storage: hash -> entry data
@@ -221,13 +228,35 @@ namespace rfb {
     // Statistics
     mutable Stats stats_;
     
-    // ARC helper methods
+    // Client-side pixel cache ARC tracking (parallel to server-side hash cache)
+    std::list<uint64_t> pixelT1_;  // Recently used once (pixel cache IDs)
+    std::list<uint64_t> pixelT2_;  // Frequently used (pixel cache IDs)
+    std::list<uint64_t> pixelB1_;  // Ghost entries from pixel T1
+    std::list<uint64_t> pixelB2_;  // Ghost entries from pixel T2
+    std::unordered_map<uint64_t, ListInfo> pixelListMap_;  // Track which list each cache ID is in
+    size_t pixelP_;          // ARC adaptive parameter for pixel cache
+    size_t pixelT1Size_;     // Bytes in pixel T1
+    size_t pixelT2Size_;     // Bytes in pixel T2
+    size_t maxPixelCacheSize_;  // Maximum pixel cache size in bytes
+    
+    // Eviction notification tracking
+    std::vector<uint64_t> pendingEvictions_;  // Cache IDs evicted, pending notification to server
+    
+    // ARC helper methods (server-side hash cache)
     void replace(uint64_t hash, size_t size);
     void moveToT2(uint64_t hash);
     void moveToB1(uint64_t hash);
     void moveToB2(uint64_t hash);
     void removeFromList(uint64_t hash);
     size_t getEntrySize(uint64_t hash) const;
+    
+    // ARC helper methods (client-side pixel cache)
+    void replacePixelCache(size_t size);
+    void movePixelToT2(uint64_t cacheId);
+    void movePixelToB1(uint64_t cacheId);
+    void movePixelToB2(uint64_t cacheId);
+    void removePixelFromList(uint64_t cacheId);
+    size_t getPixelEntrySize(uint64_t cacheId) const;
     
     // Common helpers
     uint32_t getCurrentTime() const;

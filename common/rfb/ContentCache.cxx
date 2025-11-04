@@ -138,7 +138,11 @@ ContentCache::ContentCache(size_t maxSizeMB, uint32_t maxAgeSec)
     maxCacheSize_(maxSizeMB * 1024 * 1024),
     maxAge_(maxAgeSec),
     t1Size_(0),
-    t2Size_(0)
+    t2Size_(0),
+    pixelP_(0),
+    pixelT1Size_(0),
+    pixelT2Size_(0),
+    maxPixelCacheSize_(maxSizeMB * 1024 * 1024)  // Same limit as hash cache
 {
   //DebugContentCache_2025-10-14
   ContentCacheDebugLogger::getInstance().log("ContentCache constructor ENTER: maxSizeMB=" + std::to_string(maxSizeMB) + ", maxAgeSec=" + std::to_string(maxAgeSec));
@@ -592,6 +596,163 @@ uint32_t ContentCache::getCurrentTime() const
 }
 
 // ============================================================================
+// Pixel Cache ARC Helper Methods
+// ============================================================================
+
+void ContentCache::replacePixelCache(size_t size)
+{
+  // Make room for new entry of given size in pixel cache
+  while (pixelT1Size_ + pixelT2Size_ + size > maxPixelCacheSize_) {
+    
+    // Case 1: T1 is larger than target p, evict from T1
+    if (!pixelT1_.empty() && 
+        (pixelT1Size_ > pixelP_ || (pixelT2_.empty() && pixelT1Size_ == pixelP_))) {
+      
+      uint64_t victim = pixelT1_.back();
+      pixelT1_.pop_back();
+      
+      auto cacheIt = pixelCache_.find(victim);
+      if (cacheIt != pixelCache_.end()) {
+        pixelT1Size_ -= cacheIt->second.bytes;
+        
+        // Move to B1 (ghost list)
+        pixelB1_.push_front(victim);
+        pixelListMap_[victim].list = LIST_B1;
+        pixelListMap_[victim].iter = pixelB1_.begin();
+        
+        // Queue for eviction notification
+        pendingEvictions_.push_back(victim);
+        
+        pixelCache_.erase(cacheIt);
+        stats_.evictions++;
+        
+        // Limit B1 size
+        while (pixelB1_.size() > maxPixelCacheSize_ / (1024 * 16)) {
+          uint64_t oldGhost = pixelB1_.back();
+          pixelB1_.pop_back();
+          pixelListMap_.erase(oldGhost);
+        }
+      }
+      
+    } 
+    // Case 2: Evict from T2
+    else if (!pixelT2_.empty()) {
+      
+      uint64_t victim = pixelT2_.back();
+      pixelT2_.pop_back();
+      
+      auto cacheIt = pixelCache_.find(victim);
+      if (cacheIt != pixelCache_.end()) {
+        pixelT2Size_ -= cacheIt->second.bytes;
+        
+        // Move to B2 (ghost list)
+        pixelB2_.push_front(victim);
+        pixelListMap_[victim].list = LIST_B2;
+        pixelListMap_[victim].iter = pixelB2_.begin();
+        
+        // Queue for eviction notification
+        pendingEvictions_.push_back(victim);
+        
+        pixelCache_.erase(cacheIt);
+        stats_.evictions++;
+        
+        // Limit B2 size
+        while (pixelB2_.size() > maxPixelCacheSize_ / (1024 * 16)) {
+          uint64_t oldGhost = pixelB2_.back();
+          pixelB2_.pop_back();
+          pixelListMap_.erase(oldGhost);
+        }
+      }
+      
+    } else {
+      // Both lists empty, nothing to evict
+      break;
+    }
+  }
+}
+
+void ContentCache::movePixelToT2(uint64_t cacheId)
+{
+  auto listIt = pixelListMap_.find(cacheId);
+  if (listIt == pixelListMap_.end() || listIt->second.list != LIST_T1) {
+    return;
+  }
+  
+  size_t size = getPixelEntrySize(cacheId);
+  
+  // Remove from T1
+  pixelT1_.erase(listIt->second.iter);
+  pixelT1Size_ -= size;
+  
+  // Add to front of T2
+  pixelT2_.push_front(cacheId);
+  pixelT2Size_ += size;
+  
+  listIt->second.list = LIST_T2;
+  listIt->second.iter = pixelT2_.begin();
+}
+
+void ContentCache::movePixelToB1(uint64_t cacheId)
+{
+  removePixelFromList(cacheId);
+  pixelB1_.push_front(cacheId);
+  pixelListMap_[cacheId].list = LIST_B1;
+  pixelListMap_[cacheId].iter = pixelB1_.begin();
+}
+
+void ContentCache::movePixelToB2(uint64_t cacheId)
+{
+  removePixelFromList(cacheId);
+  pixelB2_.push_front(cacheId);
+  pixelListMap_[cacheId].list = LIST_B2;
+  pixelListMap_[cacheId].iter = pixelB2_.begin();
+}
+
+void ContentCache::removePixelFromList(uint64_t cacheId)
+{
+  auto listIt = pixelListMap_.find(cacheId);
+  if (listIt == pixelListMap_.end()) {
+    return;
+  }
+  
+  size_t size = getPixelEntrySize(cacheId);
+  
+  switch (listIt->second.list) {
+    case LIST_T1:
+      pixelT1_.erase(listIt->second.iter);
+      pixelT1Size_ -= size;
+      break;
+    case LIST_T2:
+      pixelT2_.erase(listIt->second.iter);
+      pixelT2Size_ -= size;
+      break;
+    case LIST_B1:
+      pixelB1_.erase(listIt->second.iter);
+      break;
+    case LIST_B2:
+      pixelB2_.erase(listIt->second.iter);
+      break;
+    case LIST_NONE:
+      break;
+  }
+  
+  pixelListMap_.erase(listIt);
+}
+
+size_t ContentCache::getPixelEntrySize(uint64_t cacheId) const
+{
+  auto it = pixelCache_.find(cacheId);
+  return (it != pixelCache_.end()) ? it->second.bytes : 0;
+}
+
+std::vector<uint64_t> ContentCache::getPendingEvictions()
+{
+  std::vector<uint64_t> result;
+  result.swap(pendingEvictions_);
+  return result;
+}
+
+// ============================================================================
 // Cache ID Management Methods (for protocol extension)
 // ============================================================================
 
@@ -654,96 +815,110 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
                                      const PixelFormat& pf,
                                      int width, int height, int stridePixels)
 {
-  //DebugContentCache_2025-10-14
-  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels ENTER: cacheId=" + std::to_string(cacheId) + ", pixels=" + std::to_string(reinterpret_cast<uintptr_t>(pixels)) + ", width=" + std::to_string(width) + ", height=" + std::to_string(height) + ", stridePixels=" + std::to_string(stridePixels) + ", bpp=" + std::to_string(pf.bpp));
-  
   if (pixels == nullptr || width <= 0 || height <= 0) {
-    //DebugContentCache_2025-10-14
-    ContentCacheDebugLogger::getInstance().log("storeDecodedPixels EXIT: invalid parameters");
     return;
   }
   
-  //DebugContentCache_2025-10-14
-  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels: creating CachedPixels entry");
+  // Calculate data size
+  // CRITICAL: stridePixels is in pixels, not bytes - multiply by bytesPerPixel
+  size_t bytesPerPixel = pf.bpp / 8;
+  size_t dataSize = height * stridePixels * bytesPerPixel;
   
+  // Check if already in cache
+  auto cacheIt = pixelCache_.find(cacheId);
+  if (cacheIt != pixelCache_.end()) {
+    // Update existing entry - move to T2 if currently in T1
+    cacheIt->second.lastUsedTime = getCurrentTime();
+    
+    auto listIt = pixelListMap_.find(cacheId);
+    if (listIt != pixelListMap_.end() && listIt->second.list == LIST_T1) {
+      movePixelToT2(cacheId);
+    }
+    return;
+  }
+  
+  // Check ghost lists (recently evicted)
+  auto listIt = pixelListMap_.find(cacheId);
+  
+  if (listIt != pixelListMap_.end() && listIt->second.list == LIST_B1) {
+    // Cache hit in B1: adapt by increasing p (favor recency)
+    size_t delta = (pixelB2_.size() >= pixelB1_.size()) ? 1 : (pixelB2_.size() / pixelB1_.size());
+    pixelP_ = std::min(maxPixelCacheSize_, pixelP_ + delta * dataSize);
+    
+    // Make room and insert into T2
+    replacePixelCache(dataSize);
+    
+    // Remove from B1
+    pixelB1_.erase(listIt->second.iter);
+    pixelListMap_.erase(listIt);
+    
+  } else if (listIt != pixelListMap_.end() && listIt->second.list == LIST_B2) {
+    // Cache hit in B2: adapt by decreasing p (favor frequency)
+    size_t delta = (pixelB1_.size() >= pixelB2_.size()) ? 1 : (pixelB1_.size() / pixelB2_.size());
+    pixelP_ = (delta * dataSize > pixelP_) ? 0 : pixelP_ - delta * dataSize;
+    
+    // Make room and insert into T2
+    replacePixelCache(dataSize);
+    
+    // Remove from B2
+    pixelB2_.erase(listIt->second.iter);
+    pixelListMap_.erase(listIt);
+    
+  } else {
+    // New entry: make room and insert into T1
+    replacePixelCache(dataSize);
+  }
+  
+  // Create the entry
   CachedPixels& cached = pixelCache_[cacheId];
   cached.cacheId = cacheId;
   cached.format = pf;
   cached.width = width;
   cached.height = height;
   cached.stridePixels = stridePixels;
+  cached.bytes = dataSize;
   cached.lastUsedTime = getCurrentTime();
   
   // Copy pixel data
-  // CRITICAL: stridePixels is in pixels, not bytes - multiply by bytesPerPixel
-  size_t bytesPerPixel = pf.bpp / 8;
-  size_t dataSize = height * stridePixels * bytesPerPixel;
-  
-  //DebugContentCache_2025-10-14
-  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels: calculated dataSize=" + std::to_string(dataSize) + ", bytesPerPixel=" + std::to_string(bytesPerPixel));
-  
-  //DebugContentCache_2025-10-14
-  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels: about to resize pixels vector to " + std::to_string(dataSize));
-  
   cached.pixels.resize(dataSize);
-  
-  //DebugContentCache_2025-10-14
-  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels: about to memcpy from pixels=" + std::to_string(reinterpret_cast<uintptr_t>(pixels)) + " to cached.pixels.data()=" + std::to_string(reinterpret_cast<uintptr_t>(cached.pixels.data())) + ", size=" + std::to_string(dataSize));
-  
   memcpy(cached.pixels.data(), pixels, dataSize);
   
-  //DebugContentCache_2025-10-14
-  ContentCacheDebugLogger::getInstance().log("storeDecodedPixels: memcpy completed successfully");
-  
-  vlog.debug("Stored decoded pixels for cache ID %llu: %dx%d %dbpp (%zu bytes)",
-             (unsigned long long)cacheId, width, height, pf.bpp, dataSize);
-  
-  // Prune pixel cache if it gets too large
-  size_t totalPixelBytes = 0;
-  for (const auto& entry : pixelCache_) {
-    totalPixelBytes += entry.second.pixels.size();
+  // Add to T1 (first access) or T2 (ghost list hit)
+  if (listIt != pixelListMap_.end()) {
+    // Was in ghost list, add to T2
+    pixelT2_.push_front(cacheId);
+    pixelT2Size_ += dataSize;
+    pixelListMap_[cacheId].list = LIST_T2;
+    pixelListMap_[cacheId].iter = pixelT2_.begin();
+  } else {
+    // Brand new, add to T1
+    pixelT1_.push_front(cacheId);
+    pixelT1Size_ += dataSize;
+    pixelListMap_[cacheId].list = LIST_T1;
+    pixelListMap_[cacheId].iter = pixelT1_.begin();
   }
   
-  // If over max size, evict oldest entries
-  if (totalPixelBytes > maxCacheSize_) {
-    vlog.debug("Pixel cache size %zu exceeds limit %zu, pruning...",
-               totalPixelBytes, maxCacheSize_);
-    
-    // Find oldest entries
-    std::vector<uint64_t> idsToRemove;
-    for (const auto& entry : pixelCache_) {
-      if (getCurrentTime() - entry.second.lastUsedTime > maxAge_) {
-        idsToRemove.push_back(entry.first);
-      }
-    }
-    
-    // Remove old entries
-    for (uint64_t id : idsToRemove) {
-      pixelCache_.erase(id);
-    }
-  }
+  vlog.debug("Stored decoded pixels for cache ID %llu: %dx%d %dbpp (%zu bytes), pixelT1=%zu pixelT2=%zu",
+             (unsigned long long)cacheId, width, height, pf.bpp, dataSize,
+             pixelT1_.size(), pixelT2_.size());
 }
 
 const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheId)
 {
-  //DebugContentCache_2025-10-14
-  ContentCacheDebugLogger::getInstance().log("getDecodedPixels ENTER: cacheId=" + std::to_string(cacheId));
-  
   auto it = pixelCache_.find(cacheId);
   if (it == pixelCache_.end()) {
-    //DebugContentCache_2025-10-14
-    ContentCacheDebugLogger::getInstance().log("getDecodedPixels EXIT: cache miss for cacheId=" + std::to_string(cacheId));
+    stats_.cacheMisses++;
     return nullptr;
   }
   
-  //DebugContentCache_2025-10-14
-  ContentCacheDebugLogger::getInstance().log("getDecodedPixels: cache hit, updating access time");
-  
-  // Update access time
+  stats_.cacheHits++;
   it->second.lastUsedTime = getCurrentTime();
   
-  //DebugContentCache_2025-10-14
-  ContentCacheDebugLogger::getInstance().log("getDecodedPixels EXIT: returning cached pixels for cacheId=" + std::to_string(cacheId) + ", width=" + std::to_string(it->second.width) + ", height=" + std::to_string(it->second.height));
+  // ARC policy: move from T1 to T2 on second access
+  auto listIt = pixelListMap_.find(cacheId);
+  if (listIt != pixelListMap_.end() && listIt->second.list == LIST_T1) {
+    movePixelToT2(cacheId);
+  }
   
   return &(it->second);
 }

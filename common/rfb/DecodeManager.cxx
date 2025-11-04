@@ -218,6 +218,15 @@ void DecodeManager::flush()
 
   throwThreadException();
   
+  // Flush any pending ContentCache eviction notifications
+  if (contentCache != nullptr && contentCache->hasPendingEvictions()) {
+    std::vector<uint64_t> evictions = contentCache->getPendingEvictions();
+    if (!evictions.empty()) {
+      vlog.debug("Sending %zu cache eviction notifications to server", evictions.size());
+      conn->writer()->writeCacheEviction(evictions);
+    }
+  }
+  
   // Flush any pending PersistentCache queries
   flushPendingQueries();
 }
