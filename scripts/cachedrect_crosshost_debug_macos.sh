@@ -11,8 +11,9 @@ VIEWER_BIN="${VIEWER_BIN:-build/vncviewer/njcvncviewer}"
 LOCAL_LOG_DIR="${LOCAL_LOG_DIR:-/tmp/cachedrect_debug}"
 VIEWER_LOG="${LOCAL_LOG_DIR}/viewer_$(date +%Y%m%d_%H%M%S).log"
 SERVER_STDOUT_REMOTE="/tmp/cachedrect_server_stdout.log"
-TUNNEL_PORT=6898
-SERVER_PORT=6898
+DISPLAY_NUM="${DISPLAY_NUM:-999}"
+SERVER_PORT=$((5900 + DISPLAY_NUM))  # VNC port = 5900 + display number
+TUNNEL_PORT=${SERVER_PORT}
 VIEWER_DURATION="${VIEWER_DURATION:-60}"  # How long to run viewer (seconds)
 NONINTERACTIVE="${NONINTERACTIVE:-0}"  # Set to 1 for non-interactive mode
 
@@ -25,19 +26,23 @@ fi
 
 # macOS native viewer doesn't require X11/XQuartz
 
-echo "[1/6] Starting remote server on ${REMOTE}..."
-ssh "${REMOTE}" "cd ${REMOTE_DIR} && python3 scripts/server_only_cachedrect_test.py --display 998 --port 6898 --duration 60 </dev/null >/tmp/cachedrect_server_stdout.log 2>&1 &"
+echo "[1/6] Starting remote server on ${REMOTE} (display :${DISPLAY_NUM}, port ${SERVER_PORT})..."
+# Start server in detached background using bash -c with proper backgrounding
+timeout 30 ssh "${REMOTE}" "bash -c 'cd ${REMOTE_DIR} && python3 scripts/server_only_cachedrect_test.py --display ${DISPLAY_NUM} --port ${SERVER_PORT} --duration 60 >/tmp/cachedrect_server_stdout.log 2>&1 </dev/null & echo \$! > /tmp/cachedrect_server.pid' &" </dev/null
+
+# Give it a moment to start
+sleep 3
 
 echo "[2/6] Waiting for remote server readiness..."
 for i in {1..60}; do
-  if ssh "${REMOTE}" "grep -q 'SERVER_READY' /tmp/cachedrect_server_stdout.log 2>/dev/null"; then
+  if timeout 10 ssh "${REMOTE}" "grep -q 'SERVER_READY' /tmp/cachedrect_server_stdout.log 2>/dev/null"; then
     echo "[ok] Remote server reports SERVER_READY"
     break
   fi
   sleep 1
   if (( i == 60 )); then
     echo "ERROR: Timed out waiting for server" >&2
-    ssh "${REMOTE}" "tail -50 /tmp/cachedrect_server_stdout.log" || true
+    timeout 10 ssh "${REMOTE}" "tail -50 /tmp/cachedrect_server_stdout.log" || true
     exit 2
   fi
 done
@@ -61,8 +66,8 @@ TUNNEL_PID=""
 TARGET_HOST=""
 if [[ "${MODE}" == "tunnel" ]]; then
   echo "[3a/6] Establishing SSH tunnel..."
-  ssh -fN -L ${TUNNEL_PORT}:localhost:${SERVER_PORT} "${REMOTE}"
-  sleep 1
+  timeout 30 ssh -fN -L ${TUNNEL_PORT}:localhost:${SERVER_PORT} "${REMOTE}" &
+  sleep 2
   TUNNEL_PID="$(pgrep -f "ssh -fN -L ${TUNNEL_PORT}:localhost:${SERVER_PORT}" | head -1 || true)"
   TARGET_HOST="localhost"
 else
@@ -115,22 +120,22 @@ fi
 echo "[viewer exit code] ${VIEWER_RC}"
 
 echo "[5/6] Retrieving server log..."
-REMOTE_ART_LOG=$(ssh "${REMOTE}" "ls -1dt ${REMOTE_DIR}/tests/e2e/_artifacts/*/logs/contentcache_server_only*.log 2>/dev/null | head -1 || true")
+REMOTE_ART_LOG=$(timeout 30 ssh "${REMOTE}" "ls -1dt ${REMOTE_DIR}/tests/e2e/_artifacts/*/logs/contentcache_server_only*.log 2>/dev/null | head -1 || true")
 if [[ -z "${REMOTE_ART_LOG}" ]]; then
   echo "WARN: Could not locate remote log, checking alternative names..."
-  REMOTE_ART_LOG=$(ssh "${REMOTE}" "ls -1dt ${REMOTE_DIR}/tests/e2e/_artifacts/*/logs/*.log 2>/dev/null | head -1 || true")
+  REMOTE_ART_LOG=$(timeout 30 ssh "${REMOTE}" "ls -1dt ${REMOTE_DIR}/tests/e2e/_artifacts/*/logs/*.log 2>/dev/null | head -1 || true")
 fi
 
 if [[ -n "${REMOTE_ART_LOG}" ]]; then
   LOCAL_SERVER_LOG="${LOCAL_LOG_DIR}/server_$(date +%Y%m%d_%H%M%S).log"
-  scp -q "${REMOTE}:${REMOTE_ART_LOG}" "${LOCAL_SERVER_LOG}"
+  timeout 60 scp -q "${REMOTE}:${REMOTE_ART_LOG}" "${LOCAL_SERVER_LOG}"
   echo "[ok] Downloaded server log"
 
   echo "[6/6] Comparing logs..."
-  python3 scripts/compare_cachedrect_logs.py --server "${LOCAL_SERVER_LOG}" --client "${VIEWER_LOG}" || true
+  timeout 30 python3 scripts/compare_cachedrect_logs.py --server "${LOCAL_SERVER_LOG}" --client "${VIEWER_LOG}" || true
 else
   echo "WARN: Could not find server log, showing stdout:"
-  ssh "${REMOTE}" "tail -100 /tmp/cachedrect_server_stdout.log" || true
+  timeout 30 ssh "${REMOTE}" "tail -100 /tmp/cachedrect_server_stdout.log" || true
 fi
 
 # Cleanup
@@ -142,17 +147,17 @@ fi
 if [[ "${NONINTERACTIVE}" == "1" ]]; then
   echo ""
   echo "Stopping remote test server..."
-  ssh "${REMOTE}" "pkill -f 'server_only_cachedrect_test.py' || true"
-  ssh "${REMOTE}" "ps aux | grep 'Xnjcvnc :998' | grep -v grep | awk '{print \$2}' | xargs -r kill 2>/dev/null || true"
+  timeout 30 ssh "${REMOTE}" "pkill -f 'server_only_cachedrect_test.py' || true"
+  timeout 30 ssh "${REMOTE}" "ps aux | grep 'Xnjcvnc :${DISPLAY_NUM}' | grep -v grep | awk '{print \$2}' | xargs -r kill 2>/dev/null || true"
 else
   # Ask user if they want to stop the remote server
   echo ""
-  read -p "Stop the remote test server? (y/N) " -n 1 -r
+  read -t 60 -p "Stop the remote test server? (y/N) " -n 1 -r || true
   echo
   if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "Stopping remote server..."
-    ssh "${REMOTE}" "pkill -f 'server_only_cachedrect_test.py' || true"
-    ssh "${REMOTE}" "ps aux | grep 'Xnjcvnc :998' | grep -v grep | awk '{print \$2}' | xargs -r kill 2>/dev/null || true"
+    timeout 30 ssh "${REMOTE}" "pkill -f 'server_only_cachedrect_test.py' || true"
+    timeout 30 ssh "${REMOTE}" "ps aux | grep 'Xnjcvnc :${DISPLAY_NUM}' | grep -v grep | awk '{print \$2}' | xargs -r kill 2>/dev/null || true"
   fi
 fi
 
