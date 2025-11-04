@@ -273,6 +273,23 @@ void DecodeManager::logStats()
               cacheStats.cache_lookups > 0 ?
                 (100.0 * cacheStats.cache_hits / cacheStats.cache_lookups) : 0.0);
     vlog.info("    Misses: %u", cacheStats.cache_misses);
+    
+    // Report memory usage
+    auto ccStats = contentCache->getStats();
+    size_t totalBytes = contentCache->getTotalBytes();
+    size_t hashBytes = ccStats.totalBytes;  // Hash cache (server-side structure)
+    size_t pixelBytes = totalBytes - hashBytes;  // Pixel cache (client-side decoded pixels)
+    size_t maxBytes = 2048ULL * 1024 * 1024;  // Default 2GB
+    double pctUsed = (maxBytes > 0) ? (100.0 * totalBytes / maxBytes) : 0.0;
+    
+    vlog.info("  Cache memory usage:");
+    vlog.info("    Hash cache: %s", core::iecPrefix(hashBytes, "B").c_str());
+    vlog.info("    Pixel cache: %s", core::iecPrefix(pixelBytes, "B").c_str());
+    vlog.info("    Total: %s / %s (%.1f%% used)",
+              core::iecPrefix(totalBytes, "B").c_str(),
+              core::iecPrefix(maxBytes, "B").c_str(),
+              pctUsed);
+    
     vlog.info("  ARC cache performance:");
     contentCache->logArcStats();
   }

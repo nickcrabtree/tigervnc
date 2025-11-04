@@ -142,6 +142,10 @@ namespace rfb {
     void resetStats();
     void logArcStats() const;  // Log concise ARC statistics
     
+    // Get total memory usage in bytes
+    // Returns sum of hash cache (server) and pixel cache (client)
+    size_t getTotalBytes() const;
+    
     // Configuration
     void setMaxSize(size_t maxSizeMB);
     void setMaxAge(uint32_t maxAgeSec);

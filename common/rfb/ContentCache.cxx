@@ -403,6 +403,20 @@ void ContentCache::logArcStats() const
   }
 }
 
+size_t ContentCache::getTotalBytes() const
+{
+  // Calculate total bytes from hash cache (server-side)
+  size_t hashCacheBytes = t1Size_ + t2Size_;
+  
+  // Calculate total bytes from pixel cache (client-side)
+  size_t pixelCacheBytes = 0;
+  for (const auto& entry : pixelCache_) {
+    pixelCacheBytes += entry.second.pixels.size();
+  }
+  
+  return hashCacheBytes + pixelCacheBytes;
+}
+
 void ContentCache::setMaxSize(size_t maxSizeMB)
 {
   maxCacheSize_ = maxSizeMB * 1024 * 1024;

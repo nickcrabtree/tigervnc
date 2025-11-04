@@ -265,6 +265,10 @@ void EncodeManager::logStats()
   // Log ContentCache statistics
   if (contentCache != nullptr) {
     ContentCache::Stats cstats = contentCache->getStats();
+    size_t totalBytes = contentCache->getTotalBytes();
+    size_t maxBytes = Server::contentCacheSize * 1024 * 1024;
+    double pctUsed = (maxBytes > 0) ? (100.0 * totalBytes / maxBytes) : 0.0;
+    
     vlog.info("ContentCache statistics:");
     vlog.info("  Protocol efficiency (CachedRect usage):");
     vlog.info("    Lookups: %u, References sent: %u (%.1f%%)",
@@ -274,6 +278,11 @@ void EncodeManager::logStats()
                 (100.0 * cacheStats.cacheHits / cacheStats.cacheLookups) : 0.0);
     vlog.info("    Estimated bytes saved: %s",
               core::iecPrefix(cacheStats.bytesSaved, "B").c_str());
+    vlog.info("  Cache memory usage:");
+    vlog.info("    Hash cache size: %s / %s (%.1f%% used)",
+              core::iecPrefix(totalBytes, "B").c_str(),
+              core::iecPrefix(maxBytes, "B").c_str(),
+              pctUsed);
     vlog.info("  ARC cache performance:");
     vlog.info("    Cache entries: %zu, Total size: %s",
               cstats.totalEntries,
