@@ -725,14 +725,12 @@ int main(int argc, char** argv)
     i++;
   }
 
-#if !defined(WIN32)
+#if !defined(WIN32) && !defined(__APPLE__)
   if (strcmp(display, "") != 0) {
     Fl::display(display);
   }
   fl_open_display();
-#ifndef __APPLE__
   XkbSetDetectableAutoRepeat(fl_display, True, nullptr);
-#endif
 #endif
 
   init_fltk();

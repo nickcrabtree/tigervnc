@@ -384,7 +384,20 @@ void SConnection::setEncodings(int nEncodings, const int32_t* encodings)
       if (i) encList += ", ";
       encList += core::format("%d", encodings[i]);
     }
-    vlog.info("Client SetEncodings (%d): [%s]", nEncodings, encList.c_str());
+    vlog.info("Client SetEncodings (%d):", nEncodings);
+    vlog.info("  [%s]", encList.c_str());
+    
+    // Check for key encodings
+    bool hasLastRect = false;
+    bool hasContentCache = false;
+    bool hasPersistentCache = false;
+    for (int i = 0; i < nEncodings; i++) {
+      if (encodings[i] == pseudoEncodingLastRect) hasLastRect = true;
+      if (encodings[i] == pseudoEncodingContentCache) hasContentCache = true;
+      if (encodings[i] == pseudoEncodingPersistentCache) hasPersistentCache = true;
+    }
+    vlog.info("  Key encodings: LastRect=%d ContentCache=%d PersistentCache=%d",
+              hasLastRect, hasContentCache, hasPersistentCache);
   }
 
   client.setEncodings(nEncodings, encodings);

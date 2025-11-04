@@ -450,6 +450,9 @@ void EncodeManager::doUpdate(bool allowLossy, const
     if (conn->client.supportsEncoding(pseudoEncodingLastRect)) {
       std::vector<std::pair<uint64_t, core::Rect>> pend;
       conn->drainPendingCachedInits(pend);
+      if (!pend.empty()) {
+        vlog.info("Processing %d pending CachedRectInit messages", (int)pend.size());
+      }
       for (const auto& item : pend) {
           const uint64_t cacheId = item.first;
           const core::Rect& r = item.second;
