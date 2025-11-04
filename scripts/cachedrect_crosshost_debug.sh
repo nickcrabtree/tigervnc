@@ -84,9 +84,15 @@ echo \$! > /tmp/cachedrect_server_pid
 echo \"[remote] Waiting for server to listen on TCP :6898...\"
 for i in \$(seq 1 60); do
   if command -v ss >/dev/null 2>&1; then
-    if ss -tln | grep -q \":6898\"; then echo \"SERVER_READY\"; break; fi
+    if ss -tln | grep -q \":6898\"; then 
+      echo \"SERVER_READY\" | tee -a /tmp/cachedrect_server_stdout.log
+      break
+    fi
   else
-    if netstat -tln 2>/dev/null | grep -q \":6898\"; then echo \"SERVER_READY\"; break; fi
+    if netstat -tln 2>/dev/null | grep -q \":6898\"; then 
+      echo \"SERVER_READY\" | tee -a /tmp/cachedrect_server_stdout.log
+      break
+    fi
   fi
   sleep 1
 done
