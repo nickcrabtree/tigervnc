@@ -2,6 +2,39 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
+## ⚠️ CRITICAL: ALWAYS USE TIMEOUTS
+
+**🔴 MANDATORY: All commands MUST use timeouts 🔴**
+
+When running commands that might hang or wait for user input, **ALWAYS** use `timeout`:
+
+```bash
+# ✅ CORRECT: Use timeout for all commands that might hang
+timeout 60 ssh user@host 'command'
+timeout 120 ./script.sh
+timeout 30 make test
+
+# ❌ WRONG: Never run potentially blocking commands without timeout
+ssh user@host 'command'  # Can hang indefinitely
+./script.sh              # May wait for user input
+make test                # Tests may hang
+```
+
+**Why this is critical:**
+- Commands can hang waiting for user input
+- Network operations can stall indefinitely  
+- GUI applications block until closed
+- Without timeouts, the AI agent becomes unresponsive
+
+**Default timeout values:**
+- Quick commands (ls, grep, etc.): 10 seconds
+- SSH operations: 30 seconds
+- Build operations: 300 seconds (5 minutes)
+- Test runs: 120-300 seconds depending on test
+- Interactive scripts with GUI: 60-120 seconds
+
+**Exception:** Only skip timeout for commands that are known to be instant (e.g., `echo`, variable assignment).
+
 ## ⚠️ CRITICAL SAFETY WARNINGS
 
 ### Production Servers and Viewers
