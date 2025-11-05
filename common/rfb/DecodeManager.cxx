@@ -593,6 +593,25 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
              (unsigned long long)cacheId, cached->width, cached->height,
              r.tl.x, r.tl.y, r.br.x, r.br.y);
   
+  // TEMP DEBUG: Check if we're about to blit all-black or mostly-black data
+  size_t sampleSize = std::min((size_t)64, cached->pixels.size());
+  bool hasNonZero = false;
+  for (size_t i = 0; i < sampleSize; i++) {
+    if (cached->pixels[i] != 0) {
+      hasNonZero = true;
+      break;
+    }
+  }
+  if (!hasNonZero && cached->pixels.size() > 0) {
+    char debugMsg[256];
+    snprintf(debugMsg, sizeof(debugMsg),
+             "WARNING: About to blit all-zero data! cacheId=%llu rect=[%d,%d-%d,%d] %dx%d bytes=%zu",
+             (unsigned long long)cacheId, r.tl.x, r.tl.y, r.br.x, r.br.y,
+             cached->width, cached->height, cached->pixels.size());
+    ContentCacheDebugLogger::getInstance().log(debugMsg);
+    vlog.error("%s", debugMsg);  // Also log to stderr for visibility
+  }
+  
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect: about to call pb->imageRect with cached->pixels.data()=" + std::to_string(reinterpret_cast<uintptr_t>(cached->pixels.data())) + ", cached->pixels.size()=" + std::to_string(cached->pixels.size()) + ", cached->stridePixels=" + std::to_string(cached->stridePixels));
   

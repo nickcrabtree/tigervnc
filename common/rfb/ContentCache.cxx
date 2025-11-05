@@ -889,20 +889,24 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
   
   // Copy pixel data row-by-row
   // Note: 'pixels' points to a subrect within a larger buffer with 'stridePixels' stride.
-  // We cannot assume the data is contiguous, so we must copy row by row.
-  cached.pixels.resize(dataSize);
+  // We store contiguously (stride = width) to avoid wasting memory on padding bytes.
+  size_t contiguousSize = height * width * bytesPerPixel;
+  cached.pixels.resize(contiguousSize);
   
   const uint8_t* src = pixels;
   uint8_t* dst = cached.pixels.data();
   size_t rowBytes = width * bytesPerPixel;
   size_t srcStrideBytes = stridePixels * bytesPerPixel;
-  size_t dstStrideBytes = stridePixels * bytesPerPixel;  // Store with same stride as source
   
   for (int y = 0; y < height; y++) {
     memcpy(dst, src, rowBytes);
     src += srcStrideBytes;
-    dst += dstStrideBytes;
+    dst += rowBytes;  // Destination is contiguous, so stride = width
   }
+  
+  // Update stored values to reflect contiguous storage
+  cached.stridePixels = width;  // Stored contiguously
+  cached.bytes = contiguousSize;
   
   // DEBUG: Check if cached data is all black (potential corruption)
   bool isAllBlack = true;
