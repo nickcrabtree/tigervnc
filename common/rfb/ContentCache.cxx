@@ -885,9 +885,22 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
   cached.bytes = dataSize;
   cached.lastUsedTime = getCurrentTime();
   
-  // Copy pixel data
+  // Copy pixel data row-by-row
+  // Note: 'pixels' points to a subrect within a larger buffer with 'stridePixels' stride.
+  // We cannot assume the data is contiguous, so we must copy row by row.
   cached.pixels.resize(dataSize);
-  memcpy(cached.pixels.data(), pixels, dataSize);
+  
+  const uint8_t* src = pixels;
+  uint8_t* dst = cached.pixels.data();
+  size_t rowBytes = width * bytesPerPixel;
+  size_t srcStrideBytes = stridePixels * bytesPerPixel;
+  size_t dstStrideBytes = stridePixels * bytesPerPixel;  // Store with same stride as source
+  
+  for (int y = 0; y < height; y++) {
+    memcpy(dst, src, rowBytes);
+    src += srcStrideBytes;
+    dst += dstStrideBytes;
+  }
   
   // Add to T1 (first access) or T2 (ghost list hit)
   if (listIt != pixelListMap_.end()) {
