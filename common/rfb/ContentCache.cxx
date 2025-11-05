@@ -985,7 +985,7 @@ const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheI
   
   double blackPercent = (totalPixels > 0) ? (100.0 * blackPixelCount / totalPixels) : 0.0;
   
-  // Log if rectangle is entirely or mostly black
+  // Log if rectangle is entirely or mostly black (use vlog for important warnings)
   if (blackPercent == 100.0) {
     vlog.error("ContentCache: WARNING - Retrieved 100%% black rectangle for cache ID %llu "
                "rect=[%dx%d] stride=%d bpp=%d bytes=%zu checksum=0x%08x",
@@ -998,22 +998,25 @@ const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheI
                cached.stridePixels, cached.format.bpp, cached.pixels.size(), checksum);
   }
   
-  // TEMPORARY: Log first few pixel values for every 100th retrieval to see patterns
+  // TEMPORARY: Log verbose pixel samples to debug file (every 100th retrieval)
   static int retrievalCount = 0;
   retrievalCount++;
   if (retrievalCount % 100 == 0) {
-    vlog.info("ContentCache: Sample retrieval #%d - cacheId=%llu rect=[%dx%d] checksum=0x%08x black=%.1f%% "
-              "first_pixels=[%02x %02x %02x %02x %02x %02x %02x %02x]",
-              retrievalCount, (unsigned long long)cacheId, cached.width, cached.height,
-              checksum, blackPercent,
-              cached.pixels.size() > 0 ? cached.pixels[0] : 0,
-              cached.pixels.size() > 1 ? cached.pixels[1] : 0,
-              cached.pixels.size() > 2 ? cached.pixels[2] : 0,
-              cached.pixels.size() > 3 ? cached.pixels[3] : 0,
-              cached.pixels.size() > 4 ? cached.pixels[4] : 0,
-              cached.pixels.size() > 5 ? cached.pixels[5] : 0,
-              cached.pixels.size() > 6 ? cached.pixels[6] : 0,
-              cached.pixels.size() > 7 ? cached.pixels[7] : 0);
+    char debugMsg[512];
+    snprintf(debugMsg, sizeof(debugMsg),
+             "Sample retrieval #%d - cacheId=%llu rect=[%dx%d] checksum=0x%08x black=%.1f%% "
+             "first_pixels=[%02x %02x %02x %02x %02x %02x %02x %02x]",
+             retrievalCount, (unsigned long long)cacheId, cached.width, cached.height,
+             checksum, blackPercent,
+             cached.pixels.size() > 0 ? cached.pixels[0] : 0,
+             cached.pixels.size() > 1 ? cached.pixels[1] : 0,
+             cached.pixels.size() > 2 ? cached.pixels[2] : 0,
+             cached.pixels.size() > 3 ? cached.pixels[3] : 0,
+             cached.pixels.size() > 4 ? cached.pixels[4] : 0,
+             cached.pixels.size() > 5 ? cached.pixels[5] : 0,
+             cached.pixels.size() > 6 ? cached.pixels[6] : 0,
+             cached.pixels.size() > 7 ? cached.pixels[7] : 0);
+    ContentCacheDebugLogger::getInstance().log(debugMsg);
   }
   
   return &(it->second);

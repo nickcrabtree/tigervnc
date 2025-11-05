@@ -681,16 +681,9 @@ int main(int argc, char** argv)
   // Inform user where logs go (stderr so it appears in terminal)
   fprintf(stderr, "Viewer debug log: %s\n", logPath);
 
-  // Route logs to both stderr (for terminal) and file (for debugging)
-  // First route to stderr at info level (30)
+  // Route logs to stderr for user-facing output (stats, warnings, etc.)
+  // ContentCache has its own separate debug file for verbose pixel analysis
   core::LogWriter::setLogParams("*:stderr:30");
-  // Also route to file at info level (30)
-  core::LogWriter::setLogParams("*:file:30");
-  
-  // Write initial log entry to ensure file is created
-  vlog.info("TigerVNC Viewer %s started (PID %d)", BUILD_VERSION, (int)pid);
-  vlog.info("Log file: %s", logPath);
-  vlog.info("Build timestamp: %s", BUILD_TIMESTAMP);
 
 #ifdef SIGHUP
   signal(SIGHUP, CleanupSignalHandler);
