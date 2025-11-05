@@ -356,13 +356,15 @@ void ContentCache::clear()
 ContentCache::Stats ContentCache::getStats() const
 {
   Stats current = stats_;
-  current.totalEntries = cache_.size();
-  current.totalBytes = t1Size_ + t2Size_;
-  current.t1Size = t1_.size();
-  current.t2Size = t2_.size();
-  current.b1Size = b1_.size();
-  current.b2Size = b2_.size();
-  current.targetT1Size = p_;
+  // For client-side viewer, report pixel cache stats (decoded pixel storage)
+  // For server-side, this would be hash cache stats, but viewer primarily uses pixel cache
+  current.totalEntries = pixelCache_.size();
+  current.totalBytes = pixelT1Size_ + pixelT2Size_;
+  current.t1Size = pixelT1_.size();
+  current.t2Size = pixelT2_.size();
+  current.b1Size = pixelB1_.size();
+  current.b2Size = pixelB2_.size();
+  current.targetT1Size = pixelP_;
   return current;
 }
 
