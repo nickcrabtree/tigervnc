@@ -118,6 +118,12 @@ private:
   unsigned long long bpsEstimate;
 
   UserDialog dlg;
+  
+  // Verification state
+  bool verificationInProgress_;
+  std::vector<uint8_t> savedFramebuffer_;
+  int savedFBWidth_, savedFBHeight_;
+  rfb::PixelFormat savedFBFormat_;
 };
 
 #endif

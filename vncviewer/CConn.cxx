@@ -95,7 +95,9 @@ static const unsigned bpsEstimateWindow = 1000;
 CConn::CConn()
   : serverPort(0), sock(nullptr), desktop(nullptr),
     updateCount(0), pixelCount(0),
-    lastServerEncoding((unsigned int)-1), bpsEstimate(20000000)
+    lastServerEncoding((unsigned int)-1),
+    bpsEstimate(20000000),
+    verificationInProgress_(false), savedFBWidth_(0), savedFBHeight_(0)
 {
   setShared(::shared);
 
@@ -451,6 +453,79 @@ void CConn::framebufferUpdateEnd()
 
   Fl::remove_timeout(handleUpdateTimeout, this);
   desktop->updateWindow();
+  
+  // Check if this was a verification update
+  if (verificationInProgress_) {
+    verificationInProgress_ = false;
+    vlog.info("========== VERIFICATION UPDATE RECEIVED ==========" );
+    
+    // Compare received framebuffer with saved state
+    rfb::ModifiablePixelBuffer* pb = getFramebuffer();
+    if (!pb) {
+      vlog.error("Cannot compare: framebuffer not available");
+    } else if (savedFBWidth_ != server.width() || savedFBHeight_ != server.height()) {
+      vlog.error("Cannot compare: framebuffer size changed during verification");
+    } else {
+      int width = savedFBWidth_;
+      int height = savedFBHeight_;
+      int bytesPerPixel = savedFBFormat_.bpp / 8;
+      
+      core::Rect rect(0, 0, width, height);
+      int stride;
+      const uint8_t* currentFB = pb->getBuffer(rect, &stride);
+      
+      size_t diffCount = 0;
+      size_t totalPixels = width * height;
+      
+      // Compare pixel by pixel
+      for (int y = 0; y < height; y++) {
+        const uint8_t* currentRow = currentFB + (y * stride * bytesPerPixel);
+        const uint8_t* savedRow = &savedFramebuffer_[y * width * bytesPerPixel];
+        
+        for (int x = 0; x < width; x++) {
+          const uint8_t* currentPixel = currentRow + (x * bytesPerPixel);
+          const uint8_t* savedPixel = savedRow + (x * bytesPerPixel);
+          
+          if (memcmp(currentPixel, savedPixel, bytesPerPixel) != 0) {
+            diffCount++;
+            
+            // Log first 10 differences with pixel values
+            if (diffCount <= 10) {
+              char savedStr[32], currentStr[32];
+              if (bytesPerPixel == 4) {
+                snprintf(savedStr, sizeof(savedStr), "[%02x %02x %02x %02x]",
+                        savedPixel[0], savedPixel[1], savedPixel[2], savedPixel[3]);
+                snprintf(currentStr, sizeof(currentStr), "[%02x %02x %02x %02x]",
+                        currentPixel[0], currentPixel[1], currentPixel[2], currentPixel[3]);
+              } else if (bytesPerPixel == 3) {
+                snprintf(savedStr, sizeof(savedStr), "[%02x %02x %02x]",
+                        savedPixel[0], savedPixel[1], savedPixel[2]);
+                snprintf(currentStr, sizeof(currentStr), "[%02x %02x %02x]",
+                        currentPixel[0], currentPixel[1], currentPixel[2]);
+              } else {
+                snprintf(savedStr, sizeof(savedStr), "[...]");
+                snprintf(currentStr, sizeof(currentStr), "[...]");
+              }
+              vlog.error("DIFFERENCE at (%d,%d): saved=%s current=%s",
+                        x, y, savedStr, currentStr);
+            }
+          }
+        }
+      }
+      
+      if (diffCount == 0) {
+        vlog.info("VERIFICATION PASSED: All %zu pixels match!", totalPixels);
+      } else {
+        vlog.error("VERIFICATION FAILED: %zu/%zu pixels differ (%.3f%%)",
+                  diffCount, totalPixels, (100.0 * diffCount / totalPixels));
+        if (diffCount > 10) {
+          vlog.error("(Only first 10 differences logged)");
+        }
+      }
+    }
+    
+    vlog.info("==================================================");
+  }
 
   // Compute new settings based on updated bandwidth values
   if (autoSelect) {
@@ -653,13 +728,52 @@ void CConn::verifyFramebuffer()
     return;
   }
   
-  // TODO: Implement full verification:
-  // 1. Save current framebuffer state
-  // 2. Request full framebuffer update with lossless encoding (Raw or Zlib)
-  // 3. Compare received data with saved state
-  // 4. Report any differences with locations and pixel values
+  if (verificationInProgress_) {
+    vlog.error("Verification already in progress");
+    return;
+  }
   
-  vlog.info("Framebuffer verification not yet implemented");
-  vlog.info("Current framebuffer: %dx%d", server.width(), server.height());
-  vlog.info("========================================================");
+  // Get current framebuffer
+  rfb::ModifiablePixelBuffer* pb = getFramebuffer();
+  if (!pb) {
+    vlog.error("Cannot verify: framebuffer not available");
+    return;
+  }
+  
+  int width = server.width();
+  int height = server.height();
+  const rfb::PixelFormat& pf = pb->getPF();
+  
+  vlog.info("Saving current framebuffer state: %dx%d, %dbpp", width, height, pf.bpp);
+  
+  // Save current framebuffer state
+  savedFBWidth_ = width;
+  savedFBHeight_ = height;
+  savedFBFormat_ = pf;
+  
+  int bytesPerPixel = pf.bpp / 8;
+  size_t totalBytes = width * height * bytesPerPixel;
+  savedFramebuffer_.resize(totalBytes);
+  
+  // Copy current framebuffer (row by row to handle stride)
+  core::Rect rect(0, 0, width, height);
+  int stride;
+  const uint8_t* fbData = pb->getBuffer(rect, &stride);
+  
+  for (int y = 0; y < height; y++) {
+    memcpy(&savedFramebuffer_[y * width * bytesPerPixel],
+           fbData + (y * stride * bytesPerPixel),
+           width * bytesPerPixel);
+  }
+  
+  vlog.info("Framebuffer saved (%zu bytes)", totalBytes);
+  vlog.info("Requesting full refresh from server (non-incremental)...");
+  
+  // Request full framebuffer update (incremental=false)
+  // Server will send complete data using current encoding
+  verificationInProgress_ = true;
+  writer()->writeFramebufferUpdateRequest(rect, false);
+  
+  vlog.info("Verification update requested (will compare when received)");
+  vlog.info("Note: Verification will use current encoding settings");
 }
