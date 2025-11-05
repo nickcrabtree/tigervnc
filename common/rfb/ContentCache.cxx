@@ -827,6 +827,9 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
   // Check if already in cache
   auto cacheIt = pixelCache_.find(cacheId);
   if (cacheIt != pixelCache_.end()) {
+    // Already cached - this is a hit (re-initialization of existing entry)
+    stats_.cacheHits++;
+    
     // Update existing entry - move to T2 if currently in T1
     cacheIt->second.lastUsedTime = getCurrentTime();
     
@@ -836,6 +839,9 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
     }
     return;
   }
+  
+  // Not in cache - this is a miss (new data being stored)
+  stats_.cacheMisses++;
   
   // Check ghost lists (recently evicted)
   auto listIt = pixelListMap_.find(cacheId);
