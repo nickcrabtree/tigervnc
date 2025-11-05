@@ -393,6 +393,49 @@ NONINTERACTIVE=1 VIEWER_DURATION=30 timeout 180s ./scripts/cachedrect_crosshost_
 - **Remote Server**: quartz.local (Linux)
 - **Test Display**: :999 (port 6899) - isolated from production
 
+### End-to-End Test Results (2025-11-05 08:00 UTC)
+
+**Test executed successfully!** ✅
+
+```bash
+# Command:
+NONINTERACTIVE=1 VIEWER_DURATION=30 timeout 180s ./scripts/cachedrect_crosshost_debug_macos.sh
+
+# Results:
+- Connection mode: LAN (direct connection to quartz.local)
+- Server started on display :999, port 6899
+- Remote server readiness detected via port listening check
+- Viewer connected successfully (RFB 3.8)
+- Viewer ran for 30 seconds, exited cleanly
+```
+
+**ContentCache Activity:**
+
+- **CachedRectInit received**: 4 (initial cache population)
+- **CachedRect references received**: 18 (cache hits)
+- **Cache hit operations**: 18 successful blits from cache
+- **Cache misses**: 0
+- **Cache IDs used**: 1, 2, 3, 4
+- **Rectangle sizes**: 486×22, 242×82, 320×16, 486×16 pixels
+
+**Server logs show**:
+- ContentCache enabled: 2048MB, unlimited age
+- Client encodings recognized: ContentCache=1, PersistentCache=1
+- CachedRectInit messages queued and sent for cache IDs 1-4
+- Content hashes generated for each cached rectangle
+
+**Client logs show**:
+- ContentCache initialized: 2048MB, unlimited age (ARC-managed)
+- All CachedRect references successfully resolved from cache
+- Zero cache misses throughout 30-second session
+- Successful memory blits for all cached rectangles
+
+**Conclusion**: Cross-platform ContentCache protocol is working correctly! The viewer on macOS successfully communicated with the Linux server using ContentCache, achieving 18 cache hits with zero misses.
+
+**Logs**:
+- Viewer: `/tmp/cachedrect_debug/viewer_20251105_075936.log`
+- Server: `/tmp/cachedrect_debug/server_20251105_080012.log`
+
 ---
 
 ## Quick Start for Next Developer
