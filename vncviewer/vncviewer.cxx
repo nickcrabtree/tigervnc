@@ -684,8 +684,10 @@ int main(int argc, char** argv)
   core::LogWriter::setLogParams("*:stderr:30");
   
   // Write initial log entry to ensure file is created
+  // Must be AFTER setLogParams so logger is properly configured
   vlog.info("TigerVNC Viewer %s started (PID %d)", BUILD_VERSION, (int)pid);
   vlog.info("Log file: %s", logPath);
+  vlog.info("Build timestamp: %s", BUILD_TIMESTAMP);
 
 #ifdef SIGHUP
   signal(SIGHUP, CleanupSignalHandler);
