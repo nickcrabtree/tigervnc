@@ -301,8 +301,10 @@ void DecodeManager::logStats()
     // Report memory usage
     auto ccStats = contentCache->getStats();
     size_t totalBytes = contentCache->getTotalBytes();
-    size_t hashBytes = ccStats.totalBytes;  // Hash cache (server-side structure)
-    size_t pixelBytes = totalBytes - hashBytes;  // Pixel cache (client-side decoded pixels)
+    // Note: getStats() now returns pixel cache stats on client (pixelT1Size + pixelT2Size)
+    // getTotalBytes() returns hashCache (t1Size + t2Size) + pixelCache (actual pixel.size())
+    size_t pixelBytes = ccStats.totalBytes;  // Pixel cache from ARC tracking (pixelT1Size + pixelT2Size)
+    size_t hashBytes = totalBytes - pixelBytes;  // Hash cache = total - pixel
     size_t maxBytes = 2048ULL * 1024 * 1024;  // Default 2GB
     double pctUsed = (maxBytes > 0) ? (100.0 * totalBytes / maxBytes) : 0.0;
     
