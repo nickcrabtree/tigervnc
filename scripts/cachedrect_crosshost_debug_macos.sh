@@ -27,11 +27,15 @@ fi
 # macOS native viewer doesn't require X11/XQuartz
 
 echo "[1/6] Starting remote server on ${REMOTE} (display :${DISPLAY_NUM}, port ${SERVER_PORT})..."
-# Start server in detached background using bash -c with proper backgrounding
-timeout 30 ssh "${REMOTE}" "bash -c 'cd ${REMOTE_DIR} && python3 scripts/server_only_cachedrect_test.py --display ${DISPLAY_NUM} --port ${SERVER_PORT} --duration 60 >/tmp/cachedrect_server_stdout.log 2>&1 </dev/null & echo \$! > /tmp/cachedrect_server.pid' &" </dev/null
+# Background the entire SSH command locally to avoid waiting for remote command
+(timeout 30 ssh "${REMOTE}" "cd ${REMOTE_DIR} && nohup python3 scripts/server_only_cachedrect_test.py --display ${DISPLAY_NUM} --port ${SERVER_PORT} --duration 60 >/tmp/cachedrect_server_stdout.log 2>&1 </dev/null & echo \$! > /tmp/cachedrect_server.pid" </dev/null >/dev/null 2>&1) &
+SSH_START_PID=$!
 
-# Give it a moment to start
+# Give SSH command time to execute
 sleep 3
+
+# Wait for SSH command to complete (with timeout)
+wait ${SSH_START_PID} 2>/dev/null || true
 
 echo "[2/6] Waiting for remote server readiness..."
 for i in {1..60}; do
