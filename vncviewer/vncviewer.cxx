@@ -657,11 +657,30 @@ int main(int argc, char** argv)
   bind_textdomain_codeset("libc", "UTF-8");
 
   core::initStdIOLoggers();
-#ifdef WIN32
-  core::initFileLogger("C:\\temp\\vncviewer.log");
-#else
-  core::initFileLogger("/tmp/vncviewer.log");
-#endif
+
+  // Ensure a dedicated log directory exists
+  const char* logDir = "/tmp/vncviewer";
+  core::mkdir_p(logDir, 0755);
+
+  // Build timestamped logfile name
+  time_t now = time(nullptr);
+  struct tm tmNow;
+  localtime_r(&now, &tmNow);
+
+  char ts[32];
+  strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tmNow);
+
+  pid_t pid = getpid();
+
+  char logPath[512];
+  snprintf(logPath, sizeof(logPath), "%s/njcvncviewer_%s_%d.log", logDir, ts, (int)pid);
+
+  // Initialize file logger to our unique logfile
+  core::initFileLogger(logPath);
+
+  // Inform user where logs go (stderr so it appears in terminal)
+  fprintf(stderr, "Viewer debug log: %s\n", logPath);
+
   core::LogWriter::setLogParams("*:stderr:30");
 
 #ifdef SIGHUP
