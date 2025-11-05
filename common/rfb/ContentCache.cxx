@@ -954,20 +954,66 @@ const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheI
     movePixelToT2(cacheId);
   }
   
-  // DEBUG: Check if retrieved cached data is all black (potential corruption)
-  // TEMPORARY: Check entire buffer for debugging (performance impact acceptable)
+  // DEBUG: Enhanced detection for black/corrupted rectangles
   const CachedPixels& cached = it->second;
-  bool isAllBlack = true;
-  for (size_t i = 0; i < cached.pixels.size() && isAllBlack; i++) {
-    if (cached.pixels[i] != 0) {
-      isAllBlack = false;
+  
+  // Count black pixels and calculate simple checksum
+  size_t blackPixelCount = 0;
+  size_t totalPixels = cached.width * cached.height;
+  uint32_t checksum = 0;
+  int bytesPerPixel = cached.format.bpp / 8;
+  
+  // Sample every pixel (stride-aware)
+  for (int y = 0; y < cached.height; y++) {
+    const uint8_t* row = cached.pixels.data() + (y * cached.stridePixels * bytesPerPixel);
+    for (int x = 0; x < cached.width; x++) {
+      const uint8_t* pixel = row + (x * bytesPerPixel);
+      
+      // Check if pixel is black (all bytes zero)
+      bool isBlackPixel = true;
+      for (int b = 0; b < bytesPerPixel; b++) {
+        checksum = (checksum * 31) + pixel[b];  // Simple checksum
+        if (pixel[b] != 0) {
+          isBlackPixel = false;
+        }
+      }
+      if (isBlackPixel) {
+        blackPixelCount++;
+      }
     }
   }
-  if (isAllBlack) {
-    vlog.error("ContentCache: WARNING - Retrieved all-black rectangle for cache ID %llu "
-               "rect=[%dx%d] stride=%d bpp=%d bytes=%zu - possible corruption!",
+  
+  double blackPercent = (totalPixels > 0) ? (100.0 * blackPixelCount / totalPixels) : 0.0;
+  
+  // Log if rectangle is entirely or mostly black
+  if (blackPercent == 100.0) {
+    vlog.error("ContentCache: WARNING - Retrieved 100%% black rectangle for cache ID %llu "
+               "rect=[%dx%d] stride=%d bpp=%d bytes=%zu checksum=0x%08x",
                (unsigned long long)cacheId, cached.width, cached.height,
-               cached.stridePixels, cached.format.bpp, cached.pixels.size());
+               cached.stridePixels, cached.format.bpp, cached.pixels.size(), checksum);
+  } else if (blackPercent >= 95.0) {
+    vlog.error("ContentCache: WARNING - Retrieved %.1f%% black rectangle for cache ID %llu "
+               "rect=[%dx%d] stride=%d bpp=%d bytes=%zu checksum=0x%08x",
+               blackPercent, (unsigned long long)cacheId, cached.width, cached.height,
+               cached.stridePixels, cached.format.bpp, cached.pixels.size(), checksum);
+  }
+  
+  // TEMPORARY: Log first few pixel values for every 100th retrieval to see patterns
+  static int retrievalCount = 0;
+  retrievalCount++;
+  if (retrievalCount % 100 == 0) {
+    vlog.info("ContentCache: Sample retrieval #%d - cacheId=%llu rect=[%dx%d] checksum=0x%08x black=%.1f%% "
+              "first_pixels=[%02x %02x %02x %02x %02x %02x %02x %02x]",
+              retrievalCount, (unsigned long long)cacheId, cached.width, cached.height,
+              checksum, blackPercent,
+              cached.pixels.size() > 0 ? cached.pixels[0] : 0,
+              cached.pixels.size() > 1 ? cached.pixels[1] : 0,
+              cached.pixels.size() > 2 ? cached.pixels[2] : 0,
+              cached.pixels.size() > 3 ? cached.pixels[3] : 0,
+              cached.pixels.size() > 4 ? cached.pixels[4] : 0,
+              cached.pixels.size() > 5 ? cached.pixels[5] : 0,
+              cached.pixels.size() > 6 ? cached.pixels[6] : 0,
+              cached.pixels.size() > 7 ? cached.pixels[7] : 0);
   }
   
   return &(it->second);
