@@ -902,6 +902,19 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
     dst += dstStrideBytes;
   }
   
+  // DEBUG: Check if cached data is all black (potential corruption)
+  bool isAllBlack = true;
+  for (size_t i = 0; i < dataSize && isAllBlack; i++) {
+    if (cached.pixels[i] != 0) {
+      isAllBlack = false;
+    }
+  }
+  if (isAllBlack) {
+    vlog.error("ContentCache: WARNING - Stored all-black rectangle for cache ID %llu "
+               "rect=[%dx%d] stride=%d bpp=%d - possible corruption!",
+               (unsigned long long)cacheId, width, height, stridePixels, pf.bpp);
+  }
+  
   // Add to T1 (first access) or T2 (ghost list hit)
   if (listIt != pixelListMap_.end()) {
     // Was in ghost list, add to T2
@@ -937,6 +950,22 @@ const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheI
   auto listIt = pixelListMap_.find(cacheId);
   if (listIt != pixelListMap_.end() && listIt->second.list == LIST_T1) {
     movePixelToT2(cacheId);
+  }
+  
+  // DEBUG: Check if retrieved cached data is all black (potential corruption)
+  const CachedPixels& cached = it->second;
+  bool isAllBlack = true;
+  size_t checkSize = std::min(cached.pixels.size(), (size_t)1024);  // Check first 1KB
+  for (size_t i = 0; i < checkSize && isAllBlack; i++) {
+    if (cached.pixels[i] != 0) {
+      isAllBlack = false;
+    }
+  }
+  if (isAllBlack) {
+    vlog.error("ContentCache: WARNING - Retrieved all-black rectangle for cache ID %llu "
+               "rect=[%dx%d] stride=%d bpp=%d - possible corruption!",
+               (unsigned long long)cacheId, cached.width, cached.height,
+               cached.stridePixels, cached.format.bpp);
   }
   
   return &(it->second);
