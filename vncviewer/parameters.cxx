@@ -289,6 +289,11 @@ static core::VoidParameter* parameterArray[] = {
   &compressLevel,
   &noJpeg,
   &qualityLevel,
+  /* ContentCache */
+  &contentCacheSize,
+  &persistentCache,
+  &persistentCacheSize,
+  &persistentCachePath,
   /* Display */
   &fullScreen,
   &fullScreenMode,
