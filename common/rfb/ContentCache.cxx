@@ -955,19 +955,19 @@ const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheI
   }
   
   // DEBUG: Check if retrieved cached data is all black (potential corruption)
+  // TEMPORARY: Check entire buffer for debugging (performance impact acceptable)
   const CachedPixels& cached = it->second;
   bool isAllBlack = true;
-  size_t checkSize = std::min(cached.pixels.size(), (size_t)1024);  // Check first 1KB
-  for (size_t i = 0; i < checkSize && isAllBlack; i++) {
+  for (size_t i = 0; i < cached.pixels.size() && isAllBlack; i++) {
     if (cached.pixels[i] != 0) {
       isAllBlack = false;
     }
   }
   if (isAllBlack) {
     vlog.error("ContentCache: WARNING - Retrieved all-black rectangle for cache ID %llu "
-               "rect=[%dx%d] stride=%d bpp=%d - possible corruption!",
+               "rect=[%dx%d] stride=%d bpp=%d bytes=%zu - possible corruption!",
                (unsigned long long)cacheId, cached.width, cached.height,
-               cached.stridePixels, cached.format.bpp);
+               cached.stridePixels, cached.format.bpp, cached.pixels.size());
   }
   
   return &(it->second);
