@@ -319,9 +319,6 @@ void DecodeManager::logStats()
     
     // Log ContentCache bandwidth savings
     if (contentCacheBandwidthStats.cachedRectCount > 0 || contentCacheBandwidthStats.cachedRectInitCount > 0) {
-      vlog.info(" ");
-      vlog.info("ContentCache Bandwidth Savings:");
-      
       unsigned long long totalCacheBytes = contentCacheBandwidthStats.cachedRectBytes + 
                                            contentCacheBandwidthStats.cachedRectInitBytes;
       unsigned long long totalAlternativeBytes = contentCacheBandwidthStats.alternativeBytes;
@@ -329,24 +326,10 @@ void DecodeManager::logStats()
       if (totalAlternativeBytes > 0) {
         unsigned long long savedBytes = totalAlternativeBytes - totalCacheBytes;
         double savingsPercent = (100.0 * savedBytes) / totalAlternativeBytes;
-        double reductionRatio = (double)totalAlternativeBytes / totalCacheBytes;
         
-        vlog.info("  Protocol overhead:");
-        vlog.info("    CachedRect messages: %u (%s, 20 bytes each)",
-                  contentCacheBandwidthStats.cachedRectCount,
-                  core::iecPrefix(contentCacheBandwidthStats.cachedRectBytes, "B").c_str());
-        vlog.info("    CachedRectInit messages: %u (%s, 24 bytes + compressed data)",
-                  contentCacheBandwidthStats.cachedRectInitCount,
-                  core::iecPrefix(contentCacheBandwidthStats.cachedRectInitBytes, "B").c_str());
-        vlog.info("  Bandwidth comparison:");
-        vlog.info("    With ContentCache: %s",
-                  core::iecPrefix(totalCacheBytes, "B").c_str());
-        vlog.info("    Without ContentCache (estimated): %s",
-                  core::iecPrefix(totalAlternativeBytes, "B").c_str());
-        vlog.info("  Savings: %s (%.1f%% reduction, 1:%.1f ratio)",
+        vlog.info("  ContentCache: %s bandwidth saving (%.1f%% reduction)",
                   core::iecPrefix(savedBytes, "B").c_str(),
-                  savingsPercent,
-                  reductionRatio);
+                  savingsPercent);
       }
     }
   }
