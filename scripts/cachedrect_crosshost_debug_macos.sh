@@ -26,6 +26,33 @@ fi
 
 # macOS native viewer doesn't require X11/XQuartz
 
+# Function to wait for remote port to be listening
+wait_for_remote_port() {
+  local remote="$1"
+  local port="$2"
+  local timeout_s="${3:-60}"
+  local interval="${4:-2}"
+
+  local start now
+  start=$(date +%s)
+
+  while true; do
+    # Try ss first, then netstat
+    if timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=5 "$remote" \
+      'if command -v ss >/dev/null 2>&1; then ss -tln; elif command -v netstat >/dev/null 2>&1; then netstat -tln; else echo "NO_SS_OR_NETSTAT"; fi' 2>/dev/null \
+      | grep -q ":${port}\b"; then
+      return 0
+    fi
+
+    now=$(date +%s)
+    if [ $((now - start)) -ge "$timeout_s" ]; then
+      echo "ERROR: Server did not listen on :${port} within ${timeout_s}s" >&2
+      return 1
+    fi
+    sleep "$interval"
+  done
+}
+
 echo "[1/6] Starting remote server on ${REMOTE} (display :${DISPLAY_NUM}, port ${SERVER_PORT})..."
 # Background the entire SSH command locally to avoid waiting for remote command
 (timeout 30 ssh "${REMOTE}" "cd ${REMOTE_DIR} && nohup python3 scripts/server_only_cachedrect_test.py --display ${DISPLAY_NUM} --port ${SERVER_PORT} --duration 60 >/tmp/cachedrect_server_stdout.log 2>&1 </dev/null & echo \$! > /tmp/cachedrect_server.pid" </dev/null >/dev/null 2>&1) &
@@ -38,18 +65,13 @@ sleep 3
 wait ${SSH_START_PID} 2>/dev/null || true
 
 echo "[2/6] Waiting for remote server readiness..."
-for i in {1..60}; do
-  if timeout 10 ssh "${REMOTE}" "grep -q 'SERVER_READY' /tmp/cachedrect_server_stdout.log 2>/dev/null"; then
-    echo "[ok] Remote server reports SERVER_READY"
-    break
-  fi
-  sleep 1
-  if (( i == 60 )); then
-    echo "ERROR: Timed out waiting for server" >&2
-    timeout 10 ssh "${REMOTE}" "tail -50 /tmp/cachedrect_server_stdout.log" || true
-    exit 2
-  fi
-done
+if wait_for_remote_port "${REMOTE}" "${SERVER_PORT}" 60; then
+  echo "[ok] Remote server is listening on port ${SERVER_PORT}"
+else
+  echo "ERROR: Server not ready; aborting." >&2
+  timeout 10 ssh "${REMOTE}" "tail -50 /tmp/cachedrect_server_stdout.log" || true
+  exit 2
+fi
 
 # Decide connection mode
 pick_mode() {
