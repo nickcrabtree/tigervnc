@@ -43,6 +43,9 @@ public:
   unsigned getUpdateCount();
   unsigned getPixelCount();
   unsigned getPosition();
+  
+  // Debug: Request full framebuffer refresh and verify against current state
+  void verifyFramebuffer();
 
 protected:
 

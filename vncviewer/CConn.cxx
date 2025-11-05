@@ -66,6 +66,19 @@
 
 static core::LogWriter vlog("CConn");
 
+// Global pointer for signal handler
+static CConn* g_activeConn = nullptr;
+static volatile sig_atomic_t g_verifyRequested = 0;
+
+// Signal handler for SIGUSR1 - trigger framebuffer verification
+#ifndef WIN32
+static void handleVerifySignal(int sig)
+{
+  (void)sig;
+  g_verifyRequested = 1;
+}
+#endif
+
 // 8 colours (1 bit per component)
 static const rfb::PixelFormat verylowColourPF(8, 3,false, true,
                                               1, 1, 1, 2, 1, 0);
@@ -98,10 +111,21 @@ CConn::CConn()
     setQualityLevel(::qualityLevel);
 
   OptionsDialog::addCallback(handleOptions, this);
+  
+  // Set global pointer for signal handler and install SIGUSR1 handler
+  g_activeConn = this;
+#ifndef WIN32
+  signal(SIGUSR1, handleVerifySignal);
+  vlog.info("Framebuffer verification available: kill -USR1 %d", (int)getpid());
+#endif
 }
 
 CConn::~CConn()
 {
+  // Clear global pointer
+  if (g_activeConn == this)
+    g_activeConn = nullptr;
+  
   close();
 
   OptionsDialog::removeCallback(handleOptions);
@@ -279,6 +303,14 @@ void CConn::socketEvent(FL_SOCKET fd, void *data)
       if (should_disconnect())
         break;
     }
+    
+    // Check if framebuffer verification was requested via SIGUSR1
+#ifndef WIN32
+    if (g_verifyRequested) {
+      g_verifyRequested = 0;
+      cc->verifyFramebuffer();
+    }
+#endif
 
     cc->getOutStream()->cork(false);
   } catch (rdr::end_of_stream& e) {
@@ -610,4 +642,24 @@ void CConn::handleUpdateTimeout(void *data)
   self->desktop->updateWindow();
 
   Fl::repeat_timeout(1.0, handleUpdateTimeout, data);
+}
+
+void CConn::verifyFramebuffer()
+{
+  vlog.info("========== FRAMEBUFFER VERIFICATION REQUESTED ==========" );
+  
+  if (!desktop) {
+    vlog.error("Cannot verify: desktop not initialized");
+    return;
+  }
+  
+  // TODO: Implement full verification:
+  // 1. Save current framebuffer state
+  // 2. Request full framebuffer update with lossless encoding (Raw or Zlib)
+  // 3. Compare received data with saved state
+  // 4. Report any differences with locations and pixel values
+  
+  vlog.info("Framebuffer verification not yet implemented");
+  vlog.info("Current framebuffer: %dx%d", server.width(), server.height());
+  vlog.info("========================================================");
 }
