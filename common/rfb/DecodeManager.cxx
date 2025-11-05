@@ -50,6 +50,8 @@ DecodeManager::DecodeManager(CConnection *conn_) :
 
   memset(stats, 0, sizeof(stats));
   memset(&cacheStats, 0, sizeof(cacheStats));
+  memset(&contentCacheBandwidthStats, 0, sizeof(contentCacheBandwidthStats));
+  lastDecodedRectBytes = 0;
   memset(&persistentCacheStats, 0, sizeof(persistentCacheStats));
   
   // Initialize client-side content cache (2GB default, unlimited age)
@@ -184,6 +186,9 @@ bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
   stats[encoding].pixels += r.area();
   equiv = 12 + r.area() * (conn->server.pf().bpp/8);
   stats[encoding].equivalent += equiv;
+  
+  // Track last decoded bytes for CachedRectInit bandwidth calculation
+  lastDecodedRectBytes = 12 + bufferStream->length();
 
   // Then try to put it on the queue
   entry = new QueueEntry;
@@ -311,6 +316,39 @@ void DecodeManager::logStats()
     
     vlog.info("  ARC cache performance:");
     contentCache->logArcStats();
+    
+    // Log ContentCache bandwidth savings
+    if (contentCacheBandwidthStats.cachedRectCount > 0 || contentCacheBandwidthStats.cachedRectInitCount > 0) {
+      vlog.info(" ");
+      vlog.info("ContentCache Bandwidth Savings:");
+      
+      unsigned long long totalCacheBytes = contentCacheBandwidthStats.cachedRectBytes + 
+                                           contentCacheBandwidthStats.cachedRectInitBytes;
+      unsigned long long totalAlternativeBytes = contentCacheBandwidthStats.alternativeBytes;
+      
+      if (totalAlternativeBytes > 0) {
+        unsigned long long savedBytes = totalAlternativeBytes - totalCacheBytes;
+        double savingsPercent = (100.0 * savedBytes) / totalAlternativeBytes;
+        double reductionRatio = (double)totalAlternativeBytes / totalCacheBytes;
+        
+        vlog.info("  Protocol overhead:");
+        vlog.info("    CachedRect messages: %u (%s, 20 bytes each)",
+                  contentCacheBandwidthStats.cachedRectCount,
+                  core::iecPrefix(contentCacheBandwidthStats.cachedRectBytes, "B").c_str());
+        vlog.info("    CachedRectInit messages: %u (%s, 24 bytes + compressed data)",
+                  contentCacheBandwidthStats.cachedRectInitCount,
+                  core::iecPrefix(contentCacheBandwidthStats.cachedRectInitBytes, "B").c_str());
+        vlog.info("  Bandwidth comparison:");
+        vlog.info("    With ContentCache: %s",
+                  core::iecPrefix(totalCacheBytes, "B").c_str());
+        vlog.info("    Without ContentCache (estimated): %s",
+                  core::iecPrefix(totalAlternativeBytes, "B").c_str());
+        vlog.info("  Savings: %s (%.1f%% reduction, 1:%.1f ratio)",
+                  core::iecPrefix(savedBytes, "B").c_str(),
+                  savingsPercent,
+                  reductionRatio);
+      }
+    }
   }
   
   // Log client-side PersistentCache statistics
@@ -522,6 +560,9 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
     return;
   }
   
+  // Track bandwidth for this CachedRect reference
+  trackCachedRectBandwidth(r);
+  
   cacheStats.cache_lookups++;
   
   //DebugContentCache_2025-10-14
@@ -589,6 +630,10 @@ void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
     rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::storeCachedRect EXIT: null pointers");
     return;
   }
+  
+  // Track bandwidth for this CachedRectInit (which includes compressed data that was just decoded)
+  // lastDecodedRectBytes was set in decodeRect and includes the 12-byte rect header + compressed data
+  trackCachedRectInitBandwidth(r, lastDecodedRectBytes);
   
   vlog.debug("Storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
              r.tl.x, r.tl.y, r.br.x, r.br.y,
@@ -737,4 +782,43 @@ void DecodeManager::flushPendingQueries()
   
   // Clear pending queries
   pendingQueries.clear();
+}
+
+void DecodeManager::trackCachedRectBandwidth(const core::Rect& r)
+{
+  // CachedRect protocol overhead: 12 bytes (rect header) + 8 bytes (cacheId) = 20 bytes
+  const size_t cachedRectOverhead = 20;
+  
+  // Alternative: standard rect would be 12 bytes (header) + 4 bytes (encoding) + compressed data
+  // Since this is a cache hit, the alternative would have sent the full compressed data
+  // We need to estimate what the compressed size would have been
+  // Use the last encoding stats to estimate compression ratio
+  size_t alternativeBytes = 16; // 12 (header) + 4 (encoding type)
+  
+  // Estimate compressed size based on typical compression (assume ~10:1 for uncompressed pixels)
+  // This is conservative; actual compression varies by content and encoding
+  size_t uncompressedSize = r.area() * (conn->server.pf().bpp / 8);
+  size_t estimatedCompressed = uncompressedSize / 10; // Conservative 10:1 compression estimate
+  alternativeBytes += estimatedCompressed;
+  
+  contentCacheBandwidthStats.cachedRectBytes += cachedRectOverhead;
+  contentCacheBandwidthStats.alternativeBytes += alternativeBytes;
+  contentCacheBandwidthStats.cachedRectCount++;
+}
+
+void DecodeManager::trackCachedRectInitBandwidth(const core::Rect& r, size_t compressedBytes)
+{
+  (void)r;  // Rect info is implicit in compressedBytes calculation
+  
+  // CachedRectInit protocol overhead: 12 bytes (rect header) + 8 bytes (cacheId) + 4 bytes (encoding type)
+  const size_t cachedRectInitOverhead = 24;
+  
+  // CachedRectInit sends: overhead + compressed data
+  contentCacheBandwidthStats.cachedRectInitBytes += cachedRectInitOverhead + compressedBytes;
+  
+  // Alternative would have sent: 12 (header) + 4 (encoding) + same compressed data = 16 + compressed data
+  const size_t alternativeOverhead = 16;
+  contentCacheBandwidthStats.alternativeBytes += alternativeOverhead + compressedBytes;
+  
+  contentCacheBandwidthStats.cachedRectInitCount++;
 }

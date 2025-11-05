@@ -61,6 +61,10 @@ namespace rfb {
     void storeCachedRect(const core::Rect& r, uint64_t cacheId,
                         ModifiablePixelBuffer* pb);
     
+    // Bandwidth tracking for ContentCache
+    void trackCachedRectBandwidth(const core::Rect& r);
+    void trackCachedRectInitBandwidth(const core::Rect& r, size_t compressedBytes);
+    
     // PersistentCache protocol extension (cross-session)
     void handlePersistentCachedRect(const core::Rect& r,
                                     const std::vector<uint8_t>& hash,
@@ -137,6 +141,17 @@ namespace rfb {
       unsigned cache_misses;
     };
     CacheStats cacheStats;
+    
+    // ContentCache bandwidth savings tracking
+    struct ContentCacheBandwidthStats {
+      unsigned long long cachedRectBytes;          // Actual bytes transmitted for CachedRect (20 bytes each)
+      unsigned long long cachedRectInitBytes;      // Bytes for CachedRectInit (24 + compressed data)
+      unsigned long long alternativeBytes;         // What would have been sent without cache (16 + compressed data)
+      unsigned cachedRectCount;                    // Number of CachedRect references received
+      unsigned cachedRectInitCount;                // Number of CachedRectInit messages received
+    };
+    ContentCacheBandwidthStats contentCacheBandwidthStats;
+    size_t lastDecodedRectBytes;  // Track bytes from last decoded rect for CachedRectInit
     
     // Client-side persistent cache (PersistentCache - cross-session)
     GlobalClientPersistentCache* persistentCache;
