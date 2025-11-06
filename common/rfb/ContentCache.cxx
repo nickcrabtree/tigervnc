@@ -161,9 +161,9 @@ ContentCache::~ContentCache()
              cache_.size(), t1_.size(), t2_.size());
 }
 
-ContentCache::CacheEntry* ContentCache::findContent(uint64_t hash)
+ContentCache::CacheEntry* ContentCache::findContent(const ContentKey& key)
 {
-  auto it = cache_.find(hash);
+  auto it = cache_.find(key);
   if (it == cache_.end()) {
     stats_.cacheMisses++;
     return nullptr;
@@ -174,37 +174,37 @@ ContentCache::CacheEntry* ContentCache::findContent(uint64_t hash)
   it->second.lastSeenTime = getCurrentTime();
   
   // ARC policy: move from T1 to T2 on second access
-  auto listIt = listMap_.find(hash);
+  auto listIt = listMap_.find(key);
   if (listIt != listMap_.end() && listIt->second.list == LIST_T1) {
-    moveToT2(hash);
+    moveToT2(key);
   }
   
   return &(it->second);
 }
 
-uint64_t ContentCache::insertContent(uint64_t hash,
+uint64_t ContentCache::insertContent(const ContentKey& key,
                                     const core::Rect& bounds,
                                     const uint8_t* data,
                                     size_t dataLen,
                                     bool keepData)
 {
   // Check if already in cache
-  auto cacheIt = cache_.find(hash);
+  auto cacheIt = cache_.find(key);
   if (cacheIt != cache_.end()) {
     // Update existing entry
     cacheIt->second.lastBounds = bounds;
     cacheIt->second.lastSeenTime = getCurrentTime();
     
     // Move to T2 if currently in T1
-    auto listIt = listMap_.find(hash);
+    auto listIt = listMap_.find(key);
     if (listIt != listMap_.end() && listIt->second.list == LIST_T1) {
-      moveToT2(hash);
+      moveToT2(key);
     }
     return cacheIt->second.cacheId;
   }
   
   // Check ghost lists (recently evicted)
-  auto listIt = listMap_.find(hash);
+  auto listIt = listMap_.find(key);
   
   if (listIt != listMap_.end() && listIt->second.list == LIST_B1) {
     // Cache hit in B1: adapt by increasing p (favor recency)
@@ -212,7 +212,7 @@ uint64_t ContentCache::insertContent(uint64_t hash,
     p_ = std::min(maxCacheSize_, p_ + delta * dataLen);
     
     // Make room and insert into T2 (it's been accessed twice now)
-    replace(hash, dataLen);
+    replace(key, dataLen);
     
     // Remove from B1
     b1_.erase(listIt->second.iter);
@@ -224,7 +224,7 @@ uint64_t ContentCache::insertContent(uint64_t hash,
     p_ = (delta * dataLen > p_) ? 0 : p_ - delta * dataLen;
     
     // Make room and insert into T2
-    replace(hash, dataLen);
+    replace(key, dataLen);
     
     // Remove from B2
     b2_.erase(listIt->second.iter);
@@ -232,11 +232,11 @@ uint64_t ContentCache::insertContent(uint64_t hash,
     
   } else {
     // New entry: make room and insert into T1
-    replace(hash, dataLen);
+    replace(key, dataLen);
   }
   
   // Create the entry
-  CacheEntry entry(hash, bounds, getCurrentTime());
+  CacheEntry entry(key.contentHash, bounds, getCurrentTime());
   entry.dataSize = dataLen;
   entry.cacheId = getNextCacheId();  // Assign new cache ID
   
@@ -245,11 +245,11 @@ uint64_t ContentCache::insertContent(uint64_t hash,
   }
   
   // Insert into cache and T2 (or T1 for new items)
-  cache_[hash] = entry;
+  cache_[key] = entry;
   
   // Register cache ID mappings
-  hashToCacheId_[hash] = entry.cacheId;
-  cacheIdToHash_[entry.cacheId] = hash;
+  keyToCacheId_[key] = entry.cacheId;
+  cacheIdToKey_[entry.cacheId] = key;
   
   // Determine which list to add to
   bool wasInGhost = (listIt != listMap_.end() && 
@@ -257,38 +257,39 @@ uint64_t ContentCache::insertContent(uint64_t hash,
   
   if (wasInGhost) {
     // Was in ghost list, add to T2
-    t2_.push_front(hash);
-    listMap_[hash].list = LIST_T2;
-    listMap_[hash].iter = t2_.begin();
+    t2_.push_front(key);
+    listMap_[key].list = LIST_T2;
+    listMap_[key].iter = t2_.begin();
     t2Size_ += dataLen;
   } else {
     // New entry, add to T1
-    t1_.push_front(hash);
-    listMap_[hash].list = LIST_T1;
-    listMap_[hash].iter = t1_.begin();
+    t1_.push_front(key);
+    listMap_[key].list = LIST_T1;
+    listMap_[key].iter = t1_.begin();
     t1Size_ += dataLen;
   }
   
   stats_.totalEntries++;
   stats_.totalBytes += dataLen;
   
-  vlog.debug("Inserted: hash=%016llx cacheId=%llu size=%zu T1=%zu/%zu T2=%zu p=%zu",
-             (unsigned long long)hash, (unsigned long long)entry.cacheId, dataLen, 
+  vlog.debug("Inserted: key=(%ux%u,hash=%016llx) cacheId=%llu size=%zu T1=%zu/%zu T2=%zu p=%zu",
+             key.width, key.height, (unsigned long long)key.contentHash, 
+             (unsigned long long)entry.cacheId, dataLen, 
              t1Size_, t1_.size(), t2_.size(), p_);
   
   return entry.cacheId;
 }
 
-void ContentCache::touchEntry(uint64_t hash)
+void ContentCache::touchEntry(const ContentKey& key)
 {
-  auto it = cache_.find(hash);
+  auto it = cache_.find(key);
   if (it != cache_.end()) {
     it->second.lastSeenTime = getCurrentTime();
     
     // Move from T1 to T2 if accessed again
-    auto listIt = listMap_.find(hash);
+    auto listIt = listMap_.find(key);
     if (listIt != listMap_.end() && listIt->second.list == LIST_T1) {
-      moveToT2(hash);
+      moveToT2(key);
     }
   }
 }
@@ -299,7 +300,7 @@ void ContentCache::pruneCache()
   size_t evictedCount = 0;
   
   // Remove aged entries from all lists
-  auto pruneList = [&](std::list<uint64_t>& list, size_t& listSize, 
+  auto pruneList = [&](std::list<ContentKey>& list, size_t& listSize, 
                        bool removeData) {
     for (auto it = list.begin(); it != list.end(); ) {
       auto cacheIt = cache_.find(*it);
@@ -356,15 +357,26 @@ void ContentCache::clear()
 ContentCache::Stats ContentCache::getStats() const
 {
   Stats current = stats_;
-  // For client-side viewer, report pixel cache stats (decoded pixel storage)
-  // For server-side, this would be hash cache stats, but viewer primarily uses pixel cache
-  current.totalEntries = pixelCache_.size();
-  current.totalBytes = pixelT1Size_ + pixelT2Size_;
-  current.t1Size = pixelT1_.size();
-  current.t2Size = pixelT2_.size();
-  current.b1Size = pixelB1_.size();
-  current.b2Size = pixelB2_.size();
-  current.targetT1Size = pixelP_;
+  
+  // If pixel cache has entries, report pixel cache stats (client-side)
+  // Otherwise report hash cache stats (server-side)
+  if (!pixelCache_.empty()) {
+    current.totalEntries = pixelCache_.size();
+    current.totalBytes = pixelT1Size_ + pixelT2Size_;
+    current.t1Size = pixelT1_.size();
+    current.t2Size = pixelT2_.size();
+    current.b1Size = pixelB1_.size();
+    current.b2Size = pixelB2_.size();
+    current.targetT1Size = pixelP_;
+  } else {
+    // Use hash cache stats (already in stats_)
+    current.t1Size = t1_.size();
+    current.t2Size = t2_.size();
+    current.b1Size = b1_.size();
+    current.b2Size = b2_.size();
+    current.targetT1Size = p_;
+  }
+  
   return current;
 }
 
@@ -431,7 +443,7 @@ void ContentCache::setMaxSize(size_t maxSizeMB)
   // Evict if we're now over the limit
   while (t1Size_ + t2Size_ > maxCacheSize_) {
     if (!t1_.empty() || !t2_.empty()) {
-      replace(0, 0);  // Force eviction
+      replace(ContentKey(), 0);  // Force eviction with dummy key
     } else {
       break;
     }
@@ -448,7 +460,7 @@ void ContentCache::setMaxAge(uint32_t maxAgeSec)
 // ARC Algorithm Implementation
 // ============================================================================
 
-void ContentCache::replace(uint64_t, size_t size)
+void ContentCache::replace(const ContentKey&, size_t size)
 {
   // Make room for new entry of given size
   while (t1Size_ + t2Size_ + size > maxCacheSize_) {
@@ -457,7 +469,7 @@ void ContentCache::replace(uint64_t, size_t size)
     if (!t1_.empty() && 
         (t1Size_ > p_ || (t2_.empty() && t1Size_ == p_))) {
       
-      uint64_t victim = t1_.back();
+      ContentKey victim = t1_.back();
       t1_.pop_back();
       
       auto cacheIt = cache_.find(victim);
@@ -475,7 +487,7 @@ void ContentCache::replace(uint64_t, size_t size)
         
         // Limit B1 size
         while (b1_.size() > maxCacheSize_ / (1024 * 16)) {  // ~16KB ghost entries
-          uint64_t oldGhost = b1_.back();
+          ContentKey oldGhost = b1_.back();
           b1_.pop_back();
           listMap_.erase(oldGhost);
         }
@@ -485,7 +497,7 @@ void ContentCache::replace(uint64_t, size_t size)
     // Case 2: Evict from T2
     else if (!t2_.empty()) {
       
-      uint64_t victim = t2_.back();
+      ContentKey victim = t2_.back();
       t2_.pop_back();
       
       auto cacheIt = cache_.find(victim);
@@ -503,7 +515,7 @@ void ContentCache::replace(uint64_t, size_t size)
         
         // Limit B2 size
         while (b2_.size() > maxCacheSize_ / (1024 * 16)) {
-          uint64_t oldGhost = b2_.back();
+          ContentKey oldGhost = b2_.back();
           b2_.pop_back();
           listMap_.erase(oldGhost);
         }
@@ -516,53 +528,53 @@ void ContentCache::replace(uint64_t, size_t size)
   }
 }
 
-void ContentCache::moveToT2(uint64_t hash)
+void ContentCache::moveToT2(const ContentKey& key)
 {
-  auto listIt = listMap_.find(hash);
+  auto listIt = listMap_.find(key);
   if (listIt == listMap_.end() || listIt->second.list != LIST_T1) {
     return;
   }
   
-  size_t size = getEntrySize(hash);
+  size_t size = getEntrySize(key);
   
   // Remove from T1
   t1_.erase(listIt->second.iter);
   t1Size_ -= size;
   
   // Add to T2
-  t2_.push_front(hash);
+  t2_.push_front(key);
   t2Size_ += size;
   
-  listMap_[hash].list = LIST_T2;
-  listMap_[hash].iter = t2_.begin();
+  listMap_[key].list = LIST_T2;
+  listMap_[key].iter = t2_.begin();
 }
 
-void ContentCache::moveToB1(uint64_t hash)
+void ContentCache::moveToB1(const ContentKey& key)
 {
-  removeFromList(hash);
+  removeFromList(key);
   
-  b1_.push_front(hash);
-  listMap_[hash].list = LIST_B1;
-  listMap_[hash].iter = b1_.begin();
+  b1_.push_front(key);
+  listMap_[key].list = LIST_B1;
+  listMap_[key].iter = b1_.begin();
 }
 
-void ContentCache::moveToB2(uint64_t hash)
+void ContentCache::moveToB2(const ContentKey& key)
 {
-  removeFromList(hash);
+  removeFromList(key);
   
-  b2_.push_front(hash);
-  listMap_[hash].list = LIST_B2;
-  listMap_[hash].iter = b2_.begin();
+  b2_.push_front(key);
+  listMap_[key].list = LIST_B2;
+  listMap_[key].iter = b2_.begin();
 }
 
-void ContentCache::removeFromList(uint64_t hash)
+void ContentCache::removeFromList(const ContentKey& key)
 {
-  auto listIt = listMap_.find(hash);
+  auto listIt = listMap_.find(key);
   if (listIt == listMap_.end()) {
     return;
   }
   
-  size_t size = getEntrySize(hash);
+  size_t size = getEntrySize(key);
   
   switch (listIt->second.list) {
     case LIST_T1:
@@ -586,9 +598,9 @@ void ContentCache::removeFromList(uint64_t hash)
   listMap_.erase(listIt);
 }
 
-size_t ContentCache::getEntrySize(uint64_t hash) const
+size_t ContentCache::getEntrySize(const ContentKey& key) const
 {
-  auto it = cache_.find(hash);
+  auto it = cache_.find(key);
   return (it != cache_.end()) ? it->second.dataSize : 0;
 }
 
@@ -610,7 +622,7 @@ void ContentCache::replacePixelCache(size_t size)
     if (!pixelT1_.empty() && 
         (pixelT1Size_ > pixelP_ || (pixelT2_.empty() && pixelT1Size_ == pixelP_))) {
       
-      uint64_t victim = pixelT1_.back();
+      ContentKey victim = pixelT1_.back();
       pixelT1_.pop_back();
       
       auto cacheIt = pixelCache_.find(victim);
@@ -622,15 +634,15 @@ void ContentCache::replacePixelCache(size_t size)
         pixelListMap_[victim].list = LIST_B1;
         pixelListMap_[victim].iter = pixelB1_.begin();
         
-        // Queue for eviction notification
-        pendingEvictions_.push_back(victim);
+        // Queue for eviction notification (send hash component)
+        pendingEvictions_.push_back(victim.contentHash);
         
         pixelCache_.erase(cacheIt);
         stats_.evictions++;
         
         // Limit B1 size
         while (pixelB1_.size() > maxPixelCacheSize_ / (1024 * 16)) {
-          uint64_t oldGhost = pixelB1_.back();
+          ContentKey oldGhost = pixelB1_.back();
           pixelB1_.pop_back();
           pixelListMap_.erase(oldGhost);
         }
@@ -640,7 +652,7 @@ void ContentCache::replacePixelCache(size_t size)
     // Case 2: Evict from T2
     else if (!pixelT2_.empty()) {
       
-      uint64_t victim = pixelT2_.back();
+      ContentKey victim = pixelT2_.back();
       pixelT2_.pop_back();
       
       auto cacheIt = pixelCache_.find(victim);
@@ -652,15 +664,15 @@ void ContentCache::replacePixelCache(size_t size)
         pixelListMap_[victim].list = LIST_B2;
         pixelListMap_[victim].iter = pixelB2_.begin();
         
-        // Queue for eviction notification
-        pendingEvictions_.push_back(victim);
+        // Queue for eviction notification (send hash component)
+        pendingEvictions_.push_back(victim.contentHash);
         
         pixelCache_.erase(cacheIt);
         stats_.evictions++;
         
         // Limit B2 size
         while (pixelB2_.size() > maxPixelCacheSize_ / (1024 * 16)) {
-          uint64_t oldGhost = pixelB2_.back();
+          ContentKey oldGhost = pixelB2_.back();
           pixelB2_.pop_back();
           pixelListMap_.erase(oldGhost);
         }
@@ -673,51 +685,51 @@ void ContentCache::replacePixelCache(size_t size)
   }
 }
 
-void ContentCache::movePixelToT2(uint64_t cacheId)
+void ContentCache::movePixelToT2(const ContentKey& key)
 {
-  auto listIt = pixelListMap_.find(cacheId);
+  auto listIt = pixelListMap_.find(key);
   if (listIt == pixelListMap_.end() || listIt->second.list != LIST_T1) {
     return;
   }
   
-  size_t size = getPixelEntrySize(cacheId);
+  size_t size = getPixelEntrySize(key);
   
   // Remove from T1
   pixelT1_.erase(listIt->second.iter);
   pixelT1Size_ -= size;
   
   // Add to front of T2
-  pixelT2_.push_front(cacheId);
+  pixelT2_.push_front(key);
   pixelT2Size_ += size;
   
   listIt->second.list = LIST_T2;
   listIt->second.iter = pixelT2_.begin();
 }
 
-void ContentCache::movePixelToB1(uint64_t cacheId)
+void ContentCache::movePixelToB1(const ContentKey& key)
 {
-  removePixelFromList(cacheId);
-  pixelB1_.push_front(cacheId);
-  pixelListMap_[cacheId].list = LIST_B1;
-  pixelListMap_[cacheId].iter = pixelB1_.begin();
+  removePixelFromList(key);
+  pixelB1_.push_front(key);
+  pixelListMap_[key].list = LIST_B1;
+  pixelListMap_[key].iter = pixelB1_.begin();
 }
 
-void ContentCache::movePixelToB2(uint64_t cacheId)
+void ContentCache::movePixelToB2(const ContentKey& key)
 {
-  removePixelFromList(cacheId);
-  pixelB2_.push_front(cacheId);
-  pixelListMap_[cacheId].list = LIST_B2;
-  pixelListMap_[cacheId].iter = pixelB2_.begin();
+  removePixelFromList(key);
+  pixelB2_.push_front(key);
+  pixelListMap_[key].list = LIST_B2;
+  pixelListMap_[key].iter = pixelB2_.begin();
 }
 
-void ContentCache::removePixelFromList(uint64_t cacheId)
+void ContentCache::removePixelFromList(const ContentKey& key)
 {
-  auto listIt = pixelListMap_.find(cacheId);
+  auto listIt = pixelListMap_.find(key);
   if (listIt == pixelListMap_.end()) {
     return;
   }
   
-  size_t size = getPixelEntrySize(cacheId);
+  size_t size = getPixelEntrySize(key);
   
   switch (listIt->second.list) {
     case LIST_T1:
@@ -741,9 +753,9 @@ void ContentCache::removePixelFromList(uint64_t cacheId)
   pixelListMap_.erase(listIt);
 }
 
-size_t ContentCache::getPixelEntrySize(uint64_t cacheId) const
+size_t ContentCache::getPixelEntrySize(const ContentKey& key) const
 {
-  auto it = pixelCache_.find(cacheId);
+  auto it = pixelCache_.find(key);
   return (it != pixelCache_.end()) ? it->second.bytes : 0;
 }
 
@@ -765,46 +777,46 @@ uint64_t ContentCache::getNextCacheId()
 
 ContentCache::CacheEntry* ContentCache::findByCacheId(uint64_t cacheId)
 {
-  // Look up hash from cache ID
-  auto hashIt = cacheIdToHash_.find(cacheId);
-  if (hashIt == cacheIdToHash_.end()) {
+  // Look up ContentKey from cache ID
+  auto keyIt = cacheIdToKey_.find(cacheId);
+  if (keyIt == cacheIdToKey_.end()) {
     return nullptr;
   }
   
-  return findContent(hashIt->second);
+  return findContent(keyIt->second);
 }
 
-ContentCache::CacheEntry* ContentCache::findByHash(uint64_t hash, uint64_t* outCacheId)
+ContentCache::CacheEntry* ContentCache::findByKey(const ContentKey& key, uint64_t* outCacheId)
 {
-  // Check if hash has a cache ID assigned
-  auto idIt = hashToCacheId_.find(hash);
-  if (idIt != hashToCacheId_.end() && outCacheId != nullptr) {
+  // Check if key has a cache ID assigned
+  auto idIt = keyToCacheId_.find(key);
+  if (idIt != keyToCacheId_.end() && outCacheId != nullptr) {
     *outCacheId = idIt->second;
   }
   
-  return findContent(hash);
+  return findContent(key);
 }
 
 void ContentCache::insertWithId(uint64_t cacheId,
-                               uint64_t hash,
+                               const ContentKey& key,
                                const core::Rect& bounds,
                                const uint8_t* data,
                                size_t dataLen,
                                bool keepData)
 {
   // Use the standard insertion
-  insertContent(hash, bounds, data, dataLen, keepData);
+  insertContent(key, bounds, data, dataLen, keepData);
   
-  // Associate cache ID with this hash
-  auto cacheIt = cache_.find(hash);
+  // Associate cache ID with this key
+  auto cacheIt = cache_.find(key);
   if (cacheIt != cache_.end()) {
     cacheIt->second.cacheId = cacheId;
-    hashToCacheId_[hash] = cacheId;
-    cacheIdToHash_[cacheId] = hash;
+    keyToCacheId_[key] = cacheId;
+    cacheIdToKey_[cacheId] = key;
     
-    vlog.debug("Assigned cache ID %llu to hash %016llx",
+    vlog.debug("Assigned cache ID %llu to key (%ux%u,hash=%016llx)",
                (unsigned long long)cacheId,
-               (unsigned long long)hash);
+               key.width, key.height, (unsigned long long)key.contentHash);
   }
 }
 
@@ -812,7 +824,7 @@ void ContentCache::insertWithId(uint64_t cacheId,
 // Client-Side Decoded Pixel Storage
 // ============================================================================
 
-void ContentCache::storeDecodedPixels(uint64_t cacheId,
+void ContentCache::storeDecodedPixels(const ContentKey& key,
                                      const uint8_t* pixels,
                                      const PixelFormat& pf,
                                      int width, int height, int stridePixels)
@@ -827,7 +839,7 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
   size_t dataSize = height * stridePixels * bytesPerPixel;
   
   // Check if already in cache
-  auto cacheIt = pixelCache_.find(cacheId);
+  auto cacheIt = pixelCache_.find(key);
   if (cacheIt != pixelCache_.end()) {
     // Already cached - this is a hit (re-initialization of existing entry)
     stats_.cacheHits++;
@@ -835,9 +847,9 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
     // Update existing entry - move to T2 if currently in T1
     cacheIt->second.lastUsedTime = getCurrentTime();
     
-    auto listIt = pixelListMap_.find(cacheId);
+    auto listIt = pixelListMap_.find(key);
     if (listIt != pixelListMap_.end() && listIt->second.list == LIST_T1) {
-      movePixelToT2(cacheId);
+      movePixelToT2(key);
     }
     return;
   }
@@ -846,7 +858,7 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
   stats_.cacheMisses++;
   
   // Check ghost lists (recently evicted)
-  auto listIt = pixelListMap_.find(cacheId);
+  auto listIt = pixelListMap_.find(key);
   
   if (listIt != pixelListMap_.end() && listIt->second.list == LIST_B1) {
     // Cache hit in B1: adapt by increasing p (favor recency)
@@ -878,8 +890,8 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
   }
   
   // Create the entry
-  CachedPixels& cached = pixelCache_[cacheId];
-  cached.cacheId = cacheId;
+  CachedPixels& cached = pixelCache_[key];
+  cached.key = key;
   cached.format = pf;
   cached.width = width;
   cached.height = height;
@@ -916,34 +928,36 @@ void ContentCache::storeDecodedPixels(uint64_t cacheId,
     }
   }
   if (isAllBlack) {
-    vlog.error("ContentCache: WARNING - Stored all-black rectangle for cache ID %llu "
+    vlog.error("ContentCache: WARNING - Stored all-black rectangle for key (%ux%u,hash=%016llx) "
                "rect=[%dx%d] stride=%d bpp=%d - possible corruption!",
-               (unsigned long long)cacheId, width, height, stridePixels, pf.bpp);
+               key.width, key.height, (unsigned long long)key.contentHash,
+               width, height, stridePixels, pf.bpp);
   }
   
   // Add to T1 (first access) or T2 (ghost list hit)
   if (listIt != pixelListMap_.end()) {
     // Was in ghost list, add to T2
-    pixelT2_.push_front(cacheId);
+    pixelT2_.push_front(key);
     pixelT2Size_ += dataSize;
-    pixelListMap_[cacheId].list = LIST_T2;
-    pixelListMap_[cacheId].iter = pixelT2_.begin();
+    pixelListMap_[key].list = LIST_T2;
+    pixelListMap_[key].iter = pixelT2_.begin();
   } else {
     // Brand new, add to T1
-    pixelT1_.push_front(cacheId);
+    pixelT1_.push_front(key);
     pixelT1Size_ += dataSize;
-    pixelListMap_[cacheId].list = LIST_T1;
-    pixelListMap_[cacheId].iter = pixelT1_.begin();
+    pixelListMap_[key].list = LIST_T1;
+    pixelListMap_[key].iter = pixelT1_.begin();
   }
   
-  vlog.debug("Stored decoded pixels for cache ID %llu: %dx%d %dbpp (%zu bytes), pixelT1=%zu pixelT2=%zu",
-             (unsigned long long)cacheId, width, height, pf.bpp, dataSize,
+  vlog.debug("Stored decoded pixels for key (%ux%u,hash=%016llx): %dx%d %dbpp (%zu bytes), pixelT1=%zu pixelT2=%zu",
+             key.width, key.height, (unsigned long long)key.contentHash,
+             width, height, pf.bpp, dataSize,
              pixelT1_.size(), pixelT2_.size());
 }
 
-const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheId)
+const ContentCache::CachedPixels* ContentCache::getDecodedPixels(const ContentKey& key)
 {
-  auto it = pixelCache_.find(cacheId);
+  auto it = pixelCache_.find(key);
   if (it == pixelCache_.end()) {
     stats_.cacheMisses++;
     return nullptr;
@@ -953,9 +967,9 @@ const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheI
   it->second.lastUsedTime = getCurrentTime();
   
   // ARC policy: move from T1 to T2 on second access
-  auto listIt = pixelListMap_.find(cacheId);
+  auto listIt = pixelListMap_.find(key);
   if (listIt != pixelListMap_.end() && listIt->second.list == LIST_T1) {
-    movePixelToT2(cacheId);
+    movePixelToT2(key);
   }
   
   // DEBUG: Enhanced detection for black/corrupted rectangles
@@ -991,14 +1005,16 @@ const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheI
   
   // Log if rectangle is entirely or mostly black (use vlog for important warnings)
   if (blackPercent == 100.0) {
-    vlog.error("ContentCache: WARNING - Retrieved 100%% black rectangle for cache ID %llu "
+    vlog.error("ContentCache: WARNING - Retrieved 100%% black rectangle for key (%ux%u,hash=%016llx) "
                "rect=[%dx%d] stride=%d bpp=%d bytes=%zu checksum=0x%08x",
-               (unsigned long long)cacheId, cached.width, cached.height,
+               key.width, key.height, (unsigned long long)key.contentHash,
+               cached.width, cached.height,
                cached.stridePixels, cached.format.bpp, cached.pixels.size(), checksum);
   } else if (blackPercent >= 95.0) {
-    vlog.error("ContentCache: WARNING - Retrieved %.1f%% black rectangle for cache ID %llu "
+    vlog.error("ContentCache: WARNING - Retrieved %.1f%% black rectangle for key (%ux%u,hash=%016llx) "
                "rect=[%dx%d] stride=%d bpp=%d bytes=%zu checksum=0x%08x",
-               blackPercent, (unsigned long long)cacheId, cached.width, cached.height,
+               blackPercent, key.width, key.height, (unsigned long long)key.contentHash,
+               cached.width, cached.height,
                cached.stridePixels, cached.format.bpp, cached.pixels.size(), checksum);
   }
   
@@ -1008,10 +1024,10 @@ const ContentCache::CachedPixels* ContentCache::getDecodedPixels(uint64_t cacheI
   if (retrievalCount % 100 == 0) {
     char debugMsg[512];
     snprintf(debugMsg, sizeof(debugMsg),
-             "Sample retrieval #%d - cacheId=%llu rect=[%dx%d] checksum=0x%08x black=%.1f%% "
+             "Sample retrieval #%d - key=(%ux%u,hash=%016llx) rect=[%dx%d] checksum=0x%08x black=%.1f%% "
              "first_pixels=[%02x %02x %02x %02x %02x %02x %02x %02x]",
-             retrievalCount, (unsigned long long)cacheId, cached.width, cached.height,
-             checksum, blackPercent,
+             retrievalCount, key.width, key.height, (unsigned long long)key.contentHash,
+             cached.width, cached.height, checksum, blackPercent,
              cached.pixels.size() > 0 ? cached.pixels[0] : 0,
              cached.pixels.size() > 1 ? cached.pixels[1] : 0,
              cached.pixels.size() > 2 ? cached.pixels[2] : 0,

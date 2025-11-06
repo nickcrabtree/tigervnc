@@ -67,7 +67,7 @@ Server Side                           Client Side
 
 #### Server Side (`common/rfb/`)
 
-- **`ContentCache`** (`ContentCache.h/cxx`): Core cache data structure with ARC algorithm
+- **`ContentCache`** (`ContentCache.h/cxx`): Core cache data structure with ContentKey and ARC algorithm
 - **`EncodeManager`** (`EncodeManager.h/cxx`): Integration point for cache lookups and insertions
 - **`SMsgWriter`** (`SMsgWriter.h/cxx`): Protocol message serialization
 - **`ServerCore`** (`ServerCore.h/cxx`): Configuration parameters
@@ -161,13 +161,57 @@ if (conn->client.supportsEncoding(pseudoEncodingContentCache)) {
 
 Located in `common/rfb/ContentCache.h` and `ContentCache.cxx`.
 
+#### ContentKey Structure (November 6, 2025 Fix)
+
+**Critical**: As of November 6, 2025, ContentCache uses a composite ContentKey structure to prevent dimension mismatch corruption.
+
+```cpp
+// 12-byte composite cache key
+struct ContentKey {
+    uint16_t width;       // Rectangle width (2 bytes)
+    uint16_t height;      // Rectangle height (2 bytes)
+    uint64_t contentHash; // Content hash (8 bytes)
+    
+    ContentKey(uint16_t w, uint16_t h, uint64_t hash)
+        : width(w), height(h), contentHash(hash) {}
+    
+    bool operator==(const ContentKey& other) const {
+        return width == other.width && 
+               height == other.height && 
+               contentHash == other.contentHash;
+    }
+};
+
+// Hash function for unordered_map (bit-packing, no magic primes)
+struct ContentKeyHash {
+    std::size_t operator()(const ContentKey& key) const {
+        // Simple bit-packing based on field widths
+        return (static_cast<std::size_t>(key.width) << 48) |
+               (static_cast<std::size_t>(key.height) << 32) |
+               (key.contentHash & 0xFFFFFFFF);
+    }
+};
+```
+
+**Why ContentKey?**
+
+1. **Prevents dimension mismatch corruption**: Without ContentKey, two rectangles with similar content but different dimensions could produce the same hash, causing the cache to return wrong-sized pixels
+2. **Structural guarantee**: Dimensions are part of the key, not hashed, eliminating collision on dimensions
+3. **Future-proof**: 16-bit dimensions support up to 65535×65535 (vs current 16384 limit)
+4. **No protocol change**: ContentKey is memory-only; wire protocol still sends 64-bit cache ID
+
+**Wire vs. Memory Keying**:
+- **Wire**: Server sends 64-bit `cacheId` (the content hash component)
+- **Memory**: Both server and client reconstruct ContentKey as `{rect.width, rect.height, cacheId}`
+- **Lookup**: Client receives rectangle with dimensions from protocol, constructs ContentKey for cache lookup
+
 #### Data Structures
 
 ```cpp
 class ContentCache {
 public:
     struct CacheEntry {
-        uint64_t contentHash;         // FNV-1a hash of pixel data
+        uint64_t contentHash;         // Content hash (from ContentKey)
         uint64_t cacheId;             // Protocol identifier (1, 2, 3, ...)
         core::Rect lastBounds;        // Last known screen position
         uint32_t lastSeenTime;        // Timestamp for age-based eviction
@@ -177,24 +221,24 @@ public:
     };
 
 private:
-    // Main storage: hash -> cache entry
-    std::unordered_map<uint64_t, CacheEntry> cache_;
+    // Main storage: ContentKey -> cache entry (dimension-safe)
+    std::unordered_map<ContentKey, CacheEntry, ContentKeyHash> cache_;
     
     // Bidirectional mappings for protocol
-    std::unordered_map<uint64_t, uint64_t> hashToCacheId_;  // hash -> ID
-    std::unordered_map<uint64_t, uint64_t> cacheIdToHash_;  // ID -> hash
+    std::unordered_map<ContentKey, uint64_t, ContentKeyHash> keyToCacheId_;  // key -> ID
+    std::unordered_map<uint64_t, ContentKey> cacheIdToKey_;  // ID -> key
     
-    // ARC algorithm structures
-    std::list<uint64_t> t1_;  // Recently used once (recency)
-    std::list<uint64_t> t2_;  // Frequently used (frequency)
-    std::list<uint64_t> b1_;  // Ghost: evicted from T1
-    std::list<uint64_t> b2_;  // Ghost: evicted from T2
+    // ARC algorithm structures (use ContentKey)
+    std::list<ContentKey> t1_;  // Recently used once (recency)
+    std::list<ContentKey> t2_;  // Frequently used (frequency)
+    std::list<ContentKey> b1_;  // Ghost: evicted from T1
+    std::list<ContentKey> b2_;  // Ghost: evicted from T2
     
-    std::unordered_map<uint64_t, ListInfo> listMap_;  // Track list membership
+    std::unordered_map<ContentKey, ListInfo, ContentKeyHash> listMap_;  // Track list membership
     size_t p_;                 // Adaptive target size for T1
     
-    // Client-side: decoded pixel storage
-    std::unordered_map<uint64_t, CachedPixels> pixelCache_;
+    // Client-side: decoded pixel storage (also uses ContentKey)
+    std::unordered_map<ContentKey, CachedPixels, ContentKeyHash> pixelCache_;
 };
 ```
 

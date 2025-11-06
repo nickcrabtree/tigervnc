@@ -1082,16 +1082,18 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
       hash = computeContentHash(buffer, dataLen);
     }
     
-    // Insert and get cache ID
+    // Insert and get cache ID - build ContentKey with dimensions
     size_t dataLen = rect.height() * stride * bytesPerPixel;
-    uint64_t cacheId = contentCache->insertContent(hash, rect, nullptr, dataLen, false);
+    rfb::ContentKey key(static_cast<uint16_t>(rect.width()), 
+                        static_cast<uint16_t>(rect.height()), hash);
+    uint64_t cacheId = contentCache->insertContent(key, rect, nullptr, dataLen, false);
     
     // Queue CachedRectInit so client learns about this ID
     conn->queueCachedInit(cacheId, rect);
     
-    vlog.debug("ContentCache insert: rect [%d,%d-%d,%d], hash=%llx, cacheId=%llu (CachedRectInit queued)",
+    vlog.debug("ContentCache insert: rect [%d,%d-%d,%d], key=(%ux%u,hash=%llx), cacheId=%llu (CachedRectInit queued)",
                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-               (unsigned long long)hash, (unsigned long long)cacheId);
+               key.width, key.height, (unsigned long long)hash, (unsigned long long)cacheId);
   }
 }
 
@@ -1326,9 +1328,11 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
     hash = computeContentHash(buffer, dataLen);
   }
 
-  // Look up in cache by hash and get cache ID if exists
+  // Look up in cache by ContentKey (dimensions + hash)
+  rfb::ContentKey key(static_cast<uint16_t>(rect.width()), 
+                      static_cast<uint16_t>(rect.height()), hash);
   uint64_t cacheId = 0;
-  ContentCache::CacheEntry* entry = contentCache->findByHash(hash, &cacheId);
+  ContentCache::CacheEntry* entry = contentCache->findByKey(key, &cacheId);
   
   if (entry != nullptr && cacheId != 0) {
     // Cache hit in server content cache, but we must ensure the client
@@ -1342,7 +1346,7 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
       pendingRefreshRegion.assign_subtract(rect);
       // Update server-side cache entry location and touch
       entry->lastBounds = rect;
-      contentCache->touchEntry(hash);
+      contentCache->touchEntry(key);
       return true; // handled via pending init
     }
 
@@ -1358,13 +1362,13 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
     copyStats.bytes += conn->getOutStream()->length() - beforeLength;
     // Record this cacheId->rect mapping so we can respond to RequestCachedData
     conn->onCachedRectRef(cacheId, rect);
-    vlog.debug("ContentCache protocol hit: rect [%d,%d-%d,%d] cacheId=%llu",
+    vlog.debug("ContentCache protocol hit: rect [%d,%d-%d,%d] key=(%ux%u) cacheId=%llu",
                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-               (unsigned long long)cacheId);
+               key.width, key.height, (unsigned long long)cacheId);
     lossyRegion.assign_subtract(rect);
     pendingRefreshRegion.assign_subtract(rect);
     entry->lastBounds = rect;
-    contentCache->touchEntry(hash);
+    contentCache->touchEntry(key);
     return true;
   }
 
@@ -1399,14 +1403,16 @@ void EncodeManager::insertIntoContentCache(const core::Rect& rect,
     hash = computeContentHash(buffer, dataLen);
   }
   
-  // Insert into cache and get assigned cache ID
+  // Insert into cache with ContentKey (dimensions + hash)
   // Pass dataLen so ARC algorithm can track memory usage properly,
   // even though we're not storing the actual pixel data (keepData=false)
-  uint64_t cacheId = contentCache->insertContent(hash, rect, nullptr, dataLen, false);
+  rfb::ContentKey key(static_cast<uint16_t>(rect.width()), 
+                      static_cast<uint16_t>(rect.height()), hash);
+  uint64_t cacheId = contentCache->insertContent(key, rect, nullptr, dataLen, false);
   
-  vlog.debug("ContentCache insert: rect [%d,%d-%d,%d], hash=%llx, cacheId=%llu",
+  vlog.debug("ContentCache insert: rect [%d,%d-%d,%d], key=(%ux%u,hash=%llx), cacheId=%llu",
              rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-             (unsigned long long)hash, (unsigned long long)cacheId);
+             key.width, key.height, (unsigned long long)hash, (unsigned long long)cacheId);
 }
 
 bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,

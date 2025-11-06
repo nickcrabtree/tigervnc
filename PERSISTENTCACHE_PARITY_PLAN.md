@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-This document provides an implementation plan to bring **PersistentCache** (hash-based, cross-session caching) to full feature parity with **ContentCache** (session-only, server-assigned IDs). Based on recent ContentCache enhancements (October 30 - November 5, 2025), the PersistentCache implementation needs:
+This document provides an implementation plan to bring **PersistentCache** (hash-based, cross-session caching) to full feature parity with **ContentCache** (session-only, server-assigned IDs). Based on recent ContentCache enhancements (October 30 - November 6, 2025), the PersistentCache implementation needs:
 
 1. **ARC Eviction Protocol** - Full client→server eviction notifications with adaptive cache management
 2. **Bandwidth Tracking** - Comprehensive savings metrics and concise reporting
@@ -53,7 +53,26 @@ From `PERSISTENTCACHE_DESIGN.md` and current implementation:
 
 ### What's Missing ❌
 
-From `CONTENTCACHE_RECENT_CHANGES_ANALYSIS.md` Part 1 (C++ ContentCache improvements):
+From `CONTENTCACHE_RECENT_CHANGES_ANALYSIS.md` Part 1 (C++ ContentCache improvements) and November 6, 2025 ContentKey fix:
+
+#### 0. ContentKey for PersistentCache (November 6, 2025)
+
+**Note**: PersistentCache uses variable-length hashes (not fixed uint64_t cache IDs), so it's LESS susceptible to dimension mismatch issues than ContentCache. However, for consistency and future-proofing:
+
+**Current**: PersistentCache keyed only by hash bytes (std::vector<uint8_t>)  
+**Consider**: Composite key with dimensions (width, height, hashBytes)
+
+**Impact**: Low priority for PersistentCache since:
+- Hashes are cryptographic (SHA-256), collision probability negligible
+- Different-sized rectangles of similar content produce different hashes
+- No observed dimension mismatch bugs in PersistentCache
+
+**Recommendation**: Monitor ContentCache ContentKey effectiveness before deciding whether to retrofit PersistentCache. If ContentCache shows improved hit rates or eliminated corruption, consider adding dimensions to PersistentCache hash key.
+
+**Files potentially affected** (if implemented):
+- `common/rfb/GlobalClientPersistentCache.{h,cxx}` - Key structure
+- `common/rfb/ContentHash.h` - Hash computation with dimension encoding
+- `common/rfb/VNCSConnectionST.cxx` - Server-side key tracking
 
 #### 1. ARC Eviction Notifications
 

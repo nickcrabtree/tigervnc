@@ -42,10 +42,11 @@ TEST(ContentCache, BasicInsertAndFind)
   uint64_t hash = computeContentHash(data.data(), data.size());
   
   core::Rect bounds(0, 0, 64, 64);
-  cache.insertContent(hash, bounds, data.data(), data.size(), false);
+  ContentKey key(64, 64, hash);  // width, height, hash
+  cache.insertContent(key, bounds, data.data(), data.size(), false);
   
   // Should find it
-  auto entry = cache.findContent(hash);
+  auto entry = cache.findContent(key);
   ASSERT_NE(entry, nullptr);
   EXPECT_EQ(entry->contentHash, hash);
   EXPECT_EQ(entry->lastBounds, bounds);
@@ -56,7 +57,8 @@ TEST(ContentCache, CacheMiss)
   ContentCache cache(10, 300);
   
   // Look for non-existent content
-  auto entry = cache.findContent(0xDEADBEEF);
+  ContentKey key(64, 64, 0xDEADBEEF);
+  auto entry = cache.findContent(key);
   EXPECT_EQ(entry, nullptr);
 }
 
@@ -67,22 +69,23 @@ TEST(ContentCache, LRUEviction)
   std::vector<uint8_t> data(256*1024, 0x42); // 256KB chunks
   
   // Fill cache with 5 entries (should trigger eviction)
-  std::vector<uint64_t> hashes;
+  std::vector<ContentKey> keys;
   for (int i = 0; i < 5; i++) {
     data[0] = i; // Make each entry unique
     uint64_t hash = computeContentHash(data.data(), data.size());
-    hashes.push_back(hash);
+    ContentKey key(64, 64, hash);  // All same dimensions
+    keys.push_back(key);
     
     core::Rect bounds(i*64, 0, (i+1)*64, 64);
-    cache.insertContent(hash, bounds, data.data(), data.size(), false);
+    cache.insertContent(key, bounds, data.data(), data.size(), false);
   }
   
   // First entry should be evicted
-  auto entry = cache.findContent(hashes[0]);
+  auto entry = cache.findContent(keys[0]);
   EXPECT_EQ(entry, nullptr);
   
   // Last entry should still exist
-  entry = cache.findContent(hashes[4]);
+  entry = cache.findContent(keys[4]);
   EXPECT_NE(entry, nullptr);
 }
 
@@ -92,34 +95,36 @@ TEST(ContentCache, TouchUpdatesLRU)
   
   std::vector<uint8_t> data(256*1024, 0x42);
   
-  std::vector<uint64_t> hashes;
+  std::vector<ContentKey> keys;
   for (int i = 0; i < 3; i++) {
     data[0] = i;
     uint64_t hash = computeContentHash(data.data(), data.size());
-    hashes.push_back(hash);
+    ContentKey key(64, 64, hash);
+    keys.push_back(key);
     
     core::Rect bounds(i*64, 0, (i+1)*64, 64);
-    cache.insertContent(hash, bounds, data.data(), data.size(), false);
+    cache.insertContent(key, bounds, data.data(), data.size(), false);
   }
   
   // Touch first entry to make it recent
-  cache.touchEntry(hashes[0]);
+  cache.touchEntry(keys[0]);
   
   // Add two more entries (should evict middle one, not first)
   for (int i = 3; i < 5; i++) {
     data[0] = i;
     uint64_t hash = computeContentHash(data.data(), data.size());
+    ContentKey key(64, 64, hash);
     
     core::Rect bounds(i*64, 0, (i+1)*64, 64);
-    cache.insertContent(hash, bounds, data.data(), data.size(), false);
+    cache.insertContent(key, bounds, data.data(), data.size(), false);
   }
   
   // First entry should still exist (was touched)
-  auto entry = cache.findContent(hashes[0]);
+  auto entry = cache.findContent(keys[0]);
   EXPECT_NE(entry, nullptr);
   
   // Middle entries should be evicted
-  entry = cache.findContent(hashes[1]);
+  entry = cache.findContent(keys[1]);
   EXPECT_EQ(entry, nullptr);
 }
 
@@ -129,16 +134,18 @@ TEST(ContentCache, Statistics)
   
   std::vector<uint8_t> data(1024, 0xFF);
   uint64_t hash = computeContentHash(data.data(), data.size());
+  ContentKey key(32, 32, hash);
   
   core::Rect bounds(0, 0, 32, 32);
-  cache.insertContent(hash, bounds, data.data(), data.size(), false);
+  cache.insertContent(key, bounds, data.data(), data.size(), false);
   
   // Hit
-  auto entry = cache.findContent(hash);
+  auto entry = cache.findContent(key);
   EXPECT_NE(entry, nullptr);
   
   // Miss
-  entry = cache.findContent(0xBAADF00D);
+  ContentKey missKey(32, 32, 0xBAADF00D);
+  entry = cache.findContent(missKey);
   EXPECT_EQ(entry, nullptr);
   
   auto stats = cache.getStats();
@@ -153,15 +160,16 @@ TEST(ContentCache, Clear)
   
   std::vector<uint8_t> data(1024, 0xFF);
   uint64_t hash = computeContentHash(data.data(), data.size());
+  ContentKey key(32, 32, hash);
   
   core::Rect bounds(0, 0, 32, 32);
-  cache.insertContent(hash, bounds, data.data(), data.size(), false);
+  cache.insertContent(key, bounds, data.data(), data.size(), false);
   
-  EXPECT_NE(cache.findContent(hash), nullptr);
+  EXPECT_NE(cache.findContent(key), nullptr);
   
   cache.clear();
   
-  EXPECT_EQ(cache.findContent(hash), nullptr);
+  EXPECT_EQ(cache.findContent(key), nullptr);
   EXPECT_EQ(cache.getStats().totalEntries, 0);
 }
 
@@ -273,11 +281,12 @@ TEST(Integration, CacheHitUsesHistoricalLocation)
   std::vector<uint8_t> data(64*64*4, 0xFF);
   uint64_t hash = computeContentHash(data.data(), data.size());
   core::Rect firstLocation(0, 0, 64, 64);
+  ContentKey key(64, 64, hash);
   
-  cache.insertContent(hash, firstLocation, data.data(), data.size(), false);
+  cache.insertContent(key, firstLocation, data.data(), data.size(), false);
   
   // Later: same content appears at (200, 200)
-  auto entry = cache.findContent(hash);
+  auto entry = cache.findContent(key);
   ASSERT_NE(entry, nullptr);
   
   // Should remember it was at (0,0)
@@ -305,7 +314,8 @@ TEST(Integration, RealWorldScenario_WindowSwitch)
   std::fill(terminalData.begin(), terminalData.end(), 0x11);
   uint64_t termHash = computeContentHash(terminalData.data(), 
                                          terminalData.size());
-  cache.insertContent(termHash, core::Rect(0, 0, 128, 128),
+  ContentKey key(128, 128, termHash);
+  cache.insertContent(key, core::Rect(0, 0, 128, 128),
                      terminalData.data(), terminalData.size(), false);
   
   // User switches to browser, terminal content hidden
@@ -313,7 +323,7 @@ TEST(Integration, RealWorldScenario_WindowSwitch)
   
   // User switches back to terminal
   // Same content reappears!
-  auto entry = cache.findContent(termHash);
+  auto entry = cache.findContent(key);
   ASSERT_NE(entry, nullptr);
   
   // Statistics show cache hit
@@ -326,6 +336,98 @@ TEST(Integration, RealWorldScenario_WindowSwitch)
 }
 
 // ============================================================================
+// ContentKey Dimension Tests (November 6, 2025 fix)
+// ============================================================================
+
+TEST(ContentKey, DimensionDisambiguation)
+{
+  ContentCache cache(10, 300);
+  
+  // Same hash, different dimensions should be separate entries
+  uint64_t hash = 0x12345678;
+  
+  std::vector<uint8_t> data1(2040*8*4, 0xAA);  // 2040x8
+  std::vector<uint8_t> data2(2024*8*4, 0xBB);  // 2024x8
+  
+  ContentKey key1(2040, 8, hash);
+  ContentKey key2(2024, 8, hash);  // Same hash, different dimensions
+  
+  // Insert both
+  cache.insertContent(key1, core::Rect(0, 0, 2040, 8), data1.data(), data1.size(), false);
+  cache.insertContent(key2, core::Rect(0, 0, 2024, 8), data2.data(), data2.size(), false);
+  
+  // Both should exist independently
+  auto entry1 = cache.findContent(key1);
+  auto entry2 = cache.findContent(key2);
+  
+  ASSERT_NE(entry1, nullptr);
+  ASSERT_NE(entry2, nullptr);
+  
+  // Verify they're different entries
+  EXPECT_EQ(entry1->lastBounds.width(), 2040);
+  EXPECT_EQ(entry2->lastBounds.width(), 2024);
+}
+
+TEST(ContentKey, EqualityOperator)
+{
+  ContentKey key1(1024, 768, 0x123456);
+  ContentKey key2(1024, 768, 0x123456);  // Identical
+  ContentKey key3(1024, 768, 0xABCDEF);  // Different hash
+  ContentKey key4(800, 600, 0x123456);   // Different dimensions
+  
+  // Same dimensions and hash should be equal
+  EXPECT_TRUE(key1 == key2);
+  
+  // Different hash should not be equal
+  EXPECT_FALSE(key1 == key3);
+  
+  // Different dimensions should not be equal
+  EXPECT_FALSE(key1 == key4);
+}
+
+TEST(ContentKey, HashFunction)
+{
+  ContentKey key1(1024, 768, 0x123456);
+  ContentKey key2(1024, 768, 0x123456);  // Identical
+  ContentKey key3(1024, 768, 0xABCDEF);  // Different hash
+  ContentKey key4(800, 600, 0x123456);   // Different dimensions
+  
+  ContentKeyHash hasher;
+  
+  // Identical keys should produce same hash
+  EXPECT_EQ(hasher(key1), hasher(key2));
+  
+  // Different keys should (likely) produce different hashes
+  EXPECT_NE(hasher(key1), hasher(key3));
+  EXPECT_NE(hasher(key1), hasher(key4));
+}
+
+TEST(ContentKey, BoundaryDimensions)
+{
+  ContentCache cache(10, 300);
+  
+  std::vector<uint8_t> data(1024, 0xFF);
+  uint64_t hash = computeContentHash(data.data(), data.size());
+  
+  // Test minimum dimensions
+  ContentKey key0(0, 0, hash);
+  cache.insertContent(key0, core::Rect(0, 0, 0, 0), data.data(), data.size(), false);
+  
+  // Test single pixel
+  ContentKey key1(1, 1, hash);
+  cache.insertContent(key1, core::Rect(0, 0, 1, 1), data.data(), data.size(), false);
+  
+  // Test maximum 16-bit dimensions (65535)
+  ContentKey keyMax(65535, 65535, hash);
+  cache.insertContent(keyMax, core::Rect(0, 0, 65535, 65535), data.data(), data.size(), false);
+  
+  // All should succeed without overflow
+  EXPECT_NE(cache.findContent(key0), nullptr);
+  EXPECT_NE(cache.findContent(key1), nullptr);
+  EXPECT_NE(cache.findContent(keyMax), nullptr);
+}
+
+// ============================================================================
 // Edge Cases
 // ============================================================================
 
@@ -334,12 +436,13 @@ TEST(ContentCache, ZeroSizeData)
   ContentCache cache(10, 300);
   
   uint64_t hash = computeContentHash(nullptr, 0);
+  ContentKey key(0, 0, hash);
   core::Rect bounds(0, 0, 0, 0);
   
   // Should handle gracefully
-  cache.insertContent(hash, bounds, nullptr, 0, false);
+  cache.insertContent(key, bounds, nullptr, 0, false);
   
-  auto entry = cache.findContent(hash);
+  auto entry = cache.findContent(key);
   (void)entry; // Suppress unused variable warning
   // May or may not find it (implementation dependent)
   // But shouldn't crash
@@ -352,35 +455,12 @@ TEST(ContentCache, VeryLargeData)
   // Try to cache 10MB chunk
   std::vector<uint8_t> data(10*1024*1024, 0x42);
   uint64_t hash = computeContentHash(data.data(), data.size());
+  ContentKey key(1920, 1080, hash);
   core::Rect bounds(0, 0, 1920, 1080);
   
-  cache.insertContent(hash, bounds, data.data(), data.size(), false);
+  cache.insertContent(key, bounds, data.data(), data.size(), false);
   
-  auto entry = cache.findContent(hash);
+  auto entry = cache.findContent(key);
   EXPECT_NE(entry, nullptr);
 }
 
-TEST(ContentCache, AgeBasedEviction)
-{
-  ContentCache cache(100, 1); // 1 second TTL
-  
-  std::vector<uint8_t> data(1024, 0xFF);
-  uint64_t hash = computeContentHash(data.data(), data.size());
-  core::Rect bounds(0, 0, 32, 32);
-  
-  cache.insertContent(hash, bounds, data.data(), data.size(), false);
-  
-  // Should exist immediately
-  EXPECT_NE(cache.findContent(hash), nullptr);
-  
-  // Sleep 2 seconds
-  // Note: In real test, you'd mock time instead of sleeping
-  // sleep(2);
-  
-  // Force pruning
-  cache.pruneCache();
-  
-  // Should be evicted due to age
-  // EXPECT_FALSE(cache.findContent(hash).has_value());
-  // TODO: Implement time mocking for this test
-}

@@ -453,6 +453,7 @@ void CConn::framebufferUpdateEnd()
 
   Fl::remove_timeout(handleUpdateTimeout, this);
   desktop->updateWindow();
+  Fl::flush();  // Force display flush to prevent stale rendering
   
   // Check if this was a verification update
   if (verificationInProgress_) {

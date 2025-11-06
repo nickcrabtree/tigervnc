@@ -553,8 +553,14 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect: about to call getDecodedPixels for cacheId=" + std::to_string(cacheId));
   
-  // Lookup cached pixels by cache ID
-  const ContentCache::CachedPixels* cached = contentCache->getDecodedPixels(cacheId);
+  // Construct ContentKey from rectangle dimensions and cache ID
+  // The cache ID received from the server is actually the content hash
+  rfb::ContentKey key(static_cast<uint16_t>(r.width()),
+                      static_cast<uint16_t>(r.height()),
+                      cacheId);
+  
+  // Lookup cached pixels by ContentKey
+  const ContentCache::CachedPixels* cached = contentCache->getDecodedPixels(key);
   
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect: getDecodedPixels returned cached=" + std::to_string(reinterpret_cast<uintptr_t>(cached)));
@@ -592,6 +598,8 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
   vlog.debug("Cache hit for ID %llu: blitting %dx%d to [%d,%d-%d,%d]",
              (unsigned long long)cacheId, cached->width, cached->height,
              r.tl.x, r.tl.y, r.br.x, r.br.y);
+  
+  // Dimension mismatch now impossible due to ContentKey structure
   
   // TEMP DEBUG: Check if we're about to blit all-black or mostly-black data
   size_t sampleSize = std::min((size_t)64, cached->pixels.size());
@@ -658,8 +666,14 @@ void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::storeCachedRect: about to call storeDecodedPixels with pixels=" + std::to_string(reinterpret_cast<uintptr_t>(pixels)) + ", stridePixels=" + std::to_string(stridePixels));
   
-  // Store in content cache with cache ID
-  contentCache->storeDecodedPixels(cacheId, pixels, pb->getPF(),
+  // Construct ContentKey from rectangle dimensions and cache ID
+  // The cache ID received from the server is actually the content hash
+  rfb::ContentKey key(static_cast<uint16_t>(r.width()),
+                      static_cast<uint16_t>(r.height()),
+                      cacheId);
+  
+  // Store in content cache with ContentKey
+  contentCache->storeDecodedPixels(key, pixels, pb->getPF(),
                                   r.width(), r.height(), stridePixels);
                                   
   //DebugContentCache_2025-10-14

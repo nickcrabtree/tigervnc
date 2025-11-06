@@ -8,27 +8,29 @@
 
 ## Executive Summary
 
-This document provides a phased implementation plan to bring the Rust viewer's ContentCache implementation to full parity with the C++ viewer. Based on the analysis in `CONTENTCACHE_RECENT_CHANGES_ANALYSIS.md`, the Rust viewer is missing three critical features implemented in the C++ viewer during October 30 - November 5, 2025:
+This document provides a phased implementation plan to bring the Rust viewer's ContentCache implementation to full parity with the C++ viewer. Based on the analysis in `CONTENTCACHE_RECENT_CHANGES_ANALYSIS.md`, the Rust viewer is missing critical features implemented in the C++ viewer during October 30 - November 6, 2025:
 
-1. **ARC Eviction Protocol** - Client→server eviction notifications with bidirectional communication
-2. **Bandwidth Tracking** - Comprehensive savings metrics and reporting
-3. **Cross-Architecture Tests** - Automated verification of identical behavior between viewers
+1. **ContentKey Structure** - 12-byte composite key (width, height, hash) to prevent dimension mismatches (⚠️ CRITICAL - November 6)
+2. **ARC Eviction Protocol** - Client→server eviction notifications with bidirectional communication
+3. **Bandwidth Tracking** - Comprehensive savings metrics and reporting
+4. **Cross-Architecture Tests** - Automated verification of identical behavior between viewers
 
-**Timeline Estimate**: 3-4 weeks  
-**Complexity**: High (protocol changes, cache algorithm upgrade, test infrastructure)
+**Timeline Estimate**: 4-5 weeks  
+**Complexity**: High (critical bugfix, protocol changes, cache algorithm upgrade, test infrastructure)
 
 ---
 
 ## Table of Contents
 
 1. [Gap Analysis](#gap-analysis)
-2. [Phase 1: ARC Eviction Algorithm](#phase-1-arc-eviction-algorithm)
-3. [Phase 2: Eviction Notification Protocol](#phase-2-eviction-notification-protocol)
-4. [Phase 3: Bandwidth Tracking](#phase-3-bandwidth-tracking)
-5. [Phase 4: Cross-Architecture Testing](#phase-4-cross-architecture-testing)
-6. [Phase 5: Validation and Documentation](#phase-5-validation-and-documentation)
-7. [Success Criteria](#success-criteria)
-8. [Risk Assessment](#risk-assessment)
+2. [Phase 0: ContentKey Implementation (CRITICAL)](#phase-0-contentkey-implementation-critical)
+3. [Phase 1: ARC Eviction Algorithm](#phase-1-arc-eviction-algorithm)
+4. [Phase 2: Eviction Notification Protocol](#phase-2-eviction-notification-protocol)
+5. [Phase 3: Bandwidth Tracking](#phase-3-bandwidth-tracking)
+6. [Phase 4: Cross-Architecture Testing](#phase-4-cross-architecture-testing)
+7. [Phase 5: Validation and Documentation](#phase-5-validation-and-documentation)
+8. [Success Criteria](#success-criteria)
+9. [Risk Assessment](#risk-assessment)
 
 ---
 
@@ -47,7 +49,31 @@ From `CONTENTCACHE_RECENT_CHANGES_ANALYSIS.md` Part 2:
 
 ### What's Missing ❌
 
-From `CONTENTCACHE_RECENT_CHANGES_ANALYSIS.md` Part 1 (C++ implementation):
+From `CONTENTCACHE_RECENT_CHANGES_ANALYSIS.md` Part 1 (C++ implementation) and November 6, 2025 dimension mismatch fix:
+
+#### 0. ContentKey Structure (⚠️ CRITICAL - November 6, 2025)
+
+**Current**: Pixel cache keyed only by uint64_t cache ID (content hash)  
+**Needed**: ContentKey composite structure:
+- `width: u16` (2 bytes)
+- `height: u16` (2 bytes) 
+- `content_hash: u64` (8 bytes)
+- Total: 12 bytes
+
+**Impact**: **CRITICAL BUG** - Without ContentKey, cache can return wrong-sized rectangles:
+- Server sends CachedRect with ID 12345 for 2040×8 rectangle
+- Later sends CachedRect with ID 12345 for 2024×8 rectangle (hash collision)
+- Client looks up ID 12345, finds 2040×8 pixels, tries to blit to 2024×8 target
+- Result: Visual corruption, dimension mismatch errors, potential segfaults
+
+**Fix**: C++ viewer (commit November 6, 2025) adopted ContentKey for both server-side hash cache AND client-side pixel cache to guarantee dimension uniqueness. Rust viewer MUST implement identical structure.
+
+**Files affected**:
+- `rust-vnc-viewer/rfb-encodings/src/content_cache.rs` - ContentKey struct, pixel cache map
+- `rust-vnc-viewer/rfb-protocol/src/messages/server.rs` - CachedRect/CachedRectInit handling
+- `rust-vnc-viewer/rfb-client/src/framebuffer.rs` - Cache lookups/storage
+
+**Implementation**: See Phase 0 (NEW - highest priority)
 
 #### 1. ARC Eviction Algorithm (Part 1.1)
 
@@ -103,11 +129,255 @@ tests/e2e/test_cache_eviction.py                      [Enhanced - verify Rust to
 
 ---
 
+## Phase 0: ContentKey Implementation (⚠️ CRITICAL)
+
+**Duration**: 2-3 days  
+**Complexity**: Medium-High  
+**Dependencies**: None  
+**Priority**: **BLOCKING** - Must be completed before any other work
+
+### 0.1 Goals
+
+Implement ContentKey composite structure matching C++ viewer to prevent dimension mismatch corruption bug.
+
+### 0.2 Background: Dimension Mismatch Bug
+
+Discovered November 6, 2025 during testing. Root cause:
+- Server's ContentCache used only content hash as cache key
+- Two rectangles with similar content but different dimensions could get same hash
+- Server reused cache IDs across different-sized rectangles
+- Client pixel cache keyed only by cache ID (hash), causing wrong-sized pixels to be blitted
+
+**Example**:
+```
+Server: CachedRect(id=201, rect=[8,924-2048,932])  // 2040×8
+Client: Stores 2040×8 pixels under cache ID 201
+
+Later:
+Server: CachedRect(id=201, rect=[8,924-2032,932])  // 2024×8 (hash collision!)
+Client: Looks up ID 201, finds 2040×8 pixels, blits to 2024×8 target
+Result: DIMENSION MISMATCH! Corruption visible during scrolling
+```
+
+**C++ Fix** (November 6, 2025):
+- Introduced ContentKey struct: `{ uint16_t width; uint16_t height; uint64_t contentHash; }`
+- Server-side hash cache keyed by ContentKey (width, height, hash)
+- Client-side pixel cache ALSO keyed by ContentKey (width, height, hash received from server)
+- Dimension mismatches now structurally impossible
+
+### 0.3 Implementation Tasks
+
+#### Task 0.1: Define ContentKey struct
+
+**File**: `rust-vnc-viewer/rfb-encodings/src/content_cache.rs`
+
+```rust
+/// Composite cache key: width + height + content hash
+/// 
+/// Prevents dimension mismatches by ensuring cache lookups
+/// require exact dimension match in addition to content hash.
+/// 
+/// **Critical**: Both server and client must use this structure
+/// to avoid visual corruption from hash collisions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ContentKey {
+    pub width: u16,
+    pub height: u16,
+    pub content_hash: u64,
+}
+
+impl ContentKey {
+    pub fn new(width: u32, height: u32, content_hash: u64) -> Self {
+        Self {
+            width: width as u16,  // Max 65535 (current limit: 16384)
+            height: height as u16,
+            content_hash,
+        }
+    }
+}
+```
+
+**Reference**: C++ ContentCache.h lines 65-80 (commit November 6, 2025)
+
+#### Task 0.2: Update CachedPixels struct
+
+**File**: `rust-vnc-viewer/rfb-encodings/src/content_cache.rs`
+
+```rust
+pub struct CachedPixels {
+    pub key: ContentKey,  // NEW: Replaces standalone cache_id
+    pub pixels: Vec<u8>,
+    pub format: PixelFormat,
+    pub width: u32,
+    pub height: u32,
+    pub stride: usize,
+    pub last_used: Instant,
+    pub created_at: Instant,
+    pub bytes: usize,
+}
+```
+
+#### Task 0.3: Update pixel cache map
+
+**File**: `rust-vnc-viewer/rfb-encodings/src/content_cache.rs`
+
+```rust
+pub struct ContentCache {
+    // OLD: pixels: HashMap<u64, CachedPixels>,
+    // NEW: Key by ContentKey to prevent dimension mismatches
+    pixels: HashMap<ContentKey, CachedPixels>,
+    
+    // ... rest unchanged ...
+}
+```
+
+#### Task 0.4: Update store_decoded_pixels()
+
+```rust
+pub fn store_decoded_pixels(
+    &mut self,
+    width: u32,       // NEW: Required for key construction
+    height: u32,      // NEW: Required for key construction
+    cache_id: u64,    // This is actually the content hash from server
+    pixels: Vec<u8>,
+    format: PixelFormat,
+    stride: usize,
+) -> Result<()> {
+    // Construct ContentKey from dimensions + hash
+    let key = ContentKey::new(width, height, cache_id);
+    
+    // ... existing logic, but use `key` instead of `cache_id` ...
+    
+    let cached = CachedPixels {
+        key,  // Store the ContentKey
+        pixels,
+        format,
+        width,
+        height,
+        stride,
+        last_used: Instant::now(),
+        created_at: Instant::now(),
+        bytes,
+    };
+    
+    self.pixels.insert(key, cached);
+    Ok(())
+}
+```
+
+#### Task 0.5: Update lookup()
+
+```rust
+pub fn lookup(&mut self, width: u32, height: u32, cache_id: u64) -> Option<&CachedPixels> {
+    // Construct ContentKey from rectangle dimensions + cache ID
+    let key = ContentKey::new(width, height, cache_id);
+    
+    if let Some(cached) = self.pixels.get_mut(&key) {
+        cached.touch();
+        self.hit_count += 1;
+        Some(cached)
+    } else {
+        self.miss_count += 1;
+        None
+    }
+}
+```
+
+#### Task 0.6: Update all call sites
+
+**File**: `rust-vnc-viewer/rfb-encodings/src/cached_rect.rs`
+
+```rust
+// When receiving CachedRect message:
+pub async fn decode_cached_rect<R: AsyncRead + Unpin>(
+    stream: &mut RfbInStream<R>,
+    rect: Rectangle,
+    framebuffer: &mut Framebuffer,
+    cache: &mut ContentCache,
+) -> Result<()> {
+    let cache_id = stream.read_u64().await?;
+    
+    // Pass dimensions to lookup
+    if let Some(cached) = cache.lookup(rect.width, rect.height, cache_id) {
+        // Blit cached pixels
+        framebuffer.copy_rect(&rect, &cached.pixels, cached.stride)?;
+    } else {
+        // Send RequestCachedData
+        // ...
+    }
+    Ok(())
+}
+```
+
+**File**: `rust-vnc-viewer/rfb-encodings/src/cached_rect_init.rs`
+
+```rust
+// When receiving CachedRectInit message:
+pub async fn decode_cached_rect_init<R: AsyncRead + Unpin>(
+    stream: &mut RfbInStream<R>,
+    rect: Rectangle,
+    framebuffer: &mut Framebuffer,
+    cache: &mut ContentCache,
+) -> Result<()> {
+    let cache_id = stream.read_u64().await?;
+    let actual_encoding = stream.read_i32().await?;
+    
+    // Decode rectangle
+    let pixels = decode_by_encoding(stream, &rect, actual_encoding).await?;
+    
+    // Store with dimensions
+    cache.store_decoded_pixels(
+        rect.width,      // NEW
+        rect.height,     // NEW
+        cache_id,
+        pixels,
+        framebuffer.pixel_format(),
+        rect.width as usize,
+    )?;
+    
+    Ok(())
+}
+```
+
+### 0.4 Testing
+
+#### Manual test:
+```bash
+# Build with ContentKey changes
+cd rust-vnc-viewer
+cargo build --release
+
+# Run against test server
+cargo run --release -- -vv localhost:999 2>&1 | tee /tmp/rust_contentkey_test.log
+
+# Scroll extensively in viewer to test dimension variety
+# Check for "DIMENSION MISMATCH" errors (should be ZERO)
+grep "DIMENSION MISMATCH" /tmp/rust_contentkey_test.log
+```
+
+#### Expected behavior:
+- No dimension mismatch errors during scrolling
+- No visual corruption
+- Cache hit rate unchanged or improved
+
+### 0.5 Validation
+
+**Acceptance criteria**:
+- ✅ No compiler errors
+- ✅ All existing tests pass
+- ✅ Manual testing shows no visual corruption during scrolling
+- ✅ Log shows ContentKey being used (e.g., "Stored rect with key (2024×8, hash=0x...)")  
+- ✅ Zero dimension mismatch errors in logs
+
+**Blocker resolution**: This phase MUST complete before any ARC work (Phase 1) to avoid building on top of a corrupted cache foundation.
+
+---
+
 ## Phase 1: ARC Eviction Algorithm
 
 **Duration**: 1-2 weeks  
 **Complexity**: High  
-**Dependencies**: None
+**Dependencies**: **Phase 0 complete (ContentKey)**
 
 ### 1.1 Goals
 
@@ -197,33 +467,33 @@ impl CachedPixels {
 use std::collections::{HashMap, LinkedList};
 
 pub struct ContentCache {
-    // Existing fields
-    pixels: HashMap<u64, CachedPixels>,
+    // Existing fields (UPDATED for Phase 0 ContentKey)
+    pixels: HashMap<ContentKey, CachedPixels>,  // ContentKey instead of u64
     max_size_mb: usize,
     current_size_bytes: usize,
     // ... stats fields ...
     
     // NEW: ARC tracking structures
     // T1: Recently used once (recency)
-    pixel_t1: LinkedList<u64>,
+    pixel_t1: LinkedList<ContentKey>,  // ContentKey instead of u64
     
     // T2: Frequently used (frequency)
-    pixel_t2: LinkedList<u64>,
+    pixel_t2: LinkedList<ContentKey>,  // ContentKey instead of u64
     
-    // B1: Ghost entries evicted from T1 (no pixel data, just IDs)
-    pixel_b1: LinkedList<u64>,
+    // B1: Ghost entries evicted from T1 (no pixel data, just keys)
+    pixel_b1: LinkedList<ContentKey>,  // ContentKey instead of u64
     
-    // B2: Ghost entries evicted from T2 (no pixel data, just IDs)
-    pixel_b2: LinkedList<u64>,
+    // B2: Ghost entries evicted from T2 (no pixel data, just keys)
+    pixel_b2: LinkedList<ContentKey>,  // ContentKey instead of u64
     
-    // Track which list each cache_id is in
-    pixel_list_map: HashMap<u64, ListType>,
+    // Track which list each key is in
+    pixel_list_map: HashMap<ContentKey, ListType>,  // ContentKey instead of u64
     
     // Adaptive parameter (target size for T1)
     pixel_p: usize,
     
-    // Eviction notification queue
-    pending_evictions: Vec<u64>,
+    // Eviction notification queue (send content_hash component to server)
+    pending_evictions: Vec<u64>,  // Extract .content_hash from ContentKey on eviction
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -256,44 +526,45 @@ impl ContentCache {
         
         // Implementation follows C++ replacePixelCache()
         // See ContentCache.cxx lines ~450-520
+        // NOTE: Uses ContentKey instead of u64 cache_id
     }
     
-    /// Move cache_id from T1 to head of T2 (promotion on second access)
-    fn move_pixel_to_t2(&mut self, cache_id: u64) {
+    /// Move ContentKey from T1 to head of T2 (promotion on second access)
+    fn move_pixel_to_t2(&mut self, key: &ContentKey) {
         // Remove from T1, add to T2 head
         // Update pixel_list_map
     }
     
-    /// Move cache_id within T2 to head (reuse of frequent entry)
-    fn move_to_t2_head(&mut self, cache_id: u64) {
+    /// Move ContentKey within T2 to head (reuse of frequent entry)
+    fn move_to_t2_head(&mut self, key: &ContentKey) {
         // Move to head within T2
     }
     
     /// Evict from T1 to B1 ghost list
-    fn move_pixel_to_b1(&mut self, cache_id: u64) {
+    fn move_pixel_to_b1(&mut self, key: &ContentKey) {
         // Remove from T1
         // Remove pixel data from pixels map
         // Add to B1 (ghost entry)
-        // Track in pending_evictions
+        // Track hash component in pending_evictions: key.content_hash
     }
     
     /// Evict from T2 to B2 ghost list
-    fn move_pixel_to_b2(&mut self, cache_id: u64) {
+    fn move_pixel_to_b2(&mut self, key: &ContentKey) {
         // Remove from T2
         // Remove pixel data from pixels map
         // Add to B2 (ghost entry)
-        // Track in pending_evictions
+        // Track hash component in pending_evictions: key.content_hash
     }
     
-    /// Remove cache_id from any ARC list
-    fn remove_from_lists(&mut self, cache_id: u64) {
+    /// Remove ContentKey from any ARC list
+    fn remove_from_lists(&mut self, key: &ContentKey) {
         // Remove from whichever list it's in
         // Update pixel_list_map
     }
     
     /// Get byte size of cache entry
-    fn get_pixel_entry_size(&self, cache_id: u64) -> usize {
-        if let Some(cached) = self.pixels.get(&cache_id) {
+    fn get_pixel_entry_size(&self, key: &ContentKey) -> usize {
+        if let Some(cached) = self.pixels.get(key) {
             cached.bytes
         } else {
             0
@@ -1847,17 +2118,19 @@ Document changes for users upgrading from old Rust viewer to new ARC-based versi
 
 | Phase | Duration | Start | End |
 |-------|----------|-------|-----|
-| Phase 1: ARC Eviction Algorithm | 1-2 weeks | Week 1 | Week 2-3 |
+| **Phase 0: ContentKey (CRITICAL)** | **2-3 days** | **Week 1** | **Week 1** |
+| Phase 1: ARC Eviction Algorithm | 1-2 weeks | Week 1-2 | Week 2-3 |
 | Phase 2: Eviction Protocol | 3-5 days | Week 2-3 | Week 3 |
 | Phase 3: Bandwidth Tracking | 3-5 days | Week 2 | Week 2-3 |
-| Phase 4: Cross-Architecture Tests | 1 week | Week 3 | Week 4 |
-| Phase 5: Validation & Docs | 3-5 days | Week 4 | Week 4 |
+| Phase 4: Cross-Architecture Tests | 1 week | Week 3-4 | Week 4-5 |
+| Phase 5: Validation & Docs | 3-5 days | Week 4-5 | Week 5 |
 
-**Total**: 3-4 weeks
+**Total**: 4-5 weeks
 
 **Notes**:
-- Phases 2 and 3 can be done in parallel with Phase 1
-- Phase 4 requires Phase 1-3 complete
+- **Phase 0 is BLOCKING** - must complete before any other work
+- Phases 2 and 3 can be done in parallel with Phase 1 (after Phase 0)
+- Phase 4 requires Phase 0-3 complete
 - Phase 5 is final validation
 
 ---

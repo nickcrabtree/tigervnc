@@ -21,6 +21,7 @@
 
 #include <stdint.h>
 #include <atomic>
+#include <functional>  // for std::hash
 #include <vector>
 #include <unordered_map>
 #include <list>
@@ -58,6 +59,41 @@ namespace rfb {
   };
   //DebugContentCache_2025-10-14 - End debug logging class
 
+  // Composite key for content cache entries
+  // Combines rectangle dimensions with content hash to guarantee uniqueness
+  // across different-sized rectangles with similar content.
+  // Total size: 12 bytes (uint16_t + uint16_t + uint64_t)
+  struct ContentKey {
+    uint16_t width;       // Rectangle width (max 65535)
+    uint16_t height;      // Rectangle height (max 65535)
+    uint64_t contentHash; // 64-bit content hash
+    
+    ContentKey() : width(0), height(0), contentHash(0) {}
+    
+    ContentKey(uint16_t w, uint16_t h, uint64_t hash)
+      : width(w), height(h), contentHash(hash) {}
+    
+    bool operator==(const ContentKey& other) const {
+      return width == other.width && 
+             height == other.height && 
+             contentHash == other.contentHash;
+    }
+  };
+  
+  // Hash function for ContentKey to use in unordered_map
+  // Combines dimensions and content hash using simple bit operations
+  // (no magic primes - just bit packing based on field widths)
+  struct ContentKeyHash {
+    size_t operator()(const ContentKey& k) const {
+      // Pack dimensions into high bits, combine with content hash
+      uint64_t dims = ((uint64_t)(k.width & 0xFFFF) << 48) | 
+                      ((uint64_t)(k.height & 0xFFFF) << 32);
+      // Mix with content hash for good distribution
+      uint64_t h = k.contentHash ^ dims ^ (k.contentHash >> 32);
+      return std::hash<uint64_t>{}(h);
+    }
+  };
+
   // Content-addressable cache for historical framebuffer chunks
   // Uses ARC (Adaptive Replacement Cache) algorithm for better eviction
   // ARC combines recency (LRU) and frequency (LFU) with self-tuning
@@ -85,21 +121,21 @@ namespace rfb {
           dataSize(0), hitCount(0) {}
     };
 
-    // Find if content exists in cache by hash
+    // Find if content exists in cache by composite key (dimensions + hash)
     // Returns entry if found, nullptr otherwise
-    CacheEntry* findContent(uint64_t hash);
+    CacheEntry* findContent(const ContentKey& key);
     
     // Find by cache ID (for protocol)
     CacheEntry* findByCacheId(uint64_t cacheId);
     
-    // Find by hash and return cache ID if exists
+    // Find by composite key and return cache ID if exists
     // Returns entry and sets outCacheId if found
-    CacheEntry* findByHash(uint64_t hash, uint64_t* outCacheId);
+    CacheEntry* findByKey(const ContentKey& key, uint64_t* outCacheId);
     
     // Insert new content into cache
     // If keepData=true, stores full pixel data for verification
     // Returns assigned cache ID
-    uint64_t insertContent(uint64_t hash, 
+    uint64_t insertContent(const ContentKey& key, 
                           const core::Rect& bounds,
                           const uint8_t* data = nullptr,
                           size_t dataLen = 0,
@@ -107,14 +143,14 @@ namespace rfb {
     
     // Insert with explicit cache ID (for client-side storage)
     void insertWithId(uint64_t cacheId,
-                     uint64_t hash,
+                     const ContentKey& key,
                      const core::Rect& bounds,
                      const uint8_t* data = nullptr,
                      size_t dataLen = 0,
                      bool keepData = false);
     
     // Mark entry as recently accessed (updates ARC lists)
-    void touchEntry(uint64_t hash);
+    void touchEntry(const ContentKey& key);
     
     // Remove old entries based on age and memory limits
     void pruneCache();
@@ -153,9 +189,9 @@ namespace rfb {
     // Get next available cache ID (for server)
     uint64_t getNextCacheId();
     
-    // Client-side: Store decoded pixels by cache ID
+    // Client-side: Store decoded pixels by ContentKey
     struct CachedPixels {
-      uint64_t cacheId;
+      ContentKey key;           // Composite key (width, height, hash)
       std::vector<uint8_t> pixels;
       PixelFormat format;
       int width;
@@ -164,12 +200,12 @@ namespace rfb {
       size_t bytes;      // Total byte size (for ARC tracking)
       uint32_t lastUsedTime;
       
-      CachedPixels() : cacheId(0), width(0), height(0), stridePixels(0), bytes(0), lastUsedTime(0) {}
+      CachedPixels() : width(0), height(0), stridePixels(0), bytes(0), lastUsedTime(0) {}
     };
     
-    void storeDecodedPixels(uint64_t cacheId, const uint8_t* pixels,
+    void storeDecodedPixels(const ContentKey& key, const uint8_t* pixels,
                            const PixelFormat& pf, int width, int height, int stridePixels);
-    const CachedPixels* getDecodedPixels(uint64_t cacheId);
+    const CachedPixels* getDecodedPixels(const ContentKey& key);
     
     // Eviction notification management
     // Returns vector of evicted cache IDs that need to be sent to server
@@ -178,16 +214,17 @@ namespace rfb {
     bool hasPendingEvictions() const { return !pendingEvictions_.empty(); }
     
   private:
-    // Main cache storage: hash -> entry data
-    std::unordered_map<uint64_t, CacheEntry> cache_;
+    // Main cache storage: ContentKey -> entry data
+    // Key includes dimensions to prevent reuse across different-sized rectangles
+    std::unordered_map<ContentKey, CacheEntry, ContentKeyHash> cache_;
     
     // Cache ID management (for protocol)
     std::atomic<uint64_t> nextCacheId_;
-    std::unordered_map<uint64_t, uint64_t> hashToCacheId_;  // hash -> cache ID
-    std::unordered_map<uint64_t, uint64_t> cacheIdToHash_;  // cache ID -> hash
+    std::unordered_map<ContentKey, uint64_t, ContentKeyHash> keyToCacheId_;  // key -> cache ID
+    std::unordered_map<uint64_t, ContentKey> cacheIdToKey_;  // cache ID -> key
     
-    // Client-side: Decoded pixel storage
-    std::unordered_map<uint64_t, CachedPixels> pixelCache_;
+    // Client-side: Decoded pixel storage (keyed by ContentKey to prevent dimension mismatches)
+    std::unordered_map<ContentKey, CachedPixels, ContentKeyHash> pixelCache_;
     
     // ARC list membership tracking
     enum ListType {
@@ -200,19 +237,19 @@ namespace rfb {
     
     struct ListInfo {
       ListType list;
-      std::list<uint64_t>::iterator iter;
+      std::list<ContentKey>::iterator iter;
       
       ListInfo() : list(LIST_NONE) {}
     };
     
-    // ARC lists (most recent at front)
-    std::list<uint64_t> t1_;  // Recently used once
-    std::list<uint64_t> t2_;  // Frequently used
-    std::list<uint64_t> b1_;  // Ghost entries from T1
-    std::list<uint64_t> b2_;  // Ghost entries from T2
+    // ARC lists (most recent at front) - server-side hash cache
+    std::list<ContentKey> t1_;  // Recently used once
+    std::list<ContentKey> t2_;  // Frequently used
+    std::list<ContentKey> b1_;  // Ghost entries from T1
+    std::list<ContentKey> b2_;  // Ghost entries from T2
     
-    // Track which list each hash is in
-    std::unordered_map<uint64_t, ListInfo> listMap_;
+    // Track which list each key is in
+    std::unordered_map<ContentKey, ListInfo, ContentKeyHash> listMap_;
     
     // ARC adaptive parameter: target size for T1 in bytes
     size_t p_;
@@ -229,11 +266,18 @@ namespace rfb {
     mutable Stats stats_;
     
     // Client-side pixel cache ARC tracking (parallel to server-side hash cache)
-    std::list<uint64_t> pixelT1_;  // Recently used once (pixel cache IDs)
-    std::list<uint64_t> pixelT2_;  // Frequently used (pixel cache IDs)
-    std::list<uint64_t> pixelB1_;  // Ghost entries from pixel T1
-    std::list<uint64_t> pixelB2_;  // Ghost entries from pixel T2
-    std::unordered_map<uint64_t, ListInfo> pixelListMap_;  // Track which list each cache ID is in
+    struct PixelListInfo {
+      ListType list;
+      std::list<ContentKey>::iterator iter;
+      
+      PixelListInfo() : list(LIST_NONE) {}
+    };
+    
+    std::list<ContentKey> pixelT1_;  // Recently used once
+    std::list<ContentKey> pixelT2_;  // Frequently used
+    std::list<ContentKey> pixelB1_;  // Ghost entries from pixel T1
+    std::list<ContentKey> pixelB2_;  // Ghost entries from pixel T2
+    std::unordered_map<ContentKey, PixelListInfo, ContentKeyHash> pixelListMap_;  // Track which list each key is in
     size_t pixelP_;          // ARC adaptive parameter for pixel cache
     size_t pixelT1Size_;     // Bytes in pixel T1
     size_t pixelT2Size_;     // Bytes in pixel T2
@@ -243,20 +287,20 @@ namespace rfb {
     std::vector<uint64_t> pendingEvictions_;  // Cache IDs evicted, pending notification to server
     
     // ARC helper methods (server-side hash cache)
-    void replace(uint64_t hash, size_t size);
-    void moveToT2(uint64_t hash);
-    void moveToB1(uint64_t hash);
-    void moveToB2(uint64_t hash);
-    void removeFromList(uint64_t hash);
-    size_t getEntrySize(uint64_t hash) const;
+    void replace(const ContentKey& key, size_t size);
+    void moveToT2(const ContentKey& key);
+    void moveToB1(const ContentKey& key);
+    void moveToB2(const ContentKey& key);
+    void removeFromList(const ContentKey& key);
+    size_t getEntrySize(const ContentKey& key) const;
     
     // ARC helper methods (client-side pixel cache)
     void replacePixelCache(size_t size);
-    void movePixelToT2(uint64_t cacheId);
-    void movePixelToB1(uint64_t cacheId);
-    void movePixelToB2(uint64_t cacheId);
-    void removePixelFromList(uint64_t cacheId);
-    size_t getPixelEntrySize(uint64_t cacheId) const;
+    void movePixelToT2(const ContentKey& key);
+    void movePixelToB1(const ContentKey& key);
+    void movePixelToB2(const ContentKey& key);
+    void removePixelFromList(const ContentKey& key);
+    size_t getPixelEntrySize(const ContentKey& key) const;
     
     // Common helpers
     uint32_t getCurrentTime() const;
