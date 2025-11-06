@@ -722,6 +722,9 @@ void CConn::handleUpdateTimeout(void *data)
 void CConn::verifyFramebuffer()
 {
   vlog.info("========== FRAMEBUFFER VERIFICATION REQUESTED ==========" );
+  vlog.info("NOTE: Verification compares internal framebuffer state, not screen pixels");
+  vlog.info("If corruption appears fixed after refresh but verification passes,");
+  vlog.info("the bug may be in display rendering, not framebuffer content");
   
   if (!desktop) {
     vlog.error("Cannot verify: desktop not initialized");
@@ -732,6 +735,11 @@ void CConn::verifyFramebuffer()
     vlog.error("Verification already in progress");
     return;
   }
+  
+  // Force display update to ensure screen matches framebuffer
+  desktop->updateWindow();
+  Fl::flush();
+  vlog.info("Display flushed to ensure screen matches internal framebuffer");
   
   // Get current framebuffer
   rfb::ModifiablePixelBuffer* pb = getFramebuffer();
