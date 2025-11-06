@@ -300,19 +300,16 @@ void DecodeManager::logStats()
     
     // Report memory usage
     auto ccStats = contentCache->getStats();
-    size_t totalBytes = contentCache->getTotalBytes();
-    // Note: getStats() now returns pixel cache stats on client (pixelT1Size + pixelT2Size)
-    // getTotalBytes() returns hashCache (t1Size + t2Size) + pixelCache (actual pixel.size())
-    size_t pixelBytes = ccStats.totalBytes;  // Pixel cache from ARC tracking (pixelT1Size + pixelT2Size)
-    size_t hashBytes = totalBytes - pixelBytes;  // Hash cache = total - pixel
+    // On client: getStats() reports pixel cache (pixelT1Size + pixelT2Size)
+    // On server: getStats() reports hash cache (t1Size + t2Size)
+    // Client has no hash cache, server has no pixel cache
+    size_t pixelBytes = ccStats.totalBytes;  // Will be pixel cache on client, hash cache on server
     size_t maxBytes = 2048ULL * 1024 * 1024;  // Default 2GB
-    double pctUsed = (maxBytes > 0) ? (100.0 * totalBytes / maxBytes) : 0.0;
+    double pctUsed = (maxBytes > 0) ? (100.0 * pixelBytes / maxBytes) : 0.0;
     
     vlog.info("  Cache memory usage:");
-    vlog.info("    Hash cache: %s", core::iecPrefix(hashBytes, "B").c_str());
-    vlog.info("    Pixel cache: %s", core::iecPrefix(pixelBytes, "B").c_str());
     vlog.info("    Total: %s / %s (%.1f%% used)",
-              core::iecPrefix(totalBytes, "B").c_str(),
+              core::iecPrefix(pixelBytes, "B").c_str(),
               core::iecPrefix(maxBytes, "B").c_str(),
               pctUsed);
     
