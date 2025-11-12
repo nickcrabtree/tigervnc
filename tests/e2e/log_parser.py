@@ -70,6 +70,9 @@ class ParsedLog:
     cache_eviction_count: int = 0  # Number of eviction notifications sent
     evicted_ids_count: int = 0  # Total number of cache IDs evicted
     
+    # ContentCache bandwidth (client-side summary line)
+    content_bandwidth_reduction: float = 0.0
+    
     # PersistentCache-specific aggregates
     persistent_eviction_count: int = 0
     persistent_evicted_ids: int = 0
@@ -231,6 +234,15 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                     except ValueError:
                         pass
             
+            elif 'contentcache:' in message:
+                # Format: "ContentCache: <size> bandwidth saving (<pct>% reduction)"
+                m = re.search(r'ContentCache:.*\(([-\d.]+)%\s*reduction\)', message)
+                if m:
+                    try:
+                        parsed.content_bandwidth_reduction = float(m.group(1))
+                    except ValueError:
+                        pass
+            
             # PersistentCache hit/miss counters from viewer logs
             elif 'persistentcache hit' in message.lower():
                 parsed.persistent_hits += 1
@@ -387,6 +399,7 @@ def compute_metrics(parsed: ParsedLog) -> Dict:
             'total_stores': parsed.total_stores,
             'total_lookups': parsed.total_lookups,
             'hit_rate': compute_hit_rate(parsed),
+            'bandwidth_reduction_pct': parsed.content_bandwidth_reduction,
         },
         'protocol_messages': {
             'CachedRect': parsed.cached_rect_count,

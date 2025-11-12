@@ -160,9 +160,12 @@ void GlobalClientPersistentCache::insert(const std::vector<uint8_t>& hash,
   entry.format = pf;
   entry.width = width;
   entry.height = height;
-  entry.stridePixels = stridePixels;
+  // Store pixels contiguously in our cache to simplify later blits
+  // NOTE: stridePixels in this struct is in PIXELS for the stored buffer.
+  // Since we copy rows tightly, the stored stride is exactly the width.
+  entry.stridePixels = width;
   entry.lastAccessTime = getCurrentTime();
-
+ 
   const size_t bppBytes = pf.bpp / 8;
   const size_t rowBytes = (size_t)width * bppBytes;
   const size_t srcStrideBytes = (size_t)stridePixels * bppBytes;

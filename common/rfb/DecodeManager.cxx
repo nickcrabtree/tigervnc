@@ -631,7 +631,9 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect: about to call pb->imageRect with cached->pixels.data()=" + std::to_string(reinterpret_cast<uintptr_t>(cached->pixels.data())) + ", cached->pixels.size()=" + std::to_string(cached->pixels.size()) + ", cached->stridePixels=" + std::to_string(cached->stridePixels));
   
   // Blit cached pixels to framebuffer at target position
-  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
+  // NOTE: PersistentCache stores pixels contiguously; use width as stride in pixels
+  int srcStridePx = cached->width;
+  pb->imageRect(cached->format, r, cached->pixels.data(), srcStridePx);
   
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect EXIT: imageRect completed successfully");
@@ -748,9 +750,9 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
            hash.size() > 6 ? hash[6] : 0,
            hash.size() > 7 ? hash[7] : 0);
   
-  vlog.debug("PersistentCache HIT: rect [%d,%d-%d,%d] hash=%s... cached=%dx%d stride=%d",
+  vlog.debug("PersistentCache HIT: rect [%d,%d-%d,%d] hash=%s... cached=%dx%d strideStored=%d usingStride=%d",
              r.tl.x, r.tl.y, r.br.x, r.br.y, hashStr,
-             cached->width, cached->height, cached->stridePixels);
+             cached->width, cached->height, cached->stridePixels, cached->width);
   
   // Blit cached pixels to framebuffer at target position
   pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
