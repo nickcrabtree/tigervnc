@@ -146,25 +146,21 @@ Matching ContentCache capabilities!
 
 ### 6.2 E2E Tests (Priority: HIGH)
 
-**Need to create**:
+Created:
 1. `tests/e2e/test_persistent_cache_eviction.py`
-   - Start test server on :998 with PersistentCache
-   - Start viewer with tiny cache to force evictions
-   - Generate workload exceeding cache size
-   - Verify server logs show eviction handling
-   - Verify known-hash set updates
-
+   - Launches content and viewer window servers on :998/:999
+   - Runs viewer with small PersistentCache to force evictions
+   - Runs animated scenario to generate pressure
+   - Parses viewer logs for PersistentCache eviction notifications and bandwidth summary
+ 
 2. `tests/e2e/test_persistent_cache_bandwidth.py`
-   - Start test server/viewer with PersistentCache
-   - Exercise repeated content (high hit rate)
-   - Verify bandwidth summary on viewer exit
-   - Extract and validate reduction percentage (>80%)
-
+   - Launches servers and viewer with PersistentCache enabled
+   - Runs repeated-content scenario
+   - Parses viewer logs for PersistentCache bandwidth reduction and asserts >80%
+ 
+Planned:
 3. `tests/e2e/test_cache_parity.py`
-   - Run identical workload with ContentCache
-   - Run identical workload with PersistentCache
-   - Compare hit rates (should be within 5%)
-   - Compare bandwidth savings
+   - Compare ContentCache vs PersistentCache hit rates and savings on identical workload
 
 **⚠️ CRITICAL SAFETY RULES**:
 - ONLY use displays `:998` and `:999` (NEVER `:1`, `:2`, `:3`)

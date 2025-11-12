@@ -57,18 +57,23 @@ class ParsedLog:
     arc_snapshots: List[ARCSnapshot] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     
-    # Aggregate counts
+    # Aggregate counts (ContentCache)
     total_hits: int = 0
     total_misses: int = 0
     total_stores: int = 0
     total_lookups: int = 0
     
-    # Message counts
+    # Message counts (ContentCache)
     cached_rect_count: int = 0
     cached_rect_init_count: int = 0
     request_cached_data_count: int = 0
     cache_eviction_count: int = 0  # Number of eviction notifications sent
     evicted_ids_count: int = 0  # Total number of cache IDs evicted
+    
+    # PersistentCache-specific aggregates
+    persistent_eviction_count: int = 0
+    persistent_evicted_ids: int = 0
+    persistent_bandwidth_reduction: float = 0.0
     
     # Final ARC state
     final_arc: Optional[ARCSnapshot] = None
@@ -188,7 +193,7 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 )
                 parsed.request_cached_data_count += 1
             
-            # Eviction notifications
+            # Eviction notifications (ContentCache)
             elif 'sending' in message.lower() and 'cache eviction' in message.lower():
                 # Parse: "Sending 5 cache eviction notifications to server"
                 match = re.search(r'sending\s+(\d+)\s+cache\s+eviction', message, re.IGNORECASE)
@@ -196,6 +201,33 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                     count = int(match.group(1))
                     parsed.cache_eviction_count += 1
                     parsed.evicted_ids_count += count
+            
+            # Eviction notifications (PersistentCache)
+            elif 'sending' in message.lower() and 'persistentcache' in message.lower() and 'eviction' in message.lower():
+                # Parse: "Sending 5 PersistentCache eviction notifications"
+                match = re.search(r'sending\s+(\d+).*persistentcache.*eviction', message, re.IGNORECASE)
+                if match:
+                    count = int(match.group(1))
+                    parsed.persistent_eviction_count += 1
+                    parsed.persistent_evicted_ids += count
+            
+            # Server-side receipt (SMsgReader) line: "Client evicted N persistent cache entries"
+            elif 'client evicted' in message.lower() and 'persistent' in message.lower() and 'cache' in message.lower():
+                match = re.search(r'client\s+evicted\s+(\d+)', message, re.IGNORECASE)
+                if match:
+                    count = int(match.group(1))
+                    parsed.persistent_eviction_count += 1
+                    parsed.persistent_evicted_ids += count
+            
+            # PersistentCache bandwidth summary
+            elif 'persistentcache:' in message:
+                # Format: "PersistentCache: <size> bandwidth saving (<pct>% reduction)"
+                m = re.search(r'PersistentCache:.*\(([-\d.]+)%\s*reduction\)', message)
+                if m:
+                    try:
+                        parsed.persistent_bandwidth_reduction = float(m.group(1))
+                    except ValueError:
+                        pass
             
             elif 'evicted' in message.lower() and 'cache' in message.lower():
                 # Client or server eviction logging
@@ -280,6 +312,11 @@ def compute_metrics(parsed: ParsedLog) -> Dict:
             'RequestCachedData': parsed.request_cached_data_count,
             'CacheEviction': parsed.cache_eviction_count,
             'EvictedIDs': parsed.evicted_ids_count,
+        },
+        'persistent': {
+            'eviction_count': parsed.persistent_eviction_count,
+            'evicted_ids': parsed.persistent_evicted_ids,
+            'bandwidth_reduction_pct': parsed.persistent_bandwidth_reduction,
         },
         'arc_state': {},
         'errors': len(parsed.errors),
