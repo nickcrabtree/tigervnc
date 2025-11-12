@@ -39,6 +39,7 @@ def run_cpp_viewer(viewer_path, port, artifacts, tracker, name,
         'Shared=1',
         'Log=*:stderr:100',
         f'ContentCacheSize={cache_size_mb}',
+        'PersistentCache=0',  # Disable PersistentCache to test ContentCache only
     ]
 
     log_path = artifacts.logs_dir / f'{name}.log'
