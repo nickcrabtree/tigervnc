@@ -14,12 +14,17 @@ External test viewers connect to :999 and experience the ContentCache protocol m
 
 ## Requirements
 
-### System Packages
+### Platform Support
+
+- Recommended and supported: Linux (Ubuntu/Debian/Fedora)
+- macOS: Not officially supported for e2e due to lack of Xtigervnc server and X11 WM stack by default. If you must run on macOS, use a Linux VM/container or a remote Linux host.
+
+### System Packages (Linux)
 
 **Required**:
 ```bash
 sudo apt-get install tigervnc-standalone-server tigervnc-server \
-  xterm openbox xset root wmctrl xdotool
+  xterm openbox xsetroot wmctrl xdotool
 ```
 
 **Optional** (for screenshot comparison):
@@ -31,6 +36,18 @@ sudo apt-get install xvfb x11-apps imagemagick
 ```bash
 sudo apt-get install xfonts-base xfonts-75dpi xfonts-100dpi
 ```
+
+### macOS Notes (if you still want to try locally)
+
+Running the e2e suite on macOS is not recommended. If you still want to experiment:
+
+- Install XQuartz and some tools via Homebrew (availability varies):
+  ```bash
+  brew install --cask xquartz
+  brew install openbox wmctrl xdotool
+  # Xtigervnc (server) is generally unavailable on macOS; use Linux instead
+  ```
+- Recommended alternative: run the e2e tests inside a Linux VM or on a remote Linux host.
 
 ### TigerVNC Viewers
 

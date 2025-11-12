@@ -146,6 +146,8 @@ Matching ContentCache capabilities!
 
 ### 6.2 E2E Tests (Priority: HIGH)
 
+Note: On this macOS machine the e2e preflight fails due to missing Linux-only components (Xtigervnc, openbox, wmctrl, xdotool). Tests have been added but should be executed on a Linux host per tests/e2e/README.md.
+
 Created:
 1. `tests/e2e/test_persistent_cache_eviction.py`
    - Launches content and viewer window servers on :998/:999

@@ -110,6 +110,8 @@ Upgraded `VNCSConnectionST` and `EncodeManager`:
 **Results**: 56/62 passing (6 protocol tests need reader fixes)
 
 #### ⏳ E2E Tests (Next Priority)
+
+Status on this machine: The e2e preflight fails on macOS due to missing Linux-only dependencies (Xtigervnc, openbox, wmctrl, xdotool). The tests have been authored and committed; run them on a Linux host as documented in tests/e2e/README.md.
 **Need to create**:
 
 1. **test_persistent_cache_eviction.py**
