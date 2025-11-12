@@ -252,10 +252,10 @@ core::IntParameter
 
 // PersistentCache parameters (cross-session, content hashes)
 core::BoolParameter
-  persistentCache("PersistentCache",
+  persistentCache(
+                  "PersistentCache",
                   "Enable PersistentCache protocol with content-hash based caching",
-                  false);
-core::IntParameter
+                  true);
   persistentCacheSize("PersistentCacheSize",
                       "Maximum size of persistent cache in MB",
                       2048, 0, 8192);

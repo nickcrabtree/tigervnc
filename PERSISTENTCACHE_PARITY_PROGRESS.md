@@ -84,7 +84,9 @@ PersistentCache: 4.7 MiB bandwidth saving (90.7% reduction)
 
 ---
 
-## Key Achievements
+### Key Achievements
+
+- PersistentCache is now ENABLED by default on both viewer and server. When both ContentCache and PersistentCache are available, the protocol negotiation and encoder selection prefer PersistentCache.
 
 ### Code Deduplication
 - **~240 lines** removed from ContentCache by using shared ArcCache

@@ -121,7 +121,7 @@ core::IntParameter rfb::Server::contentCacheMinRectSize
 core::BoolParameter rfb::Server::enablePersistentCache
 ("EnablePersistentCache",
  "Enable PersistentCache protocol with content-hash based caching",
- false);
+ true);
 core::IntParameter rfb::Server::persistentCacheMinRectSize
 ("PersistentCacheMinRectSize",
  "Minimum rectangle size (pixels) to consider for persistent caching",
