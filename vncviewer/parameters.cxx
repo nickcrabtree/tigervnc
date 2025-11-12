@@ -256,6 +256,7 @@ core::BoolParameter
                   "PersistentCache",
                   "Enable PersistentCache protocol with content-hash based caching",
                   true);
+core::IntParameter
   persistentCacheSize("PersistentCacheSize",
                       "Maximum size of persistent cache in MB",
                       2048, 0, 8192);

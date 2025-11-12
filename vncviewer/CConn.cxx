@@ -27,6 +27,7 @@
 #include <assert.h>
 #ifndef _WIN32
 #include <unistd.h>
+#include <csignal>
 #endif
 
 #include <core/LogWriter.h>
