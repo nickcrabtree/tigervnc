@@ -1024,6 +1024,8 @@ void CConnection::updateEncodings()
   // PersistentCache preferred over ContentCache (cross-session vs session-only)
   encodings.push_back(pseudoEncodingPersistentCache);
   encodings.push_back(pseudoEncodingContentCache);
+  
+  vlog.info("Cache protocol negotiation: advertising PersistentCache (-321), ContentCache (-320) (PersistentCache preferred)");
 
   if (Decoder::supported(preferredEncoding)) {
     encodings.push_back(preferredEncoding);
