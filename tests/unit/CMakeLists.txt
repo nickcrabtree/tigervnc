@@ -16,6 +16,10 @@ add_executable(arccache arccache.cxx)
 target_link_libraries(arccache rfb core GTest::gtest_main)
 gtest_discover_tests(arccache)
 
+add_executable(bandwidthstats bandwidthstats.cxx)
+target_link_libraries(bandwidthstats rfb core GTest::gtest_main)
+gtest_discover_tests(bandwidthstats)
+
 add_executable(contentcache contentcache.cxx)
 target_link_libraries(contentcache rfb core GTest::gtest_main)
 gtest_discover_tests(contentcache)
@@ -43,6 +47,10 @@ gtest_discover_tests(parameters)
 add_executable(serverhashset serverhashset.cxx)
 target_link_libraries(serverhashset rfb core GTest::gtest_main)
 gtest_discover_tests(serverhashset)
+
+add_executable(persistentcache_protocol persistentcache_protocol.cxx)
+target_link_libraries(persistentcache_protocol rfb core rdr network GTest::gtest_main)
+gtest_discover_tests(persistentcache_protocol)
 
 add_executable(pixelformat pixelformat.cxx)
 target_link_libraries(pixelformat rfb GTest::gtest_main)

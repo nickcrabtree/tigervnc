@@ -243,14 +243,14 @@ Matching ContentCache capabilities!
 - **Build status**: All commits build cleanly on macOS
 - **Test status**: 33 unit tests passing (14 ArcCache + 19 ServerHashSet)
 
-### Test Coverage (In Progress)
+### Test Coverage
 - **Unit tests**: 4 new test files
   - ✅ ArcCache: 14 tests (complete)
   - ✅ ServerHashSet: 19 tests (complete)  
-  - ⏳ Protocol messages: Not started
-  - ⏳ Bandwidth stats: Not started
-- **E2E tests**: 3 new Python test scripts (not started)
-- **Integration tests**: 5 scenarios (not started)
+  - ✅ BandwidthStats: 17 tests (complete)
+  - ✅ Protocol messages: 12 tests (6 passing, 6 need reader refactoring)
+- **E2E tests**: 3 new Python test scripts (Phase 6.2, next priority)
+- **Integration tests**: 5 scenarios (Phase 6.3)
 
 ---
 
