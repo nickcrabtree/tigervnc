@@ -120,6 +120,9 @@ bool SMsgReader::readMsg()
   case msgTypePersistentCacheHashList:
     ret = readPersistentHashList();
     break;
+  case msgTypePersistentCacheEviction:
+    ret = readPersistentCacheEviction();
+    break;
   case msgTypeQEMUClientMessage:
     ret = readQEMUMessage();
     break;
@@ -645,5 +648,52 @@ bool SMsgReader::readPersistentHashList()
              count, chunkIndex + 1, totalChunks, sequenceId);
 
   handler->handlePersistentHashList(sequenceId, totalChunks, chunkIndex, hashes);
+  return true;
+}
+
+bool SMsgReader::readPersistentCacheEviction()
+{
+  if (!is->hasData(1 + 2))
+    return false;
+
+  is->setRestorePoint();
+
+  is->skip(1);  // padding
+  uint16_t count = is->readU16();
+
+  // Validate count to prevent excessive memory allocation
+  if (count > 1000) {
+    vlog.error("Invalid persistent cache eviction count: %u", count);
+    throw protocol_error("Invalid persistent cache eviction count");
+  }
+
+  std::vector<std::vector<uint8_t>> hashes;
+  hashes.reserve(count);
+
+  for (uint16_t i = 0; i < count; i++) {
+    if (!is->hasDataOrRestore(1))
+      return false;
+
+    uint8_t hashLen = is->readU8();
+
+    // Validate hash length
+    if (hashLen == 0 || hashLen > 64) {
+      vlog.error("Invalid persistent cache eviction hash length: %u", hashLen);
+      throw protocol_error("Invalid persistent cache eviction hash length");
+    }
+
+    if (!is->hasDataOrRestore(hashLen))
+      return false;
+
+    std::vector<uint8_t> hash(hashLen);
+    is->readBytes(hash.data(), hashLen);
+    hashes.push_back(hash);
+  }
+
+  is->clearRestorePoint();
+
+  vlog.debug("Client evicted %u persistent cache entries", count);
+
+  handler->handlePersistentCacheEviction(hashes);
   return true;
 }

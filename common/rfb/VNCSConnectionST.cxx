@@ -927,6 +927,18 @@ void VNCSConnectionST::handlePersistentHashList(uint32_t sequenceId, uint16_t to
             (int)hashes.size(), (int)hashes.size()); // TODO: track cumulative count
 }
 
+void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes)
+{
+  vlog.debug("Client evicted %u persistent cache entries", (unsigned)hashes.size());
+  
+  // TODO Phase 5: Remove evicted hashes from clientKnownPersistentHashes_
+  // For now, this is a stub implementation to allow compilation.
+  // Full implementation will be added in Phase 5 (Server Enhancements).
+  
+  vlog.info("PersistentCache eviction: received %u hashes (stub implementation)",
+            (unsigned)hashes.size());
+}
+
 bool VNCSConnectionST::isShiftPressed()
 {
     std::map<uint32_t, uint32_t>::const_iterator iter;

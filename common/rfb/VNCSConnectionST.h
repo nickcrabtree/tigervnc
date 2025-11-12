@@ -154,6 +154,7 @@ namespace rfb {
     void handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
                                   uint16_t chunkIndex,
                                   const std::vector<std::vector<uint8_t>>& hashes) override;
+    void handlePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes) override;
 
     // Record that we just referenced a CachedRect with this ID for this rect
     void recordCachedRectRef(uint64_t cacheId, const core::Rect& r);

@@ -72,6 +72,8 @@ namespace rfb {
     void writePersistentHashList(uint32_t sequenceId, uint16_t totalChunks, 
                                  uint16_t chunkIndex,
                                  const std::vector<std::vector<uint8_t>>& hashes);
+    void writePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes);
+    void writePersistentCacheEvictionBatched(const std::vector<std::vector<uint8_t>>& hashes);
 
     void writeClipboardCaps(uint32_t caps, const uint32_t* lengths);
     void writeClipboardRequest(uint32_t flags);
