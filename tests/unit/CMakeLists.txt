@@ -12,6 +12,10 @@ add_executable(configargs configargs.cxx)
 target_link_libraries(configargs rfb GTest::gtest_main)
 gtest_discover_tests(configargs)
 
+add_executable(arccache arccache.cxx)
+target_link_libraries(arccache rfb core GTest::gtest_main)
+gtest_discover_tests(arccache)
+
 add_executable(contentcache contentcache.cxx)
 target_link_libraries(contentcache rfb core GTest::gtest_main)
 gtest_discover_tests(contentcache)
