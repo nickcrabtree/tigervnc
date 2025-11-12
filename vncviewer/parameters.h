@@ -85,6 +85,7 @@ extern core::StringParameter via;
 
 // ContentCache and PersistentCache parameters
 extern core::IntParameter contentCacheSize;
+extern core::BoolParameter contentCache;
 extern core::BoolParameter persistentCache;
 extern core::IntParameter persistentCacheSize;
 extern core::StringParameter persistentCachePath;

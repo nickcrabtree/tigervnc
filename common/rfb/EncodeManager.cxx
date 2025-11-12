@@ -30,6 +30,7 @@
 #include <core/string.h>
 
 #include <rfb/ContentCache.h>
+#include <rfb/ContentHash.h>
 #include <rfb/Cursor.h>
 #include <rfb/EncodeManager.h>
 #include <rfb/Encoder.h>
@@ -972,13 +973,21 @@ void EncodeManager::writeRects(const core::Region& changed,
 void EncodeManager::writeSubRect(const core::Rect& rect,
                                  const PixelBuffer* pb)
 {
-  // Try PersistentCache first (preferred over ContentCache when both supported)
-  if (tryPersistentCacheLookup(rect, pb))
-    return;
-
-  // Try content cache lookup
-  if (tryContentCacheLookup(rect, pb))
-    return;
+  // Cache protocol selection: Use ONE cache per connection
+  // PersistentCache preferred over ContentCache (cross-session vs session-only)
+  // Cache selection determined by client capabilities
+  
+  if (usePersistentCache && 
+      conn->client.supportsEncoding(pseudoEncodingPersistentCache)) {
+    // Use PersistentCache exclusively
+    if (tryPersistentCacheLookup(rect, pb))
+      return;
+  } else if (contentCache != nullptr && 
+             conn->client.supportsEncoding(pseudoEncodingContentCache)) {
+    // Use ContentCache exclusively
+    if (tryContentCacheLookup(rect, pb))
+      return;
+  }
 
   PixelBuffer *ppb;
 
@@ -1062,40 +1071,16 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
 
   endRect();
 
-  // Insert into content cache and queue CachedRectInit for client notification
-  // Client will learn about this cache ID on the next update
-  if (contentCache != nullptr && 
-      rect.area() >= Server::contentCacheMinRectSize &&
-      conn->client.supportsEncoding(pseudoEncodingContentCache)) {
-    
-    // Compute hash
-    const uint8_t* buffer;
-    int stride;
-    buffer = pb->getBuffer(rect, &stride);
-    
-    uint64_t hash;
-    size_t bytesPerPixel = pb->getPF().bpp / 8;
-    
-    if (rect.area() > 262144) { // 512x512
-      hash = computeSampledHash(buffer, rect.width(), rect.height(),
-                                stride, bytesPerPixel, 4);
-    } else {
-      size_t dataLen = rect.height() * stride * bytesPerPixel;
-      hash = computeContentHash(buffer, dataLen);
-    }
-    
-    // Insert and get cache ID - build ContentKey with dimensions
-    size_t dataLen = rect.height() * stride * bytesPerPixel;
-    rfb::ContentKey key(static_cast<uint16_t>(rect.width()), 
-                        static_cast<uint16_t>(rect.height()), hash);
-    uint64_t cacheId = contentCache->insertContent(key, rect, nullptr, dataLen, false);
-    
-    // Queue CachedRectInit so client learns about this ID
-    conn->queueCachedInit(cacheId, rect);
-    
-    vlog.debug("ContentCache insert: rect [%d,%d-%d,%d], key=(%ux%u,hash=%llx), cacheId=%llu (CachedRectInit queued)",
-               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-               key.width, key.height, (unsigned long long)hash, (unsigned long long)cacheId);
+  // Insert into the active cache protocol (ONE cache per connection)
+  if (usePersistentCache && 
+      conn->client.supportsEncoding(pseudoEncodingPersistentCache)) {
+    // PersistentCache: Track client-known hashes (insertion happens during INIT messages)
+    // The actual hash tracking is done in handlePersistentCachedRect/storePersistentCachedRect
+  } else if (contentCache != nullptr && 
+             conn->client.supportsEncoding(pseudoEncodingContentCache) &&
+             rect.area() >= Server::contentCacheMinRectSize) {
+    // ContentCache: Insert with server-assigned cache ID
+    insertIntoContentCache(rect, pb);
   }
 }
 
@@ -1312,22 +1297,15 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
 
   cacheStats.cacheLookups++;
 
-  // Get pixel data and compute hash
-  const uint8_t* buffer;
-  int stride;
-  buffer = pb->getBuffer(rect, &stride);
+  // Compute content hash using ContentHash utility (same as PersistentCache)
+  // This includes dimensions and properly handles stride
+  std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, rect);
   
-  uint64_t hash;
-  size_t bytesPerPixel = pb->getPF().bpp / 8;
-  
-  // For large rectangles, use sampled hash for speed
-  if (rect.area() > 262144) { // 512x512
-    hash = computeSampledHash(buffer, rect.width(), rect.height(),
-                              stride, bytesPerPixel, 4);
-  } else {
-    // Compute full hash for smaller rectangles
-    size_t dataLen = rect.height() * stride * bytesPerPixel;
-    hash = computeContentHash(buffer, dataLen);
+  // ContentCache uses 64-bit hash for speed/compatibility with existing code
+  // Extract first 8 bytes as uint64_t
+  uint64_t hash = 0;
+  if (fullHash.size() >= 8) {
+    memcpy(&hash, fullHash.data(), 8);
   }
 
   // Look up in cache by ContentKey (dimensions + hash)
@@ -1387,23 +1365,20 @@ void EncodeManager::insertIntoContentCache(const core::Rect& rect,
   if (rect.area() < Server::contentCacheMinRectSize)
     return;
 
-  // Get pixel data and compute hash
-  const uint8_t* buffer;
-  int stride;
-  buffer = pb->getBuffer(rect, &stride);
+  // Compute content hash using ContentHash utility (same as PersistentCache)
+  // This includes dimensions and properly handles stride
+  std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, rect);
   
-  uint64_t hash;
-  size_t bytesPerPixel = pb->getPF().bpp / 8;
-  size_t dataLen = rect.height() * stride * bytesPerPixel;
-  
-  // For large rectangles, use sampled hash for speed
-  if (rect.area() > 262144) { // 512x512
-    hash = computeSampledHash(buffer, rect.width(), rect.height(),
-                              stride, bytesPerPixel, 4);
-  } else {
-    // Compute full hash for smaller rectangles
-    hash = computeContentHash(buffer, dataLen);
+  // ContentCache uses 64-bit hash for speed/compatibility with existing code
+  // Extract first 8 bytes as uint64_t
+  uint64_t hash = 0;
+  if (fullHash.size() >= 8) {
+    memcpy(&hash, fullHash.data(), 8);
   }
+  
+  // dataLen is for memory accounting in ARC, use actual pixels only
+  size_t bytesPerPixel = pb->getPF().bpp / 8;
+  size_t dataLen = rect.height() * rect.width() * bytesPerPixel;
   
   // Insert into cache with ContentKey (dimensions + hash)
   // Pass dataLen so ARC algorithm can track memory usage properly,

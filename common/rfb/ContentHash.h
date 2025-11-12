@@ -65,6 +65,7 @@ namespace rfb {
 
     // Compute hash for a rectangle region in a PixelBuffer
     // CRITICAL: Handles stride-in-pixels correctly (multiply by bytesPerPixel)
+    // CRITICAL: Includes width and height to prevent reuse across different sizes
     static std::vector<uint8_t> computeRect(const PixelBuffer* pb,
                                            const core::Rect& r) {
       int stride;
@@ -83,6 +84,13 @@ namespace rfb {
         EVP_MD_CTX_free(ctx);
         return std::vector<uint8_t>(16);
       }
+
+      // Include width and height in hash to prevent reuse across different rectangle sizes
+      // This is a critical bugfix that matches ContentCache behavior
+      uint32_t width = r.width();
+      uint32_t height = r.height();
+      EVP_DigestUpdate(ctx, &width, sizeof(width));
+      EVP_DigestUpdate(ctx, &height, sizeof(height));
 
       for (int y = 0; y < r.height(); y++) {
         const uint8_t* row = pixels + (y * strideBytes);

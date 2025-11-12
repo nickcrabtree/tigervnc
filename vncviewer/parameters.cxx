@@ -245,6 +245,10 @@ core::StringParameter
 #endif
 
 // ContentCache parameter (per-session, cache IDs)
+core::BoolParameter
+  contentCache("ContentCache",
+               "Enable ContentCache protocol with session-based caching",
+               true);
 core::IntParameter
   contentCacheSize("ContentCacheSize",
                    "Maximum size of content cache in MB",

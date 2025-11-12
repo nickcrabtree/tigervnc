@@ -60,6 +60,7 @@ CConnection::CConnection()
   : csecurity(nullptr),
     supportsLocalCursor(false), supportsCursorPosition(false),
     supportsDesktopResize(false), supportsLEDState(false),
+    supportsContentCache(true), supportsPersistentCache(true),
     is(nullptr), os(nullptr), reader_(nullptr), writer_(nullptr),
     shared(false),
     state_(RFBSTATE_UNINITIALISED),
@@ -1021,11 +1022,16 @@ void CConnection::updateEncodings()
   encodings.push_back(pseudoEncodingExtendedMouseButtons);
   
   // Cache protocol extensions
-  // PersistentCache preferred over ContentCache (cross-session vs session-only)
-  encodings.push_back(pseudoEncodingPersistentCache);
-  encodings.push_back(pseudoEncodingContentCache);
-  
-  vlog.info("Cache protocol negotiation: advertising PersistentCache (-321), ContentCache (-320) (PersistentCache preferred)");
+  // Advertise based on configuration (can be controlled via vncviewer parameters)
+  // Note: Server will use ONE cache protocol per connection (first supported in list)
+  if (supportsPersistentCache) {
+    encodings.push_back(pseudoEncodingPersistentCache);
+    vlog.info("Cache protocol: advertising PersistentCache (-321)");
+  }
+  if (supportsContentCache) {
+    encodings.push_back(pseudoEncodingContentCache);
+    vlog.info("Cache protocol: advertising ContentCache (-320)");
+  }
 
   if (Decoder::supported(preferredEncoding)) {
     encodings.push_back(preferredEncoding);

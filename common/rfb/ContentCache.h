@@ -279,8 +279,9 @@ namespace rfb {
     ContentCache& operator=(const ContentCache&) = delete;
   };
 
-  // Fast hash function for pixel data
-  // Uses xxHash for speed and good distribution
+  // Fast hash function for pixel data (legacy, kept for compatibility)
+  // Note: For rectangle hashing, prefer ContentHash::computeRect() which
+  // includes dimensions and properly handles stride
   uint64_t computeContentHash(const uint8_t* data, size_t len);
   
   // Optional: Sampling hash for very large rectangles

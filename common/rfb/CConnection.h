@@ -304,6 +304,10 @@ namespace rfb {
     bool supportsCursorPosition;
     bool supportsDesktopResize;
     bool supportsLEDState;
+    
+    // Cache protocol support (can be disabled via config/command-line)
+    bool supportsContentCache;
+    bool supportsPersistentCache;
 
   private:
     bool processVersionMsg();

@@ -106,6 +106,10 @@ CConn::CConn()
   supportsCursorPosition = true;
   supportsDesktopResize = true;
   supportsLEDState = true;
+  
+  // Cache protocol support (controlled by command-line/config file)
+  supportsContentCache = ::contentCache;
+  supportsPersistentCache = ::persistentCache;
 
   if (customCompressLevel)
     setCompressLevel(::compressLevel);
