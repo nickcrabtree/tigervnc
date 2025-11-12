@@ -919,8 +919,13 @@ void VNCSConnectionST::handlePersistentHashList(uint32_t sequenceId, uint16_t to
     encodeManager.addClientKnownHash(hash);
   }
   
-  vlog.info("Received hash list: %d hashes (total client hashes tracked: %d)",
-            (int)hashes.size(), (int)hashes.size()); // TODO: track cumulative count
+  // Also populate session tracking (for within-session hit detection)
+  for (const auto& hash : hashes) {
+    knownPersistentHashes_.insert(hash);
+  }
+  
+  vlog.info("Received hash list: %d hashes (session tracking now has %zu total)",
+            (int)hashes.size(), knownPersistentHashes_.size());
 }
 
 void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes)

@@ -1411,8 +1411,8 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   // Compute content hash using ContentHash utility
   std::vector<uint8_t> hash = ContentHash::computeRect(pb, rect);
 
-  // Check if client has advertised this hash
-  if (clientKnownHashes_.has(hash)) {
+  // Check if client knows this hash (from inventory OR sent this session)
+  if (conn->knowsPersistentHash(hash)) {
     // Cache hit! Client has this content, send reference
     persistentCacheStats.cacheHits++;
     int equiv = 12 + rect.area() * (conn->client.pf().bpp/8);
@@ -1445,70 +1445,84 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     return true;
   }
   
-  // If client requested this hash, send PersistentCachedRectInit now
-  if (conn->clientRequestedPersistent(hash)) {
-      // Choose payload encoder similar to normal path
-      PixelBuffer *ppb;
-      Encoder *payloadEnc;
-      struct RectInfo info;
-      unsigned int divisor, maxColours;
-      bool useRLE;
-      EncoderType type;
-
-      if (conn->client.compressLevel == -1)
-        divisor = 2 * 8;
-      else
-        divisor = conn->client.compressLevel * 8;
-      if (divisor < 4)
-        divisor = 4;
-      maxColours = rect.area()/divisor;
-      if (activeEncoders[encoderFullColour] == encoderTightJPEG) {
-        if ((conn->client.compressLevel != -1) && (conn->client.compressLevel < 2))
-          maxColours = 24;
-        else
-          maxColours = 96;
-      }
-      if (maxColours < 2)
-        maxColours = 2;
-
-      ppb = preparePixelBuffer(rect, pb, true);
-      if (!analyseRect(ppb, &info, maxColours))
-        info.palette.clear();
-      useRLE = info.rleRuns <= (rect.area() * 2);
-      switch (info.palette.size()) {
-      case 0: type = encoderFullColour; break;
-      case 1: type = encoderSolid; break;
-      case 2: type = useRLE ? encoderBitmapRLE : encoderBitmap; break;
-      default: type = useRLE ? encoderIndexedRLE : encoderIndexed; break;
-      }
-
-      payloadEnc = encoders[activeEncoders[type]];
-      // Emit PersistentCachedRectInit header (hash + encoding)
-      conn->writer()->writePersistentCachedRectInit(rect, hash, payloadEnc->encoding);
-      // Prepare pixel buffer respecting native-PF usage for the payload encoder
-      if (payloadEnc->flags & EncoderUseNativePF)
-        ppb = preparePixelBuffer(rect, pb, false);
-      // Write the encoded pixel payload
-      payloadEnc->writeRect(ppb, info.palette);
-      // Close the PersistentCachedRectInit rectangle
-      conn->writer()->endRect();
-
-      // Register this hash as known and clear request
-      clientKnownHashes_.add(hash);
-      conn->clearClientPersistentRequest(hash);
-
-      lossyRegion.assign_subtract(rect);
-      pendingRefreshRegion.assign_subtract(rect);
-      vlog.debug("PersistentCache INIT: sent init for requested hash (len=%zu) rect [%d,%d-%d,%d]",
-                 hash.size(), rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
-      return true;
-    }
-
-  // Client doesn't have this hash and has not requested it yet; fall back
+  // Client doesn't know this hash - send PersistentCachedRectInit
+  // (This fixes the session bug: we send Init instead of falling back,
+  //  allowing future identical rects to be references)
   persistentCacheStats.cacheMisses++;
-  vlog.debug("PersistentCache MISS: rect [%d,%d-%d,%d] - client doesn't have hash, falling back to regular encoding",
-             rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
-  return false;
+  
+  // Choose payload encoder similar to normal path
+  PixelBuffer *ppb;
+  Encoder *payloadEnc;
+  struct RectInfo info;
+  unsigned int divisor, maxColours;
+  bool useRLE;
+  EncoderType type;
+
+  if (conn->client.compressLevel == -1)
+    divisor = 2 * 8;
+  else
+    divisor = conn->client.compressLevel * 8;
+  if (divisor < 4)
+    divisor = 4;
+  maxColours = rect.area()/divisor;
+  if (activeEncoders[encoderFullColour] == encoderTightJPEG) {
+    if ((conn->client.compressLevel != -1) && (conn->client.compressLevel < 2))
+      maxColours = 24;
+    else
+      maxColours = 96;
+  }
+  if (maxColours < 2)
+    maxColours = 2;
+
+  ppb = preparePixelBuffer(rect, pb, true);
+  if (!analyseRect(ppb, &info, maxColours))
+    info.palette.clear();
+  useRLE = info.rleRuns <= (rect.area() * 2);
+  switch (info.palette.size()) {
+  case 0: type = encoderFullColour; break;
+  case 1: type = encoderSolid; break;
+  case 2: type = useRLE ? encoderBitmapRLE : encoderBitmap; break;
+  default: type = useRLE ? encoderIndexedRLE : encoderIndexed; break;
+  }
+
+  payloadEnc = encoders[activeEncoders[type]];
+  // Emit PersistentCachedRectInit header (hash + encoding)
+  conn->writer()->writePersistentCachedRectInit(rect, hash, payloadEnc->encoding);
+  // Prepare pixel buffer respecting native-PF usage for the payload encoder
+  if (payloadEnc->flags & EncoderUseNativePF)
+    ppb = preparePixelBuffer(rect, pb, false);
+  // Write the encoded pixel payload
+  payloadEnc->writeRect(ppb, info.palette);
+  // Close the PersistentCachedRectInit rectangle
+  conn->writer()->endRect();
+
+  // Mark hash as known in session tracking (for future hits)
+  conn->markPersistentHashKnown(hash);
+  // Also track in EncodeManager (legacy, may be redundant with session tracking)
+  clientKnownHashes_.add(hash);
+  // Clear any explicit request for this hash
+  if (conn->clientRequestedPersistent(hash)) {
+    conn->clearClientPersistentRequest(hash);
+  }
+
+  lossyRegion.assign_subtract(rect);
+  pendingRefreshRegion.assign_subtract(rect);
+  
+  // Format hash for logging (first 8 bytes as hex)
+  char hashStr[32];
+  snprintf(hashStr, sizeof(hashStr), "%02x%02x%02x%02x%02x%02x%02x%02x",
+           hash.size() > 0 ? hash[0] : 0,
+           hash.size() > 1 ? hash[1] : 0,
+           hash.size() > 2 ? hash[2] : 0,
+           hash.size() > 3 ? hash[3] : 0,
+           hash.size() > 4 ? hash[4] : 0,
+           hash.size() > 5 ? hash[5] : 0,
+           hash.size() > 6 ? hash[6] : 0,
+           hash.size() > 7 ? hash[7] : 0);
+  
+  vlog.debug("PersistentCache INIT: rect [%d,%d-%d,%d] hash=%s... (now known for session)",
+             rect.tl.x, rect.tl.y, rect.br.x, rect.br.y, hashStr);
+  return true;
 }
 
 void EncodeManager::addClientKnownHash(const std::vector<uint8_t>& hash)

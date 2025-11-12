@@ -158,6 +158,8 @@ namespace rfb {
     // PersistentCache helpers (default no-op)
     virtual bool clientRequestedPersistent(const std::vector<uint8_t>&) const { return false; }
     virtual void clearClientPersistentRequest(const std::vector<uint8_t>&) {}
+    virtual bool knowsPersistentHash(const std::vector<uint8_t>&) const { return false; }
+    virtual void markPersistentHashKnown(const std::vector<uint8_t>&) {}
 
   protected:
 

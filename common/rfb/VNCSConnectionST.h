@@ -166,6 +166,14 @@ namespace rfb {
         clientRequestedPersistentHashes_.erase(it);
     }
 
+    // PersistentCache session tracking (mirroring ContentCache's knowsCacheId)
+    bool knowsPersistentHash(const std::vector<uint8_t>& hash) const override {
+      return knownPersistentHashes_.find(hash) != knownPersistentHashes_.end();
+    }
+    void markPersistentHashKnown(const std::vector<uint8_t>& hash) override {
+      knownPersistentHashes_.insert(hash);
+    }
+
   private:
     struct HashVectorHasher {
       size_t operator()(const std::vector<uint8_t>& v) const {
@@ -175,6 +183,10 @@ namespace rfb {
       }
     };
     std::unordered_set<std::vector<uint8_t>, HashVectorHasher> clientRequestedPersistentHashes_;
+    
+    // Session-scoped tracking of persistent hashes known by client
+    // (from initial inventory OR sent via PersistentCachedRectInit this session)
+    std::unordered_set<std::vector<uint8_t>, HashVectorHasher> knownPersistentHashes_;
 
     // Record that we just referenced a CachedRect with this ID for this rect
     void recordCachedRectRef(uint64_t cacheId, const core::Rect& r);
