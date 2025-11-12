@@ -162,9 +162,13 @@ New in this update:
 
 #### Phase 3 (Shared Utilities)
 - ✅ `common/rfb/cache/ArcCache.h` (new, header-only)
-- ⏳ `common/rfb/cache/BandwidthStats.{h,cxx}` (new)
-- ⏳ `common/rfb/cache/ProtocolHelpers.{h,cxx}` (new)
+- ✅ `common/rfb/cache/BandwidthStats.{h,cxx}` (new)
+- ✅ `common/rfb/cache/ProtocolHelpers.h` (new)
 - ⏳ `common/rfb/cache/README.md` (new)
+
+Migration:
+- DecodeManager now uses shared BandwidthStats for both caches
+- Future: migrate ContentCache/PersistentCache ARC to shared ArcCache
 
 #### Phase 4 (Viewer)
 - ✅ `common/rfb/GlobalClientPersistentCache.{h,cxx}` - Added pendingEvictions_ and ARC->eviction wiring

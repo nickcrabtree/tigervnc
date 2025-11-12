@@ -610,6 +610,8 @@ Fixed in commit 4bbb6621. See crash report: `njcvncviewer-2025-11-05-104759.ips`
 
 ### 3.2 BandwidthStats Helpers
 
+Status: Implemented (DecodeManager migrated to shared stats)
+
 #### Task 3.5: Create Shared BandwidthStats Module
 
 **File**: `common/rfb/cache/BandwidthStats.{h,cxx}`
