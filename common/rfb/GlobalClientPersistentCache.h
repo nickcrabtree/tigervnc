@@ -123,6 +123,14 @@ namespace rfb {
     Stats getStats() const;
     void resetStats();
     
+    // Pending evictions (to notify server)
+    bool hasPendingEvictions() const { return !pendingEvictions_.empty(); }
+    std::vector<std::vector<uint8_t>> getPendingEvictions() {
+      auto out = pendingEvictions_;
+      pendingEvictions_.clear();
+      return out;
+    }
+    
     // Configuration
     void setMaxSize(size_t maxSizeMB);
     void clear();
@@ -130,6 +138,9 @@ namespace rfb {
   private:
     // Main cache storage: hash -> cached pixels
     std::unordered_map<std::vector<uint8_t>, CachedPixels, HashVectorHasher> cache_;
+    
+    // Queue of hashes evicted from ARC; drained by DecodeManager to notify server
+    std::vector<std::vector<uint8_t>> pendingEvictions_;
     
     // ARC list membership tracking
     enum ListType {

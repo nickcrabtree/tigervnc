@@ -540,6 +540,9 @@ void GlobalClientPersistentCache::replace(const std::vector<uint8_t>&, size_t si
         size_t victimSize = cacheIt->second.byteSize();
         t1Size_ -= victimSize;
         
+        // Add to pending evictions for server notification
+        pendingEvictions_.push_back(victim);
+        
         // Move to B1 (ghost list) - keep metadata but remove data
         b1_.push_front(victim);
         listMap_[victim].list = LIST_B1;
@@ -568,6 +571,9 @@ void GlobalClientPersistentCache::replace(const std::vector<uint8_t>&, size_t si
       if (cacheIt != cache_.end()) {
         size_t victimSize = cacheIt->second.byteSize();
         t2Size_ -= victimSize;
+        
+        // Add to pending evictions for server notification
+        pendingEvictions_.push_back(victim);
         
         // Move to B2 (ghost list)
         b2_.push_front(victim);

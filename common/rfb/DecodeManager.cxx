@@ -244,6 +244,15 @@ void DecodeManager::flush()
   
   // Flush any pending PersistentCache queries
   flushPendingQueries();
+
+  // Send any pending PersistentCache eviction notifications
+  if (persistentCache != nullptr && persistentCache->hasPendingEvictions()) {
+    auto evictions = persistentCache->getPendingEvictions();
+    if (!evictions.empty()) {
+      vlog.debug("Sending %zu PersistentCache eviction notifications", evictions.size());
+      conn->writer()->writePersistentCacheEvictionBatched(evictions);
+    }
+  }
 }
 
 void DecodeManager::logStats()

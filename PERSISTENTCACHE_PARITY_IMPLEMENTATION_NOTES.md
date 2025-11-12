@@ -67,24 +67,32 @@ Format:
 - ⏳ Full handler implementation in VNCSConnectionST (clientKnownPersistentHashes_)
 - ⏳ Server encoder logic (reference vs init vs fallback)
 
-### Phase 3: Shared C++ Modules ⏳ PENDING
+### Phase 3: Shared C++ Modules 🔄 IN PROGRESS
 
 **Dependencies**: Phase 2 complete
 
-#### Planned Tasks
-- Create `common/rfb/cache/ArcCache.{h,cxx}` template utility
-- Create `common/rfb/cache/BandwidthStats.{h,cxx}` helpers
-- Create `common/rfb/cache/ProtocolHelpers.{h,cxx}` utilities
+#### Progress
+- ✅ Created header-only `common/rfb/cache/ArcCache.h` template utility implementing ARC with byte-based capacity and ghost lists
+- ⏳ BandwidthStats helpers (planned)
+- ⏳ ProtocolHelpers utilities (planned)
 
-### Phase 4: C++ Viewer Enhancements ⏳ PENDING
+#### Next
+- Integrate ArcCache into GlobalClientPersistentCache (Phase 4)
+- Add unit tests in Phase 6
+
+### Phase 4: C++ Viewer Enhancements 🔄 IN PROGRESS
 
 **Dependencies**: Phases 2, 3 complete
 
-#### Planned Tasks
-- Adapt GlobalClientPersistentCache to use ArcCache
-- Add eviction callback and pendingEvictions_ queue
-- Integrate bandwidth tracking in DecodeManager
-- Send eviction notifications during flush()
+#### Progress
+- Added pendingEvictions_ queue to GlobalClientPersistentCache
+- Hooked ARC replace() to enqueue evicted hashes for server notification
+- Implemented eviction sending in DecodeManager::flush() using writePersistentCacheEvictionBatched()
+
+#### Remaining
+- Integrate shared ArcCache template (Phase 3 follow-up)
+- Add bandwidth tracking for PersistentCache
+- Parameterize PersistentCache size via viewer options
 
 ### Phase 5: C++ Server Enhancements ⏳ PENDING
 
@@ -156,8 +164,8 @@ Format:
 - ⏳ `common/rfb/cache/README.md` (new)
 
 #### Phase 4 (Viewer)
-- ⏳ `common/rfb/GlobalClientPersistentCache.{h,cxx}` - ArcCache integration
-- ⏳ `common/rfb/DecodeManager.{h,cxx}` - Eviction sending, bandwidth tracking
+- ✅ `common/rfb/GlobalClientPersistentCache.{h,cxx}` - Added pendingEvictions_ and ARC->eviction wiring
+- ✅ `common/rfb/DecodeManager.cxx` - Eviction sending implemented
 - ⏳ `common/rfb/CConnection.cxx` - Verify negotiation preference
 
 #### Phase 5 (Server)
