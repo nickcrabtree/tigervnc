@@ -40,6 +40,10 @@ add_executable(parameters parameters.cxx)
 target_link_libraries(parameters core GTest::gtest_main)
 gtest_discover_tests(parameters)
 
+add_executable(serverhashset serverhashset.cxx)
+target_link_libraries(serverhashset rfb core GTest::gtest_main)
+gtest_discover_tests(serverhashset)
+
 add_executable(pixelformat pixelformat.cxx)
 target_link_libraries(pixelformat rfb GTest::gtest_main)
 gtest_discover_tests(pixelformat)
