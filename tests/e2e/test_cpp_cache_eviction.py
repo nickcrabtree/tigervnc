@@ -229,13 +229,16 @@ def main():
 
         if args.cache_type == 'content':
             cache_metrics = metrics['cache_operations']
+            lookups = cache_metrics['total_lookups']
+            hits = cache_metrics['total_hits']
+            misses = cache_metrics['total_misses']
         else:  # persistent
             cache_metrics = metrics['persistent']
+            lookups = cache_metrics['hits'] + cache_metrics['misses']
+            hits = cache_metrics['hits']
+            misses = cache_metrics['misses']
             
         hit_rate = cache_metrics['hit_rate']
-        lookups = cache_metrics['lookups']
-        hits = cache_metrics['hits']
-        misses = cache_metrics['misses']
 
         print(f"\n{cache_name} Performance (Small Cache with Evictions):")
         print(f"  Cache lookups: {lookups}")

@@ -223,9 +223,10 @@ def main():
         pers = metrics['persistent']
         hit_rate = pers['hit_rate']
         bandwidth_reduction = pers['bandwidth_reduction_pct']
+        lookups = pers['hits'] + pers['misses']
 
         print(f"\nPersistentCache Performance:")
-        print(f"  Cache lookups: {pers['lookups']}")
+        print(f"  Cache lookups: {lookups}")
         print(f"  Cache hits:    {pers['hits']} ({hit_rate:.1f}%)")
         print(f"  Cache misses:  {pers['misses']}")
         print(f"  Bandwidth reduction: {bandwidth_reduction:.1f}%")

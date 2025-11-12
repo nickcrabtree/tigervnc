@@ -223,9 +223,9 @@ def main():
         bandwidth_reduction = cache_ops.get('bandwidth_reduction_pct', 0.0)
 
         print(f"\nContentCache Performance:")
-        print(f"  Cache lookups: {cache_ops['lookups']}")
-        print(f"  Cache hits:    {cache_ops['hits']} ({hit_rate:.1f}%)")
-        print(f"  Cache misses:  {cache_ops['misses']}")
+        print(f"  Cache lookups: {cache_ops['total_lookups']}")
+        print(f"  Cache hits:    {cache_ops['total_hits']} ({hit_rate:.1f}%)")
+        print(f"  Cache misses:  {cache_ops['total_misses']}")
         print(f"  Bandwidth reduction: {bandwidth_reduction:.1f}%")
 
         # Validation
