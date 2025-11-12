@@ -150,7 +150,7 @@ Format:
 - ✅ `common/rfb/VNCSConnectionST.cxx` - Added stub handler (lines 930-940)
 
 #### Phase 3 (Shared Utilities)
-- ⏳ `common/rfb/cache/ArcCache.{h,cxx}` (new)
+- ✅ `common/rfb/cache/ArcCache.h` (new, header-only)
 - ⏳ `common/rfb/cache/BandwidthStats.{h,cxx}` (new)
 - ⏳ `common/rfb/cache/ProtocolHelpers.{h,cxx}` (new)
 - ⏳ `common/rfb/cache/README.md` (new)
