@@ -367,12 +367,18 @@ def compute_metrics(parsed: ParsedLog) -> Dict:
     
     # If no explicit hit/miss counts, use protocol messages as proxy
     # CachedRect = cache hit (reference), CachedRectInit = cache miss (full data)
-    if parsed.total_hits == 0 and parsed.total_misses == 0:
-        # Use protocol messages as fallback
-        parsed.total_hits = parsed.cached_rect_count  # References = hits
+    # Note: Client logs often count CachedRect as hits but don't log CachedRectInit as misses
+    if parsed.total_misses == 0 and parsed.cached_rect_init_count > 0:
+        # Client received CachedRectInit but didn't log them as misses
         parsed.total_misses = parsed.cached_rect_init_count  # Initial sends = misses
+    
+    # Always recalculate lookups from hits + misses
+    if parsed.total_lookups == 0:
         parsed.total_lookups = parsed.total_hits + parsed.total_misses
-        parsed.total_stores = parsed.cached_rect_init_count  # Stored on init
+    
+    # Stores should match CachedRectInit count
+    if parsed.total_stores == 0 and parsed.cached_rect_init_count > 0:
+        parsed.total_stores = parsed.cached_rect_init_count
 
     metrics = {
         'cache_operations': {

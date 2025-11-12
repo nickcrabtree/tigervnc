@@ -294,7 +294,8 @@ class VNCServer:
                  artifacts: ArtifactManager, tracker: ProcessTracker,
                  geometry: str = "1600x1000", depth: int = 24,
                  log_level: str = "*:stderr:100",
-                 server_choice: str = 'auto'):
+                 server_choice: str = 'auto',
+                 server_params: Optional[Dict[str, str]] = None):
         self.display = display
         self.port = port
         self.name = name
@@ -304,6 +305,7 @@ class VNCServer:
         self.depth = depth
         self.log_level = log_level
         self.server_choice = server_choice  # 'auto' | 'system' | 'local'
+        self.server_params = server_params or {}  # Extra server parameters
         self.proc: Optional[subprocess.Popen] = None
         self.wm_proc: Optional[subprocess.Popen] = None
     
@@ -355,6 +357,10 @@ class VNCServer:
             '-depth', str(self.depth),
             '-Log', self.log_level,
         ]
+        
+        # Add extra server parameters (e.g., EnableContentCache=0)
+        for key, value in self.server_params.items():
+            cmd.append(f'-{key}={value}')
         
         log_path = self.artifacts.logs_dir / f"{self.name}_server_{self.display}.log"
         print(f"Starting VNC server :{self.display} (port {self.port}) using {os.path.basename(server_bin)}...")
