@@ -77,7 +77,7 @@ Format:
 - ⏳ ProtocolHelpers utilities (planned)
 
 #### Next
-- Integrate ArcCache into GlobalClientPersistentCache (Phase 4)
+- Migrate ContentCache to shared ArcCache to remove duplicate ARC logic
 - Add unit tests in Phase 6
 
 ### Phase 4: C++ Viewer Enhancements 🔄 IN PROGRESS
