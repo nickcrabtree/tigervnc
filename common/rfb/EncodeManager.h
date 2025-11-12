@@ -70,6 +70,7 @@ namespace rfb {
 
     // PersistentCache protocol support - public interface
     void addClientKnownHash(const std::vector<uint8_t>& hash);
+    void removeClientKnownHash(const std::vector<uint8_t>& hash);
     bool clientKnowsHash(const std::vector<uint8_t>& hash) const;
     void setUsePersistentCache(bool enable) { usePersistentCache = enable; }
 

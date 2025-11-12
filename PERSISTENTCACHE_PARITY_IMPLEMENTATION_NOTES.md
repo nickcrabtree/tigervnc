@@ -172,8 +172,9 @@ New in this update:
 - ⏳ `common/rfb/CConnection.cxx` - Verify negotiation preference
 
 #### Phase 5 (Server)
-- ⏳ `common/rfb/VNCSConnectionST.{h,cxx}` - Known-hash tracking
-- ⏳ `common/rfb/EncodeManager.{h,cxx}` - Enhanced encoder logic
+- ✅ `common/rfb/VNCSConnectionST.{h,cxx}` - Added requested-hash tracking and eviction handling (removes known hashes)
+- ✅ `common/rfb/EncodeManager.{h,cxx}` - Added removeClientKnownHash()
+- ⏳ `common/rfb/EncodeManager.{h,cxx}` - Enhanced encoder logic (reference vs init vs fallback)
 
 #### Phase 6 (Tests)
 - ⏳ `tests/unit/test_persistent_cache_protocol.cxx` (new)

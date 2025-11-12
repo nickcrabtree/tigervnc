@@ -1484,6 +1484,13 @@ void EncodeManager::addClientKnownHash(const std::vector<uint8_t>& hash)
   clientKnownHashes_.insert(hash);
 }
 
+void EncodeManager::removeClientKnownHash(const std::vector<uint8_t>& hash)
+{
+  auto it = clientKnownHashes_.find(hash);
+  if (it != clientKnownHashes_.end())
+    clientKnownHashes_.erase(it);
+}
+
 bool EncodeManager::clientKnowsHash(const std::vector<uint8_t>& hash) const
 {
   return clientKnownHashes_.find(hash) != clientKnownHashes_.end();

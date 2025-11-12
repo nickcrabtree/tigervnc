@@ -156,6 +156,16 @@ namespace rfb {
                                   const std::vector<std::vector<uint8_t>>& hashes) override;
     void handlePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes) override;
 
+  private:
+    struct HashVectorHasher {
+      size_t operator()(const std::vector<uint8_t>& v) const {
+        size_t h = 14695981039346656037ULL;
+        for (uint8_t b : v) { h ^= b; h *= 1099511628211ULL; }
+        return h;
+      }
+    };
+    std::unordered_set<std::vector<uint8_t>, HashVectorHasher> clientRequestedPersistentHashes_;
+
     // Record that we just referenced a CachedRect with this ID for this rect
     void recordCachedRectRef(uint64_t cacheId, const core::Rect& r);
 
