@@ -49,11 +49,11 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   memset(decoders, 0, sizeof(decoders));
 
   memset(stats, 0, sizeof(stats));
-  memset(&cacheStats, 0, sizeof(cacheStats));
-  memset(&contentCacheBandwidthStats, 0, sizeof(contentCacheBandwidthStats));
+  cacheStats = {};
+  contentCacheBandwidthStats = {};
   lastDecodedRectBytes = 0;
-  memset(&persistentCacheStats, 0, sizeof(persistentCacheStats));
-  memset(&persistentCacheBandwidthStats, 0, sizeof(persistentCacheBandwidthStats));
+  persistentCacheStats = {};
+  persistentCacheBandwidthStats = {};
   
   // Initialize client-side content cache (2GB default, unlimited age)
   // Can be overridden with ContentCacheSize parameter from viewer

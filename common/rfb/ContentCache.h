@@ -25,6 +25,7 @@
 #include <vector>
 #include <unordered_map>
 #include <list>
+#include <memory>      // for std::unique_ptr
 #include <fstream>     //DebugContentCache_2025-10-14
 #include <string>      //DebugContentCache_2025-10-14
 #include <chrono>      //DebugContentCache_2025-10-14

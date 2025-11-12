@@ -35,11 +35,11 @@ static core::LogWriter vlog("ContentCache");
 //DebugContentCache_2025-10-14 - Start debug logger implementation
 ContentCacheDebugLogger::ContentCacheDebugLogger() {
   auto now = std::chrono::system_clock::now();
-  auto time_t = std::chrono::system_clock::to_time_t(now);
+  auto time_val = std::chrono::system_clock::to_time_t(now);
   auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
     now.time_since_epoch()) % 1000;
   
-  std::string timestamp = std::to_string(time_t) + "_" + std::to_string(ms.count());
+  std::string timestamp = std::to_string(time_val) + "_" + std::to_string(ms.count());
   logFilename_ = "/tmp/contentcache_debug_" + timestamp + ".log";
   
   logFile_.open(logFilename_, std::ios::out | std::ios::app);
@@ -62,11 +62,11 @@ void ContentCacheDebugLogger::log(const std::string& message) {
   std::lock_guard<std::mutex> lock(logMutex_);
   if (logFile_.is_open()) {
     auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto time_val = std::chrono::system_clock::to_time_t(now);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
       now.time_since_epoch()) % 1000;
     
-    logFile_ << "[" << time_t << "." << std::setfill('0') << std::setw(3) << ms.count() 
+    logFile_ << "[" << time_val << "." << std::setfill('0') << std::setw(3) << ms.count()
              << "] " << message << std::endl;
     logFile_.flush();
   }

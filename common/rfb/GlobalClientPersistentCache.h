@@ -23,6 +23,7 @@
 #include <vector>
 #include <unordered_map>
 #include <list>
+#include <memory>      // for std::unique_ptr
 #include <string>
 #include <functional>
 #include <fstream>
