@@ -32,6 +32,7 @@
 #include <rfb/ContentCache.h>
 #include <rfb/ContentHash.h>
 #include <rfb/PixelBuffer.h>
+#include <rfb/cache/ServerHashSet.h>
 
 namespace rfb {
 
@@ -189,7 +190,7 @@ namespace rfb {
 
     // PersistentCache protocol state
     bool usePersistentCache;
-    std::unordered_set<std::vector<uint8_t>, ContentHash::HashVectorHasher> clientKnownHashes_;
+    ServerHashSet<std::vector<uint8_t>, ContentHash::HashVectorHasher> clientKnownHashes_;
     std::queue<std::pair<std::vector<uint8_t>, core::Rect>> pendingPersistentQueries_;
 
     struct PersistentCacheStats {

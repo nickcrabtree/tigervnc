@@ -1437,7 +1437,7 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   std::vector<uint8_t> hash = ContentHash::computeRect(pb, rect);
 
   // Check if client has advertised this hash
-  if (clientKnowsHash(hash)) {
+  if (clientKnownHashes_.has(hash)) {
     // Cache hit! Client has this content, send reference
     persistentCacheStats.cacheHits++;
     int equiv = 12 + rect.area() * (conn->client.pf().bpp/8);
@@ -1519,7 +1519,7 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
       conn->writer()->endRect();
 
       // Register this hash as known and clear request
-      addClientKnownHash(hash);
+      clientKnownHashes_.add(hash);
       conn->clearClientPersistentRequest(hash);
 
       lossyRegion.assign_subtract(rect);
@@ -1538,19 +1538,17 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
 
 void EncodeManager::addClientKnownHash(const std::vector<uint8_t>& hash)
 {
-  clientKnownHashes_.insert(hash);
+  clientKnownHashes_.add(hash);
 }
 
 void EncodeManager::removeClientKnownHash(const std::vector<uint8_t>& hash)
 {
-  auto it = clientKnownHashes_.find(hash);
-  if (it != clientKnownHashes_.end())
-    clientKnownHashes_.erase(it);
+  clientKnownHashes_.remove(hash);
 }
 
 bool EncodeManager::clientKnowsHash(const std::vector<uint8_t>& hash) const
 {
-  return clientKnownHashes_.find(hash) != clientKnownHashes_.end();
+  return clientKnownHashes_.has(hash);
 }
 
 template<class T>
