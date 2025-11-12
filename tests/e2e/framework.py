@@ -230,6 +230,63 @@ def preflight_check(verbose: bool = False) -> Dict[str, str]:
     return binaries
 
 
+def preflight_check_cpp_only(verbose: bool = False) -> Dict[str, str]:
+    """
+    Run preflight checks for C++ viewer tests only (no Rust viewer required).
+    
+    Returns dict of binary paths.
+    Raises PreflightError if critical requirements missing.
+    """
+    binaries = {}
+    
+    # Required binaries
+    required = [
+        ('Xtigervnc', 'System TigerVNC server (install tigervnc-standalone-server or tigervnc-server)'),
+        ('xterm', 'Terminal emulator (install xterm)'),
+        ('openbox', 'Window manager (install openbox)'),
+        ('xsetroot', 'X11 utilities (install x11-xserver-utils)'),
+        ('wmctrl', 'Window manager control (install wmctrl)'),
+        ('xdotool', 'X11 automation (install xdotool)'),
+    ]
+    
+    missing = []
+    for binary, description in required:
+        try:
+            path = check_binary(binary, required=True)
+            binaries[binary] = path
+            if verbose:
+                print(f"✓ Found {binary}: {path}")
+        except PreflightError as e:
+            missing.append(f"  - {binary}: {description}")
+    
+    if missing:
+        msg = "Missing required binaries:\n" + "\n".join(missing)
+        raise PreflightError(msg)
+    
+    # Optional binaries
+    optional = ['Xvfb', 'xwd', 'convert', 'vncsnapshot', 'xclock']
+    for binary in optional:
+        path = check_binary(binary, required=False)
+        if path:
+            binaries[binary] = path
+            if verbose:
+                print(f"✓ Found {binary}: {path}")
+        elif verbose:
+            print(f"⚠ Optional binary not found: {binary}")
+    
+    # Check C++ viewer only
+    cpp_viewer = BUILD_DIR / "vncviewer" / "njcvncviewer"
+    
+    if not cpp_viewer.exists():
+        raise PreflightError(f"C++ viewer not found: {cpp_viewer}\nRun 'make viewer' to build")
+    binaries['cpp_viewer'] = str(cpp_viewer)
+    
+    if verbose:
+        print(f"✓ C++ viewer: {binaries['cpp_viewer']}")
+    
+    return binaries
+
+
 class VNCServer:
     """Manage VNC server lifecycle (prefers local Xnjcvnc if available)."""
     
