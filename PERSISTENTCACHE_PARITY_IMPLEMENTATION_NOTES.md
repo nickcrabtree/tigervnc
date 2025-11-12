@@ -67,18 +67,23 @@ Format:
 - ⏳ Full handler implementation in VNCSConnectionST (clientKnownPersistentHashes_)
 - ⏳ Server encoder logic (reference vs init vs fallback)
 
-### Phase 3: Shared C++ Modules 🔄 IN PROGRESS
+### Phase 3: Shared C++ Modules ✅ COMPLETE
+
+**Started**: January 8, 2026  
+**Completed**: January 8, 2026
 
 **Dependencies**: Phase 2 complete
 
-#### Progress
+#### Completed
 - ✅ Created header-only `common/rfb/cache/ArcCache.h` template utility implementing ARC with byte-based capacity and ghost lists
-- ⏳ BandwidthStats helpers (planned)
-- ⏳ ProtocolHelpers utilities (planned)
+- ✅ Created header-only `common/rfb/cache/ServerHashSet.h` template for server-side hash tracking
+- ✅ BandwidthStats helpers (already implemented earlier)
+- ✅ ProtocolHelpers utilities (already implemented earlier)
+- ✅ Migrated ContentCache client-side pixel cache to shared ArcCache
+- ✅ Migrated EncodeManager PersistentCache tracking to shared ServerHashSet
+- ✅ Updated cache/README.md with documentation
 
-#### Next
-- Migrate ContentCache to shared ArcCache to remove duplicate ARC logic
-- Add unit tests in Phase 6
+**Impact**: Eliminated ~240 lines of duplicate ARC code from ContentCache
 
 ### Phase 4: C++ Viewer Enhancements 🔄 IN PROGRESS
 
@@ -161,14 +166,19 @@ New in this update:
 - ✅ `common/rfb/VNCSConnectionST.cxx` - Added stub handler (lines 930-940)
 
 #### Phase 3 (Shared Utilities)
-- ✅ `common/rfb/cache/ArcCache.h` (new, header-only)
-- ✅ `common/rfb/cache/BandwidthStats.{h,cxx}` (new)
-- ✅ `common/rfb/cache/ProtocolHelpers.h` (new)
-- ⏳ `common/rfb/cache/README.md` (new)
+- ✅ `common/rfb/cache/ArcCache.h` (new, header-only) - Template ARC implementation
+- ✅ `common/rfb/cache/ServerHashSet.h` (new, header-only) - Server-side hash tracking
+- ✅ `common/rfb/cache/BandwidthStats.{h,cxx}` (implemented earlier)
+- ✅ `common/rfb/cache/ProtocolHelpers.h` (implemented earlier)
+- ✅ `common/rfb/cache/README.md` (updated with all utilities)
+- ✅ `common/rfb/ContentCache.{h,cxx}` - Migrated to shared ArcCache
+- ✅ `common/rfb/EncodeManager.{h,cxx}` - Migrated to shared ServerHashSet
 
-Migration:
-- DecodeManager now uses shared BandwidthStats for both caches
-- PersistentCache now uses shared ArcCache; ContentCache migration remains a follow-up
+Migration Impact:
+- DecodeManager uses shared BandwidthStats for both caches
+- PersistentCache uses shared ArcCache for client-side pixel storage
+- ContentCache uses shared ArcCache for client-side pixel storage (~240 LOC removed)
+- EncodeManager uses shared ServerHashSet for PersistentCache known-hash tracking
 
 #### Phase 4 (Viewer)
 - ✅ `common/rfb/GlobalClientPersistentCache.{h,cxx}` - Added pendingEvictions_ and ARC->eviction wiring
