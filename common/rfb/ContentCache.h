@@ -33,6 +33,7 @@
 
 #include <core/Rect.h>
 #include <rfb/PixelFormat.h>
+#include <rfb/cache/ArcCache.h>
 
 namespace rfb {
 
@@ -223,32 +224,22 @@ namespace rfb {
     std::unordered_map<ContentKey, uint64_t, ContentKeyHash> keyToCacheId_;  // key -> cache ID
     std::unordered_map<uint64_t, ContentKey> cacheIdToKey_;  // cache ID -> key
     
-    // Client-side: Decoded pixel storage (keyed by ContentKey to prevent dimension mismatches)
-    std::unordered_map<ContentKey, CachedPixels, ContentKeyHash> pixelCache_;
-    
-    // ARC list membership tracking
-    enum ListType {
-      LIST_NONE,  // Not in any list
-      LIST_T1,    // Recently used once (recency)
-      LIST_T2,    // Frequently used (frequency)
-      LIST_B1,    // Ghost: evicted from T1
-      LIST_B2     // Ghost: evicted from T2
-    };
-    
-    struct ListInfo {
-      ListType list;
-      std::list<ContentKey>::iterator iter;
-      
-      ListInfo() : list(LIST_NONE) {}
-    };
-    
+    // Client-side: Decoded pixel storage (shared ArcCache)
+    std::unique_ptr<rfb::cache::ArcCache<ContentKey, CachedPixels, ContentKeyHash>> arcPixelCache_;
+
     // ARC lists (most recent at front) - server-side hash cache
     std::list<ContentKey> t1_;  // Recently used once
     std::list<ContentKey> t2_;  // Frequently used
     std::list<ContentKey> b1_;  // Ghost entries from T1
     std::list<ContentKey> b2_;  // Ghost entries from T2
     
-    // Track which list each key is in
+    // Track which list each key is in (server-side hash cache)
+    enum ListType { LIST_T1, LIST_T2, LIST_B1, LIST_B2, LIST_NONE };
+    struct ListInfo {
+      ListType list;
+      std::list<ContentKey>::iterator iter;
+      ListInfo() : list(LIST_NONE) {}
+    };
     std::unordered_map<ContentKey, ListInfo, ContentKeyHash> listMap_;
     
     // ARC adaptive parameter: target size for T1 in bytes
@@ -264,23 +255,8 @@ namespace rfb {
     
     // Statistics
     mutable Stats stats_;
-    
-    // Client-side pixel cache ARC tracking (parallel to server-side hash cache)
-    struct PixelListInfo {
-      ListType list;
-      std::list<ContentKey>::iterator iter;
-      
-      PixelListInfo() : list(LIST_NONE) {}
-    };
-    
-    std::list<ContentKey> pixelT1_;  // Recently used once
-    std::list<ContentKey> pixelT2_;  // Frequently used
-    std::list<ContentKey> pixelB1_;  // Ghost entries from pixel T1
-    std::list<ContentKey> pixelB2_;  // Ghost entries from pixel T2
-    std::unordered_map<ContentKey, PixelListInfo, ContentKeyHash> pixelListMap_;  // Track which list each key is in
-    size_t pixelP_;          // ARC adaptive parameter for pixel cache
-    size_t pixelT1Size_;     // Bytes in pixel T1
-    size_t pixelT2Size_;     // Bytes in pixel T2
+
+    // Pixel cache capacity (ArcCache), kept configurable
     size_t maxPixelCacheSize_;  // Maximum pixel cache size in bytes
     
     // Eviction notification tracking
@@ -293,14 +269,6 @@ namespace rfb {
     void moveToB2(const ContentKey& key);
     void removeFromList(const ContentKey& key);
     size_t getEntrySize(const ContentKey& key) const;
-    
-    // ARC helper methods (client-side pixel cache)
-    void replacePixelCache(size_t size);
-    void movePixelToT2(const ContentKey& key);
-    void movePixelToB1(const ContentKey& key);
-    void movePixelToB2(const ContentKey& key);
-    void removePixelFromList(const ContentKey& key);
-    size_t getPixelEntrySize(const ContentKey& key) const;
     
     // Common helpers
     uint32_t getCurrentTime() const;
