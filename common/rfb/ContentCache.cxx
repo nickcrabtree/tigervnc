@@ -727,10 +727,7 @@ void ContentCache::storeDecodedPixels(const ContentKey& key,
     dst += rowBytes;
   }
 
-  // Insert into ArcCache (will handle promotion/eviction)
-  arcPixelCache_->insert(key, std::move(cached));
-
-  // Debug checks retained below
+  // Debug checks - MUST be done BEFORE std::move to avoid use-after-move
   // DEBUG: Check if cached data is all black (potential corruption)
   bool isAllBlack = true;
   for (size_t i = 0; i < contiguousSize && isAllBlack; i++) {
@@ -744,6 +741,10 @@ void ContentCache::storeDecodedPixels(const ContentKey& key,
                key.width, key.height, (unsigned long long)key.contentHash,
                width, height, stridePixels, pf.bpp);
   }
+
+  // Insert into ArcCache (will handle promotion/eviction)
+  // NOTE: Do not access 'cached' after this move!
+  arcPixelCache_->insert(key, std::move(cached));
   
   vlog.debug("Stored decoded pixels for key (%ux%u,hash=%016llx): %dx%d %dbpp (%zu bytes)",
              key.width, key.height, (unsigned long long)key.contentHash,
