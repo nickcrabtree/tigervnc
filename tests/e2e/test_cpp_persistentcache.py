@@ -28,7 +28,7 @@ from framework import (
     PROJECT_ROOT
 )
 from scenarios import ScenarioRunner
-from log_parser import parse_cpp_log, compute_metrics
+from log_parser import parse_cpp_log, parse_server_log, compute_metrics
 
 
 def run_cpp_viewer(viewer_path, port, artifacts, tracker, name, 
@@ -208,11 +208,20 @@ def main():
         tracker.cleanup('cpp_pc_test_viewer')
 
         log_path = artifacts.logs_dir / 'cpp_pc_test_viewer.log'
+        server_log_path = artifacts.logs_dir / f'cpp_pc_content_server_{args.display_content}.log'
+        
         if not log_path.exists():
             print(f"\n✗ FAIL: Log file not found: {log_path}")
             return 1
 
+        # Parse both viewer and server logs
         parsed = parse_cpp_log(log_path)
+        server_parsed = parse_server_log(server_log_path)
+        
+        # Combine server-side hit/miss counts with client counts
+        parsed.persistent_hits += server_parsed.persistent_hits
+        parsed.persistent_misses += server_parsed.persistent_misses
+        
         metrics = compute_metrics(parsed)
 
         print("\n[8/8] Verification...")

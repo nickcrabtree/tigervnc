@@ -275,6 +275,33 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
     return parsed
 
 
+def parse_server_log(log_path: Path) -> ParsedLog:
+    """Parse server log file for cache activity."""
+    parsed = ParsedLog()
+    
+    if not log_path.exists():
+        parsed.errors.append(f"Server log file not found: {log_path}")
+        return parsed
+    
+    with open(log_path, 'r', errors='replace') as f:
+        for line in f:
+            line = line.strip()
+            
+            # PersistentCache HIT/MISS on server
+            if 'persistentcache hit' in line.lower():
+                parsed.persistent_hits += 1
+            elif 'persistentcache miss' in line.lower():
+                parsed.persistent_misses += 1
+            
+            # ContentCache operations on server
+            if 'contentcache.*hit' in line.lower() or 'cache.*hit.*id' in line.lower():
+                parsed.total_hits += 1
+            elif 'contentcache.*miss' in line.lower():
+                parsed.total_misses += 1
+    
+    return parsed
+
+
 def parse_rust_log(log_path: Path) -> ParsedLog:
     """
     Parse Rust viewer log file.
@@ -309,6 +336,15 @@ def compute_metrics(parsed: ParsedLog) -> Dict:
     # Compute persistent hit rate
     p_total = parsed.persistent_hits + parsed.persistent_misses
     p_hit_rate = (100.0 * parsed.persistent_hits / p_total) if p_total > 0 else 0.0
+    
+    # If no explicit hit/miss counts, use protocol messages as proxy
+    # CachedRect = cache hit (reference), CachedRectInit = cache miss (full data)
+    if parsed.total_hits == 0 and parsed.total_misses == 0:
+        # Use protocol messages as fallback
+        parsed.total_hits = parsed.cached_rect_count  # References = hits
+        parsed.total_misses = parsed.cached_rect_init_count  # Initial sends = misses
+        parsed.total_lookups = parsed.total_hits + parsed.total_misses
+        parsed.total_stores = parsed.cached_rect_init_count  # Stored on init
 
     metrics = {
         'cache_operations': {
