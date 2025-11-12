@@ -155,6 +155,10 @@ namespace rfb {
     virtual void queueCachedInit(uint64_t, const core::Rect&) {}
     virtual void markCacheIdKnown(uint64_t) {}
 
+    // PersistentCache helpers (default no-op)
+    virtual bool clientRequestedPersistent(const std::vector<uint8_t>&) const { return false; }
+    virtual void clearClientPersistentRequest(const std::vector<uint8_t>&) {}
+
   protected:
 
     // Overridden from SMsgHandler

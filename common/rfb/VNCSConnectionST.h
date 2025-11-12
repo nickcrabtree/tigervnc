@@ -156,6 +156,16 @@ namespace rfb {
                                   const std::vector<std::vector<uint8_t>>& hashes) override;
     void handlePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes) override;
 
+    // PersistentCache request helpers used by encoder
+    bool clientRequestedPersistent(const std::vector<uint8_t>& h) const override {
+      return clientRequestedPersistentHashes_.find(h) != clientRequestedPersistentHashes_.end();
+    }
+    void clearClientPersistentRequest(const std::vector<uint8_t>& h) override {
+      auto it = clientRequestedPersistentHashes_.find(h);
+      if (it != clientRequestedPersistentHashes_.end())
+        clientRequestedPersistentHashes_.erase(it);
+    }
+
   private:
     struct HashVectorHasher {
       size_t operator()(const std::vector<uint8_t>& v) const {

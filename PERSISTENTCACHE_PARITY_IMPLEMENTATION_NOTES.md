@@ -178,7 +178,7 @@ Migration:
 #### Phase 5 (Server)
 - ✅ `common/rfb/VNCSConnectionST.{h,cxx}` - Added requested-hash tracking and eviction handling (removes known hashes)
 - ✅ `common/rfb/EncodeManager.{h,cxx}` - Added removeClientKnownHash()
-- ⏳ `common/rfb/EncodeManager.{h,cxx}` - Enhanced encoder logic (reference vs init vs fallback)
+- ✅ `common/rfb/EncodeManager.{h,cxx}` - Encoder logic: reference vs init (on request) vs fallback
 
 #### Phase 6 (Tests)
 - ⏳ `tests/unit/test_persistent_cache_protocol.cxx` (new)

@@ -867,6 +867,17 @@ void DecodeManager::flush()
 - Handle eviction notifications
 - Synchronization discipline
 
+### 5.1 Per-Connection State - Implemented
+
+- Requested-hash tracking added (VNCSConnectionST)
+- Eviction handling updates known-hash set
+
+### 5.2 Encoder Decision Logic - Implemented
+
+- If client knows hash → PersistentCachedRect
+- Else if client requested hash → PersistentCachedRectInit (encode + send; then mark known and clear request)
+- Else → fallback to normal encoding
+
 ### 5.1 Per-Connection State
 
 #### Task 5.1: Add Known-Hash Tracking
