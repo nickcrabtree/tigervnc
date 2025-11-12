@@ -206,6 +206,9 @@ def main():
         # 8. Stop viewer and analyze
         print("\n[7/8] Stopping viewer and analyzing results...")
         tracker.cleanup('cpp_pc_test_viewer')
+        
+        # Give logs a moment to flush
+        time.sleep(1.0)
 
         log_path = artifacts.logs_dir / 'cpp_pc_test_viewer.log'
         server_log_path = artifacts.logs_dir / f'cpp_pc_content_server_{args.display_content}.log'
@@ -215,12 +218,32 @@ def main():
             return 1
 
         # Parse both viewer and server logs
+        print("  Parsing viewer log...")
         parsed = parse_cpp_log(log_path)
-        server_parsed = parse_server_log(server_log_path)
+        
+        print("  Parsing server log...")
+        server_parsed = parse_server_log(server_log_path, verbose=args.verbose)
+        
+        # Debug: Show what we found in viewer log
+        print(f"\n  Viewer log: {parsed.cached_rect_count} CachedRect, {parsed.cached_rect_init_count} CachedRectInit")
+        print(f"  Viewer log: {parsed.persistent_hits} PC hits, {parsed.persistent_misses} PC misses")
         
         # Combine server-side hit/miss counts with client counts
         parsed.persistent_hits += server_parsed.persistent_hits
         parsed.persistent_misses += server_parsed.persistent_misses
+        
+        print(f"  Combined: {parsed.persistent_hits} PC hits, {parsed.persistent_misses} PC misses")
+        
+        # Debug: Show relevant server log lines if verbose
+        if args.verbose:
+            print("\n  Checking server log for all PersistentCache messages...")
+            with open(server_log_path, 'r') as f:
+                pc_lines = [line.strip() for line in f if 'persistentcache' in line.lower()]
+                print(f"  Found {len(pc_lines)} lines with 'persistentcache'")
+                if pc_lines:
+                    print("  First 10 PersistentCache-related lines:")
+                    for line in pc_lines[:10]:
+                        print(f"    {line[:150]}")
         
         metrics = compute_metrics(parsed)
 

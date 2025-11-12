@@ -275,13 +275,17 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
     return parsed
 
 
-def parse_server_log(log_path: Path) -> ParsedLog:
+def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
     """Parse server log file for cache activity."""
     parsed = ParsedLog()
     
     if not log_path.exists():
         parsed.errors.append(f"Server log file not found: {log_path}")
         return parsed
+    
+    # Track sample messages for debugging
+    hit_samples = []
+    miss_samples = []
     
     with open(log_path, 'r', errors='replace') as f:
         for line in f:
@@ -290,14 +294,38 @@ def parse_server_log(log_path: Path) -> ParsedLog:
             # PersistentCache HIT/MISS on server
             if 'persistentcache hit' in line.lower():
                 parsed.persistent_hits += 1
+                if len(hit_samples) < 5:
+                    hit_samples.append(line)
             elif 'persistentcache miss' in line.lower():
                 parsed.persistent_misses += 1
+                if len(miss_samples) < 5:
+                    miss_samples.append(line)
             
             # ContentCache operations on server
             if 'contentcache.*hit' in line.lower() or 'cache.*hit.*id' in line.lower():
                 parsed.total_hits += 1
+                if len(hit_samples) < 5:
+                    hit_samples.append(line)
             elif 'contentcache.*miss' in line.lower():
                 parsed.total_misses += 1
+                if len(miss_samples) < 5:
+                    miss_samples.append(line)
+    
+    # Print debug info if verbose
+    if verbose:
+        print(f"\n[DEBUG] Server log parsing results:")
+        print(f"  PersistentCache: {parsed.persistent_hits} hits, {parsed.persistent_misses} misses")
+        print(f"  ContentCache: {parsed.total_hits} hits, {parsed.total_misses} misses")
+        
+        if hit_samples:
+            print(f"\n  Sample HIT messages:")
+            for sample in hit_samples[:3]:
+                print(f"    {sample[:120]}..." if len(sample) > 120 else f"    {sample}")
+        
+        if miss_samples:
+            print(f"\n  Sample MISS messages:")
+            for sample in miss_samples[:3]:
+                print(f"    {sample[:120]}..." if len(sample) > 120 else f"    {sample}")
     
     return parsed
 
