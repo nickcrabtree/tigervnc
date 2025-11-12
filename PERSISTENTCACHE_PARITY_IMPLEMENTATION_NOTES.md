@@ -89,8 +89,8 @@ New in this update:
 **Dependencies**: Phases 2, 3 complete
 
 #### Progress
-- Added pendingEvictions_ queue to GlobalClientPersistentCache
-- Hooked ARC replace() to enqueue evicted hashes for server notification
+- Integrated shared ArcCache into GlobalClientPersistentCache (byte-based capacity, eviction callback)
+- Added pendingEvictions_ queue; eviction callback enqueues hashes for server notification
 - Implemented eviction sending in DecodeManager::flush() using writePersistentCacheEvictionBatched()
 
 #### Remaining
@@ -168,7 +168,7 @@ New in this update:
 
 Migration:
 - DecodeManager now uses shared BandwidthStats for both caches
-- Future: migrate ContentCache/PersistentCache ARC to shared ArcCache
+- PersistentCache now uses shared ArcCache; ContentCache migration remains a follow-up
 
 #### Phase 4 (Viewer)
 - ✅ `common/rfb/GlobalClientPersistentCache.{h,cxx}` - Added pendingEvictions_ and ARC->eviction wiring

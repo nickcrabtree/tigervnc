@@ -51,8 +51,8 @@ public:
   };
 
   ArcCache(size_t maxBytes, ByteSizeFunc sizeFunc, EvictionCallback evictCb = nullptr)
-    : maxBytes_(maxBytes), sizeFunc_(std::move(sizeFunc)), evictCb_(std::move(evictCb)),
-      currentBytes_(0), pBytes_(0) {
+    : maxBytes_(maxBytes), currentBytes_(0), pBytes_(0),
+      sizeFunc_(std::move(sizeFunc)), evictCb_(std::move(evictCb)) {
     if (!sizeFunc_) throw std::invalid_argument("ArcCache: sizeFunc must be provided");
   }
 
@@ -199,10 +199,22 @@ private:
 
   void addToListFront(const Key& key, ArcList which) {
     switch (which) {
-      case ArcList::T1: t1_.push_front(key); listMap_[key] = {which, t1_.begin()}; break;
-      case ArcList::T2: t2_.push_front(key); listMap_[key] = {which, t2_.begin()}; break;
-      case ArcList::B1: b1_.push_front(key); listMap_[key] = {which, b1_.begin()}; break;
-      case ArcList::B2: b2_.push_front(key); listMap_[key] = {which, b2_.begin()}; break;
+      case ArcList::T1: {
+        t1_.push_front(key);
+        auto& li = listMap_[key]; li.list = which; li.iter = t1_.begin();
+        break; }
+      case ArcList::T2: {
+        t2_.push_front(key);
+        auto& li = listMap_[key]; li.list = which; li.iter = t2_.begin();
+        break; }
+      case ArcList::B1: {
+        b1_.push_front(key);
+        auto& li = listMap_[key]; li.list = which; li.iter = b1_.begin();
+        break; }
+      case ArcList::B2: {
+        b2_.push_front(key);
+        auto& li = listMap_[key]; li.list = which; li.iter = b2_.begin();
+        break; }
       default: break;
     }
   }

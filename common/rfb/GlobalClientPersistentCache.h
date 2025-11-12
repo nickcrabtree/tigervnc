@@ -30,6 +30,7 @@
 #include <chrono>
 
 #include <rfb/PixelFormat.h>
+#include <rfb/cache/ArcCache.h>
 
 namespace rfb {
 
@@ -142,55 +143,18 @@ namespace rfb {
     // Queue of hashes evicted from ARC; drained by DecodeManager to notify server
     std::vector<std::vector<uint8_t>> pendingEvictions_;
     
-    // ARC list membership tracking
-    enum ListType {
-      LIST_NONE,  // Not in any list
-      LIST_T1,    // Recently used once (recency)
-      LIST_T2,    // Frequently used (frequency)
-      LIST_B1,    // Ghost: evicted from T1
-      LIST_B2     // Ghost: evicted from T2
-    };
-    
-    struct ListInfo {
-      ListType list;
-      std::list<std::vector<uint8_t>>::iterator iter;
-      
-      ListInfo() : list(LIST_NONE) {}
-    };
-    
-    // ARC lists (most recent at front)
-    std::list<std::vector<uint8_t>> t1_;  // Recently used once
-    std::list<std::vector<uint8_t>> t2_;  // Frequently used
-    std::list<std::vector<uint8_t>> b1_;  // Ghost entries from T1
-    std::list<std::vector<uint8_t>> b2_;  // Ghost entries from T2
-    
-    // Track which list each hash is in
-    std::unordered_map<std::vector<uint8_t>, ListInfo, HashVectorHasher> listMap_;
-    
-    // ARC adaptive parameter: target size for T1 in bytes
-    size_t p_;
-    
+    // Shared ARC cache (byte-capacity)
+    std::unique_ptr<rfb::cache::ArcCache<std::vector<uint8_t>, CachedPixels, HashVectorHasher>> arcCache_;
+
     // Configuration
-    size_t maxCacheSize_;      // In bytes (total for T1+T2)
-    
-    // Current state
-    size_t t1Size_;            // Bytes in T1
-    size_t t2Size_;            // Bytes in T2
+    size_t maxCacheSize_;      // In bytes
     
     // Statistics
     mutable Stats stats_;
     
     // Disk persistence
     std::string cacheFilePath_;
-    
-    // ARC helper methods
-    void replace(const std::vector<uint8_t>& hash, size_t size);
-    void moveToT2(const std::vector<uint8_t>& hash);
-    void moveToB1(const std::vector<uint8_t>& hash);
-    void moveToB2(const std::vector<uint8_t>& hash);
-    void removeFromList(const std::vector<uint8_t>& hash);
-    size_t getEntrySize(const std::vector<uint8_t>& hash) const;
-    
+
     // Helper to get current timestamp
     uint32_t getCurrentTime() const;
     
