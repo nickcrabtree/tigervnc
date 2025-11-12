@@ -53,6 +53,7 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   memset(&contentCacheBandwidthStats, 0, sizeof(contentCacheBandwidthStats));
   lastDecodedRectBytes = 0;
   memset(&persistentCacheStats, 0, sizeof(persistentCacheStats));
+  memset(&persistentCacheBandwidthStats, 0, sizeof(persistentCacheBandwidthStats));
   
   // Initialize client-side content cache (2GB default, unlimited age)
   // Can be overridden with ContentCacheSize parameter from viewer
@@ -68,10 +69,13 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   contentCache = new ContentCache(cacheSize, 0);
   vlog.info("Client ContentCache initialized: %zuMB, unlimited age (ARC-managed)", cacheSize);
   
-  // Initialize client-side persistent cache (2GB default)
-  // TODO: Read size from parameters in Phase 4
-  persistentCache = new GlobalClientPersistentCache(2048);
-  vlog.info("Client PersistentCache initialized: 2048MB (ARC-managed)");
+  // Initialize client-side persistent cache (default 2GB, overridable via PersistentCacheSize)
+  size_t pcSizeMB = 2048;
+  if (auto* v = core::Configuration::getParam("PersistentCacheSize")) {
+    if (auto* ip = dynamic_cast<core::IntParameter*>(v)) pcSizeMB = (size_t)(*ip);
+  }
+  persistentCache = new GlobalClientPersistentCache(pcSizeMB);
+  vlog.info("Client PersistentCache initialized: %zuMB (ARC-managed)", pcSizeMB);
   
   // Load persistent cache from disk
   if (persistentCache->loadFromDisk()) {
@@ -370,6 +374,17 @@ void DecodeManager::logStats()
               pcStats.b1Size, pcStats.b2Size);
     vlog.info("    ARC parameter p (target T1 bytes): %s",
               core::iecPrefix(pcStats.targetT1Size, "B").c_str());
+
+    // PersistentCache bandwidth summary
+    unsigned long long totalCacheBytes = persistentCacheBandwidthStats.cachedRectBytes +
+                                         persistentCacheBandwidthStats.cachedRectInitBytes;
+    unsigned long long totalAlternativeBytes = persistentCacheBandwidthStats.alternativeBytes;
+    if (totalAlternativeBytes > 0 && totalAlternativeBytes >= totalCacheBytes) {
+      unsigned long long savedBytes = totalAlternativeBytes - totalCacheBytes;
+      double savingsPercent = (100.0 * savedBytes) / totalAlternativeBytes;
+      vlog.info("  PersistentCache: %s bandwidth saving (%.1f%% reduction)",
+                core::iecPrefix(savedBytes, "B").c_str(), savingsPercent);
+    }
   }
 }
 
@@ -478,6 +493,37 @@ void DecodeManager::DecodeThread::worker()
     if (manager->workQueue.size() > 1)
       manager->consumerCond.notify_all();
   }
+}
+
+void DecodeManager::trackPersistentCacheRef(const core::Rect& r, size_t hashLen)
+{
+  // PersistentCachedRect overhead: 12 (rect header) + 1 (hashLen) + hashLen
+  size_t overhead = 12 + 1 + hashLen;
+
+  // Alternative baseline without cache: 12 (header) + 4 (encoding) + estimated compressed
+  size_t alternativeBytes = 16; // 12 + 4
+  size_t uncompressedSize = r.area() * (conn->server.pf().bpp / 8);
+  size_t estimatedCompressed = uncompressedSize / 10; // conservative estimate
+  alternativeBytes += estimatedCompressed;
+
+  persistentCacheBandwidthStats.cachedRectBytes += overhead;
+  persistentCacheBandwidthStats.alternativeBytes += alternativeBytes;
+  persistentCacheBandwidthStats.cachedRectCount++;
+}
+
+void DecodeManager::trackPersistentCacheInit(const core::Rect& r, size_t hashLen, size_t compressedBytes)
+{
+  (void)r; // Not used directly here
+  // PersistentCachedRectInit overhead: 12 (rect header) + 1 (hashLen) + hashLen + 4 (encoding)
+  size_t overhead = 12 + 1 + hashLen + 4;
+
+  // cached path includes overhead + compressed
+  persistentCacheBandwidthStats.cachedRectInitBytes += overhead + compressedBytes;
+
+  // Alternative (no cache): 12 (header) + 4 (encoding) + compressed
+  persistentCacheBandwidthStats.alternativeBytes += 16 + compressedBytes;
+
+  persistentCacheBandwidthStats.cachedRectInitCount++;
 }
 
 DecodeManager::QueueEntry* DecodeManager::DecodeThread::findEntry()
@@ -695,6 +741,9 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
     return;
   }
   
+  // Track bandwidth for this PersistentCachedRect reference (regardless of hit/miss)
+  trackPersistentCacheRef(r, hash.size());
+
   persistentCacheStats.cache_lookups++;
   
   // Lookup cached pixels by hash
@@ -786,6 +835,9 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   vlog.debug("PersistentCache STORE details: bpp=%d stridePx=%d pixelBytes=%zu",
              pb->getPF().bpp, stridePixels, pixelBytes);
   
+  // Track bandwidth for this PersistentCachedRectInit (hash + encoded data)
+  trackPersistentCacheInit(r, hash.size(), lastDecodedRectBytes);
+
   // Store in persistent cache with hash
   persistentCache->insert(hash, pixels, pb->getPF(),
                          r.width(), r.height(), stridePixels);

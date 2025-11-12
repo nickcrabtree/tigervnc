@@ -82,6 +82,10 @@ Format:
 
 ### Phase 4: C++ Viewer Enhancements 🔄 IN PROGRESS
 
+New in this update:
+- Added PersistentCache bandwidth tracking (ref/init/alternative) with summary in logStats()
+- Added PersistentCacheSize viewer parameter to configure cache size (default 2048MB)
+
 **Dependencies**: Phases 2, 3 complete
 
 #### Progress
@@ -91,7 +95,6 @@ Format:
 
 #### Remaining
 - Integrate shared ArcCache template (Phase 3 follow-up)
-- Add bandwidth tracking for PersistentCache
 - Parameterize PersistentCache size via viewer options
 
 ### Phase 5: C++ Server Enhancements ⏳ PENDING

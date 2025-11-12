@@ -163,6 +163,19 @@ namespace rfb {
     };
     PersistentCacheStats persistentCacheStats;
     
+    // PersistentCache bandwidth savings tracking
+    struct PersistentCacheBandwidthStats {
+      unsigned long long cachedRectBytes;          // PersistentCachedRect (12 + 1 + hashLen)
+      unsigned long long cachedRectInitBytes;      // PersistentCachedRectInit (12 + 1 + hashLen + 4 + compressed)
+      unsigned long long alternativeBytes;         // Baseline without cache (16 + compressed)
+      unsigned cachedRectCount;                    // References received
+      unsigned cachedRectInitCount;                // Inits received
+    };
+    PersistentCacheBandwidthStats persistentCacheBandwidthStats;
+    
+    void trackPersistentCacheRef(const core::Rect& r, size_t hashLen);
+    void trackPersistentCacheInit(const core::Rect& r, size_t hashLen, size_t compressedBytes);
+    
     // Batching for PersistentCache queries
     std::vector<std::vector<uint8_t>> pendingQueries;
     void flushPendingQueries();
