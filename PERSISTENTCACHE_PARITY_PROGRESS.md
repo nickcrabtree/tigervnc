@@ -160,9 +160,11 @@ Created:
    - Runs repeated-content scenario
    - Parses viewer logs for PersistentCache bandwidth reduction and asserts >80%
  
-Planned:
+Created:
 3. `tests/e2e/test_cache_parity.py`
-   - Compare ContentCache vs PersistentCache hit rates and savings on identical workload
+   - Starts identical workload twice (CC-focused, then PC-focused)
+   - Parses logs and compares hit rates (tolerance: ±5 pp)
+   - Prints PC bandwidth reduction for visibility
 
 **⚠️ CRITICAL SAFETY RULES**:
 - ONLY use displays `:998` and `:999` (NEVER `:1`, `:2`, `:3`)

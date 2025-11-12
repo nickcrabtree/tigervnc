@@ -74,6 +74,8 @@ class ParsedLog:
     persistent_eviction_count: int = 0
     persistent_evicted_ids: int = 0
     persistent_bandwidth_reduction: float = 0.0
+    persistent_hits: int = 0
+    persistent_misses: int = 0
     
     # Final ARC state
     final_arc: Optional[ARCSnapshot] = None
@@ -229,6 +231,12 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                     except ValueError:
                         pass
             
+            # PersistentCache hit/miss counters from viewer logs
+            elif 'persistentcache hit' in message.lower():
+                parsed.persistent_hits += 1
+            elif 'persistentcache miss' in message.lower():
+                parsed.persistent_misses += 1
+            
             elif 'evicted' in message.lower() and 'cache' in message.lower():
                 # Client or server eviction logging
                 cache_id = parse_cache_id(message)
@@ -298,6 +306,10 @@ def compute_metrics(parsed: ParsedLog) -> Dict:
     
     Returns dict suitable for comparison and reporting.
     """
+    # Compute persistent hit rate
+    p_total = parsed.persistent_hits + parsed.persistent_misses
+    p_hit_rate = (100.0 * parsed.persistent_hits / p_total) if p_total > 0 else 0.0
+
     metrics = {
         'cache_operations': {
             'total_hits': parsed.total_hits,
@@ -317,6 +329,9 @@ def compute_metrics(parsed: ParsedLog) -> Dict:
             'eviction_count': parsed.persistent_eviction_count,
             'evicted_ids': parsed.persistent_evicted_ids,
             'bandwidth_reduction_pct': parsed.persistent_bandwidth_reduction,
+            'hits': parsed.persistent_hits,
+            'misses': parsed.persistent_misses,
+            'hit_rate': p_hit_rate,
         },
         'arc_state': {},
         'errors': len(parsed.errors),
