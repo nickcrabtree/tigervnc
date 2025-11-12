@@ -53,6 +53,12 @@ namespace rfb {
   // PersistentCache protocol (cross-session)
   const int msgTypePersistentCacheQuery = 253;
   const int msgTypePersistentCacheHashList = 252;
+  
+  // PersistentCache eviction notification (client→server)
+  // Allows client to notify server when cache entries are evicted,
+  // so server stops sending PersistentCachedRect references for evicted hashes.
+  // Note: 251 is SetDesktopSize, 250 is ContentCache eviction.
+  const int msgTypePersistentCacheEviction = 249;
 
   const int msgTypeQEMUClientMessage = 255;
 }

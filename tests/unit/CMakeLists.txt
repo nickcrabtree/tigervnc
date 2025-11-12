@@ -12,6 +12,10 @@ add_executable(configargs configargs.cxx)
 target_link_libraries(configargs rfb GTest::gtest_main)
 gtest_discover_tests(configargs)
 
+add_executable(arccache arccache.cxx)
+target_link_libraries(arccache rfb core GTest::gtest_main)
+gtest_discover_tests(arccache)
+
 add_executable(contentcache contentcache.cxx)
 target_link_libraries(contentcache rfb core GTest::gtest_main)
 gtest_discover_tests(contentcache)
@@ -35,6 +39,10 @@ gtest_discover_tests(hostport)
 add_executable(parameters parameters.cxx)
 target_link_libraries(parameters core GTest::gtest_main)
 gtest_discover_tests(parameters)
+
+add_executable(serverhashset serverhashset.cxx)
+target_link_libraries(serverhashset rfb core GTest::gtest_main)
+gtest_discover_tests(serverhashset)
 
 add_executable(pixelformat pixelformat.cxx)
 target_link_libraries(pixelformat rfb GTest::gtest_main)

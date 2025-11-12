@@ -139,9 +139,6 @@ ContentCache::ContentCache(size_t maxSizeMB, uint32_t maxAgeSec)
     maxAge_(maxAgeSec),
     t1Size_(0),
     t2Size_(0),
-    pixelP_(0),
-    pixelT1Size_(0),
-    pixelT2Size_(0),
     maxPixelCacheSize_(maxSizeMB * 1024 * 1024)  // Same limit as hash cache
 {
   //DebugContentCache_2025-10-14
@@ -151,6 +148,13 @@ ContentCache::ContentCache(size_t maxSizeMB, uint32_t maxAgeSec)
   vlog.debug("ContentCache created with ARC: maxSize=%zuMB, maxAge=%us",
              maxSizeMB, maxAgeSec);
              
+  // Initialize shared ArcCache for client pixel cache
+  arcPixelCache_.reset(new rfb::cache::ArcCache<ContentKey, CachedPixels, ContentKeyHash>(
+      maxPixelCacheSize_,
+      [](const CachedPixels& e) { return e.bytes; },
+      nullptr /* no eviction notification from pixel cache at present */
+  ));
+
   //DebugContentCache_2025-10-14
   ContentCacheDebugLogger::getInstance().log("ContentCache constructor EXIT: initialized successfully");
 }
@@ -358,16 +362,17 @@ ContentCache::Stats ContentCache::getStats() const
 {
   Stats current = stats_;
   
-  // If pixel cache has entries, report pixel cache stats (client-side)
+  // If pixel ArcCache exists, report pixel cache stats (client-side)
   // Otherwise report hash cache stats (server-side)
-  if (!pixelCache_.empty()) {
-    current.totalEntries = pixelCache_.size();
-    current.totalBytes = pixelT1Size_ + pixelT2Size_;
-    current.t1Size = pixelT1_.size();
-    current.t2Size = pixelT2_.size();
-    current.b1Size = pixelB1_.size();
-    current.b2Size = pixelB2_.size();
-    current.targetT1Size = pixelP_;
+  if (arcPixelCache_) {
+    auto ps = arcPixelCache_->getStats();
+    current.totalEntries = ps.totalEntries;
+    current.totalBytes = ps.totalBytes;
+    current.t1Size = ps.t1Size;
+    current.t2Size = ps.t2Size;
+    current.b1Size = ps.b1Size;
+    current.b2Size = ps.b2Size;
+    current.targetT1Size = ps.targetT1Size;
   } else {
     // Use hash cache stats (already in stats_)
     current.t1Size = t1_.size();
@@ -428,8 +433,9 @@ size_t ContentCache::getTotalBytes() const
   
   // Calculate total bytes from pixel cache (client-side)
   size_t pixelCacheBytes = 0;
-  for (const auto& entry : pixelCache_) {
-    pixelCacheBytes += entry.second.pixels.size();
+  if (arcPixelCache_) {
+    auto ps = arcPixelCache_->getStats();
+    pixelCacheBytes = ps.totalBytes;
   }
   
   return hashCacheBytes + pixelCacheBytes;
@@ -439,8 +445,13 @@ void ContentCache::setMaxSize(size_t maxSizeMB)
 {
   maxCacheSize_ = maxSizeMB * 1024 * 1024;
   vlog.debug("Cache max size set to %zuMB", maxSizeMB);
+  // Recreate pixel ArcCache with new capacity
+  arcPixelCache_.reset(new rfb::cache::ArcCache<ContentKey, CachedPixels, ContentKeyHash>(
+    maxPixelCacheSize_,
+    [](const CachedPixels& e) { return e.bytes; },
+    nullptr));
   
-  // Evict if we're now over the limit
+  // Evict from hash cache if over the limit
   while (t1Size_ + t2Size_ > maxCacheSize_) {
     if (!t1_.empty() || !t2_.empty()) {
       replace(ContentKey(), 0);  // Force eviction with dummy key
@@ -610,154 +621,8 @@ uint32_t ContentCache::getCurrentTime() const
 }
 
 // ============================================================================
-// Pixel Cache ARC Helper Methods
+// Pixel Cache ARC now uses shared ArcCache
 // ============================================================================
-
-void ContentCache::replacePixelCache(size_t size)
-{
-  // Make room for new entry of given size in pixel cache
-  while (pixelT1Size_ + pixelT2Size_ + size > maxPixelCacheSize_) {
-    
-    // Case 1: T1 is larger than target p, evict from T1
-    if (!pixelT1_.empty() && 
-        (pixelT1Size_ > pixelP_ || (pixelT2_.empty() && pixelT1Size_ == pixelP_))) {
-      
-      ContentKey victim = pixelT1_.back();
-      pixelT1_.pop_back();
-      
-      auto cacheIt = pixelCache_.find(victim);
-      if (cacheIt != pixelCache_.end()) {
-        pixelT1Size_ -= cacheIt->second.bytes;
-        
-        // Move to B1 (ghost list)
-        pixelB1_.push_front(victim);
-        pixelListMap_[victim].list = LIST_B1;
-        pixelListMap_[victim].iter = pixelB1_.begin();
-        
-        // Queue for eviction notification (send hash component)
-        pendingEvictions_.push_back(victim.contentHash);
-        
-        pixelCache_.erase(cacheIt);
-        stats_.evictions++;
-        
-        // Limit B1 size
-        while (pixelB1_.size() > maxPixelCacheSize_ / (1024 * 16)) {
-          ContentKey oldGhost = pixelB1_.back();
-          pixelB1_.pop_back();
-          pixelListMap_.erase(oldGhost);
-        }
-      }
-      
-    } 
-    // Case 2: Evict from T2
-    else if (!pixelT2_.empty()) {
-      
-      ContentKey victim = pixelT2_.back();
-      pixelT2_.pop_back();
-      
-      auto cacheIt = pixelCache_.find(victim);
-      if (cacheIt != pixelCache_.end()) {
-        pixelT2Size_ -= cacheIt->second.bytes;
-        
-        // Move to B2 (ghost list)
-        pixelB2_.push_front(victim);
-        pixelListMap_[victim].list = LIST_B2;
-        pixelListMap_[victim].iter = pixelB2_.begin();
-        
-        // Queue for eviction notification (send hash component)
-        pendingEvictions_.push_back(victim.contentHash);
-        
-        pixelCache_.erase(cacheIt);
-        stats_.evictions++;
-        
-        // Limit B2 size
-        while (pixelB2_.size() > maxPixelCacheSize_ / (1024 * 16)) {
-          ContentKey oldGhost = pixelB2_.back();
-          pixelB2_.pop_back();
-          pixelListMap_.erase(oldGhost);
-        }
-      }
-      
-    } else {
-      // Both lists empty, nothing to evict
-      break;
-    }
-  }
-}
-
-void ContentCache::movePixelToT2(const ContentKey& key)
-{
-  auto listIt = pixelListMap_.find(key);
-  if (listIt == pixelListMap_.end() || listIt->second.list != LIST_T1) {
-    return;
-  }
-  
-  size_t size = getPixelEntrySize(key);
-  
-  // Remove from T1
-  pixelT1_.erase(listIt->second.iter);
-  pixelT1Size_ -= size;
-  
-  // Add to front of T2
-  pixelT2_.push_front(key);
-  pixelT2Size_ += size;
-  
-  listIt->second.list = LIST_T2;
-  listIt->second.iter = pixelT2_.begin();
-}
-
-void ContentCache::movePixelToB1(const ContentKey& key)
-{
-  removePixelFromList(key);
-  pixelB1_.push_front(key);
-  pixelListMap_[key].list = LIST_B1;
-  pixelListMap_[key].iter = pixelB1_.begin();
-}
-
-void ContentCache::movePixelToB2(const ContentKey& key)
-{
-  removePixelFromList(key);
-  pixelB2_.push_front(key);
-  pixelListMap_[key].list = LIST_B2;
-  pixelListMap_[key].iter = pixelB2_.begin();
-}
-
-void ContentCache::removePixelFromList(const ContentKey& key)
-{
-  auto listIt = pixelListMap_.find(key);
-  if (listIt == pixelListMap_.end()) {
-    return;
-  }
-  
-  size_t size = getPixelEntrySize(key);
-  
-  switch (listIt->second.list) {
-    case LIST_T1:
-      pixelT1_.erase(listIt->second.iter);
-      pixelT1Size_ -= size;
-      break;
-    case LIST_T2:
-      pixelT2_.erase(listIt->second.iter);
-      pixelT2Size_ -= size;
-      break;
-    case LIST_B1:
-      pixelB1_.erase(listIt->second.iter);
-      break;
-    case LIST_B2:
-      pixelB2_.erase(listIt->second.iter);
-      break;
-    case LIST_NONE:
-      break;
-  }
-  
-  pixelListMap_.erase(listIt);
-}
-
-size_t ContentCache::getPixelEntrySize(const ContentKey& key) const
-{
-  auto it = pixelCache_.find(key);
-  return (it != pixelCache_.end()) ? it->second.bytes : 0;
-}
 
 std::vector<uint64_t> ContentCache::getPendingEvictions()
 {
@@ -832,97 +697,43 @@ void ContentCache::storeDecodedPixels(const ContentKey& key,
   if (pixels == nullptr || width <= 0 || height <= 0) {
     return;
   }
-  
-  // Calculate data size
-  // CRITICAL: stridePixels is in pixels, not bytes - multiply by bytesPerPixel
-  size_t bytesPerPixel = pf.bpp / 8;
-  size_t dataSize = height * stridePixels * bytesPerPixel;
-  
-  // Check if already in cache
-  auto cacheIt = pixelCache_.find(key);
-  if (cacheIt != pixelCache_.end()) {
-    // Already cached - this is a hit (re-initialization of existing entry)
-    stats_.cacheHits++;
-    
-    // Update existing entry - move to T2 if currently in T1
-    cacheIt->second.lastUsedTime = getCurrentTime();
-    
-    auto listIt = pixelListMap_.find(key);
-    if (listIt != pixelListMap_.end() && listIt->second.list == LIST_T1) {
-      movePixelToT2(key);
-    }
+
+  if (!arcPixelCache_) {
     return;
   }
-  
-  // Not in cache - this is a miss (new data being stored)
-  stats_.cacheMisses++;
-  
-  // Check ghost lists (recently evicted)
-  auto listIt = pixelListMap_.find(key);
-  
-  if (listIt != pixelListMap_.end() && listIt->second.list == LIST_B1) {
-    // Cache hit in B1: adapt by increasing p (favor recency)
-    size_t delta = (pixelB2_.size() >= pixelB1_.size()) ? 1 : (pixelB2_.size() / pixelB1_.size());
-    pixelP_ = std::min(maxPixelCacheSize_, pixelP_ + delta * dataSize);
-    
-    // Make room and insert into T2
-    replacePixelCache(dataSize);
-    
-    // Remove from B1
-    pixelB1_.erase(listIt->second.iter);
-    pixelListMap_.erase(listIt);
-    
-  } else if (listIt != pixelListMap_.end() && listIt->second.list == LIST_B2) {
-    // Cache hit in B2: adapt by decreasing p (favor frequency)
-    size_t delta = (pixelB1_.size() >= pixelB2_.size()) ? 1 : (pixelB1_.size() / pixelB2_.size());
-    pixelP_ = (delta * dataSize > pixelP_) ? 0 : pixelP_ - delta * dataSize;
-    
-    // Make room and insert into T2
-    replacePixelCache(dataSize);
-    
-    // Remove from B2
-    pixelB2_.erase(listIt->second.iter);
-    pixelListMap_.erase(listIt);
-    
-  } else {
-    // New entry: make room and insert into T1
-    replacePixelCache(dataSize);
-  }
-  
-  // Create the entry
-  CachedPixels& cached = pixelCache_[key];
+
+  // Calculate data size (stridePixels is in pixels)
+  const size_t bytesPerPixel = pf.bpp / 8;
+  const size_t rowBytes = (size_t)width * bytesPerPixel;
+  const size_t srcStrideBytes = (size_t)stridePixels * bytesPerPixel;
+  const size_t contiguousSize = (size_t)height * rowBytes;
+
+  // Build entry
+  CachedPixels cached;
   cached.key = key;
   cached.format = pf;
   cached.width = width;
   cached.height = height;
-  cached.stridePixels = stridePixels;
-  cached.bytes = dataSize;
+  cached.stridePixels = width; // store contiguously
+  cached.bytes = contiguousSize;
   cached.lastUsedTime = getCurrentTime();
-  
-  // Copy pixel data row-by-row
-  // Note: 'pixels' points to a subrect within a larger buffer with 'stridePixels' stride.
-  // We store contiguously (stride = width) to avoid wasting memory on padding bytes.
-  size_t contiguousSize = height * width * bytesPerPixel;
   cached.pixels.resize(contiguousSize);
-  
+
   const uint8_t* src = pixels;
   uint8_t* dst = cached.pixels.data();
-  size_t rowBytes = width * bytesPerPixel;
-  size_t srcStrideBytes = stridePixels * bytesPerPixel;
-  
   for (int y = 0; y < height; y++) {
     memcpy(dst, src, rowBytes);
     src += srcStrideBytes;
-    dst += rowBytes;  // Destination is contiguous, so stride = width
+    dst += rowBytes;
   }
-  
-  // Update stored values to reflect contiguous storage
-  cached.stridePixels = width;  // Stored contiguously
-  cached.bytes = contiguousSize;
-  
+
+  // Insert into ArcCache (will handle promotion/eviction)
+  arcPixelCache_->insert(key, std::move(cached));
+
+  // Debug checks retained below
   // DEBUG: Check if cached data is all black (potential corruption)
   bool isAllBlack = true;
-  for (size_t i = 0; i < dataSize && isAllBlack; i++) {
+  for (size_t i = 0; i < contiguousSize && isAllBlack; i++) {
     if (cached.pixels[i] != 0) {
       isAllBlack = false;
     }
@@ -934,46 +745,25 @@ void ContentCache::storeDecodedPixels(const ContentKey& key,
                width, height, stridePixels, pf.bpp);
   }
   
-  // Add to T1 (first access) or T2 (ghost list hit)
-  if (listIt != pixelListMap_.end()) {
-    // Was in ghost list, add to T2
-    pixelT2_.push_front(key);
-    pixelT2Size_ += dataSize;
-    pixelListMap_[key].list = LIST_T2;
-    pixelListMap_[key].iter = pixelT2_.begin();
-  } else {
-    // Brand new, add to T1
-    pixelT1_.push_front(key);
-    pixelT1Size_ += dataSize;
-    pixelListMap_[key].list = LIST_T1;
-    pixelListMap_[key].iter = pixelT1_.begin();
-  }
-  
-  vlog.debug("Stored decoded pixels for key (%ux%u,hash=%016llx): %dx%d %dbpp (%zu bytes), pixelT1=%zu pixelT2=%zu",
+  vlog.debug("Stored decoded pixels for key (%ux%u,hash=%016llx): %dx%d %dbpp (%zu bytes)",
              key.width, key.height, (unsigned long long)key.contentHash,
-             width, height, pf.bpp, dataSize,
-             pixelT1_.size(), pixelT2_.size());
+             width, height, pf.bpp, contiguousSize);
 }
 
 const ContentCache::CachedPixels* ContentCache::getDecodedPixels(const ContentKey& key)
 {
-  auto it = pixelCache_.find(key);
-  if (it == pixelCache_.end()) {
+  if (!arcPixelCache_) {
+    return nullptr;
+  }
+  const CachedPixels* it = arcPixelCache_->get(key);
+  if (it == nullptr) {
     stats_.cacheMisses++;
     return nullptr;
   }
-  
   stats_.cacheHits++;
-  it->second.lastUsedTime = getCurrentTime();
-  
-  // ARC policy: move from T1 to T2 on second access
-  auto listIt = pixelListMap_.find(key);
-  if (listIt != pixelListMap_.end() && listIt->second.list == LIST_T1) {
-    movePixelToT2(key);
-  }
-  
+
   // DEBUG: Enhanced detection for black/corrupted rectangles
-  const CachedPixels& cached = it->second;
+  const CachedPixels& cached = *it;
   
   // Count black pixels and calculate simple checksum
   size_t blackPixelCount = 0;
@@ -1039,5 +829,5 @@ const ContentCache::CachedPixels* ContentCache::getDecodedPixels(const ContentKe
     ContentCacheDebugLogger::getInstance().log(debugMsg);
   }
   
-  return &(it->second);
+  return it;
 }

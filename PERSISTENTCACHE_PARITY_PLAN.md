@@ -183,7 +183,8 @@ From `CONTENTCACHE_RECENT_CHANGES_ANALYSIS.md` Part 1 (C++ ContentCache improvem
 
 **Duration**: 1 week  
 **Complexity**: Medium  
-**Dependencies**: Phase 1 complete
+**Dependencies**: Phase 1 complete  
+**Status**: 🔄 IN PROGRESS (Started January 8, 2026)
 
 ### Goals
 
@@ -447,7 +448,8 @@ case msgTypePersistentCacheEviction:
 
 **Duration**: 2 weeks  
 **Complexity**: High  
-**Dependencies**: Phase 2 complete
+**Dependencies**: Phase 2 complete  
+**Status**: 🔄 IN PROGRESS (Started January 8, 2026)
 
 ### Goals
 
@@ -608,6 +610,8 @@ Fixed in commit 4bbb6621. See crash report: `njcvncviewer-2025-11-05-104759.ips`
 
 ### 3.2 BandwidthStats Helpers
 
+Status: Implemented (DecodeManager migrated to shared stats)
+
 #### Task 3.5: Create Shared BandwidthStats Module
 
 **File**: `common/rfb/cache/BandwidthStats.{h,cxx}`
@@ -681,7 +685,8 @@ std::string formatHash(const std::vector<uint8_t>& hash, size_t prefixLen = 8);
 
 **Duration**: 1.5 weeks  
 **Complexity**: Medium-High  
-**Dependencies**: Phase 2, Phase 3 complete
+**Dependencies**: Phase 2, Phase 3 complete  
+**Status**: 🔄 IN PROGRESS (Started January 8, 2026)
 
 ### Goals
 
@@ -853,13 +858,25 @@ void DecodeManager::flush()
 
 **Duration**: 1 week  
 **Complexity**: Medium  
-**Dependencies**: Phase 2, Phase 4 complete
+**Dependencies**: Phase 2, Phase 4 complete  
+**Status**: 🔄 IN PROGRESS (Started January 8, 2026)
 
 ### Goals
 
 - Track per-connection known-hash set
 - Handle eviction notifications
 - Synchronization discipline
+
+### 5.1 Per-Connection State - Implemented
+
+- Requested-hash tracking added (VNCSConnectionST)
+- Eviction handling updates known-hash set
+
+### 5.2 Encoder Decision Logic - Implemented
+
+- If client knows hash → PersistentCachedRect
+- Else if client requested hash → PersistentCachedRectInit (encode + send; then mark known and clear request)
+- Else → fallback to normal encoding
 
 ### 5.1 Per-Connection State
 

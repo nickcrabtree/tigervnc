@@ -26,6 +26,7 @@
 
 #include <core/Rect.h>
 #include <core/string.h>
+#include <core/LogWriter.h>
 
 #include <rdr/OutStream.h>
 #include <rdr/MemOutStream.h>
@@ -41,6 +42,8 @@
 #include <rfb/CMsgWriter.h>
 
 using namespace rfb;
+
+static core::LogWriter vlog("CMsgWriter");
 
 CMsgWriter::CMsgWriter(ServerParams* server_, rdr::OutStream* os_)
   : server(server_), os(os_)
@@ -295,6 +298,54 @@ void CMsgWriter::writePersistentHashList(uint32_t sequenceId, uint16_t totalChun
   }
   
   endMsg();
+}
+
+void CMsgWriter::writePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes)
+{
+  if (hashes.empty())
+    return;
+  
+  // Validate and clamp count
+  size_t count = hashes.size();
+  if (count > 1000) {
+    vlog.error("Too many hashes to evict (%zu), clamping to 1000", count);
+    count = 1000;
+  }
+  
+  startMsg(msgTypePersistentCacheEviction);
+  os->writeU8(0);   // padding
+  os->writeU16(count);
+  
+  for (size_t i = 0; i < count; i++) {
+    const auto& hash = hashes[i];
+    
+    // Validate hash length
+    if (hash.empty() || hash.size() > 64) {
+      vlog.error("Invalid hash length (%zu bytes), skipping", hash.size());
+      continue;
+    }
+    
+    os->writeU8((uint8_t)hash.size());
+    os->writeBytes(hash.data(), hash.size());
+  }
+  
+  endMsg();
+}
+
+void CMsgWriter::writePersistentCacheEvictionBatched(const std::vector<std::vector<uint8_t>>& hashes)
+{
+  if (hashes.empty())
+    return;
+    
+  // Split into conservative batches to respect message size limits
+  const size_t batchSize = 100;
+  
+  for (size_t offset = 0; offset < hashes.size(); offset += batchSize) {
+    size_t end = std::min(offset + batchSize, hashes.size());
+    std::vector<std::vector<uint8_t>> batch(
+        hashes.begin() + offset, hashes.begin() + end);
+    writePersistentCacheEviction(batch);
+  }
 }
 
 void CMsgWriter::writeClipboardCaps(uint32_t caps,

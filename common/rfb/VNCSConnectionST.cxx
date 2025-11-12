@@ -900,15 +900,11 @@ void VNCSConnectionST::onCachedRectRef(uint64_t cacheId, const core::Rect& r)
 void VNCSConnectionST::handlePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes)
 {
   vlog.debug("Client queried %d persistent cache hashes", (int)hashes.size());
-  
-  // For Phase 6: Client is requesting data for hashes it doesn't have
-  // The proper response would be to send PersistentCachedRectInit with the data
-  // However, since we don't have a reverse mapping from hash -> current rectangle,
-  // we'll just mark these as un-cacheable and let normal encoding happen.
-  // A full implementation would need to store hash -> rect mappings.
-  
-  // TODO Phase 7: Implement proper query response by storing hash->rect mappings
-  // For now, this is a no-op and client will receive regular encoded rectangles
+
+  // Track requested hashes so the encoder can choose to send inits
+  for (const auto& h : hashes) {
+    clientRequestedPersistentHashes_.insert(h);
+  }
 }
 
 void VNCSConnectionST::handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
@@ -925,6 +921,25 @@ void VNCSConnectionST::handlePersistentHashList(uint32_t sequenceId, uint16_t to
   
   vlog.info("Received hash list: %d hashes (total client hashes tracked: %d)",
             (int)hashes.size(), (int)hashes.size()); // TODO: track cumulative count
+}
+
+void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes)
+{
+  vlog.debug("Client evicted %u persistent cache entries", (unsigned)hashes.size());
+
+  // Remove hashes from known set in the encoder so we stop sending references
+  size_t removed = 0;
+  for (const auto& h : hashes) {
+    encodeManager.removeClientKnownHash(h);
+    // Also drop any pending request state to avoid stale entries
+    auto it = clientRequestedPersistentHashes_.find(h);
+    if (it != clientRequestedPersistentHashes_.end())
+      clientRequestedPersistentHashes_.erase(it);
+    removed++;
+  }
+
+  vlog.info("PersistentCache eviction: removed %zu known hashes (now %zu remain)",
+            removed, (size_t)0 /* total unknown here without accessor */);
 }
 
 bool VNCSConnectionST::isShiftPressed()

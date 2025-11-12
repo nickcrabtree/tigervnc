@@ -92,10 +92,7 @@ void PersistentCacheDebugLogger::log(const std::string& message) {
 // ============================================================================
 
 GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxSizeMB)
-  : p_(0),
-    maxCacheSize_(maxSizeMB * 1024 * 1024),
-    t1Size_(0),
-    t2Size_(0)
+  : maxCacheSize_(maxSizeMB * 1024 * 1024)
 {
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache constructor ENTER: maxSizeMB=" + std::to_string(maxSizeMB));
   
@@ -111,6 +108,13 @@ GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxSizeMB)
   
   vlog.debug("PersistentCache created with ARC: maxSize=%zuMB, path=%s", 
              maxSizeMB, cacheFilePath_.c_str());
+
+  // Initialize shared ArcCache with eviction callback
+  arcCache_.reset(new rfb::cache::ArcCache<std::vector<uint8_t>, CachedPixels, HashVectorHasher>(
+      maxCacheSize_,
+      [](const CachedPixels& e) { return e.byteSize(); },
+      [this](const std::vector<uint8_t>& h) { pendingEvictions_.push_back(h); }
+  ));
   
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache constructor EXIT: cacheFilePath=" + cacheFilePath_);
 }
@@ -119,36 +123,27 @@ GlobalClientPersistentCache::~GlobalClientPersistentCache()
 {
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache destructor ENTER: entries=" + std::to_string(cache_.size()));
   
-  vlog.debug("PersistentCache destroyed: %zu entries, T1=%zu T2=%zu",
-             cache_.size(), t1_.size(), t2_.size());
+  vlog.debug("PersistentCache destroyed: %zu entries", cache_.size());
   
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache destructor EXIT");
 }
 
 bool GlobalClientPersistentCache::has(const std::vector<uint8_t>& hash) const
 {
-  return cache_.find(hash) != cache_.end();
+  return arcCache_ && arcCache_->has(hash);
 }
 
 const GlobalClientPersistentCache::CachedPixels* 
 GlobalClientPersistentCache::get(const std::vector<uint8_t>& hash)
 {
-  auto it = cache_.find(hash);
-  if (it == cache_.end()) {
+  if (!arcCache_) return nullptr;
+  const CachedPixels* e = arcCache_->get(hash);
+  if (e == nullptr) {
     stats_.cacheMisses++;
     return nullptr;
   }
-  
   stats_.cacheHits++;
-  it->second.lastAccessTime = getCurrentTime();
-  
-  // ARC policy: move from T1 to T2 on second access
-  auto listIt = listMap_.find(hash);
-  if (listIt != listMap_.end() && listIt->second.list == LIST_T1) {
-    moveToT2(hash);
-  }
-  
-  return &(it->second);
+  return e;
 }
 
 void GlobalClientPersistentCache::insert(const std::vector<uint8_t>& hash,
@@ -157,93 +152,32 @@ void GlobalClientPersistentCache::insert(const std::vector<uint8_t>& hash,
                                          uint16_t width, uint16_t height,
                                          uint16_t stridePixels)
 {
-  if (pixels == nullptr || width == 0 || height == 0)
+  if (!arcCache_ || pixels == nullptr || width == 0 || height == 0)
     return;
-    
-  size_t pixelDataSize = height * stridePixels * (pf.bpp / 8);
-  
-  // Check if already in cache
-  auto cacheIt = cache_.find(hash);
-  if (cacheIt != cache_.end()) {
-    // Update existing entry
-    cacheIt->second.lastAccessTime = getCurrentTime();
-    
-    // Move to T2 if currently in T1
-    auto listIt = listMap_.find(hash);
-    if (listIt != listMap_.end() && listIt->second.list == LIST_T1) {
-      moveToT2(hash);
-    }
-    return;
-  }
-  
-  // Check ghost lists (recently evicted)
-  auto listIt = listMap_.find(hash);
-  
-  if (listIt != listMap_.end() && listIt->second.list == LIST_B1) {
-    // Cache hit in B1: adapt by increasing p (favor recency)
-    size_t delta = (b2_.size() >= b1_.size()) ? 1 : (b2_.size() / b1_.size());
-    p_ = std::min(maxCacheSize_, p_ + delta * pixelDataSize);
-    
-    // Make room and insert into T2
-    replace(hash, pixelDataSize);
-    
-    // Remove from B1
-    b1_.erase(listIt->second.iter);
-    listMap_.erase(listIt);
-    
-  } else if (listIt != listMap_.end() && listIt->second.list == LIST_B2) {
-    // Cache hit in B2: adapt by decreasing p (favor frequency)
-    size_t delta = (b1_.size() >= b2_.size()) ? 1 : (b1_.size() / b2_.size());
-    p_ = (delta * pixelDataSize > p_) ? 0 : p_ - delta * pixelDataSize;
-    
-    // Make room and insert into T2
-    replace(hash, pixelDataSize);
-    
-    // Remove from B2
-    b2_.erase(listIt->second.iter);
-    listMap_.erase(listIt);
-    
-  } else {
-    // New entry: make room and insert into T1
-    replace(hash, pixelDataSize);
-  }
-  
-  // Create the entry
+
+  // Build CachedPixels entry and copy rows respecting stride (pixels)
   CachedPixels entry;
-  entry.pixels.assign(pixels, pixels + pixelDataSize);
   entry.format = pf;
   entry.width = width;
   entry.height = height;
   entry.stridePixels = stridePixels;
   entry.lastAccessTime = getCurrentTime();
-  
-  // Insert into cache
-  cache_[hash] = entry;
-  
-  // Determine which list to add to
-  bool wasInGhost = (listIt != listMap_.end() && 
-                     (listIt->second.list == LIST_B1 || listIt->second.list == LIST_B2));
-  
-  if (wasInGhost) {
-    // Was in ghost list, add to T2
-    t2_.push_front(hash);
-    listMap_[hash].list = LIST_T2;
-    listMap_[hash].iter = t2_.begin();
-    t2Size_ += pixelDataSize;
-  } else {
-    // New entry, add to T1
-    t1_.push_front(hash);
-    listMap_[hash].list = LIST_T1;
-    listMap_[hash].iter = t1_.begin();
-    t1Size_ += pixelDataSize;
+
+  const size_t bppBytes = pf.bpp / 8;
+  const size_t rowBytes = (size_t)width * bppBytes;
+  const size_t srcStrideBytes = (size_t)stridePixels * bppBytes;
+  entry.pixels.resize((size_t)height * rowBytes);
+  const uint8_t* src = pixels;
+  uint8_t* dst = entry.pixels.data();
+  for (uint16_t y = 0; y < height; y++) {
+    memcpy(dst, src, rowBytes);
+    src += srcStrideBytes;
+    dst += rowBytes;
   }
-  
-  stats_.totalEntries++;
-  stats_.totalBytes += pixelDataSize;
-  
-  vlog.debug("PersistentCache inserted: hashLen=%zu size=%zu bytes, rect=%dx%d, T1=%zu/%zu T2=%zu p=%zu",
-             hash.size(), pixelDataSize, width, height,
-             t1Size_, t1_.size(), t2_.size(), p_);
+
+  // Keep persistence map in sync (used for save/load); note this duplicates memory temporarily
+  cache_[hash] = entry;
+  arcCache_->insert(hash, entry);
 }
 
 std::vector<std::vector<uint8_t>> 
@@ -251,30 +185,19 @@ GlobalClientPersistentCache::getAllHashes() const
 {
   std::vector<std::vector<uint8_t>> hashes;
   hashes.reserve(cache_.size());
-  
   for (const auto& entry : cache_) {
     hashes.push_back(entry.first);
   }
-  
   return hashes;
 }
 
 void GlobalClientPersistentCache::clear()
 {
+  if (arcCache_) arcCache_->clear();
   cache_.clear();
-  t1_.clear();
-  t2_.clear();
-  b1_.clear();
-  b2_.clear();
-  listMap_.clear();
-  
-  t1Size_ = 0;
-  t2Size_ = 0;
-  p_ = 0;
-  
+  pendingEvictions_.clear();
   stats_.totalEntries = 0;
   stats_.totalBytes = 0;
-  
   vlog.debug("PersistentCache cleared");
 }
 
@@ -282,13 +205,26 @@ GlobalClientPersistentCache::Stats
 GlobalClientPersistentCache::getStats() const
 {
   Stats current = stats_;
-  current.totalEntries = cache_.size();
-  current.totalBytes = t1Size_ + t2Size_;
-  current.t1Size = t1_.size();
-  current.t2Size = t2_.size();
-  current.b1Size = b1_.size();
-  current.b2Size = b2_.size();
-  current.targetT1Size = p_;
+  size_t totalEntries = cache_.size();
+  size_t totalBytes = 0;
+  size_t t1Count = 0, t2Count = 0, b1Count = 0, b2Count = 0, target = 0;
+  if (arcCache_) {
+    auto s = arcCache_->getStats();
+    totalEntries = s.totalEntries;
+    totalBytes = s.totalBytes;
+    t1Count = s.t1Size;
+    t2Count = s.t2Size;
+    b1Count = s.b1Size;
+    b2Count = s.b2Size;
+    target = s.targetT1Size;
+  }
+  current.totalEntries = totalEntries;
+  current.totalBytes = totalBytes;
+  current.t1Size = t1Count;
+  current.t2Size = t2Count;
+  current.b1Size = b1Count;
+  current.b2Size = b2Count;
+  current.targetT1Size = target;
   return current;
 }
 
@@ -303,15 +239,12 @@ void GlobalClientPersistentCache::setMaxSize(size_t maxSizeMB)
 {
   maxCacheSize_ = maxSizeMB * 1024 * 1024;
   vlog.debug("PersistentCache max size set to %zuMB", maxSizeMB);
-  
-  // Evict if we're now over the limit
-  while (t1Size_ + t2Size_ > maxCacheSize_) {
-    if (!t1_.empty() || !t2_.empty()) {
-      replace(std::vector<uint8_t>(), 0);  // Force eviction
-    } else {
-      break;
-    }
-  }
+  // Recreate arc cache to apply new capacity
+  arcCache_.reset(new rfb::cache::ArcCache<std::vector<uint8_t>, CachedPixels, HashVectorHasher>(
+      maxCacheSize_,
+      [](const CachedPixels& e) { return e.byteSize(); },
+      [this](const std::vector<uint8_t>& h) { pendingEvictions_.push_back(h); }
+  ));
 }
 
 bool GlobalClientPersistentCache::loadFromDisk()
@@ -406,9 +339,12 @@ bool GlobalClientPersistentCache::loadFromDisk()
     loadedBytes += pixelDataLen;
     
     // Stop if we've exceeded max size
-    if (t1Size_ + t2Size_ >= maxCacheSize_) {
-      vlog.info("PersistentCache: reached max size, stopping load");
-      break;
+    if (arcCache_) {
+      auto s = arcCache_->getStats();
+      if (s.totalBytes >= maxCacheSize_) {
+        vlog.info("PersistentCache: reached max size, stopping load");
+        break;
+      }
     }
   }
   
@@ -472,7 +408,7 @@ bool GlobalClientPersistentCache::saveToDisk()
   header.magic = 0x50435643;  // "PCVC"
   header.version = 1;
   header.totalEntries = cache_.size();
-  header.totalBytes = t1Size_ + t2Size_;
+  header.totalBytes = arcCache_ ? arcCache_->getStats().totalBytes : 0;
   header.created = time(nullptr);
   header.lastAccess = time(nullptr);
   
@@ -519,150 +455,7 @@ bool GlobalClientPersistentCache::saveToDisk()
   return true;
 }
 
-// ============================================================================
-// ARC Algorithm Implementation
-// ============================================================================
-
-void GlobalClientPersistentCache::replace(const std::vector<uint8_t>&, size_t size)
-{
-  // Make room for new entry of given size
-  while (t1Size_ + t2Size_ + size > maxCacheSize_) {
-    
-    // Case 1: T1 is larger than target p, evict from T1
-    if (!t1_.empty() && 
-        (t1Size_ > p_ || (t2_.empty() && t1Size_ == p_))) {
-      
-      std::vector<uint8_t> victim = t1_.back();
-      t1_.pop_back();
-      
-      auto cacheIt = cache_.find(victim);
-      if (cacheIt != cache_.end()) {
-        size_t victimSize = cacheIt->second.byteSize();
-        t1Size_ -= victimSize;
-        
-        // Move to B1 (ghost list) - keep metadata but remove data
-        b1_.push_front(victim);
-        listMap_[victim].list = LIST_B1;
-        listMap_[victim].iter = b1_.begin();
-        
-        cache_.erase(cacheIt);
-        stats_.totalEntries--;
-        stats_.evictions++;
-        
-        // Limit B1 size
-        while (b1_.size() > maxCacheSize_ / (1024 * 16)) {  // ~16KB ghost entries
-          std::vector<uint8_t> oldGhost = b1_.back();
-          b1_.pop_back();
-          listMap_.erase(oldGhost);
-        }
-      }
-      
-    } 
-    // Case 2: Evict from T2
-    else if (!t2_.empty()) {
-      
-      std::vector<uint8_t> victim = t2_.back();
-      t2_.pop_back();
-      
-      auto cacheIt = cache_.find(victim);
-      if (cacheIt != cache_.end()) {
-        size_t victimSize = cacheIt->second.byteSize();
-        t2Size_ -= victimSize;
-        
-        // Move to B2 (ghost list)
-        b2_.push_front(victim);
-        listMap_[victim].list = LIST_B2;
-        listMap_[victim].iter = b2_.begin();
-        
-        cache_.erase(cacheIt);
-        stats_.totalEntries--;
-        stats_.evictions++;
-        
-        // Limit B2 size
-        while (b2_.size() > maxCacheSize_ / (1024 * 16)) {
-          std::vector<uint8_t> oldGhost = b2_.back();
-          b2_.pop_back();
-          listMap_.erase(oldGhost);
-        }
-      }
-      
-    } else {
-      // Both lists empty, nothing to evict
-      break;
-    }
-  }
-}
-
-void GlobalClientPersistentCache::moveToT2(const std::vector<uint8_t>& hash)
-{
-  auto listIt = listMap_.find(hash);
-  if (listIt == listMap_.end() || listIt->second.list != LIST_T1)
-    return;
-    
-  // Remove from T1
-  t1_.erase(listIt->second.iter);
-  size_t entrySize = getEntrySize(hash);
-  t1Size_ -= entrySize;
-  
-  // Add to T2
-  t2_.push_front(hash);
-  listMap_[hash].list = LIST_T2;
-  listMap_[hash].iter = t2_.begin();
-  t2Size_ += entrySize;
-}
-
-void GlobalClientPersistentCache::moveToB1(const std::vector<uint8_t>& hash)
-{
-  removeFromList(hash);
-  b1_.push_front(hash);
-  listMap_[hash].list = LIST_B1;
-  listMap_[hash].iter = b1_.begin();
-}
-
-void GlobalClientPersistentCache::moveToB2(const std::vector<uint8_t>& hash)
-{
-  removeFromList(hash);
-  b2_.push_front(hash);
-  listMap_[hash].list = LIST_B2;
-  listMap_[hash].iter = b2_.begin();
-}
-
-void GlobalClientPersistentCache::removeFromList(const std::vector<uint8_t>& hash)
-{
-  auto listIt = listMap_.find(hash);
-  if (listIt == listMap_.end())
-    return;
-    
-  switch (listIt->second.list) {
-    case LIST_T1:
-      t1_.erase(listIt->second.iter);
-      t1Size_ -= getEntrySize(hash);
-      break;
-    case LIST_T2:
-      t2_.erase(listIt->second.iter);
-      t2Size_ -= getEntrySize(hash);
-      break;
-    case LIST_B1:
-      b1_.erase(listIt->second.iter);
-      break;
-    case LIST_B2:
-      b2_.erase(listIt->second.iter);
-      break;
-    case LIST_NONE:
-      break;
-  }
-  
-  listMap_.erase(listIt);
-}
-
-size_t GlobalClientPersistentCache::getEntrySize(const std::vector<uint8_t>& hash) const
-{
-  auto it = cache_.find(hash);
-  if (it != cache_.end()) {
-    return it->second.byteSize();
-  }
-  return 0;
-}
+// (Replaced by shared ArcCache implementation)
 
 uint32_t GlobalClientPersistentCache::getCurrentTime() const
 {

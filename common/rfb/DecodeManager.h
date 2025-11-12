@@ -30,6 +30,7 @@
 #include <rfb/ContentCache.h>
 #include <rfb/GlobalClientPersistentCache.h>
 #include <rfb/encodings.h>
+#include <rfb/cache/BandwidthStats.h>
 
 namespace core {
   struct Rect;
@@ -143,14 +144,7 @@ namespace rfb {
     CacheStats cacheStats;
     
     // ContentCache bandwidth savings tracking
-    struct ContentCacheBandwidthStats {
-      unsigned long long cachedRectBytes;          // Actual bytes transmitted for CachedRect (20 bytes each)
-      unsigned long long cachedRectInitBytes;      // Bytes for CachedRectInit (24 + compressed data)
-      unsigned long long alternativeBytes;         // What would have been sent without cache (16 + compressed data)
-      unsigned cachedRectCount;                    // Number of CachedRect references received
-      unsigned cachedRectInitCount;                // Number of CachedRectInit messages received
-    };
-    ContentCacheBandwidthStats contentCacheBandwidthStats;
+    rfb::cache::CacheProtocolStats contentCacheBandwidthStats;
     size_t lastDecodedRectBytes;  // Track bytes from last decoded rect for CachedRectInit
     
     // Client-side persistent cache (PersistentCache - cross-session)
@@ -162,6 +156,9 @@ namespace rfb {
       unsigned queries_sent;
     };
     PersistentCacheStats persistentCacheStats;
+    
+    // PersistentCache bandwidth savings tracking
+    rfb::cache::CacheProtocolStats persistentCacheBandwidthStats;
     
     // Batching for PersistentCache queries
     std::vector<std::vector<uint8_t>> pendingQueries;

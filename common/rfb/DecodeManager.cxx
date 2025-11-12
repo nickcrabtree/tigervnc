@@ -53,6 +53,7 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   memset(&contentCacheBandwidthStats, 0, sizeof(contentCacheBandwidthStats));
   lastDecodedRectBytes = 0;
   memset(&persistentCacheStats, 0, sizeof(persistentCacheStats));
+  memset(&persistentCacheBandwidthStats, 0, sizeof(persistentCacheBandwidthStats));
   
   // Initialize client-side content cache (2GB default, unlimited age)
   // Can be overridden with ContentCacheSize parameter from viewer
@@ -68,10 +69,13 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   contentCache = new ContentCache(cacheSize, 0);
   vlog.info("Client ContentCache initialized: %zuMB, unlimited age (ARC-managed)", cacheSize);
   
-  // Initialize client-side persistent cache (2GB default)
-  // TODO: Read size from parameters in Phase 4
-  persistentCache = new GlobalClientPersistentCache(2048);
-  vlog.info("Client PersistentCache initialized: 2048MB (ARC-managed)");
+  // Initialize client-side persistent cache (default 2GB, overridable via PersistentCacheSize)
+  size_t pcSizeMB = 2048;
+  if (auto* v = core::Configuration::getParam("PersistentCacheSize")) {
+    if (auto* ip = dynamic_cast<core::IntParameter*>(v)) pcSizeMB = (size_t)(*ip);
+  }
+  persistentCache = new GlobalClientPersistentCache(pcSizeMB);
+  vlog.info("Client PersistentCache initialized: %zuMB (ARC-managed)", pcSizeMB);
   
   // Load persistent cache from disk
   if (persistentCache->loadFromDisk()) {
@@ -244,6 +248,15 @@ void DecodeManager::flush()
   
   // Flush any pending PersistentCache queries
   flushPendingQueries();
+
+  // Send any pending PersistentCache eviction notifications
+  if (persistentCache != nullptr && persistentCache->hasPendingEvictions()) {
+    auto evictions = persistentCache->getPendingEvictions();
+    if (!evictions.empty()) {
+      vlog.debug("Sending %zu PersistentCache eviction notifications", evictions.size());
+      conn->writer()->writePersistentCacheEvictionBatched(evictions);
+    }
+  }
 }
 
 void DecodeManager::logStats()
@@ -318,18 +331,9 @@ void DecodeManager::logStats()
     
     // Log ContentCache bandwidth savings
     if (contentCacheBandwidthStats.cachedRectCount > 0 || contentCacheBandwidthStats.cachedRectInitCount > 0) {
-      unsigned long long totalCacheBytes = contentCacheBandwidthStats.cachedRectBytes + 
-                                           contentCacheBandwidthStats.cachedRectInitBytes;
-      unsigned long long totalAlternativeBytes = contentCacheBandwidthStats.alternativeBytes;
-      
-      if (totalAlternativeBytes > 0) {
-        unsigned long long savedBytes = totalAlternativeBytes - totalCacheBytes;
-        double savingsPercent = (100.0 * savedBytes) / totalAlternativeBytes;
-        
-        vlog.info("  ContentCache: %s bandwidth saving (%.1f%% reduction)",
-                  core::iecPrefix(savedBytes, "B").c_str(),
-                  savingsPercent);
-      }
+      const auto summary = contentCacheBandwidthStats.formatSummary("ContentCache");
+      if (contentCacheBandwidthStats.cachedRectCount || contentCacheBandwidthStats.cachedRectInitCount)
+        vlog.info("  %s", summary.c_str());
     }
   }
   
@@ -361,6 +365,11 @@ void DecodeManager::logStats()
               pcStats.b1Size, pcStats.b2Size);
     vlog.info("    ARC parameter p (target T1 bytes): %s",
               core::iecPrefix(pcStats.targetT1Size, "B").c_str());
+
+    // PersistentCache bandwidth summary
+    const auto ps = persistentCacheBandwidthStats.formatSummary("PersistentCache");
+    if (persistentCacheBandwidthStats.cachedRectCount || persistentCacheBandwidthStats.cachedRectInitCount)
+      vlog.info("  %s", ps.c_str());
   }
 }
 
@@ -471,6 +480,7 @@ void DecodeManager::DecodeThread::worker()
   }
 }
 
+
 DecodeManager::QueueEntry* DecodeManager::DecodeThread::findEntry()
 {
   core::Region lockedRegion;
@@ -543,7 +553,7 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
   }
   
   // Track bandwidth for this CachedRect reference
-  trackCachedRectBandwidth(r);
+  rfb::cache::trackContentCacheRef(contentCacheBandwidthStats, r, conn->server.pf());
   
   cacheStats.cache_lookups++;
   
@@ -642,7 +652,7 @@ void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
   
   // Track bandwidth for this CachedRectInit (which includes compressed data that was just decoded)
   // lastDecodedRectBytes was set in decodeRect and includes the 12-byte rect header + compressed data
-  trackCachedRectInitBandwidth(r, lastDecodedRectBytes);
+  rfb::cache::trackContentCacheInit(contentCacheBandwidthStats, lastDecodedRectBytes);
   
   vlog.debug("Storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
              r.tl.x, r.tl.y, r.br.x, r.br.y,
@@ -686,6 +696,9 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
     return;
   }
   
+  // Track bandwidth for this PersistentCachedRect reference (regardless of hit/miss)
+  rfb::cache::trackPersistentCacheRef(persistentCacheBandwidthStats, r, conn->server.pf(), hash.size());
+
   persistentCacheStats.cache_lookups++;
   
   // Lookup cached pixels by hash
@@ -777,6 +790,9 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   vlog.debug("PersistentCache STORE details: bpp=%d stridePx=%d pixelBytes=%zu",
              pb->getPF().bpp, stridePixels, pixelBytes);
   
+  // Track bandwidth for this PersistentCachedRectInit (hash + encoded data)
+  rfb::cache::trackPersistentCacheInit(persistentCacheBandwidthStats, hash.size(), lastDecodedRectBytes);
+
   // Store in persistent cache with hash
   persistentCache->insert(hash, pixels, pb->getPF(),
                          r.width(), r.height(), stridePixels);

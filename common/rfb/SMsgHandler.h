@@ -75,6 +75,7 @@ namespace rfb {
     virtual void handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
                                           uint16_t chunkIndex,
                                           const std::vector<std::vector<uint8_t>>& hashes) = 0;
+    virtual void handlePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes) = 0;
 
     ClientParams client;
   };

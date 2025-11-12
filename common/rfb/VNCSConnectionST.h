@@ -154,6 +154,27 @@ namespace rfb {
     void handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
                                   uint16_t chunkIndex,
                                   const std::vector<std::vector<uint8_t>>& hashes) override;
+    void handlePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes) override;
+
+    // PersistentCache request helpers used by encoder
+    bool clientRequestedPersistent(const std::vector<uint8_t>& h) const override {
+      return clientRequestedPersistentHashes_.find(h) != clientRequestedPersistentHashes_.end();
+    }
+    void clearClientPersistentRequest(const std::vector<uint8_t>& h) override {
+      auto it = clientRequestedPersistentHashes_.find(h);
+      if (it != clientRequestedPersistentHashes_.end())
+        clientRequestedPersistentHashes_.erase(it);
+    }
+
+  private:
+    struct HashVectorHasher {
+      size_t operator()(const std::vector<uint8_t>& v) const {
+        size_t h = 14695981039346656037ULL;
+        for (uint8_t b : v) { h ^= b; h *= 1099511628211ULL; }
+        return h;
+      }
+    };
+    std::unordered_set<std::vector<uint8_t>, HashVectorHasher> clientRequestedPersistentHashes_;
 
     // Record that we just referenced a CachedRect with this ID for this rect
     void recordCachedRectRef(uint64_t cacheId, const core::Rect& r);
