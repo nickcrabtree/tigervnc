@@ -2,12 +2,22 @@
 
 **Author**: TigerVNC Team  
 **Date**: 2025-10-24  
-**Status**: Design Document  
+**Status**: Implemented and Tested  
 **Related**: CONTENTCACHE_DESIGN_IMPLEMENTATION.md
 
 ## Executive Summary
 
 This document specifies **PersistentCache**, a new RFB protocol extension that enables persistent, hash-based client-side caching. Unlike the existing **ContentCache** protocol (server-assigned IDs), PersistentCache uses content hashes as stable keys, allowing cache entries to survive client restarts and work across different VNC servers.
+
+### Test Results (November 2025)
+
+**C++ Viewer Tests** (128×128 logos, 30s duration):
+- **Hit rate**: 100.0% (44 hits, 0 misses)
+- **Bandwidth saved**: 529,676 bytes (~517 KB)
+- **Bandwidth reduction**: 99.7%
+- **Test**: `tests/e2e/test_cpp_persistentcache.py`
+- **Threshold**: 2048 pixels (optimized from 4096)
+- **Protocol overhead**: 47 bytes per reference vs full encoding
 
 ## Protocol Relationship and Negotiation
 

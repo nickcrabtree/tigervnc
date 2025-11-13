@@ -1,20 +1,47 @@
 # TigerVNC Documentation Index
 
-This repository has undergone a documentation housekeeping pass to reduce duplication and remove stale design notes. Legacy and detailed historical documents are available in git history.
+This repository has undergone a documentation cleanup (November 2025) to consolidate implementation documentation and archive interim work. All historical documents remain available in git history.
 
-Canonical docs to use now:
+## Core Documentation
 
-- README.rst — Project overview and components
-- BUILDING.txt — Build requirements and instructions (CMake + Xorg server setup)
-- WARP.md — Developer guidance for this repo
-- CONTENTCACHE_DESIGN_IMPLEMENTATION.md — ContentCache design, protocol, and integration (canonical)
-- ARC_ALGORITHM.md — Details of the ARC cache algorithm used by ContentCache
-- PERSISTENTCACHE_DESIGN.md — Persistent cache design (future work)
-- DEBUG_LOGGING.md — Guidance for enabling and interpreting logs
-- tests/e2e/README.md and QUICKSTART.md — End-to-end testing harness
-- rust-vnc-viewer/README.md — Rust viewer docs and roadmap
+### Project Overview
+- `README.rst` — Project overview and components
+- `BUILDING.txt` — Build requirements and instructions (CMake + Xorg server setup)
+- `WARP.md` — Developer guidance, test environment, and safety warnings
 
-Note about removals
+### Cache Protocol Implementation (Complete)
+- `CONTENTCACHE_DESIGN_IMPLEMENTATION.md` — ContentCache protocol (complete, tested)
+  - Status: ✅ C++ implementation complete, 63-67% hit rate
+  - Threshold: 2048 pixels
+  - Test: `tests/e2e/test_cpp_contentcache.py` passing
+- `PERSISTENTCACHE_DESIGN.md` — PersistentCache protocol (complete, tested)
+  - Status: ✅ C++ implementation complete, 100% hit rate, 99.7% bandwidth reduction
+  - Threshold: 2048 pixels  
+  - Test: `tests/e2e/test_cpp_persistentcache.py` passing
+- `ARC_ALGORITHM.md` — Adaptive Replacement Cache algorithm used by both protocols
 
-- A number of status reports, TODOs, and overlapping design drafts have been deprecated. See git history if you need the old content.
-- Deprecated files now contain a short notice pointing back to this index and the canonical documents above.
+### Testing
+- `tests/e2e/README.md` — End-to-end test suite documentation
+- `tests/e2e/QUICKSTART.md` — Quick start guide for running tests
+
+### Rust Viewer (Pending)
+- `rust-vnc-viewer/README.md` — Rust viewer overview
+- `rust-vnc-viewer/PERSISTENTCACHE_IMPLEMENTATION_PLAN.md` — Implementation roadmap
+
+## Archived Documentation
+
+Interim work, debug notes, and completed plans archived to `archive/2025-11-13/`:
+- Debug analyses and threshold optimization studies
+- Bug fix documentation (all bugs now resolved)
+- Progress tracking and status documents
+- Implementation guides (superseded by canonical docs)
+- ARC eviction plan and summary (implementation complete)
+
+See `archive/2025-11-13/README.md` for full index of archived content.
+
+## Implementation Status (November 2025)
+
+✅ **ContentCache**: Complete and tested in C++  
+✅ **PersistentCache**: Complete and tested in C++  
+✅ **ARC Eviction**: Client-side eviction with server notifications implemented  
+🚧 **Rust Viewer**: Cache protocol implementation pending

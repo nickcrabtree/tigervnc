@@ -299,19 +299,50 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
     hit_samples = []
     miss_samples = []
     
+    # Track bandwidth savings
+    persistent_bytes_saved = 0
+    persistent_bytes_sent_as_ref = 0  # 47 bytes per PersistentCachedRect
+    persistent_bytes_sent_full = 0    # Track CachedRectInit overhead
+    content_bytes_saved = 0
+    content_bytes_sent_as_ref = 0     # 20 bytes per CachedRect
+    
+    last_was_pc_hit = False  # Track if previous line was a PC HIT (for continuation lines)
+    
     with open(log_path, 'r', errors='replace') as f:
         for line in f:
             line = line.strip()
             
-            # PersistentCache HIT/MISS on server
-            if 'persistentcache hit' in line.lower():
+            # PersistentCache HIT with bandwidth savings
+            # Format (multi-line):
+            #   "EncodeManager: PersistentCache protocol HIT: rect [x,y-x,y]"
+            #   "              hash=... saved 10896 bytes"
+            if 'persistentcache' in line.lower() and 'hit' in line.lower():
                 parsed.persistent_hits += 1
                 if len(hit_samples) < 5:
                     hit_samples.append(line)
-            elif 'persistentcache miss' in line.lower():
+                last_was_pc_hit = True
+            elif last_was_pc_hit and 'saved' in line.lower() and 'bytes' in line.lower():
+                # Continuation line with "saved N bytes"
+                match = re.search(r'saved\s+(\d+)\s+bytes', line)
+                if match:
+                    persistent_bytes_saved += int(match.group(1))
+                    persistent_bytes_sent_as_ref += 47  # PersistentCachedRect protocol overhead
+                last_was_pc_hit = False
+            elif 'persistentcache' in line.lower() and 'miss' in line.lower():
                 parsed.persistent_misses += 1
                 if len(miss_samples) < 5:
                     miss_samples.append(line)
+                last_was_pc_hit = False
+            # PersistentCache INIT (full send)
+            # Format: "PersistentCache INIT: rect [x,y-x,y] hash=... (now known for session)"
+            elif 'persistentcache init' in line.lower():
+                persistent_bytes_sent_full += 47  # PersistentCachedRectInit overhead
+                last_was_pc_hit = False
+            else:
+                # Not a PC message, reset state
+                if last_was_pc_hit and 'hash=' not in line.lower():
+                    # Not a continuation line either
+                    last_was_pc_hit = False
             
             # ContentCache operations on server
             if 'contentcache.*hit' in line.lower() or 'cache.*hit.*id' in line.lower():
@@ -323,11 +354,24 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
                 if len(miss_samples) < 5:
                     miss_samples.append(line)
     
+    # Calculate PersistentCache bandwidth reduction
+    # Without cache: would have sent all as full encodings
+    # With cache: sent some as references (47B) instead of full encodings
+    # Reduction = (bytes_saved - ref_overhead) / (bytes_saved) * 100
+    if persistent_bytes_saved > 0:
+        net_savings = persistent_bytes_saved - persistent_bytes_sent_as_ref
+        # Bandwidth reduction = net savings / total bytes that would have been sent
+        total_bytes_without_cache = persistent_bytes_saved + persistent_bytes_sent_full
+        if total_bytes_without_cache > 0:
+            parsed.persistent_bandwidth_reduction = 100.0 * net_savings / total_bytes_without_cache
+    
     # Print debug info if verbose
     if verbose:
         print(f"\n[DEBUG] Server log parsing results:")
         print(f"  PersistentCache: {parsed.persistent_hits} hits, {parsed.persistent_misses} misses")
         print(f"  ContentCache: {parsed.total_hits} hits, {parsed.total_misses} misses")
+        print(f"  PersistentCache bandwidth: saved={persistent_bytes_saved}B, ref_overhead={persistent_bytes_sent_as_ref}B")
+        print(f"  PersistentCache reduction: {parsed.persistent_bandwidth_reduction:.1f}%")
         
         if hit_samples:
             print(f"\n  Sample HIT messages:")

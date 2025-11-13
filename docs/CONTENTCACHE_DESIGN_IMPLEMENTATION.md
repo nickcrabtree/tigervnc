@@ -36,6 +36,14 @@ The **ContentCache** system implements a content-addressable historical cache th
 - **Intelligent eviction** via ARC balances recency and frequency
 - **Backward compatible** with standard VNC clients (capability negotiation)
 
+### Test Results (November 2025)
+
+**C++ Viewer Tests** (128×128 logos, 30s duration):
+- **Hit rate**: 63-67% (27 hits, 13 misses)
+- **Bandwidth saved**: ~300 KB via cache references
+- **Test**: `tests/e2e/test_cpp_contentcache.py`
+- **Threshold**: 2048 pixels (optimized from 4096)
+
 ### Implementation Status
 
 **🎉 Rust Implementation Complete**: As of October 2024, a full ContentCache implementation is available in the Rust VNC viewer:
@@ -617,8 +625,8 @@ ContentCacheSize=2048
 # Maximum age for cached entries in seconds (0 = unlimited)
 ContentCacheMaxAge=0
 
-# Minimum rectangle size to cache in pixels (default: 4096 = 64x64)
-ContentCacheMinRectSize=4096
+# Minimum rectangle size to cache in pixels (default: 2048, ~45×45)
+ContentCacheMinRectSize=2048
 ```
 
 ### Server Code (`ServerCore.cxx`)
@@ -642,7 +650,7 @@ core::IntParameter Server::contentCacheMaxAge
 core::IntParameter Server::contentCacheMinRectSize
 ("ContentCacheMinRectSize",
  "Minimum rectangle size (pixels) to consider for caching",
- 4096, 0, INT_MAX);
+ 2048, 0, INT_MAX);
 ```
 
 ### Client Configuration

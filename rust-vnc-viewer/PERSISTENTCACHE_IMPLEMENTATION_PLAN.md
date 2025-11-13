@@ -1,12 +1,23 @@
 # PersistentCache Protocol: Implementation Plan for Rust VNC Viewer
 
 **Author**: TigerVNC Rust Implementation Team  
-**Date**: 2025-10-24  
-**Status**: Draft - Implementation Roadmap  
+**Date**: 2025-10-24 (Updated: 2025-11-13)  
+**Status**: C++ Implementation Complete ✅ | Rust Implementation Pending 🚧  
 **Related Documents**:
-- [PERSISTENTCACHE_RUST.md](docs/protocol/PERSISTENTCACHE_RUST.md) - Protocol specification
-- [CONTENTCACHE_QUICKSTART.md](CONTENTCACHE_QUICKSTART.md) - ContentCache background
-- [C++ Reference: PERSISTENTCACHE_DESIGN.md](../PERSISTENTCACHE_DESIGN.md)
+- [PERSISTENTCACHE_DESIGN.md](../PERSISTENTCACHE_DESIGN.md) - Protocol specification (C++ reference)
+- [CONTENTCACHE_DESIGN_IMPLEMENTATION.md](../CONTENTCACHE_DESIGN_IMPLEMENTATION.md) - ContentCache details
+- [tests/e2e/test_cpp_persistentcache.py](../tests/e2e/test_cpp_persistentcache.py) - C++ test validation
+
+## C++ Implementation Status (November 2025)
+
+✅ **Complete and Tested**:
+- Protocol fully implemented in C++ viewer (`common/rfb/PersistentCache.cxx`)
+- Test results: 100% hit rate, 99.7% bandwidth reduction, ~517 KB saved
+- Threshold optimized to 2048 pixels (from 4096)
+- All protocol messages working: PersistentCachedRect, PersistentCachedRectInit
+- Disk persistence with ARC eviction algorithm
+
+**Reference for Rust implementation**: The C++ code at `/home/nickc/code/tigervnc/common/rfb/PersistentCache.{h,cxx}` provides a working reference implementation to follow.
 
 ---
 

@@ -1,8 +1,16 @@
-# ContentCache End-to-End Tests
+# Cache Protocol End-to-End Tests
 
 ## Purpose
 
-Black-box end-to-end validation that the Rust VNC viewer (`njcvncviewer-rs`) exhibits the same ContentCache behavior as the C++ viewer (`njcvncviewer`). The test compares cache hit rates, protocol message patterns, and ARC statistics between the two implementations.
+End-to-end validation of ContentCache and PersistentCache protocols in TigerVNC. Tests verify correct protocol implementation, cache hit rates, bandwidth savings, and cross-platform compatibility.
+
+### Test Status (November 2025)
+
+**✅ C++ Viewer Tests Passing:**
+- `test_cpp_contentcache.py`: 63-67% hit rate, ~300 KB saved
+- `test_cpp_persistentcache.py`: 100% hit rate, 99.7% bandwidth reduction, ~517 KB saved
+
+**🚧 Rust Viewer Tests:** Awaiting ContentCache/PersistentCache implementation in Rust viewer
 
 ## Architecture
 

@@ -258,8 +258,11 @@ def main():
         # Combine server-side hit/miss counts with client counts
         parsed.persistent_hits += server_parsed.persistent_hits
         parsed.persistent_misses += server_parsed.persistent_misses
+        # Use server-side bandwidth calculation (viewer doesn't log this)
+        parsed.persistent_bandwidth_reduction = server_parsed.persistent_bandwidth_reduction
         
         print(f"  Combined: {parsed.persistent_hits} PC hits, {parsed.persistent_misses} PC misses")
+        print(f"  Bandwidth reduction: {parsed.persistent_bandwidth_reduction:.1f}%")
         
         # Debug: Show relevant server log lines if verbose
         if args.verbose:

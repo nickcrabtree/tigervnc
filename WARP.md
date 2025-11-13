@@ -559,35 +559,60 @@ for (int y = 0; y < height; y++) {
 }
 ```
 
-## ContentCache Implementation
+## ContentCache and PersistentCache Implementation
 
-This fork includes a custom **ContentCache** system that provides 97-99% bandwidth reduction for repeated content by maintaining a content-addressable historical cache.
+This fork includes two custom cache protocols that provide 63-99% bandwidth reduction for repeated content:
+
+- **ContentCache**: Session-based cache with server-assigned IDs (20-byte references)
+- **PersistentCache**: Disk-backed cache with content hashes (47-byte references, survives sessions)
 
 ### Key Files
 
-- `common/rfb/ContentCache.h/cxx`: Core cache with ARC (Adaptive Replacement Cache) algorithm
+- `common/rfb/ContentCache.h/cxx`: ContentCache with ARC (Adaptive Replacement Cache) algorithm
+- `common/rfb/PersistentCache.h/cxx`: PersistentCache with disk persistence
 - `common/rfb/EncodeManager.cxx`: Server-side integration (cache lookups, insertions)
 - `common/rfb/DecodeManager.cxx`: Client-side integration (cache retrieval, blitting)
-- `common/rfb/encodings.h`: Protocol constants (CachedRect, CachedRectInit, capability negotiation)
+- `common/rfb/encodings.h`: Protocol constants and capability negotiation
 
 ### Protocol Overview
 
-**CachedRect** (20 bytes): Server references cached content by ID, client blits from cache
-**CachedRectInit** (20 bytes + encoding): Server sends full encoding + cache ID, client stores after decoding
+**ContentCache**:
+- `CachedRect` (20 bytes): Server references by cache ID
+- `CachedRectInit` (20 bytes + encoding): Full data + ID for storage
+
+**PersistentCache**:
+- `PersistentCachedRect` (47 bytes): Server references by content hash
+- `PersistentCachedRectInit` (47 bytes + encoding): Full data + hash for storage
 
 ### Configuration
 
 Server parameters (add to `~/.vnc/config`):
 ```bash
+# ContentCache (session-only)
 EnableContentCache=1          # Enable (default: true)
 ContentCacheSize=2048         # Cache size in MB (default: 2048)
 ContentCacheMaxAge=0          # Max age in seconds (0 = unlimited)
-ContentCacheMinRectSize=4096  # Min pixels to cache (default: 4096)
+ContentCacheMinRectSize=2048  # Min pixels to cache (default: 2048)
+
+# PersistentCache (survives sessions)
+EnablePersistentCache=1       # Enable (default: true)
+PersistentCacheSize=256       # Cache size in MB (default: 256)
+PersistentCacheMinRectSize=2048  # Min pixels to cache (default: 2048)
 ```
+
+### Test Results (November 2025)
+
+**ContentCache** (128×128 logos, 30s duration):
+- Hit rate: 63-67%, Bandwidth saved: ~300 KB
+- Test: `tests/e2e/test_cpp_contentcache.py`
+
+**PersistentCache** (128×128 logos, 30s duration):
+- Hit rate: 100%, Bandwidth reduction: 99.7%, Saved: ~517 KB
+- Test: `tests/e2e/test_cpp_persistentcache.py`
 
 ### Performance
 
-- **Bandwidth**: 97-99% reduction for cache hits (20 bytes vs KB of compressed data)
+- **Bandwidth**: 63-99% reduction for cache hits (20-47 bytes vs KB of compressed data)
 - **CPU**: Zero decode cost for hits (memory blit vs decompression)
 - **Memory**: ~16KB per cached 64×64 tile
 
@@ -605,8 +630,8 @@ See `CONTENTCACHE_DESIGN_IMPLEMENTATION.md` for comprehensive design, implementa
 ## Related Documentation
 
 - `CONTENTCACHE_DESIGN_IMPLEMENTATION.md`: Comprehensive ContentCache guide
+- `PERSISTENTCACHE_DESIGN.md`: PersistentCache protocol specification
 - `ARC_ALGORITHM.md`: Adaptive Replacement Cache algorithm details
-- `CONTENTCACHE_CLIENT_INTEGRATION.md`: Client-side integration summary
-- `BUILD_CONTENTCACHE.md`: Build instructions specific to ContentCache
+- `tests/e2e/README.md`: End-to-end test suite documentation
 - `README.rst`: General TigerVNC documentation
 - `BUILDING.txt`: Detailed build instructions for all platforms
