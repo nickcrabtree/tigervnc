@@ -10,6 +10,11 @@ Test validates:
 - Bandwidth reduction occurs
 - No crashes or protocol errors
 
+Test content requirements:
+- Images must be ≥64×64 pixels (4096 pixels) to pass server threshold
+- Recommended: 96×96 (9216 px) or 128×128 (16384 px) for reliable testing
+- Smaller content may be subdivided below the 2048 pixel minimum threshold
+
 Note: Hit rates depend heavily on content patterns and rectangle subdivision.
 This test confirms the cache is WORKING, not that it achieves maximum efficiency.
 Production workloads with repeated UI elements will see much higher hit rates.

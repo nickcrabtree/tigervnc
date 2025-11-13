@@ -369,16 +369,29 @@ class StaticScenarioRunner:
             'logos_displayed': 0,
         }
         
-        # Default to TigerVNC 64x64 logo
+        # Default to TigerVNC logo (prefer larger sizes for better cache testing)
         if logo_path is None:
             # Find the tigervnc repo root (tests/e2e -> tests -> repo_root)
             test_dir = Path(__file__).parent.absolute()  # tests/e2e
             repo_root = test_dir.parent.parent  # Go up two levels
-            logo_path = repo_root / 'media' / 'icons' / 'tigervnc_64.png'
             
-            if not logo_path.exists():
-                # Fallback to 128x128
-                logo_path = repo_root / 'media' / 'icons' / 'tigervnc_128.png'
+            # Try logos in order of preference (larger = better for testing)
+            # All are above 2048 pixel threshold (128x128=16384, 96x96=9216, 64x64=4096)
+            candidates = [
+                repo_root / 'media' / 'icons' / 'tigervnc_128.png',  # 16,384 pixels
+                repo_root / 'media' / 'icons' / 'tigervnc_96.png',   # 9,216 pixels
+                repo_root / 'media' / 'icons' / 'tigervnc_64.png',   # 4,096 pixels
+            ]
+            
+            logo_path = None
+            for candidate in candidates:
+                if candidate.exists():
+                    logo_path = candidate
+                    break
+            
+            if logo_path is None:
+                raise FileNotFoundError(
+                    f"No TigerVNC logo found. Tried: {[str(c) for c in candidates]}")
         
         if not Path(logo_path).exists():
             raise FileNotFoundError(f"Logo not found: {logo_path}")
