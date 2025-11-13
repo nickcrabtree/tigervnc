@@ -115,7 +115,7 @@ core::IntParameter rfb::Server::contentCacheMaxAge
 core::IntParameter rfb::Server::contentCacheMinRectSize
 ("ContentCacheMinRectSize",
  "Minimum rectangle size (pixels) to consider for caching",
- 4096, 0, INT_MAX);
+ 2048, 0, INT_MAX);
 
 // PersistentCache parameters (cross-session, content hashes)
 core::BoolParameter rfb::Server::enablePersistentCache
@@ -125,4 +125,4 @@ core::BoolParameter rfb::Server::enablePersistentCache
 core::IntParameter rfb::Server::persistentCacheMinRectSize
 ("PersistentCacheMinRectSize",
  "Minimum rectangle size (pixels) to consider for persistent caching",
- 4096, 0, INT_MAX);
+ 2048, 0, INT_MAX);
