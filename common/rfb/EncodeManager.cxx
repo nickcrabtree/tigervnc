@@ -58,6 +58,62 @@ static core::LogWriter vlog("EncodeManager");
 static const int SubRectMaxArea = 65536;
 static const int SubRectMaxWidth = 2048;
 
+// ContentCache debug logging helpers (anonymous namespace)
+namespace {
+  // Format a rectangle as "x,y wxh"
+  inline const char* strRect(const core::Rect& r) {
+    static thread_local char buf[64];
+    snprintf(buf, sizeof(buf), "%d,%d %dx%d",
+             r.tl.x, r.tl.y, r.width(), r.height());
+    return buf;
+  }
+
+  // Format a region summary as "bbox:(x,y wxh) rects:N"
+  inline const char* strRegionSummary(const core::Region& reg) {
+    static thread_local char buf[96];
+    if (reg.is_empty()) {
+      snprintf(buf, sizeof(buf), "bbox:(empty) rects:0");
+    } else {
+      core::Rect bbox = reg.get_bounding_rect();
+      int numRects = reg.numRects();
+      snprintf(buf, sizeof(buf), "bbox:(%s) rects:%d",
+               strRect(bbox), numRects);
+    }
+    return buf;
+  }
+
+  // Format first 8 bytes of hash as hex (no separators)
+  inline const char* hex8(const uint8_t* data, size_t len) {
+    static thread_local char buf[17];
+    size_t n = (len < 8) ? len : 8;
+    for (size_t i = 0; i < n; i++) {
+      snprintf(buf + i*2, 3, "%02x", data[i]);
+    }
+    buf[n*2] = '\0';
+    return buf;
+  }
+
+  // Format a 64-bit hash as hex
+  inline const char* hex64(uint64_t hash) {
+    static thread_local char buf[17];
+    snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)hash);
+    return buf;
+  }
+
+  // Format yes/no
+  inline const char* yesNo(bool b) {
+    return b ? "yes" : "no";
+  }
+
+  // Format ContentKey summary: "WxH,hash:HEX8"
+  inline const char* strContentKey(uint16_t w, uint16_t h, uint64_t hash) {
+    static thread_local char buf[64];
+    snprintf(buf, sizeof(buf), "%ux%u,hash:%s",
+             w, h, hex64(hash));
+    return buf;
+  }
+}
+
 // The size in pixels of either side of each block tested when looking
 // for solid blocks.
 static const int SolidSearchBlock = 16;
@@ -397,6 +453,10 @@ void EncodeManager::doUpdate(bool allowLossy, const
 {
     int nRects;
     core::Region changed, cursorRegion;
+
+    // CC: Log update boundaries
+    vlog.info("CC doUpdate begin: changed %s, copied %s, allowLossy=%s",
+              strRegionSummary(changed_), strRegionSummary(copied), yesNo(allowLossy));
 
     updates++;
 
@@ -943,6 +1003,7 @@ void EncodeManager::writeRects(const core::Region& changed,
 
     // No split necessary?
     if (((w*h) < SubRectMaxArea) && (w < SubRectMaxWidth)) {
+      vlog.debug("CC rect no-split: (%s) area=%d", strRect(*rect), w*h);
       writeSubRect(*rect, pb);
       continue;
     }
@@ -954,6 +1015,8 @@ void EncodeManager::writeRects(const core::Region& changed,
 
     sh = SubRectMaxArea / sw;
 
+    vlog.debug("CC rect split: parent (%s) tileSize=%dx%d", strRect(*rect), sw, sh);
+
     for (sr.tl.y = rect->tl.y; sr.tl.y < rect->br.y; sr.tl.y += sh) {
       sr.br.y = sr.tl.y + sh;
       if (sr.br.y > rect->br.y)
@@ -964,6 +1027,7 @@ void EncodeManager::writeRects(const core::Region& changed,
         if (sr.br.x > rect->br.x)
           sr.br.x = rect->br.x;
 
+        vlog.debug("CC subrect: (%s) from parent (%s)", strRect(sr), strRect(*rect));
         writeSubRect(sr, pb);
       }
     }
@@ -977,14 +1041,22 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
   // PersistentCache preferred over ContentCache (cross-session vs session-only)
   // Cache selection determined by client capabilities
   
-  if (usePersistentCache && 
-      conn->client.supportsEncoding(pseudoEncodingPersistentCache)) {
+  bool passesMinThreshold = (rect.area() >= Server::contentCacheMinRectSize);
+  bool clientSupportsCC = conn->client.supportsEncoding(pseudoEncodingContentCache);
+  bool clientSupportsPC = conn->client.supportsEncoding(pseudoEncodingPersistentCache);
+  
+  vlog.debug("CC writeSubRect: rect (%s) area=%d passMin=%s clientCC=%s clientPC=%s",
+             strRect(rect), rect.area(), yesNo(passesMinThreshold),
+             yesNo(clientSupportsCC), yesNo(clientSupportsPC));
+  
+  if (usePersistentCache && clientSupportsPC) {
     // Use PersistentCache exclusively
+    vlog.debug("CC attempt PersistentCache lookup for rect (%s)", strRect(rect));
     if (tryPersistentCacheLookup(rect, pb))
       return;
-  } else if (contentCache != nullptr && 
-             conn->client.supportsEncoding(pseudoEncodingContentCache)) {
+  } else if (contentCache != nullptr && clientSupportsCC) {
     // Use ContentCache exclusively
+    vlog.debug("CC attempt ContentCache lookup for rect (%s)", strRect(rect));
     if (tryContentCacheLookup(rect, pb))
       return;
   }
@@ -1281,19 +1353,26 @@ uint8_t* EncodeManager::OffsetPixelBuffer::getBufferRW(const core::Rect& /*r*/, 
 bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
                                           const PixelBuffer* pb)
 {
-  if (contentCache == nullptr)
+  if (contentCache == nullptr) {
+    vlog.debug("CC SKIP: contentCache=null rect (%s)", strRect(rect));
     return false;
+  }
 
   // Skip if below minimum size threshold
-  if (rect.area() < Server::contentCacheMinRectSize)
+  if (rect.area() < Server::contentCacheMinRectSize) {
+    vlog.debug("CC SKIP: below minSize=%d rect (%s) area=%d",
+               (int)Server::contentCacheMinRectSize, strRect(rect), rect.area());
     return false;
+  }
 
   // Require client support for the ContentCache protocol.
   // We do not fall back to CopyRect because the cache tracks historical positions,
   // and CopyRect must only reference currently-visible content. Falling back here
   // can copy stale content and cause window trails (especially when dragging up/left).
-  if (!conn->client.supportsEncoding(pseudoEncodingContentCache))
+  if (!conn->client.supportsEncoding(pseudoEncodingContentCache)) {
+    vlog.debug("CC SKIP: client no support rect (%s)", strRect(rect));
     return false;
+  }
 
   cacheStats.cacheLookups++;
 
@@ -1314,11 +1393,22 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
   uint64_t cacheId = 0;
   ContentCache::CacheEntry* entry = contentCache->findByKey(key, &cacheId);
   
+  vlog.debug("CC lookup: rect (%s) key=%s entry=%s cacheId=%llu",
+             strRect(rect), strContentKey(key.width, key.height, hash),
+             entry ? "found" : "null", (unsigned long long)cacheId);
+  
   if (entry != nullptr && cacheId != 0) {
     // Cache hit in server content cache, but we must ensure the client
     // actually knows this cacheId. If not, schedule a CachedRectInit and
     // skip sending a reference right now.
-    if (!conn->knowsCacheId(cacheId)) {
+    vlog.debug("CC knowsCacheId? id=%llu", (unsigned long long)cacheId);
+    bool clientKnows = conn->knowsCacheId(cacheId);
+    vlog.debug("CC knowsCacheId result: id=%llu known=%s",
+               (unsigned long long)cacheId, yesNo(clientKnows));
+    
+    if (!clientKnows) {
+      vlog.debug("CC MISS client-unknown-id: rect (%s) id=%llu - queueing CachedRectInit",
+                 strRect(rect), (unsigned long long)cacheId);
       conn->queueCachedInit(cacheId, rect);
       // Do not treat as copyrect stats as we will send full data
       // Mark freshly updated region accordingly
@@ -1342,9 +1432,8 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
     copyStats.bytes += conn->getOutStream()->length() - beforeLength;
     // Record this cacheId->rect mapping so we can respond to RequestCachedData
     conn->onCachedRectRef(cacheId, rect);
-    vlog.debug("ContentCache protocol hit: rect [%d,%d-%d,%d] key=(%ux%u) cacheId=%llu",
-               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-               key.width, key.height, (unsigned long long)cacheId);
+    vlog.debug("CC HIT: rect (%s) id=%llu saved=%d bytes",
+               strRect(rect), (unsigned long long)cacheId, equiv - 20);
     lossyRegion.assign_subtract(rect);
     pendingRefreshRegion.assign_subtract(rect);
     entry->lastBounds = rect;
@@ -1352,6 +1441,8 @@ bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
     return true;
   }
 
+  vlog.debug("CC MISS not-in-cache: rect (%s) key=%s",
+             strRect(rect), strContentKey(key.width, key.height, hash));
   return false;
 }
 
@@ -1376,6 +1467,9 @@ void EncodeManager::insertIntoContentCache(const core::Rect& rect,
     memcpy(&hash, fullHash.data(), 8);
   }
   
+  vlog.debug("CC insert start: rect (%s) hash=%s",
+             strRect(rect), hex64(hash));
+  
   // dataLen is for memory accounting in ARC, use actual pixels only
   size_t bytesPerPixel = pb->getPF().bpp / 8;
   size_t dataLen = rect.height() * rect.width() * bytesPerPixel;
@@ -1387,9 +1481,14 @@ void EncodeManager::insertIntoContentCache(const core::Rect& rect,
                       static_cast<uint16_t>(rect.height()), hash);
   uint64_t cacheId = contentCache->insertContent(key, rect, nullptr, dataLen, false);
   
-  vlog.debug("ContentCache insert: rect [%d,%d-%d,%d], key=(%ux%u,hash=%llx), cacheId=%llu",
-             rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-             key.width, key.height, (unsigned long long)hash, (unsigned long long)cacheId);
+  if (cacheId != 0) {
+    vlog.debug("CC insert ok: rect (%s) key=%s id=%llu dataLen=%zu",
+               strRect(rect), strContentKey(key.width, key.height, hash),
+               (unsigned long long)cacheId, dataLen);
+  } else {
+    vlog.debug("CC insert fail: rect (%s) key=%s reason=returned-zero-id",
+               strRect(rect), strContentKey(key.width, key.height, hash));
+  }
 }
 
 bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
