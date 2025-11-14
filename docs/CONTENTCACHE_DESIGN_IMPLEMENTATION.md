@@ -791,6 +791,71 @@ vlog.debug("CachedRect: cacheId=%llu found=%s",
 
 ## Known Issues and Bug Fixes
 
+### Bug: Viewer Doesn't Print Bandwidth Statistics (ACTIVE - November 13, 2025)
+
+**Status**: Open - Fix Required
+
+**Problem**: The C++ viewer (`vncviewer/njcvncviewer`) collects cache bandwidth statistics but never prints them on shutdown because `DecodeManager::logStats()` is never called.
+
+**Impact**:
+- Users cannot see cache performance metrics
+- Automated tests fail looking for bandwidth reduction summaries
+- Tests affected: `test_persistent_cache_bandwidth.py`, `test_persistent_cache_eviction.py`, `test_cache_parity.py`, `test_cache_simple_poc.py`
+
+**Evidence**:
+Bandwidth tracking **IS working** - the functions are called:
+```cpp
+// DecodeManager.cxx:702
+rfb::cache::trackPersistentCacheRef(persistentCacheBandwidthStats, r, conn->server.pf(), hash.size());
+
+// DecodeManager.cxx:796
+rfb::cache::trackPersistentCacheInit(persistentCacheBandwidthStats, hash.size(), lastDecodedRectBytes);
+```
+
+The `formatSummary()` method exists and generates proper output:
+```cpp
+// DecodeManager.cxx:369-372
+const auto ps = persistentCacheBandwidthStats.formatSummary("PersistentCache");
+if (persistentCacheBandwidthStats.cachedRectCount || persistentCacheBandwidthStats.cachedRectInitCount)
+  vlog.info("  %s", ps.c_str());
+```
+
+But `logStats()` is never invoked, so this output never appears.
+
+**Expected Output** (currently missing):
+```
+Client-side PersistentCache statistics:
+  Protocol operations (PersistentCachedRect received):
+    Lookups: 44, Hits: 44 (100.0%)
+    Misses: 0, Queries sent: 0
+  ARC cache performance:
+    Total entries: 4, Total bytes: 938 KiB
+    Cache hits: 44, Cache misses: 0, Evictions: 0
+  PersistentCache: 517 KiB bandwidth saving (99.7% reduction)
+```
+
+**Fix Required**:
+Add `decode->logStats()` call in `vncviewer/CConn.cxx` destructor or disconnect handler:
+
+```cpp
+// In CConn::close() or destructor, before cleanup:
+if (decode) {
+  vlog.info("Framebuffer statistics:");
+  decode->logStats();
+}
+```
+
+This mirrors how the server calls `encodeManager->logStats()` in `VNCServerST::removeSocket()`.
+
+**Verification**: PersistentCache protocol is confirmed working - client logs show:
+- `PersistentCachedRectInit` messages received (stores)
+- `PersistentCachedRect` messages received (cache hits)
+- Proper cache lookups and blitting
+
+**Reference**: See `tests/e2e/TEST_TRIAGE_FINDINGS.md` for detailed analysis.
+
+---
+
 ### Bug: Incorrect Hash Calculation (CRITICAL - Fixed Oct 7 2025)
 
 **Commit**: `456e7c6d` - "Fix ContentCache hash calculation: stride is in pixels not bytes"

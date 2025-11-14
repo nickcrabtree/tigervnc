@@ -295,6 +295,17 @@ These are static libraries that provide the foundation for both viewers and serv
 
 - **tests/unit/**: GoogleTest unit tests
 - **tests/perf/**: Performance benchmarks
+- **tests/e2e/**: End-to-end ContentCache/PersistentCache protocol tests
+
+**Test Status** (November 13, 2025):
+- 6 passing tests (ContentCache, PersistentCache, eviction handling)
+- 8 tests with known issues (see `tests/e2e/TEST_TRIAGE_FINDINGS.md`):
+  - Primary bug: Viewer doesn't call `logStats()` on shutdown (affects 4 tests)
+  - Test issues: Outdated thresholds, unbounded waits, obsolete assumptions
+
+For detailed test analysis, fixes, and evidence, see:
+- `tests/e2e/TEST_TRIAGE_FINDINGS.md` - Complete root cause analysis
+- `tests/e2e/README.md` - Test documentation and known issues
 
 ## Key Conventions
 

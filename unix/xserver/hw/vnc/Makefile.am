@@ -12,9 +12,21 @@ AM_CPPFLAGS = \
 	-I$(TIGERVNC_BUILDDIR) \
 	-I$(TIGERVNC_SRCDIR)/common \
 	-I$(TIGERVNC_SRCDIR)/unix/common \
-	$(DIX_CFLAGS) $(LIBXCVT_CFLAGS)
+	$(LIBXCVT_CFLAGS)
 
-AM_CXXFLAGS = -std=gnu++11
+# DIX_CFLAGS carries both shared defines/includes and aggressive C-only
+# warning flags (CWARNFLAGS).  Using it via CPPFLAGS would leak those
+# C-only -W options into C++ compilations, which newer g++ versions
+# warn about (e.g. -Wstrict-prototypes).  Instead, feed DIX_CFLAGS
+# through the language-specific *_CFLAGS variables so C and C++ can
+# each get an appropriate subset.
+AM_CFLAGS = $(DIX_CFLAGS)
+
+AM_CXXFLAGS = -std=gnu++11 \
+	$(filter-out -Wstrict-prototypes -Wmissing-prototypes -Wnested-externs \
+	             -Wbad-function-cast -Wold-style-definition \
+	             -Wdeclaration-after-statement -Werror=implicit \
+	             -Werror=pointer-to-int-cast, $(DIX_CFLAGS))
 
 noinst_LTLIBRARIES = libvnccommon.la
 

@@ -16,7 +16,7 @@ endif()
 # Create symlink Xnjcvnc -> Xvnc for vncserver wrapper compatibility
 add_custom_target(xnjcvnc_symlink ALL
   COMMAND ${CMAKE_COMMAND} -E create_symlink
-    ${CMAKE_CURRENT_BINARY_DIR}/xserver/xorg-server/hw/vnc/Xvnc
+    ${CMAKE_CURRENT_BINARY_DIR}/xserver/hw/vnc/Xnjcvnc
     ${CMAKE_CURRENT_BINARY_DIR}/vncserver/Xnjcvnc
   COMMENT "Creating Xnjcvnc symlink in vncserver directory for wrapper compatibility"
 )

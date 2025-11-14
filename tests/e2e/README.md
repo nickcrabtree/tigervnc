@@ -4,13 +4,27 @@
 
 End-to-end validation of ContentCache and PersistentCache protocols in TigerVNC. Tests verify correct protocol implementation, cache hit rates, bandwidth savings, and cross-platform compatibility.
 
-### Test Status (November 2025)
+### Test Status (November 13, 2025)
 
 **✅ C++ Viewer Tests Passing:**
 - `test_cpp_contentcache.py`: 63-67% hit rate, ~300 KB saved
 - `test_cpp_persistentcache.py`: 100% hit rate, 99.7% bandwidth reduction, ~517 KB saved
+- `test_cpp_cache_eviction.py`: Cache eviction handling verified (63% hit rate after evictions)
+- `test_cache_eviction.py`: Eviction protocol working (66% hit rate, 173 hits)
 
 **🚧 Rust Viewer Tests:** Awaiting ContentCache/PersistentCache implementation in Rust viewer
+
+**❌ Known Failing Tests** (under investigation):
+- `test_persistent_cache_bandwidth.py`: Requires viewer logStats() call fix (see TEST_TRIAGE_FINDINGS.md)
+- `test_persistent_cache_eviction.py`: Requires viewer logStats() call fix
+- `test_cache_parity.py`: Requires viewer logStats() call fix
+- `test_cache_simple_poc.py`: Requires viewer logStats() call fix
+- `test_cpp_limited_encodings.sh`: Requires DISPLAY environment fix
+- `test_cachedrect_init_propagation.py`: Test obsolete (tests old ContentCache when PersistentCache is default)
+- `run_baseline_rfb_test.py`: Outdated FBU count threshold
+- `run_contentcache_test.py`: Unbounded waits cause timeout
+
+**See**: `TEST_TRIAGE_FINDINGS.md` for detailed root cause analysis and fixes
 
 ## Architecture
 
@@ -173,6 +187,36 @@ The test **fails** if:
 - ✗ Hit rate divergence > 2%
 - ✗ Protocol message count divergence > 5%
 - ✗ Parsing errors or corrupted logs
+
+## Known Issues (November 2025)
+
+### Missing Bandwidth Statistics in Viewer Output
+
+**Issue**: Test failures in bandwidth-related tests (`test_persistent_cache_bandwidth.py`, etc.) due to missing log output.
+
+**Root Cause**: The C++ viewer (`vncviewer/njcvncviewer`) never calls `DecodeManager::logStats()` on shutdown, so bandwidth statistics are collected but never printed.
+
+**Evidence**: PersistentCache protocol is working correctly - logs show:
+- Client receives `PersistentCachedRectInit` messages (stores)
+- Client receives `PersistentCachedRect` messages (cache hits)
+- Bandwidth tracking functions are called (`trackPersistentCacheRef`, `trackPersistentCacheInit`)
+- But end-of-session summary is never printed
+
+**Impact**: Tests expect output like:
+```
+Client-side PersistentCache statistics:
+  PersistentCache: 517 KiB bandwidth saving (99.7% reduction)
+```
+
+But this output never appears because `logStats()` isn't called.
+
+**Fix Required**: Add `decode->logStats()` call in `vncviewer/CConn.cxx` destructor or disconnect handler (similar to how server calls `encodeManager->logStats()` in `VNCServerST`).
+
+**Workaround**: None for automated tests. Manual verification can be done by inspecting detailed debug logs for cache hit/miss messages.
+
+**Status**: Fix planned - 5-10 line code change in viewer shutdown path.
+
+---
 
 ## Troubleshooting
 
