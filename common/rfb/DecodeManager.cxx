@@ -34,12 +34,20 @@
 #include <rfb/Decoder.h>
 #include <rfb/Exception.h>
 #include <rfb/PixelBuffer.h>
+#include <rfb/ContentHash.h>
 
 #include <rdr/MemOutStream.h>
 
 using namespace rfb;
 
 static core::LogWriter vlog("DecodeManager");
+
+// Optional framebuffer hash debug helper (mirrors CConnection)
+static bool isFBHashDebugEnabled()
+{
+  const char* env = getenv("TIGERVNC_FB_HASH_DEBUG");
+  return env && env[0] != '\0' && env[0] != '0';
+}
 
 DecodeManager::DecodeManager(CConnection *conn_) :
   conn(conn_), threadException(nullptr), contentCache(nullptr), persistentCache(nullptr)
@@ -147,6 +155,21 @@ bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
 
   QueueEntry *entry;
 
+  // Optional framebuffer hash debug: track how normal decoded rects
+  // affect the problematic xterm region when ContentCache is enabled.
+  core::Rect problemRegion(100, 100, 586, 443);
+  core::Rect fbRect = pb ? pb->getRect() : core::Rect();
+  core::Rect hashRect = problemRegion.intersect(fbRect);
+  uint64_t before64 = 0;
+  bool haveBeforeHash = false;
+  if (isFBHashDebugEnabled() && pb != nullptr && !hashRect.is_empty()) {
+    std::vector<uint8_t> beforeHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), hashRect);
+    size_t n = std::min<size_t>(8, beforeHash.size());
+    for (size_t i = 0; i < n; ++i)
+      before64 = (before64 << 8) | beforeHash[i];
+    haveBeforeHash = true;
+  }
+
   assert(pb != nullptr);
 
   if (!Decoder::supported(encoding)) {
@@ -208,6 +231,23 @@ bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
   decoder->getAffectedRegion(r, bufferStream->data(),
                              bufferStream->length(), conn->server,
                              &entry->affectedRegion);
+
+  // If we captured a BEFORE hash, capture AFTER now that the decoded
+  // rect bytes are available (workers will apply them shortly).
+  if (isFBHashDebugEnabled() && pb != nullptr && !hashRect.is_empty() && haveBeforeHash) {
+    std::vector<uint8_t> afterHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), hashRect);
+    uint64_t after64 = 0;
+    size_t n2 = std::min<size_t>(8, afterHash.size());
+    for (size_t i = 0; i < n2; ++i)
+      after64 = (after64 << 8) | afterHash[i];
+    vlog.info("FBDBG DECODE encoding=%d rect=[%d,%d-%d,%d] region=[%d,%d-%d,%d] before=%016llx after=%016llx",
+              encoding,
+              r.tl.x, r.tl.y, r.br.x, r.br.y,
+              hashRect.tl.x, hashRect.tl.y,
+              hashRect.br.x, hashRect.br.y,
+              (unsigned long long)before64,
+              (unsigned long long)after64);
+  }
 
   lock.lock();
 
@@ -542,6 +582,11 @@ next:
 void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
                                     ModifiablePixelBuffer* pb)
 {
+  // Ensure all pending decodes have completed before we blit cached
+  // pixels into the framebuffer so that we preserve the same ordering
+  // semantics as the vanilla decode path (including CopyRect).
+  flush();
+
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect ENTER: rect=[" + std::to_string(r.tl.x) + "," + std::to_string(r.tl.y) + "-" + std::to_string(r.br.x) + "," + std::to_string(r.br.y) + "], cacheId=" + std::to_string(cacheId) + ", contentCache=" + std::to_string(reinterpret_cast<uintptr_t>(contentCache)) + ", pb=" + std::to_string(reinterpret_cast<uintptr_t>(pb)));
   
@@ -606,8 +651,6 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
              (unsigned long long)cacheId, cached->width, cached->height,
              r.tl.x, r.tl.y, r.br.x, r.br.y);
   
-  // Dimension mismatch now impossible due to ContentKey structure
-  
   // TEMP DEBUG: Check if we're about to blit all-black or mostly-black data
   size_t sampleSize = std::min((size_t)64, cached->pixels.size());
   bool hasNonZero = false;
@@ -627,13 +670,49 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
     vlog.error("%s", debugMsg);  // Also log to stderr for visibility
   }
   
+  // Optional framebuffer hash debug before/after the cached blit for the
+  // problematic region.
+  core::Rect problemRegion(100, 100, 586, 443);
+  core::Rect fbRect = pb->getRect();
+  core::Rect hashRect = problemRegion.intersect(fbRect);
+  if (isFBHashDebugEnabled() && !hashRect.is_empty()) {
+    std::vector<uint8_t> beforeHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), hashRect);
+    uint64_t before64 = 0;
+    size_t n = std::min<size_t>(8, beforeHash.size());
+    for (size_t i = 0; i < n; ++i)
+      before64 = (before64 << 8) | beforeHash[i];
+    vlog.info("FBDBG BEFORE cacheId=%llu rect=[%d,%d-%d,%d] region=[%d,%d-%d,%d] hash64=%016llx",
+              (unsigned long long)cacheId,
+              r.tl.x, r.tl.y, r.br.x, r.br.y,
+              hashRect.tl.x, hashRect.tl.y,
+              hashRect.br.x, hashRect.br.y,
+              (unsigned long long)before64);
+  }
+  
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect: about to call pb->imageRect with cached->pixels.data()=" + std::to_string(reinterpret_cast<uintptr_t>(cached->pixels.data())) + ", cached->pixels.size()=" + std::to_string(cached->pixels.size()) + ", cached->stridePixels=" + std::to_string(cached->stridePixels));
   
   // Blit cached pixels to framebuffer at target position
-  // NOTE: PersistentCache stores pixels contiguously; use width as stride in pixels
-  int srcStridePx = cached->width;
+  // For ContentCache, we must respect the original stride in pixels that
+  // was used when the pixels were stored in the cache. Using width as the
+  // stride (which is valid for some PersistentCache layouts) will misalign
+  // rows when the framebuffer stride is wider than the rect.
+  int srcStridePx = cached->stridePixels;
   pb->imageRect(cached->format, r, cached->pixels.data(), srcStridePx);
+  
+  if (isFBHashDebugEnabled() && !hashRect.is_empty()) {
+    std::vector<uint8_t> afterHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), hashRect);
+    uint64_t after64 = 0;
+    size_t n2 = std::min<size_t>(8, afterHash.size());
+    for (size_t i = 0; i < n2; ++i)
+      after64 = (after64 << 8) | afterHash[i];
+    vlog.info("FBDBG AFTER  cacheId=%llu rect=[%d,%d-%d,%d] region=[%d,%d-%d,%d] hash64=%016llx",
+              (unsigned long long)cacheId,
+              r.tl.x, r.tl.y, r.br.x, r.br.y,
+              hashRect.tl.x, hashRect.tl.y,
+              hashRect.br.x, hashRect.br.y,
+              (unsigned long long)after64);
+  }
   
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::handleCachedRect EXIT: imageRect completed successfully");
@@ -642,6 +721,12 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
 void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
                                    ModifiablePixelBuffer* pb)
 {
+  // Ensure all pending decodes that might affect this rect have completed
+  // before we snapshot pixels into the ContentCache. This guarantees that
+  // the cached content reflects the same framebuffer state the vanilla
+  // viewer would see at this point.
+  flush();
+
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::storeCachedRect ENTER: rect=[" + std::to_string(r.tl.x) + "," + std::to_string(r.tl.y) + "-" + std::to_string(r.br.x) + "," + std::to_string(r.br.y) + "], cacheId=" + std::to_string(cacheId));
   
@@ -671,6 +756,19 @@ void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
              (unsigned long long)cacheId,
              r.tl.x, r.tl.y, r.br.x, r.br.y,
              pb->getPF().bpp, stridePixels, rowBytes);
+
+  // EXTRA DEBUG: for problematic rects, dump first few bytes of the source pixels
+  if (r.width() == 486 && (r.height() == 343 || r.height() == 22) && pixels != nullptr) {
+    size_t sample = std::min((size_t)16, rowBytes);
+    char buf[128];
+    int off = 0;
+    off += snprintf(buf + off, sizeof(buf) - off, "SRC PIXELS id=%llu: ",
+                    (unsigned long long)cacheId);
+    for (size_t i = 0; i < sample && off < (int)sizeof(buf) - 3; ++i) {
+      off += snprintf(buf + off, sizeof(buf) - off, "%02x", pixels[i]);
+    }
+    vlog.debug("%s", buf);
+  }
   
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("DecodeManager::storeCachedRect: about to call storeDecodedPixels with pixels=" + std::to_string(reinterpret_cast<uintptr_t>(pixels)) + ", stridePixels=" + std::to_string(stridePixels));

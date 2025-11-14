@@ -372,6 +372,78 @@ public:
 };
 ```
 
+## Ordering and Synchronization Semantics
+
+### Alignment with ContentCache and CopyRect
+
+The C++ implementation of **ContentCache** initially integrated cache store/replay operations
+outside the normal decode pipeline. This meant that:
+
+- Normal rects (Raw/Tight/ZRLE/CopyRect) were decoded via `DecodeManager::decodeRect()`
+  into a multi-threaded work queue, with ordering enforced by decoder flags and
+  `affectedRegion` overlap checks.
+- ContentCache operations (`storeCachedRect` / `handleCachedRect`) were performing
+  **out-of-band framebuffer reads/writes** on the main thread:
+  - `storeCachedRect` read pixels from the framebuffer into the cache.
+  - `handleCachedRect` blitted cached pixels directly via `imageRect()`.
+
+Under heavy multi-threaded decoding, this divergence in ordering semantics caused subtle
+visual corruption in the ContentCache-enabled viewer: the cache would occasionally store or
+replay pixels from an intermediate framebuffer state that the vanilla path never exposed.
+
+**Critical Fix (November 2025)**
+
+To align ContentCache with CopyRect semantics and restore determinism, the C++ viewer now:
+
+- Calls `DecodeManager::flush()` **before** `storeCachedRect`:
+  - Ensures all pending decodes that might affect the rect have completed.
+  - Guarantees that cached pixels reflect the same framebuffer state that the non-cache
+    viewer would see at that point.
+- Calls `DecodeManager::flush()` **before** `handleCachedRect` blits cached pixels
+  to the framebuffer:
+  - Ensures no in-flight decodes are concurrently writing overlapping regions.
+  - Makes CachedRect replay semantics effectively identical to a normal decoded rect or
+    CopyRect from an ordering perspective.
+
+With these changes, the ContentCache-enabled viewer produced **pixel-identical screenshots**
+vs. a cache-disabled ground-truth viewer across all checkpoints in the e2e black-box
+screenshot test harness.
+
+### Implications for PersistentCache (C++ and Rust)
+
+PersistentCache must follow the **same ordering constraints** as ContentCache:
+
+- Whenever the client **stores** decoded PersistentCache content (after a
+  `PersistentCachedRectInit`), it MUST ensure that:
+  - All relevant decodes that contribute to that rect have completed, and
+  - No concurrent writes are happening to that region during the snapshot.
+- Whenever the client **replays** cached PersistentCache content (on
+  `PersistentCachedRect`), it MUST ensure that:
+  - All earlier queued decodes that might affect that region have finished, and
+  - The replay is ordered consistently relative to other rects, just like a normal
+    decoded rect.
+
+In the C++ viewer, this means:
+
+- `DecodeManager::handlePersistentCachedRect()` should synchronize with the work queue in
+  the same way that `handleCachedRect()` now does for ContentCache.
+- `DecodeManager::storePersistentCachedRect()` should only snapshot pixels after pending
+  decodes are flushed for the affected region.
+
+In the Rust viewer, the same rules apply conceptually:
+
+- The Rust equivalent of `DecodeManager` must not perform PersistentCache store/replay
+  operations as unsynchronized framebuffer mutations.
+- Instead, it should either:
+  - (a) route PersistentCache blits through the same ordered decode pipeline as normal
+        encodings (e.g. via a queued “cache blit” operation), or
+  - (b) put explicit barriers (flush/wait) around cache reads/writes so that overall
+        behaviour remains observationally equivalent to the non-cache path.
+
+These ordering guarantees are now considered a **hard requirement** for any
+PersistentCache implementation that aims to be visually correct and parity-compatible
+with the C++ ContentCache/PersistentCache behaviour.
+
 ## Hashing Algorithm
 
 ### Requirements

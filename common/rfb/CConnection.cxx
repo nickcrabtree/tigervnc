@@ -44,6 +44,7 @@
 #include <rfb/Security.h>
 #include <rfb/SecurityClient.h>
 #include <rfb/CConnection.h>
+#include <rfb/ContentHash.h>
 
 #define XK_MISCELLANY
 #define XK_XKB_KEYS
@@ -55,6 +56,20 @@
 using namespace rfb;
 
 static core::LogWriter vlog("CConnection");
+
+// Client-side ContentCache / update tracing helper
+static bool isClientCCDebugEnabled()
+{
+  const char* env = getenv("TIGERVNC_CC_CLIENT_DEBUG");
+  return env && env[0] != '\0' && env[0] != '0';
+}
+
+// Optional framebuffer hash debug for a fixed region (ContentCache debugging)
+static bool isFBHashDebugEnabled()
+{
+  const char* env = getenv("TIGERVNC_FB_HASH_DEBUG");
+  return env && env[0] != '\0' && env[0] != '0';
+}
 
 CConnection::CConnection()
   : csecurity(nullptr),
@@ -562,6 +577,28 @@ void CConnection::framebufferUpdateEnd()
 {
   decoder.flush();
 
+  // After all rects in this update have been applied, optionally hash
+  // a fixed framebuffer region to compare ContentCache vs. non-cache runs.
+  if (isFBHashDebugEnabled() && framebuffer != nullptr) {
+    // Problem region observed in black-box tests: [100,100-586,443]
+    core::Rect problemRegion(100, 100, 586, 443);
+    core::Rect fbRect = framebuffer->getRect();
+    core::Rect hashRect = problemRegion.intersect(fbRect);
+    if (!hashRect.is_empty()) {
+      std::vector<uint8_t> hash = ContentHash::computeRect(framebuffer, hashRect);
+      // Format first 8 bytes as a 64-bit value for compact logging
+      uint64_t hash64 = 0;
+      size_t n = std::min<size_t>(8, hash.size());
+      for (size_t i = 0; i < n; ++i) {
+        hash64 = (hash64 << 8) | hash[i];
+      }
+      vlog.info("FBDBG HASH region=[%d,%d-%d,%d] hash64=%016llx",
+                hashRect.tl.x, hashRect.tl.y,
+                hashRect.br.x, hashRect.br.y,
+                (unsigned long long)hash64);
+    }
+  }
+
   // A format change has been scheduled and we are now past the update
   // with the old format. Time to active the new one.
   if (pendingPFChange && !continuousUpdates) {
@@ -584,6 +621,14 @@ void CConnection::framebufferUpdateEnd()
 
 bool CConnection::dataRect(const core::Rect& r, int encoding)
 {
+  // Optional client-side tracing of update ordering in the problematic region
+  if (isClientCCDebugEnabled()) {
+    core::Rect problemRegion(100, 100, 586, 443); // [100,100-586,443]
+    if (!problemRegion.intersect(r).is_empty()) {
+      vlog.info("CCDBG CLIENT dataRect: rect=[%d,%d-%d,%d] enc=%d", 
+                r.tl.x, r.tl.y, r.br.x, r.br.y, encoding);
+    }
+  }
   return decoder.decodeRect(r, encoding, framebuffer);
 }
 

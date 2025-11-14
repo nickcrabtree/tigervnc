@@ -23,88 +23,104 @@
 #include <cstring>
 #include <vector>
 
-#include <openssl/evp.h>
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
+#ifdef HAVE_GNUTLS
+#include <gnutls/gnutls.h>
+#include <gnutls/crypto.h>
+#endif
 
 #include <core/Rect.h>
 #include <rfb/PixelBuffer.h>
 
 namespace rfb {
 
-  // ContentHash: Stable content-based hashing for PersistentCache protocol
+  // ContentHash: Stable content-based hashing for cache protocols
   //
-  // Uses SHA-256 truncated to 128 bits (16 bytes) for:
-  // - Low collision probability (< 0.0001% for 100K entries)
-  // - Cross-platform stability
-  // - Fast computation
+  // Primary implementation: MD5 via GnuTLS (when available).
+  // Fallback: simple FNV-1a-style hash (non-cryptographic but stable).
   class ContentHash {
   public:
     // Compute hash over raw byte data
     static std::vector<uint8_t> compute(const uint8_t* data, size_t len) {
       std::vector<uint8_t> hash(16);
-
-      EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-      if (!ctx)
+      if (!data || len == 0)
         return hash;
 
-      if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
-        EVP_MD_CTX_free(ctx);
+#ifdef HAVE_GNUTLS
+      gnutls_hash_hd_t ctx;
+      if (gnutls_hash_init(&ctx, GNUTLS_DIG_MD5) != 0)
         return hash;
-      }
 
-      EVP_DigestUpdate(ctx, data, len);
-
-      uint8_t full_hash[32];
-      unsigned int hash_len;
-      EVP_DigestFinal_ex(ctx, full_hash, &hash_len);
-      EVP_MD_CTX_free(ctx);
-
-      // Truncate to 16 bytes
-      memcpy(hash.data(), full_hash, 16);
+      gnutls_hash(ctx, data, len);
+      gnutls_hash_deinit(ctx, hash.data());
       return hash;
+#else
+      // Fallback: simple FNV-1a variant into 128 bits
+      const uint64_t FNV_OFFSET = 0xcbf29ce484222325ULL;
+      const uint64_t FNV_PRIME  = 0x100000001b3ULL;
+      uint64_t h1 = FNV_OFFSET;
+      uint64_t h2 = FNV_OFFSET ^ 0x123456789abcdef0ULL;
+      for (size_t i = 0; i < len; ++i) {
+        h1 ^= data[i]; h1 *= FNV_PRIME;
+        h2 ^= data[i]; h2 *= FNV_PRIME;
+      }
+      memcpy(hash.data(), &h1, 8);
+      memcpy(hash.data() + 8, &h2, 8);
+      return hash;
+#endif
     }
 
     // Compute hash for a rectangle region in a PixelBuffer
-    // CRITICAL: Handles stride-in-pixels correctly (multiply by bytesPerPixel)
-    // CRITICAL: Includes width and height to prevent reuse across different sizes
+    // Handles stride-in-pixels correctly and includes width/height.
     static std::vector<uint8_t> computeRect(const PixelBuffer* pb,
                                            const core::Rect& r) {
       int stride;
       const uint8_t* pixels = pb->getBuffer(r, &stride);
+      if (!pixels)
+        return std::vector<uint8_t>(16);
 
       int bytesPerPixel = pb->getPF().bpp / 8;
       size_t rowBytes = r.width() * bytesPerPixel;
-      size_t strideBytes = stride * bytesPerPixel;  // CRITICAL: multiply by bytesPerPixel!
+      size_t strideBytes = stride * bytesPerPixel;
 
-      // Hash row-major pixel data (only the actual pixels, not padding)
-      EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-      if (!ctx)
+#ifdef HAVE_GNUTLS
+      gnutls_hash_hd_t ctx;
+      if (gnutls_hash_init(&ctx, GNUTLS_DIG_MD5) != 0)
         return std::vector<uint8_t>(16);
 
-      if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
-        EVP_MD_CTX_free(ctx);
-        return std::vector<uint8_t>(16);
-      }
-
-      // Include width and height in hash to prevent reuse across different rectangle sizes
-      // This is a critical bugfix that matches ContentCache behavior
+      // Include dimensions
       uint32_t width = r.width();
       uint32_t height = r.height();
-      EVP_DigestUpdate(ctx, &width, sizeof(width));
-      EVP_DigestUpdate(ctx, &height, sizeof(height));
+      gnutls_hash(ctx, &width, sizeof(width));
+      gnutls_hash(ctx, &height, sizeof(height));
 
       for (int y = 0; y < r.height(); y++) {
         const uint8_t* row = pixels + (y * strideBytes);
-        EVP_DigestUpdate(ctx, row, rowBytes);
+        gnutls_hash(ctx, row, rowBytes);
       }
 
-      uint8_t full_hash[32];
-      unsigned int hash_len;
-      EVP_DigestFinal_ex(ctx, full_hash, &hash_len);
-      EVP_MD_CTX_free(ctx);
-
       std::vector<uint8_t> hash(16);
-      memcpy(hash.data(), full_hash, 16);
+      gnutls_hash_deinit(ctx, hash.data());
       return hash;
+#else
+      // Fallback: build a temporary buffer of the exact rect bytes
+      std::vector<uint8_t> tmp;
+      tmp.reserve(sizeof(uint32_t) * 2 + (size_t)r.height() * rowBytes);
+      uint32_t width = r.width();
+      uint32_t height = r.height();
+      tmp.insert(tmp.end(), reinterpret_cast<uint8_t*>(&width),
+                 reinterpret_cast<uint8_t*>(&width) + sizeof(width));
+      tmp.insert(tmp.end(), reinterpret_cast<uint8_t*>(&height),
+                 reinterpret_cast<uint8_t*>(&height) + sizeof(height));
+      for (int y = 0; y < r.height(); y++) {
+        const uint8_t* row = pixels + (y * strideBytes);
+        tmp.insert(tmp.end(), row, row + rowBytes);
+      }
+      return compute(tmp.data(), tmp.size());
+#endif
     }
 
     // Hash vector hasher for use with unordered containers

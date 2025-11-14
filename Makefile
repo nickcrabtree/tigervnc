@@ -20,14 +20,27 @@ viewer:
 # Note: The xserver build uses a copy of TigerVNC source files in the build tree.
 #       We sync them before building to pick up any source changes, using checksums
 #       to detect content differences regardless of timestamps.
+#
+# Sledgehammer policy: because the xserver/autotools dependency tracking is
+# flaky, we ALWAYS:
+#   1. Clean the CMake build tree (so librdr/librfb/etc. are rebuilt).
+#   2. Sync unix/xserver into the build tree.
+#   3. Rebuild all CMake libs.
+#   4. Clean the xserver tree and rebuild Xnjcvnc.
 server:
-	@echo "Syncing TigerVNC source files to xserver build directory..."
+	@echo "[server] Cleaning CMake build tree (sledgehammer)..."
+	@cmake --build $(BUILD_DIR) --target clean || true
+	@echo "[server] Syncing TigerVNC unix/xserver sources to build tree..."
 	@rsync -a --checksum --itemize-changes unix/xserver/ $(XSERVER_BUILD_DIR)/ | grep -v '/$$' || true
-	cmake --build $(BUILD_DIR) --target rfb
+	@echo "[server] Rebuilding core libraries..."
+	cmake --build $(BUILD_DIR) --target core
 	cmake --build $(BUILD_DIR) --target rdr
 	cmake --build $(BUILD_DIR) --target network
-	cmake --build $(BUILD_DIR) --target core
+	cmake --build $(BUILD_DIR) --target rfb
 	cmake --build $(BUILD_DIR) --target unixcommon
+	@echo "[server] Cleaning xserver build tree before rebuild (sledgehammer)..."
+	@$(MAKE) -C $(XSERVER_BUILD_DIR) clean || true
+	@echo "[server] Rebuilding Xnjcvnc server..."
 	$(MAKE) -C $(XSERVER_BUILD_DIR) TIGERVNC_SRCDIR=$(CURDIR) TIGERVNC_BUILDDIR=$(CURDIR)/$(BUILD_DIR)
 
 # Rust Viewer: Build the Rust-based njcvncviewer-rs (cargo will rebuild deps as needed)

@@ -2077,6 +2077,10 @@ Document changes for users upgrading from old Rust viewer to new ARC-based versi
 
 ### Quality Requirements
 
+- ✅ **Ordering semantics preserved**: Rust ContentCache/PersistentCache store and replay
+  operations are integrated with the decode/composition pipeline such that the viewer
+  remains pixel-identical to the C++ viewer under the black-box screenshot harness
+  (ContentCache/PersistentCache on vs off).
 - ✅ **No regressions**: All existing tests still pass
 - ✅ **Code coverage**: >80% coverage for new ARC code
 - ✅ **Documentation complete**: All new features documented

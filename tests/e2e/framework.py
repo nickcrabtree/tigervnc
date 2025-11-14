@@ -86,6 +86,10 @@ class ProcessTracker:
         for name in list(self.processes.keys()):
             self.cleanup(name)
 
+        # After attempting graceful cleanup, give the system a brief
+        # moment to tear down listening sockets before subsequent tests.
+        time.sleep(0.5)
+
 
 def check_binary(name: str, required: bool = True) -> Optional[str]:
     """Check if a binary exists in PATH."""
@@ -106,9 +110,15 @@ def check_port_available(port: int) -> bool:
 
 
 def check_display_available(display: int) -> bool:
-    """Check if an X display number is available."""
+    """Check if an X display number is available.
+
+    Note: We treat a display as unavailable if either the X11 UNIX domain
+    socket or the legacy lock file exists. This helps avoid stale X
+    artifacts causing false "in use" reports across test runs.
+    """
     socket_path = Path(f"/tmp/.X11-unix/X{display}")
-    return not socket_path.exists()
+    lock_path = Path(f"/tmp/.X{display}-lock")
+    return not socket_path.exists() and not lock_path.exists()
 
 
 def wait_for_tcp_port(host: str, port: int, timeout: float = 10.0) -> bool:

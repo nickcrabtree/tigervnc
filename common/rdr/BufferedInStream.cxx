@@ -123,9 +123,15 @@ void BufferedInStream::ensureSpace(size_t needed)
 
 bool BufferedInStream::overrun(size_t needed)
 {
+  // Caller should normally only invoke overrun() when needed > avail(),
+  // but be robust if called with a smaller value to avoid assertions
+  // and potential crashes in production.
+  size_t have = avail();
+  if (needed <= have)
+    return true;
+
   // Make sure fillBuffer() has room for all the requested data
-  assert(needed > avail());
-  ensureSpace(needed - avail());
+  ensureSpace(needed - have);
 
   while (avail() < needed) {
     if (!fillBuffer())

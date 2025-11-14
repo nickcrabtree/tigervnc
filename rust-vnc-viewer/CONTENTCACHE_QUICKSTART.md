@@ -314,6 +314,25 @@ wireshark /tmp/vnc.pcap
 
 ## Common Issues and Solutions
 
+### Ordering and Synchronization
+
+The C++ viewer previously suffered from a subtle ContentCache visual corruption bug when
+cache store/replay operations were performed outside the normal decode pipeline. This was
+fixed by synchronizing cache operations with the decode queue (see
+`CONTENTCACHE_DESIGN_IMPLEMENTATION.md` and `PERSISTENTCACHE_DESIGN.md`).
+
+When implementing or updating the Rust viewer’s ContentCache/PersistentCache support, make
+sure that cache store/replay behaviour follows the **same ordering rules** as normal
+rects, including CopyRect. In practice this means:
+
+- Do not perform cache blits concurrently with active decodes of overlapping regions.
+- Do not snapshot framebuffer pixels for caching while decodes that contribute to that
+  region are still in flight.
+- Validate correctness with the black-box screenshot e2e tests, comparing cache-on vs
+  cache-off runs.
+
+## Common Issues and Solutions
+
 ### Issue: Cache miss on every rect
 
 **Symptom**: All CachedRects result in cache misses  

@@ -196,11 +196,22 @@ static const char *encoderTypeName(EncoderType type)
   return "Unknown Encoder Type";
 }
 
+// Enable extra ContentCache/encoding debug when this env var is set
+static bool isCCDebugEnabled()
+{
+  const char* env = getenv("TIGERVNC_CC_DEBUG");
+  return env && env[0] != '\0' && env[0] != '0';
+}
+
 EncodeManager::EncodeManager(SConnection* conn_)
   : conn(conn_), recentChangeTimer(this), cacheStatsTimer(this), contentCache(nullptr),
     usePersistentCache(false)
 {
   StatsVector::iterator iter;
+
+  if (isCCDebugEnabled()) {
+    vlog.info("TIGERVNC_CC_DEBUG enabled for connection %p", (void*)conn);
+  }
 
   encoders.resize(encoderClassMax, nullptr);
   activeEncoders.resize(encoderTypeMax, encoderRaw);
@@ -993,6 +1004,10 @@ void EncodeManager::writeRects(const core::Region& changed,
   std::vector<core::Rect> rects;
   std::vector<core::Rect>::const_iterator rect;
 
+  if (isCCDebugEnabled()) {
+    vlog.info("CCDBG writeRects: region has %d rects", changed.numRects());
+  }
+
   changed.get_rects(&rects);
   for (rect = rects.begin(); rect != rects.end(); ++rect) {
     int w, h, sw, sh;
@@ -1045,9 +1060,29 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
   bool clientSupportsCC = conn->client.supportsEncoding(pseudoEncodingContentCache);
   bool clientSupportsPC = conn->client.supportsEncoding(pseudoEncodingPersistentCache);
   
-  vlog.debug("CC writeSubRect: rect (%s) area=%d passMin=%s clientCC=%s clientPC=%s",
-             strRect(rect), rect.area(), yesNo(passesMinThreshold),
-             yesNo(clientSupportsCC), yesNo(clientSupportsPC));
+  if (isCCDebugEnabled()) {
+    vlog.info("CCDBG writeSubRect: rect=%s area=%d passMin=%s clientCC=%s clientPC=%s",
+              strRect(rect), rect.area(), yesNo(passesMinThreshold),
+              yesNo(clientSupportsCC), yesNo(clientSupportsPC));
+    
+    // PRE-CACHE PAYLOAD LOGGING: compute a content hash of the payload that will
+    // be sent for this rect, *before* any ContentCache or PersistentCache logic.
+    // This runs for both the cache-enabled and ground-truth connections so we
+    // can compare what the server actually sends per rect.
+    core::Rect problemRegion(100, 100, 586, 443); // [100,100-586,443]
+    core::Rect r = rect;
+    if (!problemRegion.intersect(r).is_empty()) {
+      std::vector<uint8_t> payloadHash = ContentHash::computeRect(pb, rect);
+      uint64_t payloadHash64 = 0;
+      if (payloadHash.size() >= 8) {
+        memcpy(&payloadHash64, payloadHash.data(), 8);
+      }
+      vlog.info("CCDBG PAYLOAD_PRE: conn=%p rect=%s hash64=%s",
+                (void*)conn,
+                strRect(rect),
+                hex64(payloadHash64));
+    }
+  }
   
   if (usePersistentCache && clientSupportsPC) {
     // Use PersistentCache exclusively
@@ -1140,10 +1175,30 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
     ppb = preparePixelBuffer(rect, pb, false);
 
   encoder->writeRect(ppb, info.palette);
-
+ 
   endRect();
-
+ 
+  // EXTRA DEBUG: For subrects inside the known problematic region, log a
+  // content hash of the raw pixels we just encoded so we can compare
+  // across viewers.
+  core::Rect problemRegion(100, 100, 586, 443); // [100,100-586,443]
+  core::Rect r = rect;
+  bool inProblemRegion = !problemRegion.intersect(r).is_empty();
+  uint64_t payloadHash64 = 0;
+  if (isCCDebugEnabled() && inProblemRegion) {
+    std::vector<uint8_t> payloadHash = ContentHash::computeRect(ppb, rect);
+    if (payloadHash.size() >= 8) {
+      memcpy(&payloadHash64, payloadHash.data(), 8);
+    }
+    vlog.info("CCDBG PAYLOAD: conn=%p rect=%s enc=%d hash64=%s",
+              (void*)conn,
+              strRect(rect),
+              encoder->encoding,
+              hex64(payloadHash64));
+  }
+ 
   // Insert into the active cache protocol (ONE cache per connection)
+  const char* cachePath = "NORMAL";
   if (usePersistentCache && 
       conn->client.supportsEncoding(pseudoEncodingPersistentCache)) {
     // PersistentCache: Track client-known hashes (insertion happens during INIT messages)
@@ -1153,6 +1208,16 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
              rect.area() >= Server::contentCacheMinRectSize) {
     // ContentCache: Insert with server-assigned cache ID
     insertIntoContentCache(rect, pb);
+    cachePath = "CACHED_INIT_ELIGIBLE";
+  }
+
+  if (isCCDebugEnabled() && inProblemRegion) {
+    vlog.info("CCDBG SERVER PATH: conn=%p rect=%s enc=%d path=%s hash64=%s",
+              (void*)conn,
+              strRect(rect),
+              encoder->encoding,
+              cachePath,
+              hex64(payloadHash64));
   }
 }
 
@@ -1353,6 +1418,10 @@ uint8_t* EncodeManager::OffsetPixelBuffer::getBufferRW(const core::Rect& /*r*/, 
 bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
                                           const PixelBuffer* pb)
 {
+  if (isCCDebugEnabled()) {
+    vlog.info("CCDBG tryContentCacheLookup ENTER: rect=%s area=%d", strRect(rect), rect.area());
+  }
+
   if (contentCache == nullptr) {
     vlog.debug("CC SKIP: contentCache=null rect (%s)", strRect(rect));
     return false;
@@ -1488,6 +1557,13 @@ void EncodeManager::insertIntoContentCache(const core::Rect& rect,
   } else {
     vlog.debug("CC insert fail: rect (%s) key=%s reason=returned-zero-id",
                strRect(rect), strContentKey(key.width, key.height, hash));
+  }
+
+  // EXTRA DEBUG: log hash/cacheId correlation for the problematic rect sizes
+  if (rect.width() == 486 && (rect.height() == 343 || rect.height() == 22)) {
+    vlog.debug("CC DEBUG HASH: rect (%s) width=%d height=%d hash=%s cacheId=%llu",
+               strRect(rect), rect.width(), rect.height(), hex64(hash),
+               (unsigned long long)cacheId);
   }
 }
 

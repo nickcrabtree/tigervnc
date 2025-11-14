@@ -520,6 +520,64 @@ pub fn load_from_disk() -> Result<Self> {
 
 ## Client Protocol Handling
 
+### Ordering and Synchronization Requirements (IMPORTANT)
+
+The late-2025 ContentCache bugfix in the C++ viewer revealed an important requirement for
+both ContentCache and PersistentCache implementations:
+
+> Cache store/replay operations must respect the **same ordering semantics** as normal
+> decoded rectangles (including CopyRect). Out-of-band framebuffer reads/writes by the
+> cache layer lead to subtle but reproducible visual corruption under multi-threaded
+> decoding.
+
+**What went wrong in C++ (ContentCache path):**
+
+- Normal rectangles were decoded via `DecodeManager::decodeRect()` into a work queue.
+- Worker threads applied rectangles to the framebuffer with ordering controlled by
+  decoder flags and `affectedRegion`.
+- ContentCache operations:
+  - `storeCachedRect` read pixels directly from the framebuffer into the cache.
+  - `handleCachedRect` blitted cached pixels via `imageRect()` on the main thread.
+- These cache operations were not synchronized with the decode queue, so under load they
+  occasionally stored or replayed pixels from an intermediate framebuffer state that never
+  appeared in the non-cache viewer, causing visual divergence.
+
+**How C++ fixed it (ContentCache):**
+
+- `DecodeManager::storeCachedRect()` now calls `flush()` before reading pixels, ensuring
+  all pending decodes that might affect that rect have completed.
+- `DecodeManager::handleCachedRect()` now calls `flush()` before blitting cached pixels
+  to the framebuffer, ensuring no overlapping decodes are in-flight.
+- After this change, a ContentCache-enabled viewer produced pixel-identical output vs a
+  cache-disabled viewer in the e2e black-box screenshot tests.
+
+**Implications for Rust PersistentCache implementation:**
+
+- The Rust viewer **must not** perform PersistentCache store/replay as unsynchronized
+  framebuffer mutations on some side channel.
+- Instead, it must integrate PersistentCache into the existing ordering model:
+
+  1. **Store path** (`PersistentCachedRectInit`):
+     - Only snapshot pixels into the cache after all relevant decodes have completed.
+     - In practice, this means either:
+       - Routing the “store” step through whatever mechanism the Rust client uses to
+         signal “end of rect decode” in a single-threaded or serialized context, or
+       - Explicitly flushing/waiting for pending decode work to finish for that rect’s
+         region before reading from the framebuffer.
+
+  2. **Replay path** (`PersistentCachedRect`):
+     - Apply cached blits with the same ordering guarantees as normal decodes:
+       - Option A: enqueue a “cache blit” operation into the same decode/compose
+         machinery that handles Tight/ZRLE/CopyRect, so ordering and conflict resolution
+         are identical.
+       - Option B: if the Rust decode pipeline is single-threaded, ensure that cache
+         blits are only invoked at points where no other rects are being applied and the
+         current framebuffer state matches what a non-cache client would see.
+
+- In all cases, the Rust implementation should be validated by the same black-box
+  screenshot tests used for the C++ viewer: PersistentCache-on vs PersistentCache-off
+  runs must produce pixel-identical output across all checkpoints.
+
 ### Decoder Implementation
 
 See implementation plan in `IMPLEMENTATION_PLAN.md` for full decoder pseudocode.

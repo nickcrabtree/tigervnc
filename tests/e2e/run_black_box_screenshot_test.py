@@ -83,8 +83,14 @@ def _run_cpp_viewer(
     content_cache: int,
     persistent_cache: int,
     persistent_cache_size_mb: int,
+    lossless: bool = False,
 ):
-    """Launch the C++ viewer with specified cache configuration."""
+    """Launch the C++ viewer with specified cache configuration.
+
+    The viewer's encoding behaviour is controlled purely via its own
+    command-line/configuration parameters (PreferredEncoding, NoJPEG,
+    QualityLevel, etc.), rather than hard-wired in the harness.
+    """
 
     cmd = [
         viewer_path,
@@ -98,6 +104,17 @@ def _run_cpp_viewer(
 
     if persistent_cache:
         cmd.append(f"PersistentCacheSize={persistent_cache_size_mb}")
+
+    # Optional lossless mode: configure viewer via its own parameters
+    # to prefer a lossless encoding path (ZRLE, no JPEG, full colour).
+    if lossless:
+        cmd.extend([
+            "AutoSelect=0",            # disable auto tuning
+            "PreferredEncoding=ZRLE",  # force lossless ZRLE
+            "FullColor=1",             # keep full colour
+            "NoJPEG=1",                # disable lossy JPEG in Tight
+            "QualityLevel=9",          # highest quality if JPEG ever used
+        ])
 
     log_path = artifacts.logs_dir / f"{name}.log"
     env = os.environ.copy()
@@ -307,6 +324,14 @@ def main() -> int:
         help="Geometry for viewer window display (default: 1600x1000)",
     )
     parser.add_argument(
+        "--lossless",
+        action="store_true",
+        help=(
+            "Force both viewers to request lossless encodings via their own "
+            "command-line options (PreferredEncoding=ZRLE, NoJPEG, etc.)",
+        ),
+    )
+    parser.add_argument(
         "--verbose", action="store_true", help="Verbose output",
     )
 
@@ -430,6 +455,7 @@ def main() -> int:
             content_cache=0,
             persistent_cache=0,
             persistent_cache_size_mb=256,
+            lossless=args.lossless,
         )
         if viewer_ground.poll() is not None:
             print("\n✗ FAIL: Ground-truth viewer exited prematurely")
@@ -445,6 +471,7 @@ def main() -> int:
             content_cache=v_b_content,
             persistent_cache=v_b_persistent,
             persistent_cache_size_mb=256,
+            lossless=args.lossless,
         )
         if viewer_cache.poll() is not None:
             print("\n✗ FAIL: Cache-on viewer exited prematurely")
@@ -591,7 +618,58 @@ def main() -> int:
     finally:
         print("\nCleaning up...")
         tracker.cleanup_all()
+
+        # More aggressive cleanup for our dedicated high-number test displays.
+        # These displays/ports are reserved for tests, so we can safely
+        # remove any leftover X11 lock/socket files if no server process
+        # is actually running.
+        try:
+            for display in (args.display_content, args.display_viewer):
+                socket_path = Path(f"/tmp/.X11-unix/X{display}")
+                lock_path = Path(f"/tmp/.X{display}-lock")
+                # If either artifact exists but no X server is running for
+                # this display, it is safe to remove.
+                if socket_path.exists() or lock_path.exists():
+                    # Check for a matching Xtigervnc/Xnjcvnc process
+                    import subprocess
+                    pattern = f":{display}"
+                    result = subprocess.run(
+                        ["ps", "aux"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5.0,
+                    )
+                    has_server = False
+                    if result.returncode == 0:
+                        for line in result.stdout.splitlines():
+                            if ("Xtigervnc" in line or "Xnjcvnc" in line) and pattern in line:
+                                has_server = True
+                                break
+                    if not has_server:
+                        try:
+                            if socket_path.exists():
+                                socket_path.unlink()
+                            if lock_path.exists():
+                                lock_path.unlink()
+                        except Exception:
+                            # Best-effort; ignore failures
+                            pass
+
+        except Exception:
+            # Best-effort only; do not fail the test on aggressive cleanup errors
+            pass
+
         print("✓ Cleanup complete")
+
+        # Sanity check: warn if our ports still appear to be in use.
+        try:
+            if not check_port_available(args.port_content):
+                print(f"⚠ Note: port {args.port_content} still appears to be in use after cleanup.")
+            if not check_port_available(args.port_viewer):
+                print(f"⚠ Note: port {args.port_viewer} still appears to be in use after cleanup.")
+        except Exception:
+            # Best-effort only; do not fail the test on check errors
+            pass
 
 
 if __name__ == "__main__":  # pragma: no cover

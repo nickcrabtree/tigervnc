@@ -21,6 +21,7 @@
 #endif
 
 #include <rfb/ContentCache.h>
+#include <rfb/ContentHash.h>
 #include <core/LogWriter.h>
 
 #include <time.h>
@@ -73,31 +74,20 @@ void ContentCacheDebugLogger::log(const std::string& message) {
 }
 //DebugContentCache_2025-10-14 - End debug logger implementation
 
-// ============================================================================
-// Fast Hash Function (FNV-1a variant)
-// ============================================================================
-
-// FNV-1a is simple, fast, and has good distribution
-// Good enough for content comparison without crypto overhead
-static uint64_t fnv1a_hash(const uint8_t* data, size_t len)
-{
-  const uint64_t FNV_OFFSET = 0xcbf29ce484222325ULL;
-  const uint64_t FNV_PRIME = 0x100000001b3ULL;
-  
-  uint64_t hash = FNV_OFFSET;
-  for (size_t i = 0; i < len; i++) {
-    hash ^= data[i];
-    hash *= FNV_PRIME;
-  }
-  return hash;
-}
+// Legacy helpers compute 64-bit hashes for older APIs using the
+// shared ContentHash implementation (MD5-based). These are kept only
+// for unit tests and any remaining callers that expect a uint64_t.
 
 uint64_t rfb::computeContentHash(const uint8_t* data, size_t len)
 {
   if (data == nullptr || len == 0)
     return 0;
-  
-  return fnv1a_hash(data, len);
+
+  std::vector<uint8_t> full = ContentHash::compute(data, len);
+  uint64_t hash = 0;
+  if (full.size() >= 8)
+    memcpy(&hash, full.data(), 8);
+  return hash;
 }
 
 uint64_t rfb::computeSampledHash(const uint8_t* data,
@@ -107,25 +97,22 @@ uint64_t rfb::computeSampledHash(const uint8_t* data,
 {
   if (data == nullptr || width == 0 || height == 0)
     return 0;
-  
-  const uint64_t FNV_OFFSET = 0xcbf29ce484222325ULL;
-  const uint64_t FNV_PRIME = 0x100000001b3ULL;
-  
-  uint64_t hash = FNV_OFFSET;
-  
-  // Sample every Nth pixel
+
+  // Simple sampling: build a temporary buffer of sampled pixels and
+  // feed it through ContentHash::compute.
+  const size_t rowStrideBytes = stridePixels * bytesPerPixel;
+  std::vector<uint8_t> sampled;
+  sampled.reserve((width * height / (sampleRate * sampleRate)) * bytesPerPixel);
+
   for (size_t y = 0; y < height; y += sampleRate) {
-    const uint8_t* row = data + (y * stridePixels * bytesPerPixel);
+    const uint8_t* row = data + y * rowStrideBytes;
     for (size_t x = 0; x < width; x += sampleRate) {
-      const uint8_t* pixel = row + (x * bytesPerPixel);
-      for (size_t b = 0; b < bytesPerPixel; b++) {
-        hash ^= pixel[b];
-        hash *= FNV_PRIME;
-      }
+      const uint8_t* pixel = row + x * bytesPerPixel;
+      sampled.insert(sampled.end(), pixel, pixel + bytesPerPixel);
     }
   }
-  
-  return hash;
+
+  return computeContentHash(sampled.data(), sampled.size());
 }
 
 // ============================================================================
@@ -242,7 +229,11 @@ uint64_t ContentCache::insertContent(const ContentKey& key,
   // Create the entry
   CacheEntry entry(key.contentHash, bounds, getCurrentTime());
   entry.dataSize = dataLen;
-  entry.cacheId = getNextCacheId();  // Assign new cache ID
+  // IMPORTANT: Use the 64-bit content hash as the cacheId so that
+  // server and client share a stable identifier for this content.
+  // This aligns ContentCache with PersistentCache, where the hash
+  // itself is the identifier.
+  entry.cacheId = key.contentHash;
   
   if (keepData && data != nullptr && dataLen > 0) {
     entry.data.assign(data, data + dataLen);
@@ -669,10 +660,12 @@ void ContentCache::insertWithId(uint64_t cacheId,
                                size_t dataLen,
                                bool keepData)
 {
-  // Use the standard insertion
+  // Use the standard insertion (will set cacheId=key.contentHash)
   insertContent(key, bounds, data, dataLen, keepData);
   
-  // Associate cache ID with this key
+  // Associate cache ID with this key. For ContentCache we expect
+  // cacheId to equal key.contentHash, but we still respect the
+  // explicit value passed in for robustness / protocol evolution.
   auto cacheIt = cache_.find(key);
   if (cacheIt != cache_.end()) {
     cacheIt->second.cacheId = cacheId;
