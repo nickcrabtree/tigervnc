@@ -309,6 +309,15 @@ namespace rfb {
     bool supportsContentCache;
     bool supportsPersistentCache;
 
+    // Negotiated cache protocol (first one actually used by server)
+    enum CacheProtocolNegotiated {
+      CacheProtocolNone = 0,
+      CacheProtocolContent,
+      CacheProtocolPersistent
+    };
+    CacheProtocolNegotiated negotiatedCacheProtocol = CacheProtocolNone;
+    bool negotiatedCacheLogged = false;
+
   private:
     bool processVersionMsg();
     bool processSecurityTypesMsg();

@@ -1054,6 +1054,15 @@ void CConnection::updateEncodings()
 
 void CConnection::handleCachedRect(const core::Rect& r, uint64_t cacheId)
 {
+  // On first use, record and log negotiated cache protocol
+  if (negotiatedCacheProtocol == CacheProtocolNone) {
+    negotiatedCacheProtocol = CacheProtocolContent;
+    if (!negotiatedCacheLogged) {
+      vlog.info("Cache protocol: negotiated ContentCache (-320)");
+      negotiatedCacheLogged = true;
+    }
+  }
+
   //DebugContentCache_2025-10-14
   rfb::ContentCacheDebugLogger::getInstance().log("CConnection::handleCachedRect ENTER: rect=[" + std::to_string(r.tl.x) + "," + std::to_string(r.tl.y) + "-" + std::to_string(r.br.x) + "," + std::to_string(r.br.y) + "], cacheId=" + std::to_string(cacheId) + ", framebuffer=" + std::to_string(reinterpret_cast<uintptr_t>(framebuffer)));
   
@@ -1076,6 +1085,15 @@ void CConnection::storeCachedRect(const core::Rect& r, uint64_t cacheId)
 void CConnection::handlePersistentCachedRect(const core::Rect& r,
                                             const std::vector<uint8_t>& hash)
 {
+  // On first use, record and log negotiated cache protocol
+  if (negotiatedCacheProtocol == CacheProtocolNone) {
+    negotiatedCacheProtocol = CacheProtocolPersistent;
+    if (!negotiatedCacheLogged) {
+      vlog.info("Cache protocol: negotiated PersistentCache (-321)");
+      negotiatedCacheLogged = true;
+    }
+  }
+
   // Forward to decoder manager to handle cache lookup and blit
   decoder.handlePersistentCachedRect(r, hash, framebuffer);
 }

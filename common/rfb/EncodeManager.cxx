@@ -83,7 +83,7 @@ namespace {
   }
 
   // Format first 8 bytes of hash as hex (no separators)
-  inline const char* hex8(const uint8_t* data, size_t len) {
+  /*inline const char* hex8(const uint8_t* data, size_t len) {
     static thread_local char buf[17];
     size_t n = (len < 8) ? len : 8;
     for (size_t i = 0; i < n; i++) {
@@ -91,7 +91,7 @@ namespace {
     }
     buf[n*2] = '\0';
     return buf;
-  }
+  }*/
 
   // Format a 64-bit hash as hex
   inline const char* hex64(uint64_t hash) {
