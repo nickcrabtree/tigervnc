@@ -8,6 +8,8 @@ A **functional Rust VNC viewer** (`njcvncviewer-rs`) is working with:
 - Raw and CopyRect encoding support
 - Mouse and keyboard input
 
+> **Note**: ContentCache/PersistentCache support in the Rust viewer is currently **under development**. The design in this document represents a target architecture; refer to `docs/CONTENTCACHE_RUST_PARITY_PLAN.md` for the up‑to‑date parity status relative to the C++ viewer.
+
 ## Goal 🎯
 
 Add ContentCache protocol support for **97-99% bandwidth reduction** on repeated content.

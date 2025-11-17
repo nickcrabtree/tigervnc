@@ -46,11 +46,15 @@ The **ContentCache** system implements a content-addressable historical cache th
 
 ### Implementation Status
 
-**🎉 Rust Implementation Complete**: As of October 2024, a full ContentCache implementation is available in the Rust VNC viewer:
-- **Location**: `rust-vnc-viewer/` directory  
-- **Status**: Production-ready with 97-99% bandwidth reduction  
-- **Documentation**: See `rust-vnc-viewer/PHASE8A_CONTENTCACHE_COMPLETE.md` for complete implementation details
-- **Usage**: `njcvncviewer-rs` binary with ContentCache protocol support
+**C++ Implementation**: Fully implemented and validated via e2e tests and the black‑box screenshot harness.
+
+**Rust Implementation (In Progress)**:
+- A partial ContentCache implementation exists in the Rust viewer, but it is **not yet at feature or behavioural parity** with the C++ implementation.
+- For the current parity and implementation plan, see:
+  - `docs/CONTENTCACHE_RUST_PARITY_PLAN.md`
+  - `rust-vnc-viewer/CONTENTCACHE_QUICKSTART.md`
+  - `rust-vnc-viewer/PERSISTENTCACHE_IMPLEMENTATION_PLAN.md` (for shared cache infrastructure)
+- Until the parity work is completed and validated, the Rust ContentCache/PersistentCache paths should be treated as **experimental** and not relied on for pixel‑perfect parity with the C++ viewer.
 
 ## Architecture
 

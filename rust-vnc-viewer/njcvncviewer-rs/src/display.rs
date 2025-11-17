@@ -1,4 +1,4 @@
-use tracing::{info, warn};
+use tracing::info;
 
 #[derive(Debug, Clone)]
 pub struct MonitorInfo {

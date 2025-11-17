@@ -1,8 +1,8 @@
 # PersistentCache Protocol: Implementation Plan for Rust VNC Viewer
 
 **Author**: TigerVNC Rust Implementation Team  
-**Date**: 2025-10-24 (Updated: 2025-11-13)  
-**Status**: C++ Implementation Complete ✅ | Rust Implementation Pending 🚧  
+**Date**: 2025-10-24 (Updated: 2025-11-17)  
+**Status**: C++ Implementation Complete ✅ | Rust Implementation **In Progress** 🚧  
 **Related Documents**:
 - [PERSISTENTCACHE_DESIGN.md](../PERSISTENTCACHE_DESIGN.md) - Protocol specification (C++ reference)
 - [CONTENTCACHE_DESIGN_IMPLEMENTATION.md](../CONTENTCACHE_DESIGN_IMPLEMENTATION.md) - ContentCache details
@@ -20,6 +20,14 @@
 **Reference for Rust implementation**: The C++ code at `/home/nickc/code/tigervnc/common/rfb/PersistentCache.{h,cxx}` provides a working reference implementation to follow.
 
 ---
+
+## Rust Implementation Status (November 2025)
+
+> **Status (2025-11-17)**: The shared ARC core (`rfb-encodings/src/arc_cache.rs`) and
+> its integration into both `ContentCache` and `PersistentClientCache` are complete
+> and covered by tests. The remaining work focuses on wiring the PersistentCache
+> wire protocol (encodings 102/103, query messages), hooking eviction notifications
+> into the event loop, and adding disk-backed persistence plus cross-session tests.
 
 ## Table of Contents
 

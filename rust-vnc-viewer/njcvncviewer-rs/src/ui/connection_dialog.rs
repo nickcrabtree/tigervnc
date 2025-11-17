@@ -4,7 +4,9 @@ use tracing::{error, info};
 
 #[derive(Debug, Default)]
 pub struct ConnectionDialogState {
+    #[allow(dead_code)]
     pub server_address: String,
+    #[allow(dead_code)]
     pub password: String,
     pub shared: bool,
     pub remember_server: bool,
@@ -16,7 +18,7 @@ impl ConnectionDialogState {
     }
 }
 
-pub fn render(app: &mut VncViewerApp, ui: &mut Ui, ctx: &Context) {
+pub fn render(app: &mut VncViewerApp, ui: &mut Ui, _ctx: &Context) {
     ui.centered_and_justified(|ui| {
         ui.vertical_centered(|ui| {
             ui.heading("Connect to VNC Server");

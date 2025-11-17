@@ -574,7 +574,7 @@ mod tests {
 
     #[test]
     fn test_optimal_window_size() {
-        let mut manager = MonitorManager::new();
+        let manager = MonitorManager::new();
         let monitor = create_test_monitor("Test", 0, 0, 1920, 1080, 1.0, true);
 
         // Window smaller than max ratio - should remain unchanged

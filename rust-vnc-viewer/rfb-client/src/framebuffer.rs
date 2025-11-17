@@ -65,18 +65,18 @@ impl DecoderRegistry {
     }
 
     /// Register a decoder entry.
-    pub fn register(&mut self, decoder: DecoderEntry) {
+    pub(crate) fn register(&mut self, decoder: DecoderEntry) {
         self.decoders.insert(decoder.encoding_type(), decoder);
     }
 
     /// Get a decoder by encoding type.
-    pub fn get(&self, encoding: i32) -> Option<&DecoderEntry> {
+    pub(crate) fn get(&self, encoding: i32) -> Option<&DecoderEntry> {
         self.decoders.get(&encoding)
     }
 }
 
 /// A concrete decoder entry wrapper for dynamic dispatch over non-object-safe Decoder.
-enum DecoderEntry {
+pub(crate) enum DecoderEntry {
     Raw(enc::RawDecoder),
     CopyRect(enc::CopyRectDecoder),
     RRE(enc::RREDecoder),
@@ -438,7 +438,7 @@ impl Framebuffer {
         }
 
         // Framing instrumentation: verify rect count matches
-        if (num_raw != 0xFFFF && rects_decoded != num_raw as usize) {
+        if num_raw != 0xFFFF && rects_decoded != num_raw as usize {
             tracing::warn!(
                 target: "rfb_client::framing",
                 "FBU end: MISMATCH! declared_rects={} decoded_rects={}",

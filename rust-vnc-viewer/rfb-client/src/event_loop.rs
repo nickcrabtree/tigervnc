@@ -12,7 +12,6 @@ use rfb_encodings::ContentCache;
 use rfb_protocol::messages::server::FramebufferUpdate;
 use std::sync::Arc;
 use std::sync::Mutex;
-use tokio::select;
 use tokio::task::JoinHandle;
 
 /// Spawn the client event loop.
@@ -93,9 +92,7 @@ pub async fn spawn(
     // Spawn a task to run the main loop (read + write via select)
     let handle = tokio::spawn(async move {
         use std::time::Instant;
-        let start_time = Instant::now();
         // Periodic incremental update requester (best-effort)
-        let mut periodic = tokio::time::interval(std::time::Duration::from_millis(250));
         let mut last_update = Instant::now();
         let mut last_request = Instant::now();
 
@@ -550,7 +547,6 @@ pub async fn spawn(
                         248 => {
                             // ServerFence: synchronization fence
                             tracing::debug!("Received ServerFence (248)");
-                            use tokio::io::AsyncReadExt as _;
                             // Read fence message: padding(3) + flags(4) + length(1) + data(length)
                             let _ = input.skip(3).await; // padding
                             if let Ok(_flags) = input.read_u32().await {
@@ -619,6 +615,7 @@ pub async fn spawn(
     Ok((handle, framebuffer_handle))
 }
 
+#[allow(dead_code)]
 async fn handle_framebuffer_update<R: tokio::io::AsyncRead + Unpin>(
     framebuffer: &FramebufferHandle,
     input: &mut rfb_protocol::io::RfbInStream<R>,

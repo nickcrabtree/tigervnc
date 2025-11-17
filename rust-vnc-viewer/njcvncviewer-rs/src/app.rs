@@ -4,7 +4,7 @@ use arboard::Clipboard;
 use egui::{Context as EguiContext, TextureHandle, ViewportCommand};
 use parking_lot::RwLock;
 use platform_input::*;
-use rfb_client::{Client, ClientBuilder, ClientHandle, Config, ServerEvent};
+use rfb_client::{ClientBuilder, ClientHandle, Config, ServerEvent};
 use rfb_display::{ScaleMode, Viewport, ViewportConfig};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -29,7 +29,9 @@ pub enum AppState {
 #[derive(Debug)]
 pub struct ConnectionStats {
     pub connected_at: Option<Instant>,
+    #[allow(dead_code)]
     pub bytes_received: u64,
+    #[allow(dead_code)]
     pub bytes_sent: u64,
     pub rectangles_received: u32,
     pub frames_rendered: u32,
@@ -79,9 +81,13 @@ pub struct VncViewerApp {
     framebuffer_height: u32,
 
     /// Input processors
+    #[allow(dead_code)]
     input_dispatcher: InputDispatcher,
+    #[allow(dead_code)]
     key_mapper: KeyMapper,
+    #[allow(dead_code)]
     shortcuts_config: ShortcutsConfig,
+    #[allow(dead_code)]
     gesture_processor: GestureProcessor,
 
     /// Clipboard management
@@ -124,7 +130,7 @@ impl VncViewerApp {
 
         // Set up viewport with default dimensions
         let viewport_config = ViewportConfig::default();
-        let mut viewport = Viewport::new(viewport_config);
+        let viewport = Viewport::new(viewport_config);
 
         // Set initial scale mode based on config
         let initial_scale_mode = match config.display.scale_mode.as_str() {
@@ -164,7 +170,7 @@ impl VncViewerApp {
 
         // Enumerate monitors (once at startup)
         let monitors = enumerate_monitors();
-        let mut fullscreen = FullscreenController::new();
+        let fullscreen = FullscreenController::new();
 
         let mut app = Self {
             config,

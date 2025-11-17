@@ -485,7 +485,8 @@ serde = { version = "1", features = ["derive"] }   # Config serialization
 
 **General**:
 - ✅ Cross-platform consistency (X11/Wayland)
-- ✅ Zero clippy warnings
+- ✅ Zero clippy warnings (no `allow(warnings)` or `allow(deprecated)` in production code)
+  - Enforced via local runs of `cargo clippy -- -D warnings` (e.g., in pre-commit hooks)
 - ✅ Clear configuration and error messages
 - ✅ No defensive fallbacks (fail-fast policy maintained)
 

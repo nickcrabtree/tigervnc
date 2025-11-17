@@ -6,7 +6,7 @@
 use crate::keyboard::Modifier;
 use std::collections::HashMap;
 use tracing::trace;
-use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
+use winit::event::{ElementState, VirtualKeyCode};
 
 /// Actions that can be triggered by keyboard shortcuts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -160,16 +160,17 @@ impl ShortcutsConfig {
     }
 
     /// Process a keyboard input and return the triggered action, if any.
-    pub fn process_key_input(
+    pub fn process_key(
         &self,
-        input: &KeyboardInput,
+        state: ElementState,
+        vk: Option<VirtualKeyCode>,
         active_modifiers: &[Modifier],
     ) -> Option<ShortcutAction> {
-        if !self.enabled || !matches!(input.state, ElementState::Pressed) {
+        if !self.enabled || !matches!(state, ElementState::Pressed) {
             return None;
         }
 
-        let key = input.virtual_keycode?;
+        let key = vk?;
 
         for (shortcut, &action) in &self.shortcuts {
             if shortcut.matches(key, active_modifiers) {
