@@ -60,8 +60,6 @@ pub type DisplayResult<T> = Result<T, RenderError>;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_crate_compiles() {
         // Basic smoke test to ensure the crate compiles

@@ -22,6 +22,7 @@ pub struct Connection<R, W> {
     /// Buffered output stream for writing RFB data.
     pub output: RfbOutStream<W>,
     /// Negotiated protocol version.
+    #[allow(dead_code)]
     pub version: NegotiatedVersion,
     /// Initial server parameters (framebuffer size, pixel format, name).
     pub server_init: ServerInit,
@@ -30,6 +31,7 @@ pub struct Connection<R, W> {
 impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Connection<R, W> {
     /// Returns the negotiated framebuffer width and height.
     #[must_use]
+    #[allow(dead_code)]
     pub fn size(&self) -> (u16, u16) {
         (
             self.server_init.framebuffer_width,

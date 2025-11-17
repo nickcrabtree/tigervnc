@@ -14,6 +14,7 @@ pub fn enabled() -> bool {
 }
 
 #[inline]
+#[allow(dead_code)]
 pub fn set_enabled(on: bool) {
     TRACE_ENABLED.store(on, Ordering::Relaxed)
 }
@@ -32,6 +33,7 @@ pub fn in_msg(name: &str, fields: &str) {
     }
 }
 
+#[allow(dead_code)]
 pub fn hexdump(prefix: &str, data: &[u8], max: usize) {
     if !enabled() || data.is_empty() {
         return;

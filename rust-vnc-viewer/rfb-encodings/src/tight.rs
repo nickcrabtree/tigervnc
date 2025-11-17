@@ -91,7 +91,10 @@ use std::sync::Mutex;
 use tokio::io::AsyncRead;
 
 // Tight compression control flags (upper nibble of comp_ctl)
-const TIGHT_EXPLICIT_FILTER: u8 = 0x04;
+// NOTE: We currently derive the explicit-filter bit directly from comp_ctl and
+// do not need a dedicated constant; keep this symbol only if/when we want
+// symmetry with the C++ implementation.
+// const TIGHT_EXPLICIT_FILTER: u8 = 0x04;
 const TIGHT_FILL: u8 = 0x08;
 const TIGHT_JPEG: u8 = 0x09;
 const TIGHT_MAX_SUBENCODING: u8 = 0x09;
@@ -703,7 +706,6 @@ impl Decoder for TightDecoder {
 
         let width = rect.width as usize;
         let height = rect.height as usize;
-        let bytes_per_pixel = (pixel_format.bits_per_pixel / 8) as usize;
 
         // Determine filter and data size
         // For BASIC mode without explicit filter, data is RGB888 (3 bpp)

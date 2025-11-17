@@ -1,55 +1,94 @@
 use tracing::trace;
-use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
+use winit::event::{ElementState, VirtualKeyCode};
 
 /// X11 keysym values
 pub mod keysyms {
-    // X11 keysym constants
+    // X11 keysym constants (named to match X11 convention but kept as-is here)
+    #[allow(non_upper_case_globals)]
     pub const XK_BackSpace: u32 = 0xff08;
+    #[allow(non_upper_case_globals)]
     pub const XK_Tab: u32 = 0xff09;
+    #[allow(non_upper_case_globals)]
     pub const XK_Return: u32 = 0xff0d;
+    #[allow(non_upper_case_globals)]
     pub const XK_Escape: u32 = 0xff1b;
+    #[allow(non_upper_case_globals)]
     pub const XK_Insert: u32 = 0xff63;
+    #[allow(non_upper_case_globals)]
     pub const XK_Delete: u32 = 0xffff;
+    #[allow(non_upper_case_globals)]
     pub const XK_Home: u32 = 0xff50;
+    #[allow(non_upper_case_globals)]
     pub const XK_End: u32 = 0xff57;
+    #[allow(non_upper_case_globals)]
     pub const XK_Page_Up: u32 = 0xff55;
+    #[allow(non_upper_case_globals)]
     pub const XK_Page_Down: u32 = 0xff56;
+    #[allow(non_upper_case_globals)]
     pub const XK_Left: u32 = 0xff51;
+    #[allow(non_upper_case_globals)]
     pub const XK_Up: u32 = 0xff52;
+    #[allow(non_upper_case_globals)]
     pub const XK_Right: u32 = 0xff53;
+    #[allow(non_upper_case_globals)]
     pub const XK_Down: u32 = 0xff54;
+    #[allow(non_upper_case_globals)]
     pub const XK_F1: u32 = 0xffbe;
+    #[allow(non_upper_case_globals)]
     pub const XK_F2: u32 = 0xffbf;
+    #[allow(non_upper_case_globals)]
     pub const XK_F3: u32 = 0xffc0;
+    #[allow(non_upper_case_globals)]
     pub const XK_F4: u32 = 0xffc1;
+    #[allow(non_upper_case_globals)]
     pub const XK_F5: u32 = 0xffc2;
+    #[allow(non_upper_case_globals)]
     pub const XK_F6: u32 = 0xffc3;
+    #[allow(non_upper_case_globals)]
     pub const XK_F7: u32 = 0xffc4;
+    #[allow(non_upper_case_globals)]
     pub const XK_F8: u32 = 0xffc5;
+    #[allow(non_upper_case_globals)]
     pub const XK_F9: u32 = 0xffc6;
+    #[allow(non_upper_case_globals)]
     pub const XK_F10: u32 = 0xffc7;
+    #[allow(non_upper_case_globals)]
     pub const XK_F11: u32 = 0xffc8;
+    #[allow(non_upper_case_globals)]
     pub const XK_F12: u32 = 0xffc9;
+    #[allow(non_upper_case_globals)]
     pub const XK_Shift_L: u32 = 0xffe1;
+    #[allow(non_upper_case_globals)]
     pub const XK_Shift_R: u32 = 0xffe2;
+    #[allow(non_upper_case_globals)]
     pub const XK_Control_L: u32 = 0xffe3;
+    #[allow(non_upper_case_globals)]
     pub const XK_Control_R: u32 = 0xffe4;
+    #[allow(non_upper_case_globals)]
     pub const XK_Alt_L: u32 = 0xffe9;
+    #[allow(non_upper_case_globals)]
     pub const XK_Alt_R: u32 = 0xffea;
+    #[allow(non_upper_case_globals)]
     pub const XK_Super_L: u32 = 0xffeb; // Left Windows/Command key
+    #[allow(non_upper_case_globals)]
     pub const XK_Super_R: u32 = 0xffec; // Right Windows/Command key
+    #[allow(non_upper_case_globals)]
     pub const XK_Menu: u32 = 0xff67;
+    #[allow(non_upper_case_globals)]
     pub const XK_Num_Lock: u32 = 0xff7f;
+    #[allow(non_upper_case_globals)]
     pub const XK_Caps_Lock: u32 = 0xffe5;
+    #[allow(non_upper_case_globals)]
     pub const XK_Scroll_Lock: u32 = 0xff14;
+    #[allow(non_upper_case_globals)]
     pub const XK_Print: u32 = 0xff61;
 }
 use keysyms::*;
 
-/// Map a winit KeyboardInput to (X11 keysym, down?) suitable for RFB KeyEvent.
-pub fn map_keyboard_input(input: &KeyboardInput) -> Option<(u32, bool)> {
-    let down = matches!(input.state, ElementState::Pressed);
-    let vk = input.virtual_keycode?;
+/// Map winit key state to (X11 keysym, down?) suitable for RFB KeyEvent.
+pub fn map_keyboard_input(state: ElementState, vk: Option<VirtualKeyCode>) -> Option<(u32, bool)> {
+    let down = matches!(state, ElementState::Pressed);
+    let vk = vk?;
     Some((map_virtual_keycode_to_keysym(vk), down))
 }
 
@@ -204,9 +243,9 @@ impl KeyMapper {
 
     /// Process a keyboard input, returning a keysym and down state.
     /// May return None if the key should be ignored (e.g., throttled repeat).
-    pub fn process_key(&mut self, input: &KeyboardInput) -> Option<(u32, bool)> {
-        let down = matches!(input.state, ElementState::Pressed);
-        let vk = input.virtual_keycode?;
+    pub fn process_key(&mut self, state: ElementState, vk: Option<VirtualKeyCode>) -> Option<(u32, bool)> {
+        let down = matches!(state, ElementState::Pressed);
+        let vk = vk?;
 
         // Map virtual keycode to keysym
         let keysym = map_virtual_keycode_to_keysym(vk);
@@ -307,23 +346,14 @@ pub fn map_key_event_to_keysym(vk: VirtualKeyCode) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
+    use winit::event::{ElementState, VirtualKeyCode};
 
     #[test]
     fn test_ascii_letters_and_return() {
-        let ev = KeyboardInput {
-            scancode: 0,
-            state: ElementState::Pressed,
-            virtual_keycode: Some(VirtualKeyCode::A),
-            modifiers: Default::default(),
-        };
-        assert_eq!(map_keyboard_input(&ev), Some(('a' as u32, true)));
-        let ret = KeyboardInput {
-            scancode: 0,
-            state: ElementState::Pressed,
-            virtual_keycode: Some(VirtualKeyCode::Return),
-            modifiers: Default::default(),
-        };
-        assert_eq!(map_keyboard_input(&ret), Some((0xFF0D, true)));
+        let ev = map_keyboard_input(ElementState::Pressed, Some(VirtualKeyCode::A));
+        assert_eq!(ev, Some(('a' as u32, true)));
+
+        let ret = map_keyboard_input(ElementState::Pressed, Some(VirtualKeyCode::Return));
+        assert_eq!(ret, Some((0xFF0D, true)));
     }
 }

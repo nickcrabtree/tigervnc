@@ -83,6 +83,9 @@ pub use tight::TightDecoder;
 pub mod zrle;
 pub use zrle::ZRLEDecoder;
 
+// Shared ARC cache used by ContentCache and PersistentCache
+pub mod arc_cache;
+
 // ContentCache for caching decoded pixel data and decoders
 pub mod content_cache;
 pub use content_cache::{CacheStats, CachedPixels, ContentCache};

@@ -185,6 +185,9 @@ fn default_cleanup_threshold() -> f64 {
     0.8 // Start cleanup at 80% utilization
 }
 
+// NOTE: Currently unused; retained for potential future fields that need a
+// serde default of `false`.
+#[allow(dead_code)]
 fn default_false() -> bool {
     false
 }

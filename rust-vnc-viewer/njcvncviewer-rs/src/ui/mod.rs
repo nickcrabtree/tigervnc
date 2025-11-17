@@ -1,7 +1,4 @@
-use crate::{
-    app::{AppState, ConnectionStats, VncViewerApp},
-    AppConfig,
-};
+use crate::app::VncViewerApp;
 use egui::{Context, Ui};
 use std::time::Instant;
 
@@ -44,7 +41,8 @@ pub struct UiState {
     /// Password input field
     pub password_input: String,
 
-    /// Last statistics update
+    /// Last statistics update (currently unused but reserved for future stats UI)
+    #[allow(dead_code)]
     pub last_stats_update: Instant,
 }
 

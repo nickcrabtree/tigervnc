@@ -297,11 +297,8 @@ fn test_error_handling_edge_cases() {
     viewport.set_framebuffer_size(1920, 1080);
     viewport.update();
 
-    // Should not crash, though results may be undefined
-    let visible = viewport.visible_framebuffer_rect();
-    // Just verify it returns something reasonable
-    assert!(visible.width >= 0);
-    assert!(visible.height >= 0);
+    // Should not crash even with zero window size
+    let _visible = viewport.visible_framebuffer_rect();
 }
 
 // Integration test that would require actual window creation

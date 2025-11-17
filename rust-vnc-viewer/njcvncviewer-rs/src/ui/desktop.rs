@@ -1,13 +1,13 @@
 use crate::app::VncViewerApp;
 use egui::{Color32, Context, Stroke, Ui};
 
-pub fn render(app: &mut VncViewerApp, ui: &mut Ui, ctx: &Context) {
+pub fn render(app: &mut VncViewerApp, ui: &mut Ui, _ctx: &Context) {
     // For now, we'll render a placeholder for the VNC desktop
     // In a complete implementation, this would integrate with rfb-display
     // and render the actual framebuffer content
 
-    let available_rect = ui.available_rect_before_wrap();
-    let viewport = app.viewport();
+    let _available_rect = ui.available_rect_before_wrap();
+    let _viewport = app.viewport();
 
     // Calculate display area based on viewport settings
     let (display_width, display_height) =
@@ -117,8 +117,8 @@ pub fn render(app: &mut VncViewerApp, ui: &mut Ui, ctx: &Context) {
 
                 if let Some(hover_pos) = response.hover_pos() {
                     let relative_pos = hover_pos - rect.min;
-                    let vnc_x = (relative_pos.x / app.zoom_factor()) as u16;
-                    let vnc_y = (relative_pos.y / app.zoom_factor()) as u16;
+                    let _vnc_x = (relative_pos.x / app.zoom_factor()) as u16;
+                    let _vnc_y = (relative_pos.y / app.zoom_factor()) as u16;
 
                     // Placeholder for sending mouse events
                     // app.send_pointer_event(button_mask, vnc_x, vnc_y);

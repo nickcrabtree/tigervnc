@@ -15,6 +15,7 @@ use rfb_protocol::messages as msg;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 /// Incoming server message (high-level wrapper around rfb-protocol messages).
+#[cfg(feature = "debug_read_server_message")]
 #[derive(Debug, Clone, PartialEq)]
 pub enum IncomingMessage {
     /// Framebuffer update with rectangle headers.
@@ -51,6 +52,7 @@ pub async fn read_message_type<R: AsyncRead + Unpin>(
     Ok(t)
 }
 
+#[cfg(feature = "debug_read_server_message")]
 pub async fn read_server_message<R: AsyncRead + Unpin>(
     instream: &mut RfbInStream<R>,
 ) -> Result<IncomingMessage, RfbClientError> {

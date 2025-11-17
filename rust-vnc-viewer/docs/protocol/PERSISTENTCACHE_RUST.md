@@ -1,6 +1,6 @@
 # PersistentCache Protocol - Rust Implementation Guide
 
-**Date**: 2025-10-24  
+**Date**: 2025-10-24 (Updated: 2025-11-17)  
 **Status**: Design and implementation guidance for Rust VNC viewer  
 **C++ Reference**: `/home/nickc/code/tigervnc/PERSISTENTCACHE_DESIGN.md`
 
@@ -713,6 +713,214 @@ debug!("PersistentCache: stats hits={} misses={} rate={:.1}%", hits, misses, hit
 | Frequent evictions | Cache too small | Increase max_size_mb |
 | Corruption on load | Checksum failure | Implement checksum verification |
 | No cross-session hits | Save not triggered | Call save_to_disk on shutdown |
+
+## Current Rust Implementation Status (2025-11-17)
+
+This section summarizes what is already implemented in the Rust codebase and what
+remains to be done for full PersistentCache parity with the C++ viewer.
+
+### Implemented
+
+- ✅ **Shared ARC core** (`rfb-encodings/src/arc_cache.rs`)
+  - Generic `ArcCache<K>` with T1/T2/B1/B2 lists and byte-sized capacity accounting
+  - Hit promotion (`on_hit`), ghost-hit adaptation (`on_ghost_hit_b1`/`on_ghost_hit_b2`),
+    resident insert/remove, and `take_pending_evictions()` for eviction notifications
+- ✅ **ContentCache integration** (`rfb-encodings/src/content_cache.rs`)
+  - Uses `ArcCache<ContentKey>` for session-only cache eviction and promotion
+  - `ContentKey { cache_id, width, height }` ensures dimension-aware keys
+- ✅ **PersistentClientCache ARC integration** (`rfb-encodings/src/persistent_cache.rs`)
+  - `PersistentClientCache` owns an `ArcCache<[u8; 16]>` and a `HashMap<[u8; 16], PersistentCachedPixels>`
+  - `insert()` delegates capacity management and eviction to `ArcCache::insert_resident()`
+    and removes evicted payloads from the map while keeping `current_bytes` in sync
+  - `lookup()` calls `arc.on_hit()` on resident hits to feed ARC’s adaptation logic
+  - `take_evicted_ids()` exposes ARC’s pending evictions for use by the protocol layer
+
+All existing unit tests in the workspace pass with these changes and the codebase
+remains free of deprecation warnings and `allow(deprecated)` annotations.
+
+### Not Yet Implemented
+
+The following pieces described earlier in this guide and in
+`PERSISTENTCACHE_IMPLEMENTATION_PLAN.md` are still **TODO**:
+
+- ❌ **Wire protocol support** for PersistentCache-specific messages
+  - Client-side writers for `PersistentCacheQuery` / `PersistentHashList` (message types 254/253)
+  - Any server-side handling in tests/mocks (only needed for e2e)
+- ❌ **Decoder-level integration** for encodings 102/103
+  - Persistent-aware variants of `PersistentCachedRectDecoder` and
+    `PersistentCachedRectInitDecoder` are present but not yet wired into
+    a full protocol loop with eviction notifications
+- ❌ **Eviction notification to server**
+  - No code yet consumes `PersistentClientCache::take_evicted_ids()` to send
+    protocol-level “drop these hashes” messages back to the server
+- ❌ **Disk-backed persistence layer**
+  - No `.dat` file format or on-disk `DiskStore` for `PersistentClientCache`
+  - No load/save on viewer startup/shutdown
+- ❌ **Negotiation & configuration plumbing**
+  - The viewer does not yet advertise PersistentCache capability in `SetEncodings`
+    or select “persistent vs session-only vs none” cache modes based on server support
+- ❌ **Cross-session/e2e tests**
+  - No automated tests yet validating persistent hit rates or cross-session behavior
+
+The next section outlines concrete tasks to complete these remaining items.
+
+## Concrete Next Steps for Future Work
+
+This sequence is intended for someone picking up the work after the current ARC
+integration. It assumes familiarity with the existing ContentCache integration in
+`rfb-encodings` and `rfb-client`.
+
+### 1. Wire PersistentCache Protocol Negotiation
+
+**Goal:** Ensure the client advertises PersistentCache capability and selects the
+correct cache mode based on server support.
+
+**Where to work:**
+- `rfb-client/src/connection.rs` (or wherever `SetEncodings` is built)
+- `rfb-encodings/src/lib.rs` / `rfb-protocol/src/messages/types.rs` for any missing constants
+
+**Steps:**
+1. Confirm `PSEUDO_ENCODING_PERSISTENT_CACHE` and `ENCODING_PERSISTENT_CACHED_RECT{,_INIT}`
+   are defined and exported from `rfb-encodings` and `rfb-protocol`.
+2. Update the `build_set_encodings`/`effective_encodings` helper so that the
+   encodings list includes, in this exact order:
+   - `PSEUDO_ENCODING_PERSISTENT_CACHE` (`-321`) **before** `PSEUDO_ENCODING_CONTENT_CACHE` (`-320`)
+   - `ENCODING_LAST_RECT` and `ENCODING_DESKTOP_SIZE` after the caching pseudo-encodings
+3. Introduce a `CacheMode` enum in `rfb-client` (e.g. `Persistent`, `Session`, `None`)
+   and determine the selected mode from the server’s supported encodings.
+4. Expose the chosen `CacheMode` to the framebuffer/decoder setup so the correct
+   cache type(s) are instantiated.
+
+**Acceptance checklist:**
+- [ ] Encodings list shows `-321` before `-320` when persistent cache is enabled
+- [ ] Client logs clearly indicate which cache mode was negotiated
+- [ ] Behavior falls back cleanly to ContentCache or no-cache when `-321` is unsupported
+
+### 2. Hook PersistentClientCache into Decoders
+
+**Goal:** Use `PersistentClientCache` for decoding `ENCODING_PERSISTENT_CACHED_RECT`
+(102) and `ENCODING_PERSISTENT_CACHED_RECT_INIT` (103) in the same way ContentCache
+is used for `ENCODING_CACHED_RECT{,_INIT}`.
+
+**Where to work:**
+- `rfb-encodings/src/persistent_cached_rect.rs`
+- `rfb-encodings/src/persistent_cached_rect_init.rs`
+- `rfb-client/src/framebuffer.rs` (decoder registry wiring)
+
+**Steps:**
+1. Ensure `Framebuffer::with_persistent_cache` and `Framebuffer::with_both_caches`
+   correctly register `PersistentCachedRectDecoder` and `PersistentCachedRectInitDecoder`
+   for encodings 102 and 103.
+2. In `PersistentCachedRectDecoder::decode`:
+   - Read the 16-byte cache ID from the stream.
+   - Lock `PersistentClientCache` and call `lookup(&id)`.
+   - On hit: blit `PersistentCachedPixels` into the framebuffer via
+     `MutablePixelBuffer::image_rect`, and return `Ok(())`.
+   - On miss: return an error that is recognizable by the caller (e.g. a specific
+     `RfbClientError::PersistentCacheMiss`), so the event loop can react by sending
+     a `PersistentCacheQuery`.
+3. In `PersistentCachedRectInitDecoder::decode`:
+   - Read the 16-byte ID and inner encoding.
+   - Decode the payload using the existing inner decoders (Raw/Tight/ZRLE/...).
+   - Snapshot the decoded pixels using `buffer.get_buffer(rect, &mut stride_pixels)`
+     and compute byte length with `height * stride_pixels * bytes_per_pixel`.
+   - Construct `PersistentCachedPixels` and call `PersistentClientCache::insert(entry)`.
+   - Blit the decoded pixels to the framebuffer (just as today).
+
+**Acceptance checklist:**
+- [ ] Known-server traces show encodings 102/103 being handled by the persistent decoders
+- [ ] Cache hits avoid re-decoding and simply blit from `PersistentClientCache`
+- [ ] Misses are surfaced in a way the event loop can see and act on
+
+### 3. Implement Eviction Notifications to Server
+
+**Goal:** When ARC evicts persistent entries, inform the server so it can drop
+corresponding disk entries and avoid referencing stale hashes.
+
+**Where to work:**
+- `rfb-client/src/event_loop.rs` (or wherever outbound messages are written)
+- `rfb-encodings/src/persistent_cache.rs` (already exposes `take_evicted_ids()`)
+- `rfb-protocol` (writer for eviction/“drop hash” messages, if specified)
+
+**Steps:**
+1. Confirm the intended server-side eviction-notification message from the C++
+   implementation/design (e.g. a dedicated message type or reusing `PersistentCacheHashList`).
+2. Add a helper in `rfb-protocol` to write this message, given a list of 16-byte IDs.
+3. After each framebuffer update is applied (in the same place where
+   `drain_pending_cache_misses()` is called for ContentCache), add logic to:
+   - Lock `PersistentClientCache` via the framebuffer handle.
+   - Call `take_evicted_ids()` to obtain any evicted IDs since the last check.
+   - For any non-empty list, send the eviction-notification message to the server.
+4. Ensure this runs in the main event loop, **after** all rectangles for the current
+   `FramebufferUpdate` have been applied, to keep ordering simple and predictable.
+
+**Acceptance checklist:**
+- [ ] Logs show eviction IDs being sent when ARC evicts entries
+- [ ] The server’s logs (or test harness) confirm receipt of those notifications
+- [ ] No additional visual corruption or protocol errors under heavy churn
+
+### 4. Add Disk Persistence for PersistentClientCache
+
+**Goal:** Make `PersistentClientCache` load and save its entries from/to a
+per-server disk file, enabling cross-session hits.
+
+**Where to work:**
+- `rfb-encodings/src/persistent_cache.rs` (or a new `persistent_cache_store.rs`)
+- `rfb-client` connection/shutdown plumbing
+
+**Steps:**
+1. Design a minimal on-disk format (you can base this directly on the
+   `DiskStore` section in `PERSISTENTCACHE_IMPLEMENTATION_PLAN.md`, but you do
+   not need to implement compaction initially).
+2. Implement a small `DiskStore` for `[u8; 16] → PersistentCachedPixels`:
+   - `load(path) -> Result<DiskStore>` that builds an index and total size in bytes
+   - `append(id, &entry)` to add new records
+   - `read(id) -> Option<PersistentCachedPixels>` to lazily hydrate rarely-used entries
+3. Extend `PersistentClientCache` to optionally hold a `DiskStore` and:
+   - On `insert`, write-through to disk (non-fatal on failure, just log)
+   - On startup, pre-load a subset of entries (or just build an index and load on-demand)
+4. Plumb viewer startup/shutdown so that:
+   - A `PersistentClientCache` instance is constructed from a server-specific file path
+   - On clean shutdown, any buffered `DiskStore` writer is flushed and synced
+
+**Acceptance checklist:**
+- [ ] A cache file appears under `~/.cache/tigervnc/rust-viewer/` (or agreed path)
+- [ ] Restarting the viewer with the same server and pixel format yields immediate hits
+  (verified via logs and e2e tests)
+- [ ] Corrupting the cache file does not crash the viewer; it falls back to an empty cache
+
+### 5. Extend Tests for PersistentCache Behavior
+
+**Goal:** Validate correctness, ordering, and cross-session behavior.
+
+**Where to work:**
+- `rfb-encodings/tests` (unit tests for hashing, ARC, DiskStore)
+- `rfb-client/tests` or `tests/e2e` (integration and screenshot-based tests)
+
+**Steps:**
+1. Add unit tests for:
+   - `PersistentClientCache::insert` honoring byte capacity via ARC and evicting old entries
+   - `take_evicted_ids()` returning the expected IDs after forced evictions
+2. Add integration tests with a mock server that:
+   - Sends a mix of 102/103 rectangles for a few distinct hashes
+   - Verifies that only the first occurrence of each hash triggers full decode,
+     subsequent references are served from cache
+   - Forces evictions by pushing enough unique entries to exceed capacity and
+     confirms eviction notifications are sent
+3. Add e2e tests (modeled on the existing C++ PersistentCache tests) that:
+   - Run a first session to populate the cache file
+   - Run a second session and verify a high persistent hit rate and significant
+     bandwidth reduction
+   - Compare screenshots between “PersistentCache off” and “PersistentCache on” runs
+     to ensure pixel-identical output
+
+**Acceptance checklist:**
+- [ ] New unit tests pass and cover the key ARC + persistence behaviors
+- [ ] E2E tests demonstrate persistent hit rates and bandwidth savings comparable
+  to the C++ viewer
+- [ ] No new warnings or `allow(deprecated)` are introduced; `cargo clippy -- -D warnings` remains clean
+
+---
 
 ## References
 

@@ -791,6 +791,11 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
                                               const std::vector<uint8_t>& hash,
                                               ModifiablePixelBuffer* pb)
 {
+  // Ensure all pending decodes have completed before we blit PersistentCache
+  // content into the framebuffer so that we preserve the same ordering
+  // semantics as the vanilla decode path (including CopyRect and ContentCache).
+  flush();
+
   if (persistentCache == nullptr || pb == nullptr) {
     vlog.error("handlePersistentCachedRect called but cache or framebuffer is null");
     return;
@@ -860,6 +865,12 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
                                              const std::vector<uint8_t>& hash,
                                              ModifiablePixelBuffer* pb)
 {
+  // Ensure all pending decodes that might affect this rect have completed
+  // before we snapshot pixels into the PersistentCache. This must mirror the
+  // semantics used for ContentCache so that the cached content reflects the
+  // same framebuffer state the non-cache path would see.
+  flush();
+
   if (persistentCache == nullptr || pb == nullptr) {
     vlog.error("storePersistentCachedRect called but cache or framebuffer is null");
     return;

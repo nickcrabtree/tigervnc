@@ -11,7 +11,7 @@ mod shortcuts;
 mod gestures;
 
 use rfb_client::ClientCommand;
-use winit::event::{MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, ModifiersState, MouseScrollDelta, VirtualKeyCode, WindowEvent};
 
 pub use gestures::{GestureAction, GestureConfig, GestureEvent, GestureProcessor};
 pub use keyboard::{keysyms, map_key_event_to_keysym, KeyMapper, Modifier};
@@ -26,6 +26,7 @@ pub type CoordMapper = Box<dyn Fn(i32, i32) -> (u16, u16) + Send + Sync>;
 pub struct InputDispatcher {
     mouse: MouseState,
     coord_mapper: CoordMapper,
+    modifiers: ModifiersState,
 }
 
 impl Default for InputDispatcher {
@@ -40,6 +41,7 @@ impl InputDispatcher {
         Self {
             mouse: MouseState::default(),
             coord_mapper: Box::new(|x, y| (x.max(0) as u16, y.max(0) as u16)),
+            modifiers: ModifiersState::empty(),
         }
     }
 
@@ -52,11 +54,17 @@ impl InputDispatcher {
     }
 
     /// Handle a winit WindowEvent and return zero or more VNC client commands.
+    ///
+    /// This also keeps track of modifier state via `WindowEvent::ModifiersChanged`,
+    /// which can be queried via `active_modifiers()` and used with `ShortcutsConfig`.
     pub fn handle_window_event(&mut self, event: &WindowEvent) -> Vec<ClientCommand> {
         use winit::event::{ElementState, MouseButton, WindowEvent::*};
 
         let mut out = Vec::new();
         match event {
+            ModifiersChanged(mods) => {
+                self.modifiers = *mods;
+            }
             CursorMoved { position, .. } => {
                 let (x, y) = (position.x as i32, position.y as i32);
                 self.mouse.set_pos(x, y);
@@ -142,7 +150,9 @@ impl InputDispatcher {
                 }
             }
             WindowEvent::KeyboardInput { input, .. } => {
-                if let Some((keysym, down)) = keyboard::map_keyboard_input(input) {
+                if let Some((keysym, down)) =
+                    keyboard::map_keyboard_input(input.state, input.virtual_keycode)
+                {
                     out.push(ClientCommand::Key { key: keysym, down });
                 }
             }
@@ -164,12 +174,47 @@ impl InputDispatcher {
         }
         out
     }
+
+    /// Return the currently active modifiers as a list of platform-input `Modifier` values.
+    ///
+    /// This reflects the last `ModifiersChanged` event processed by this dispatcher.
+    pub fn active_modifiers(&self) -> Vec<keyboard::Modifier> {
+        let mut mods = Vec::new();
+        if self.modifiers.shift() {
+            mods.push(keyboard::Modifier::Shift);
+        }
+        if self.modifiers.ctrl() {
+            mods.push(keyboard::Modifier::Control);
+        }
+        if self.modifiers.alt() {
+            mods.push(keyboard::Modifier::Alt);
+        }
+        if self.modifiers.logo() {
+            mods.push(keyboard::Modifier::Super);
+        }
+        // CapsLock/NumLock are not exposed via winit::ModifiersState in this version;
+        // if we need them, we will track them via dedicated key events instead.
+        mods
+    }
+
+    /// Convenience helper: process a winit keyboard input through `ShortcutsConfig`.
+    ///
+    /// This uses the dispatcher's tracked modifier state and does not rely on any
+    /// deprecated winit fields.
+    pub fn process_shortcut(
+        &self,
+        shortcuts: &ShortcutsConfig,
+        state: ElementState,
+        vk: Option<VirtualKeyCode>,
+    ) -> Option<ShortcutAction> {
+        shortcuts.process_key(state, vk, &self.active_modifiers())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent};
+    use winit::event::{ElementState, MouseButton, VirtualKeyCode, WindowEvent};
 
     #[test]
     fn test_mouse_move_generates_pointer() {
@@ -217,13 +262,28 @@ mod tests {
 
     #[test]
     fn test_key_mapping_basic() {
-        let ev = KeyboardInput {
-            scancode: 0,
-            state: ElementState::Pressed,
-            virtual_keycode: Some(VirtualKeyCode::Return),
-            modifiers: winit::event::ModifiersState::empty(),
-        };
-        let mapped = keyboard::map_keyboard_input(&ev).unwrap();
+        let mapped = keyboard::map_keyboard_input(
+            ElementState::Pressed,
+            Some(VirtualKeyCode::Return),
+        )
+        .unwrap();
         assert_eq!(mapped, (0xFF0D, true));
+    }
+
+    #[test]
+    fn test_modifiers_changed_updates_state() {
+        let mut d = InputDispatcher::new();
+        // No modifiers by default
+        assert!(d.active_modifiers().is_empty());
+
+        // Simulate shift+ctrl being pressed via ModifiersChanged
+        let mut mods = ModifiersState::empty();
+        mods.set(ModifiersState::SHIFT, true);
+        mods.set(ModifiersState::CTRL, true);
+        let _ = d.handle_window_event(&WindowEvent::ModifiersChanged(mods));
+
+        let active = d.active_modifiers();
+        assert!(active.contains(&keyboard::Modifier::Shift));
+        assert!(active.contains(&keyboard::Modifier::Control));
     }
 }
