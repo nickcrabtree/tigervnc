@@ -789,6 +789,50 @@ size_t strideBytes = stride * bytesPerPixel;  // Convert!
 
 ## Performance Characteristics
 
+### Future Work: Per-User PersistentCache Daemon
+
+The current implementation stores the persistent cache in a per-user file
+(`~/.cache/tigervnc/persistentcache.dat`) managed directly by each viewer
+process. This is simple but has two notable limitations:
+
+1. **Durability granularity**: cache contents are only flushed to disk on
+   clean viewer shutdown, so recent rectangles may be lost on crash.
+2. **Concurrency**: multiple viewers on the same machine share the same
+   file path but do not coordinate concurrent writes beyond best-effort
+   overwrite semantics (last writer wins).
+
+A future evolution of the design is to introduce a **per-user
+PersistentCache daemon** responsible for owning the on-disk cache and
+coordinating all clients:
+
+- A small background service (e.g. `tigervnc-persistentcached`) runs per
+  user and is the **sole process** that reads/writes the cache file.
+- Viewers connect to the daemon over a local IPC mechanism (Unix domain
+  socket) and issue simple RPC-style operations:
+  - `Lookup(hash) -> hit/miss + pixels/metadata`
+  - `Insert(hash, pixels, format, width, height, stride)`
+  - `Evict(hash)` / `Stats()` as needed.
+- The daemon maintains the in-memory ARC state and periodically (or
+  incrementally) persists changes to disk using an append-only journal or
+  WAL + compaction. This enables:
+  - **More frequent durability** (e.g. flush after N inserts or every
+    M milliseconds) without each viewer having to manage files.
+  - **Crash robustness**: once an insert has been acknowledged by the
+    daemon, it will be replayed from the journal even if the viewer
+    crashes.
+- Because only the daemon touches the cache file, **concurrent viewers
+  are naturally coordinated**; there are no cross-process file locking
+  races or partial overwrites. Multiple viewers can benefit from the
+  same global per-user cache contents.
+
+This daemon-based architecture is intentionally orthogonal to the wire
+protocol: RFB messages, encodings, and on-the-wire hashes remain
+unchanged. The daemon simply replaces the current per-process
+`GlobalClientPersistentCache` disk I/O responsibilities with a shared
+per-user service, enhancing durability and multi-viewer robustness while
+preserving the existing PersistentCache protocol semantics.
+
+
 ### Network Savings
 
 - **Cache hit:** 20 bytes (hash reference) vs 50 KB (typical compressed rectangle)

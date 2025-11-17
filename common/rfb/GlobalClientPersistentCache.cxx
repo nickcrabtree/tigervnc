@@ -139,9 +139,11 @@ GlobalClientPersistentCache::get(const std::vector<uint8_t>& hash)
   if (!arcCache_) return nullptr;
   const CachedPixels* e = arcCache_->get(hash);
   if (e == nullptr) {
+    // Lookup attempted but no entry present in ARC cache
     stats_.cacheMisses++;
     return nullptr;
   }
+  // Successful lookup of existing cached data
   stats_.cacheHits++;
   return e;
 }
@@ -154,6 +156,18 @@ void GlobalClientPersistentCache::insert(const std::vector<uint8_t>& hash,
 {
   if (!arcCache_ || pixels == nullptr || width == 0 || height == 0)
     return;
+
+  // Update ARC statistics: treat new inserts as misses and
+  // re-initialisations of existing entries as hits. This mirrors
+  // the ContentCache fix in commit 8902e213 ("correct ARC cache
+  // hit/miss statistics in ContentCache") so that persistent
+  // cache stats don't report an impossible 100% hit rate when
+  // many new entries are created.
+  if (arcCache_->has(hash)) {
+    stats_.cacheHits++;
+  } else {
+    stats_.cacheMisses++;
+  }
 
   // Build CachedPixels entry and copy rows respecting stride (pixels)
   CachedPixels entry;
