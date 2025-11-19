@@ -65,31 +65,50 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   
   // Initialize client-side content cache (2GB default, unlimited age)
   // Can be overridden with ContentCacheSize parameter from viewer
-  // Let ARC algorithm handle eviction without time-based constraints
-  size_t cacheSize = 2048; // Default
-  core::VoidParameter* param = core::Configuration::getParam("ContentCacheSize");
-  if (param) {
-    core::IntParameter* intParam = dynamic_cast<core::IntParameter*>(param);
-    if (intParam) {
-      cacheSize = (size_t)(*intParam);
-    }
+  // Let ARC algorithm handle eviction without time-based constraints.
+  bool enableContentCache = true;
+  if (auto* p = core::Configuration::getParam("ContentCache")) {
+    if (auto* bp = dynamic_cast<core::BoolParameter*>(p))
+      enableContentCache = static_cast<bool>(*bp);
   }
-  contentCache = new ContentCache(cacheSize, 0);
-  vlog.info("Client ContentCache initialized: %zuMB, unlimited age (ARC-managed)", cacheSize);
+  
+  if (enableContentCache) {
+    size_t cacheSize = 2048; // Default
+    if (auto* param = core::Configuration::getParam("ContentCacheSize")) {
+      if (auto* intParam = dynamic_cast<core::IntParameter*>(param))
+        cacheSize = (size_t)(*intParam);
+    }
+    contentCache = new ContentCache(cacheSize, 0);
+    vlog.info("Client ContentCache initialized: %zuMB, unlimited age (ARC-managed)", cacheSize);
+  } else {
+    vlog.info("Client ContentCache disabled via ContentCache=0; no client-side content cache will be created");
+  }
   
   // Initialize client-side persistent cache (default 2GB, overridable via PersistentCacheSize)
-  size_t pcSizeMB = 2048;
-  if (auto* v = core::Configuration::getParam("PersistentCacheSize")) {
-    if (auto* ip = dynamic_cast<core::IntParameter*>(v)) pcSizeMB = (size_t)(*ip);
+  bool enablePersistentCache = true;
+  if (auto* p = core::Configuration::getParam("PersistentCache")) {
+    if (auto* bp = dynamic_cast<core::BoolParameter*>(p))
+      enablePersistentCache = static_cast<bool>(*bp);
   }
-  persistentCache = new GlobalClientPersistentCache(pcSizeMB);
-  vlog.info("Client PersistentCache initialized: %zuMB (ARC-managed)", pcSizeMB);
   
-  // Load persistent cache from disk
-  if (persistentCache->loadFromDisk()) {
-    vlog.info("PersistentCache loaded from disk");
+  if (enablePersistentCache) {
+    size_t pcSizeMB = 2048;
+    if (auto* v = core::Configuration::getParam("PersistentCacheSize")) {
+      if (auto* ip = dynamic_cast<core::IntParameter*>(v))
+        pcSizeMB = (size_t)(*ip);
+    }
+    persistentCache = new GlobalClientPersistentCache(pcSizeMB);
+    vlog.info("Client PersistentCache initialized: %zuMB (ARC-managed)", pcSizeMB);
+    
+    // Load persistent cache from disk
+    if (persistentCache->loadFromDisk()) {
+      vlog.info("PersistentCache loaded from disk");
+    } else {
+      vlog.debug("PersistentCache starting fresh (no cache file or load failed)");
+    }
   } else {
-    vlog.debug("PersistentCache starting fresh (no cache file or load failed)");
+    // When disabled, do not create or load any client-side PersistentCache instance.
+    vlog.info("Client PersistentCache disabled via PersistentCache=0; skipping disk cache initialization");
   }
 
   cpuCount = std::thread::hardware_concurrency();

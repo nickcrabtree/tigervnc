@@ -80,6 +80,11 @@ class ParsedLog:
     persistent_hits: int = 0
     persistent_misses: int = 0
     
+    # PersistentCache initialization events (viewer-side) — should be zero when
+    # PersistentCache option is disabled (e.g., PersistentCache=0).
+    persistent_init_events: int = 0
+    persistent_init_messages: List[str] = field(default_factory=list)
+    
     # Final ARC state
     final_arc: Optional[ARCSnapshot] = None
 
@@ -150,8 +155,23 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
             else:
                 message = line
             
+            lower = message.lower()
+            
+            # Detect PersistentCache initialization or disk-loading events in the
+            # viewer log. These should *not* appear when the viewer is started
+            # with PersistentCache=0.
+            if (
+                'persistentcache created with arc' in lower
+                or 'persistentcache loaded from disk' in lower
+                or 'persistentcache starting fresh' in lower
+                or 'persistentcache debug log:' in lower
+            ):
+                parsed.persistent_init_events += 1
+                if len(parsed.persistent_init_messages) < 10:
+                    parsed.persistent_init_messages.append(message)
+            
             # ContentCache operations
-            if 'cache hit' in message.lower():
+            if 'cache hit' in lower:
                 cache_id = parse_cache_id(message)
                 rect = parse_rect_coords(message)
                 parsed.cache_operations.append(
@@ -159,14 +179,14 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 )
                 parsed.total_hits += 1
             
-            elif 'cache miss' in message.lower():
+            elif 'cache miss' in lower:
                 cache_id = parse_cache_id(message)
                 parsed.cache_operations.append(
                     CacheOperation('miss', cache_id=cache_id, details=message)
                 )
                 parsed.total_misses += 1
             
-            elif 'storing decoded rect' in message.lower() or 'store' in message.lower() and 'cache' in message.lower():
+            elif 'storing decoded rect' in lower or 'store' in lower and 'cache' in lower:
                 cache_id = parse_cache_id(message)
                 rect = parse_rect_coords(message)
                 parsed.cache_operations.append(
@@ -175,7 +195,7 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 parsed.total_stores += 1
             
             # Protocol messages
-            if 'cachedrectinit' in message.lower():
+            if 'cachedrectinit' in lower:
                 cache_id = parse_cache_id(message)
                 rect = parse_rect_coords(message)
                 parsed.protocol_messages.append(
@@ -183,7 +203,7 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 )
                 parsed.cached_rect_init_count += 1
             
-            elif 'cachedrect' in message.lower() and 'init' not in message.lower():
+            elif 'cachedrect' in lower and 'init' not in lower:
                 cache_id = parse_cache_id(message)
                 rect = parse_rect_coords(message)
                 parsed.protocol_messages.append(
@@ -191,7 +211,7 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 )
                 parsed.cached_rect_count += 1
             
-            elif 'requestcacheddata' in message.lower() or 'requesting from server' in message.lower():
+            elif 'requestcacheddata' in lower or 'requesting from server' in lower:
                 cache_id = parse_cache_id(message)
                 parsed.protocol_messages.append(
                     ProtocolMessage('RequestCachedData', cache_id=cache_id)
@@ -199,7 +219,7 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 parsed.request_cached_data_count += 1
             
             # Eviction notifications (ContentCache)
-            elif 'sending' in message.lower() and 'cache eviction' in message.lower():
+            elif 'sending' in lower and 'cache eviction' in lower:
                 # Parse: "Sending 5 cache eviction notifications to server"
                 match = re.search(r'sending\s+(\d+)\s+cache\s+eviction', message, re.IGNORECASE)
                 if match:
@@ -208,7 +228,7 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                     parsed.evicted_ids_count += count
             
             # Eviction notifications (PersistentCache)
-            elif 'sending' in message.lower() and 'persistentcache' in message.lower() and 'eviction' in message.lower():
+            elif 'sending' in lower and 'persistentcache' in lower and 'eviction' in lower:
                 # Parse: "Sending 5 PersistentCache eviction notifications"
                 match = re.search(r'sending\s+(\d+).*persistentcache.*eviction', message, re.IGNORECASE)
                 if match:
@@ -217,7 +237,7 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                     parsed.persistent_evicted_ids += count
             
             # Server-side receipt (SMsgReader) line: "Client evicted N persistent cache entries"
-            elif 'client evicted' in message.lower() and 'persistent' in message.lower() and 'cache' in message.lower():
+            elif 'client evicted' in lower and 'persistent' in lower and 'cache' in lower:
                 match = re.search(r'client\s+evicted\s+(\d+)', message, re.IGNORECASE)
                 if match:
                     count = int(match.group(1))
@@ -244,12 +264,12 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                         pass
             
             # PersistentCache hit/miss counters from viewer logs
-            elif 'persistentcache hit' in message.lower():
+            elif 'persistentcache hit' in lower:
                 parsed.persistent_hits += 1
-            elif 'persistentcache miss' in message.lower():
+            elif 'persistentcache miss' in lower:
                 parsed.persistent_misses += 1
             
-            elif 'evicted' in message.lower() and 'cache' in message.lower():
+            elif 'evicted' in lower and 'cache' in lower:
                 # Client or server eviction logging
                 cache_id = parse_cache_id(message)
                 parsed.cache_operations.append(
@@ -257,7 +277,7 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 )
             
             # ARC statistics (end of session)
-            if 'client-side contentcache statistics' in message.lower():
+            if 'client-side contentcache statistics' in lower:
                 # Start of stats block, parse following lines
                 pass
             
@@ -281,7 +301,7 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 parsed.final_arc.t2_size = int(match.group(2))
             
             # Errors
-            if 'error' in message.lower() or 'fatal' in message.lower():
+            if 'error' in lower or 'fatal' in lower:
                 parsed.errors.append(message)
     
     return parsed
@@ -452,13 +472,14 @@ def compute_metrics(parsed: ParsedLog) -> Dict:
             'CacheEviction': parsed.cache_eviction_count,
             'EvictedIDs': parsed.evicted_ids_count,
         },
-        'persistent': {
+'persistent': {
             'eviction_count': parsed.persistent_eviction_count,
             'evicted_ids': parsed.persistent_evicted_ids,
             'bandwidth_reduction_pct': parsed.persistent_bandwidth_reduction,
             'hits': parsed.persistent_hits,
             'misses': parsed.persistent_misses,
             'hit_rate': p_hit_rate,
+            'init_events': parsed.persistent_init_events,
         },
         'arc_state': {},
         'errors': len(parsed.errors),

@@ -3,7 +3,9 @@
 ## 1. PersistentCache option does not fully disable client-side PersistentCache
 
 ### Summary
-The viewer-side `PersistentCache` parameter currently disables advertising the PersistentCache protocol capability to the server but **does not** prevent the client from initializing and loading the persistent cache from disk. As a result, `-PersistentCache=0` does not actually disable all PersistentCache behaviour.
+Historically the viewer-side `PersistentCache` parameter disabled advertising the PersistentCache protocol capability to the server but **did not** prevent the client from initializing and loading the persistent cache from disk, so `-PersistentCache=0` did not actually disable all PersistentCache behaviour.
+
+As of 2025-11-19, the C++ viewer now gates all client-side PersistentCache initialization on this parameter: when `PersistentCache=0`, no client-side PersistentCache instance is constructed and the on-disk cache file is never opened or read.
 
 ### Evidence / Reproduction
 - Command line: `njcvncviewer -PersistentCache=0 localhost:2`
@@ -26,6 +28,7 @@ The viewer-side `PersistentCache` parameter currently disables advertising the P
 - Identify the configuration plumbing for the `PersistentCache` viewer parameter and ensure it gates **all** PersistentCache initialization paths on the client.
 - Early in viewer startup, after parsing parameters, add a guard such that if `PersistentCache` is disabled, no PersistentCache object is constructed and no disk I/O is attempted for it.
 - Ensure any later code paths that assume a PersistentCache instance are null-checked or otherwise conditioned on the option being enabled.
+- Implemented for the C++ viewer by gating `rfb::DecodeManager`'s `GlobalClientPersistentCache` construction and `loadFromDisk()` calls on the `PersistentCache` boolean parameter, leaving `persistentCache` null when disabled.
 
 ---
 
@@ -98,5 +101,5 @@ After this point, the process is busy loading data and does not respond to user 
 - With a large `persistentcache.dat` (multi-GB), the viewer:
   - Creates a window promptly and remains responsive during and after startup.
   - Does not block the main thread for extended periods on cache loading.
-- `-PersistentCache=0` fully disables both negotiation and any cache initialization / loading.
+- `-PersistentCache=0` fully disables both negotiation and any cache initialization / loading. (Done for the C++ viewer via `DecodeManager` gating on 2025-11-19.)
 - When connecting to servers that do not support PersistentCache, the disk cache is never opened or loaded for that session.

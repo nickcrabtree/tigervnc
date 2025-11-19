@@ -260,6 +260,16 @@ def main():
         success = True
         failures = []
 
+        # BUG 1 (PersistentCache disable): when viewer is started with
+        # PersistentCache=0, we must not see any PersistentCache
+        # initialization or disk-loading messages in the viewer log.
+        if parsed.persistent_init_events > 0:
+            success = False
+            failures.append(
+                f"PersistentCache initialization occurred in viewer log despite PersistentCache=0 "
+                f"({parsed.persistent_init_events} init events)"
+            )
+
         if hit_rate < args.hit_rate_threshold:
             success = False
             failures.append(f"Hit rate {hit_rate:.1f}% < {args.hit_rate_threshold}% threshold")
