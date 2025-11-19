@@ -146,7 +146,15 @@ CConn::CConn()
 
 CConn::~CConn()
 {
-  // Clear global pointer
+  // Dump framebuffer/cache statistics at the end of the session so that
+  // end-to-end tests (and users) can see actual bandwidth savings.
+  // This mirrors the server-side behaviour where VNCServerST logs
+  // EncodeManager statistics on connection teardown.
+  vlog.info("Framebuffer statistics:");
+  logFramebufferStats();
+
+  // Clear global pointer so the atexit handler won't try to access a
+  // destroyed connection object.
   if (g_activeConn == this)
     g_activeConn = nullptr;
   

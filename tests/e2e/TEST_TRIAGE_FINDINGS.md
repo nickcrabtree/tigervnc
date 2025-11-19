@@ -169,10 +169,12 @@ if (decode) {
 
 ### Immediate Actions (High Priority)
 
-1. **Fix viewer logStats bug** - Add call in `vncviewer/CConn.cxx`
-   - Impact: Fixes 3-4 failing tests immediately
-   - Risk: Low - only adds logging output
-   - Effort: 5-10 lines of code
+1. **Fix viewer logStats bug** - Add call in `vncviewer/CConn.cxx` (DONE)
+   - Implementation: `CConn::~CConn()` now calls `logFramebufferStats()` before
+     tearing down the connection, which in turn calls `DecodeManager::logStats()`.
+   - Impact: Should fix 3-4 failing tests immediately and surface cache
+     performance metrics for users.
+   - Risk: Low - only adds logging output on normal shutdown.
 
 2. **Update test_cpp_limited_encodings.sh** - Remove DISPLAY unset
    - Impact: Fixes 1 failing test
