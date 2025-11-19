@@ -3,6 +3,13 @@
 //! This module manages the client's framebuffer and provides a registry of
 //! encoding decoders to apply server framebuffer update rectangles.
 
+use crate::cache_stats::{
+    track_content_cache_init,
+    track_content_cache_ref,
+    track_persistent_cache_init,
+    track_persistent_cache_ref,
+    CacheProtocolStats,
+};
 use crate::errors::RfbClientError;
 use anyhow::Result as AnyResult;
 use rfb_common::Rect;
@@ -136,6 +143,29 @@ impl DecoderEntry {
 }
 
 /// Framebuffer state and decoder dispatcher.
+/// Which cache protocol the server actually used on this connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheProtocolNegotiated {
+    None,
+    Content,
+    Persistent,
+}
+
+impl Default for CacheProtocolNegotiated {
+    fn default() -> Self {
+        CacheProtocolNegotiated::None
+    }
+}
+
+/// Per-protocol client-side cache statistics for protocol operations.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct CacheProtocolCounters {
+    pub cache_lookups: u32,
+    pub cache_hits: u32,
+    pub cache_misses: u32,
+    pub queries_sent: u32,
+}
+
 pub struct Framebuffer {
     /// Local framebuffer buffer in a fixed output pixel format (RGB888).
     buffer: ManagedPixelBuffer,
@@ -145,6 +175,20 @@ pub struct Framebuffer {
     registry: DecoderRegistry,
     /// Queue of cache IDs that missed during decoding and should be requested.
     pending_misses: Option<Arc<Mutex<Vec<u64>>>>,
+    /// Optional ContentCache backing the decoder registry.
+    content_cache: Option<Arc<Mutex<ContentCache>>>,
+    /// Optional PersistentClientCache backing the decoder registry.
+    persistent_cache: Option<Arc<Mutex<enc::PersistentClientCache>>>,
+    /// Negotiated cache protocol for this connection.
+    cache_protocol: CacheProtocolNegotiated,
+    /// Bandwidth statistics for ContentCache protocol.
+    content_cache_bandwidth: CacheProtocolStats,
+    /// Bandwidth statistics for PersistentCache protocol.
+    persistent_cache_bandwidth: CacheProtocolStats,
+    /// Protocol-level counters for ContentCache operations.
+    content_cache_counters: CacheProtocolCounters,
+    /// Protocol-level counters for PersistentCache operations.
+    persistent_cache_counters: CacheProtocolCounters,
 }
 
 impl Framebuffer {
@@ -159,6 +203,13 @@ impl Framebuffer {
             server_pixel_format,
             registry: DecoderRegistry::with_standard(),
             pending_misses: None,
+            content_cache: None,
+            persistent_cache: None,
+            cache_protocol: CacheProtocolNegotiated::None,
+            content_cache_bandwidth: CacheProtocolStats::default(),
+            persistent_cache_bandwidth: CacheProtocolStats::default(),
+            content_cache_counters: CacheProtocolCounters::default(),
+            persistent_cache_counters: CacheProtocolCounters::default(),
         }
     }
 
@@ -175,8 +226,15 @@ impl Framebuffer {
         Self {
             buffer,
             server_pixel_format,
-            registry: DecoderRegistry::with_content_cache(cache, misses.clone()),
+            registry: DecoderRegistry::with_content_cache(cache.clone(), misses.clone()),
             pending_misses: Some(misses),
+            content_cache: Some(cache),
+            persistent_cache: None,
+            cache_protocol: CacheProtocolNegotiated::None,
+            content_cache_bandwidth: CacheProtocolStats::default(),
+            persistent_cache_bandwidth: CacheProtocolStats::default(),
+            content_cache_counters: CacheProtocolCounters::default(),
+            persistent_cache_counters: CacheProtocolCounters::default(),
         }
     }
 
@@ -194,13 +252,20 @@ impl Framebuffer {
             enc::PersistentCachedRectDecoder::new(pcache.clone()),
         ));
         reg.register(DecoderEntry::PersistentCachedRectInit(
-            enc::PersistentCachedRectInitDecoder::new(pcache),
+            enc::PersistentCachedRectInitDecoder::new(pcache.clone()),
         ));
         Self {
             buffer,
             server_pixel_format,
             registry: reg,
             pending_misses: None,
+            content_cache: None,
+            persistent_cache: Some(pcache),
+            cache_protocol: CacheProtocolNegotiated::None,
+            content_cache_bandwidth: CacheProtocolStats::default(),
+            persistent_cache_bandwidth: CacheProtocolStats::default(),
+            content_cache_counters: CacheProtocolCounters::default(),
+            persistent_cache_counters: CacheProtocolCounters::default(),
         }
     }
 
@@ -215,18 +280,25 @@ impl Framebuffer {
         let local_format = LocalPixelFormat::rgb888();
         let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
         let misses: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
-        let mut reg = DecoderRegistry::with_content_cache(ccache, misses.clone());
+        let mut reg = DecoderRegistry::with_content_cache(ccache.clone(), misses.clone());
         reg.register(DecoderEntry::PersistentCachedRect(
             enc::PersistentCachedRectDecoder::new(pcache.clone()),
         ));
         reg.register(DecoderEntry::PersistentCachedRectInit(
-            enc::PersistentCachedRectInitDecoder::new(pcache),
+            enc::PersistentCachedRectInitDecoder::new(pcache.clone()),
         ));
         Self {
             buffer,
             server_pixel_format,
             registry: reg,
             pending_misses: Some(misses),
+            content_cache: Some(ccache),
+            persistent_cache: Some(pcache),
+            cache_protocol: CacheProtocolNegotiated::None,
+            content_cache_bandwidth: CacheProtocolStats::default(),
+            persistent_cache_bandwidth: CacheProtocolStats::default(),
+            content_cache_counters: CacheProtocolCounters::default(),
+            persistent_cache_counters: CacheProtocolCounters::default(),
         }
     }
 
@@ -375,6 +447,12 @@ impl Framebuffer {
                     buffer_after
                 );
 
+                // Track cache protocol bandwidth and counters based on encoding.
+                self.track_cache_bandwidth(
+                    &rect,
+                    buffer_before.saturating_sub(buffer_after) as u64,
+                );
+
                 rects_decoded += 1;
 
                 if rect.encoding >= 0 {
@@ -424,6 +502,12 @@ impl Framebuffer {
                     buffer_after
                 );
 
+                // Track cache protocol bandwidth and counters based on encoding.
+                self.track_cache_bandwidth(
+                    &rect,
+                    buffer_before.saturating_sub(buffer_after) as u64,
+                );
+
                 rects_decoded += 1;
 
                 if rect.encoding >= 0 {
@@ -456,6 +540,78 @@ impl Framebuffer {
         Ok(damage)
     }
 
+    /// Track cache protocol bandwidth and protocol counters for a single rectangle.
+    fn track_cache_bandwidth(&mut self, rect: &Rectangle, payload_bytes: u64) {
+        match rect.encoding {
+            enc::ENCODING_CACHED_RECT => {
+                // First time we see a ContentCache rect, record negotiated protocol.
+                if matches!(self.cache_protocol, CacheProtocolNegotiated::None) {
+                    self.cache_protocol = CacheProtocolNegotiated::Content;
+                }
+                self.content_cache_counters.cache_lookups = self
+                    .content_cache_counters
+                    .cache_lookups
+                    .saturating_add(1);
+                self.content_cache_counters.cache_hits = self
+                    .content_cache_counters
+                    .cache_hits
+                    .saturating_add(1);
+                track_content_cache_ref(
+                    &mut self.content_cache_bandwidth,
+                    rect,
+                    &self.server_pixel_format,
+                );
+            }
+            enc::ENCODING_CACHED_RECT_INIT => {
+                if matches!(self.cache_protocol, CacheProtocolNegotiated::None) {
+                    self.cache_protocol = CacheProtocolNegotiated::Content;
+                }
+                // payload_bytes already excludes the 12-byte Rectangle header; treat as
+                // compressedBytes for accounting purposes.
+                track_content_cache_init(&mut self.content_cache_bandwidth, payload_bytes);
+                self.content_cache_bandwidth.cached_rect_init_count = self
+                    .content_cache_bandwidth
+                    .cached_rect_init_count
+                    .saturating_add(0); // count already bumped in helper
+            }
+            enc::ENCODING_PERSISTENT_CACHED_RECT => {
+                if matches!(self.cache_protocol, CacheProtocolNegotiated::None) {
+                    self.cache_protocol = CacheProtocolNegotiated::Persistent;
+                }
+                self.persistent_cache_counters.cache_lookups = self
+                    .persistent_cache_counters
+                    .cache_lookups
+                    .saturating_add(1);
+                self.persistent_cache_counters.cache_hits = self
+                    .persistent_cache_counters
+                    .cache_hits
+                    .saturating_add(1);
+                // Rust implementation uses fixed 16-byte hashes.
+                track_persistent_cache_ref(
+                    &mut self.persistent_cache_bandwidth,
+                    rect,
+                    &self.server_pixel_format,
+                    16,
+                );
+            }
+            enc::ENCODING_PERSISTENT_CACHED_RECT_INIT => {
+                if matches!(self.cache_protocol, CacheProtocolNegotiated::None) {
+                    self.cache_protocol = CacheProtocolNegotiated::Persistent;
+                }
+                // payload_bytes includes 16-byte hash + 4-byte inner encoding; subtract these
+                // to approximate compressedBytes.
+                let overhead = 16u64 + 4;
+                let compressed_bytes = payload_bytes.saturating_sub(overhead);
+                track_persistent_cache_init(
+                    &mut self.persistent_cache_bandwidth,
+                    16,
+                    compressed_bytes,
+                );
+            }
+            _ => {}
+        }
+    }
+
     /// Apply multiple rectangles, returning the list of damaged regions for repaint.
     pub async fn apply_update<R: AsyncRead + Unpin>(
         &mut self,
@@ -486,14 +642,141 @@ impl Framebuffer {
     }
 
     /// Drain and return any pending cache miss IDs reported during the last decode.
-    pub fn drain_pending_cache_misses(&self) -> Vec<u64> {
+    ///
+    /// Also updates protocol counters to reflect the misses and the
+    /// corresponding RequestCachedData queries that will be sent.
+    pub fn drain_pending_cache_misses(&mut self) -> Vec<u64> {
         if let Some(m) = &self.pending_misses {
             if let Ok(mut v) = m.lock() {
                 let out = v.clone();
+                let missed = out.len() as u32;
+                if missed > 0 {
+                    self.content_cache_counters.cache_misses = self
+                        .content_cache_counters
+                        .cache_misses
+                        .saturating_add(missed);
+                    self.content_cache_counters.queries_sent = self
+                        .content_cache_counters
+                        .queries_sent
+                        .saturating_add(missed);
+                }
                 v.clear();
                 return out;
             }
         }
         Vec::new()
+    }
+
+    /// Log cache statistics mirroring the C++ viewer, including a cache
+    /// summary and per-protocol details for the negotiated cache only.
+    pub fn log_cache_stats(&self) {
+        // High-level cache summary based on negotiated protocol.
+        match self.cache_protocol {
+            CacheProtocolNegotiated::Persistent => {
+                if self.persistent_cache_bandwidth.alternative_bytes > 0 {
+                    let summary = self
+                        .persistent_cache_bandwidth
+                        .format_summary("PersistentCache");
+                    tracing::info!("Cache summary:");
+                    tracing::info!("  {}", summary);
+                }
+            }
+            CacheProtocolNegotiated::Content => {
+                if self.content_cache_bandwidth.alternative_bytes > 0 {
+                    let summary =
+                        self.content_cache_bandwidth.format_summary("ContentCache");
+                    tracing::info!("Cache summary:");
+                    tracing::info!("  {}", summary);
+                }
+            }
+            CacheProtocolNegotiated::None => {}
+        }
+
+        // Detailed per-protocol stats.
+        match self.cache_protocol {
+            CacheProtocolNegotiated::Content => {
+                if let Some(cache) = &self.content_cache {
+                    if let Ok(cache) = cache.lock() {
+                        let stats = cache.stats();
+                        tracing::info!(" ");
+                        tracing::info!("Client-side ContentCache statistics:");
+                        tracing::info!(
+                            "  Protocol operations (CachedRect received):",
+                        );
+                        let c = self.content_cache_counters;
+                        let pct = if c.cache_lookups > 0 {
+                            100.0 * c.cache_hits as f64 / c.cache_lookups as f64
+                        } else {
+                            0.0
+                        };
+                        tracing::info!(
+                            "    Lookups: {}, Hits: {} ({:.1}%)",
+                            c.cache_lookups,
+                            c.cache_hits,
+                            pct
+                        );
+                        tracing::info!("    Misses: {}", c.cache_misses);
+                        tracing::info!(
+                            "  Cache memory usage: entries={} size={} MB / {} MB",
+                            stats.entries,
+                            stats.size_mb,
+                            stats.max_size_mb
+                        );
+                    }
+                }
+            }
+            CacheProtocolNegotiated::Persistent => {
+                if let Some(pcache) = &self.persistent_cache {
+                    if let Ok(pcache) = pcache.lock() {
+                        let stats = pcache.stats();
+                        let c = self.persistent_cache_counters;
+                        let pct = if c.cache_lookups > 0 {
+                            100.0 * c.cache_hits as f64 / c.cache_lookups as f64
+                        } else {
+                            0.0
+                        };
+                        tracing::info!(" ");
+                        tracing::info!("Client-side PersistentCache statistics:");
+                        tracing::info!(
+                            "  Protocol operations (PersistentCachedRect received):",
+                        );
+                        tracing::info!(
+                            "    Lookups: {}, Hits: {} ({:.1}%)",
+                            c.cache_lookups,
+                            c.cache_hits,
+                            pct
+                        );
+                        tracing::info!(
+                            "    Misses: {}, Queries sent: {}",
+                            c.cache_misses,
+                            c.queries_sent
+                        );
+                        tracing::info!("  ARC cache performance:");
+                        tracing::info!(
+                            "    Total entries: {}, Total bytes: {}",
+                            stats.total_entries,
+                            stats.total_bytes
+                        );
+                        tracing::info!(
+                            "    Cache hits: {}, Cache misses: {}, Evictions: {}",
+                            stats.cache_hits,
+                            stats.cache_misses,
+                            stats.evictions
+                        );
+                        tracing::info!(
+                            "    T1 (recency): {} entries, T2 (frequency): {} entries",
+                            stats.t1_size,
+                            stats.t2_size
+                        );
+                        tracing::info!(
+                            "    B1 (ghost-T1): {} entries, B2 (ghost-T2): {} entries",
+                            stats.b1_size,
+                            stats.b2_size
+                        );
+                    }
+                }
+            }
+            CacheProtocolNegotiated::None => {}
+        }
     }
 }

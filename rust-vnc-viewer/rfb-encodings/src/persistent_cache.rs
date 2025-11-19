@@ -30,6 +30,10 @@ pub struct PersistentClientCache {
     current_bytes: usize,
     /// ARC eviction core tracking resident and ghost entries by cache ID.
     arc: ArcCache<[u8; 16]>,
+    /// Aggregate statistics similar to the C++ GlobalClientPersistentCache.
+    cache_hits: u64,
+    cache_misses: u64,
+    evictions: u64,
 }
 
 impl PersistentClientCache {
@@ -40,6 +44,9 @@ impl PersistentClientCache {
             max_size_mb,
             current_bytes: 0,
             arc: ArcCache::new(max_bytes),
+            cache_hits: 0,
+            cache_misses: 0,
+            evictions: 0,
         }
     }
 
@@ -47,8 +54,10 @@ impl PersistentClientCache {
         if let Some(entry) = self.map.get(id) {
             // Notify ARC of a resident hit so it can adapt between T1/T2.
             self.arc.on_hit(id);
+            self.cache_hits = self.cache_hits.saturating_add(1);
             Some(entry)
         } else {
+            self.cache_misses = self.cache_misses.saturating_add(1);
             None
         }
     }
@@ -72,6 +81,7 @@ impl PersistentClientCache {
         for evicted_id in evicted_ids {
             if let Some(old) = self.map.remove(&evicted_id) {
                 self.current_bytes = self.current_bytes.saturating_sub(old.bytes());
+                self.evictions = self.evictions.saturating_add(1);
             }
         }
 
@@ -89,11 +99,41 @@ impl PersistentClientCache {
         self.max_size_mb
     }
 
+    /// Snapshot of high-level statistics for logging.
+    pub fn stats(&self) -> PersistentCacheStats {
+        let (t1, t2, b1, b2) = self.arc.list_lengths();
+        PersistentCacheStats {
+            total_entries: self.map.len(),
+            total_bytes: self.current_bytes,
+            cache_hits: self.cache_hits,
+            cache_misses: self.cache_misses,
+            evictions: self.evictions,
+            t1_size: t1,
+            t2_size: t2,
+            b1_size: b1,
+            b2_size: b2,
+        }
+    }
+
     /// Retrieve and clear the list of cache IDs that were evicted by the ARC
     /// core since the last call.
     pub fn take_evicted_ids(&mut self) -> Vec<[u8; 16]> {
         self.arc.take_pending_evictions()
     }
+}
+
+/// Lightweight statistics snapshot used by the viewer for end-of-run logs.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PersistentCacheStats {
+    pub total_entries: usize,
+    pub total_bytes: usize,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub evictions: u64,
+    pub t1_size: usize,
+    pub t2_size: usize,
+    pub b1_size: usize,
+    pub b2_size: usize,
 }
 
 impl Default for PersistentClientCache {

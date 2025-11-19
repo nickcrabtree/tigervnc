@@ -211,7 +211,7 @@ pub async fn spawn(
                             }
                             // After applying FBU, request any missing cache data that were reported
                             {
-                                let fb = framebuffer.lock().await;
+                                let mut fb = framebuffer.lock().await;
                                 let misses = fb.drain_pending_cache_misses();
                                 drop(fb);
                                 for cache_id in misses {
@@ -458,7 +458,7 @@ pub async fn spawn(
                             };
                             // After applying FBU, request any missing cache data that were reported
                             {
-                                let fb = framebuffer.lock().await;
+                                let mut fb = framebuffer.lock().await;
                                 let misses = fb.drain_pending_cache_misses();
                                 drop(fb);
                                 for cache_id in misses {
@@ -610,6 +610,10 @@ pub async fn spawn(
                 }
             }
         }
+
+        // End-of-loop: log cache statistics similar to the C++ viewer.
+        let fb = framebuffer.lock().await;
+        fb.log_cache_stats();
     });
 
     Ok((handle, framebuffer_handle))
