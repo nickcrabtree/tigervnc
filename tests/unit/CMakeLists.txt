@@ -52,6 +52,11 @@ add_executable(persistentcache_protocol persistentcache_protocol.cxx)
 target_link_libraries(persistentcache_protocol rfb core rdr network GTest::gtest_main)
 gtest_discover_tests(persistentcache_protocol)
 
+add_executable(decode_manager decode_manager.cxx)
+target_link_libraries(decode_manager rfb core GTest::gtest_main)
+target_compile_definitions(decode_manager PRIVATE UNIT_TEST)
+gtest_discover_tests(decode_manager)
+
 add_executable(pixelformat pixelformat.cxx)
 target_link_libraries(pixelformat rfb GTest::gtest_main)
 gtest_discover_tests(pixelformat)

@@ -164,6 +164,14 @@ namespace rfb {
     // Batching for PersistentCache queries
     std::vector<std::vector<uint8_t>> pendingQueries;
     void flushPendingQueries();
+
+#ifdef UNIT_TEST
+  public:
+    // Test-only helpers to introspect cache pointers from unit tests without
+    // exposing them in production builds.
+    ContentCache* getContentCacheForTest() const { return contentCache; }
+    GlobalClientPersistentCache* getPersistentCacheForTest() const { return persistentCache; }
+#endif
   };
 
 }
