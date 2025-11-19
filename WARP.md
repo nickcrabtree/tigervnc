@@ -2,6 +2,8 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
+The bug database for this repository is maintained in `BUGS.md` in the project root.
+
 ## ⚠️ CRITICAL: ALWAYS USE TIMEOUTS
 
 **🔴 MANDATORY: All commands MUST use timeouts 🔴**
