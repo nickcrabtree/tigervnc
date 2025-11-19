@@ -29,6 +29,7 @@
 #include <unistd.h>
 #include <csignal>
 #endif
+#include <cstdlib>
 
 #include <core/LogWriter.h>
 #include <core/Timer.h>
@@ -67,9 +68,19 @@
 
 static core::LogWriter vlog("CConn");
 
-// Global pointer for signal handler
+// Global pointer for signal handler and shutdown logging
 static CConn* g_activeConn = nullptr;
 static volatile sig_atomic_t g_verifyRequested = 0;
+static bool g_logStatsRegistered = false;
+
+static void logStatsAtExit()
+{
+  if (!g_activeConn)
+    return;
+
+  vlog.info("Framebuffer statistics:");
+  g_activeConn->logFramebufferStats();
+}
 
 // Signal handler for SIGUSR1 - trigger framebuffer verification
 #ifndef WIN32
@@ -125,6 +136,12 @@ CConn::CConn()
   signal(SIGUSR1, handleVerifySignal);
   vlog.info("Framebuffer verification available: kill -USR1 %d", (int)getpid());
 #endif
+
+  // Register an atexit handler once to dump framebuffer/cache statistics
+  if (!g_logStatsRegistered) {
+    atexit(logStatsAtExit);
+    g_logStatsRegistered = true;
+  }
 }
 
 CConn::~CConn()
@@ -274,6 +291,11 @@ unsigned CConn::getPixelCount()
 unsigned CConn::getPosition()
 {
   return sock->inStream().pos();
+}
+
+void CConn::logFramebufferStats()
+{
+  logDecodeStats();
 }
 
 void CConn::socketEvent(FL_SOCKET fd, void *data)

@@ -339,8 +339,34 @@ void DecodeManager::logStats()
   vlog.info("         %s (1:%g ratio)",
             core::iecPrefix(bytes, "B").c_str(), ratio);
   
-  // Log client-side ContentCache ARC statistics
-  if (contentCache != nullptr) {
+  // High-level cache summary: highlight real bandwidth savings for the
+  // negotiated cache protocol(s) so they don't get lost in low-level
+  // ARC details.
+  bool printedCacheSummaryHeader = false;
+  if (conn && conn->isPersistentCacheNegotiated() &&
+      persistentCacheBandwidthStats.alternativeBytes > 0) {
+    if (!printedCacheSummaryHeader) {
+      vlog.info(" ");
+      vlog.info("Cache summary:");
+      printedCacheSummaryHeader = true;
+    }
+    const auto ps = persistentCacheBandwidthStats.formatSummary("PersistentCache");
+    vlog.info("  %s", ps.c_str());
+  }
+  if (conn && conn->isContentCacheNegotiated() &&
+      contentCacheBandwidthStats.alternativeBytes > 0) {
+    if (!printedCacheSummaryHeader) {
+      vlog.info(" ");
+      vlog.info("Cache summary:");
+      printedCacheSummaryHeader = true;
+    }
+    const auto cs = contentCacheBandwidthStats.formatSummary("ContentCache");
+    vlog.info("  %s", cs.c_str());
+  }
+  
+  // Log client-side ContentCache ARC statistics only if that protocol was
+  // actually negotiated for this connection.
+  if (contentCache != nullptr && conn && conn->isContentCacheNegotiated()) {
     vlog.info(" ");
     vlog.info("Client-side ContentCache statistics:");
     vlog.info("  Protocol operations (CachedRect received):");
@@ -369,16 +395,17 @@ void DecodeManager::logStats()
     vlog.info("  ARC cache performance:");
     contentCache->logArcStats();
     
-    // Log ContentCache bandwidth savings
-    if (contentCacheBandwidthStats.cachedRectCount > 0 || contentCacheBandwidthStats.cachedRectInitCount > 0) {
+    // Log ContentCache bandwidth savings in detail block as well
+    if (contentCacheBandwidthStats.cachedRectCount > 0 ||
+        contentCacheBandwidthStats.cachedRectInitCount > 0) {
       const auto summary = contentCacheBandwidthStats.formatSummary("ContentCache");
-      if (contentCacheBandwidthStats.cachedRectCount || contentCacheBandwidthStats.cachedRectInitCount)
-        vlog.info("  %s", summary.c_str());
+      vlog.info("  %s", summary.c_str());
     }
   }
   
-  // Log client-side PersistentCache statistics
-  if (persistentCache != nullptr) {
+  // Log client-side PersistentCache statistics only if that protocol was
+  // actually negotiated for this connection.
+  if (persistentCache != nullptr && conn && conn->isPersistentCacheNegotiated()) {
     auto pcStats = persistentCache->getStats();
     vlog.info(" ");
     vlog.info("Client-side PersistentCache statistics:");
@@ -406,10 +433,12 @@ void DecodeManager::logStats()
     vlog.info("    ARC parameter p (target T1 bytes): %s",
               core::iecPrefix(pcStats.targetT1Size, "B").c_str());
 
-    // PersistentCache bandwidth summary
-    const auto ps = persistentCacheBandwidthStats.formatSummary("PersistentCache");
-    if (persistentCacheBandwidthStats.cachedRectCount || persistentCacheBandwidthStats.cachedRectInitCount)
+    // PersistentCache bandwidth summary in detail block as well
+    if (persistentCacheBandwidthStats.cachedRectCount ||
+        persistentCacheBandwidthStats.cachedRectInitCount) {
+      const auto ps = persistentCacheBandwidthStats.formatSummary("PersistentCache");
       vlog.info("  %s", ps.c_str());
+    }
   }
 }
 

@@ -163,6 +163,8 @@ namespace rfb {
     const char* getServerName() const { return serverName.c_str(); }
 
     bool isSecure() const;
+    bool isContentCacheNegotiated() const;
+    bool isPersistentCacheNegotiated() const;
 
     enum stateEnum {
       RFBSTATE_UNINITIALISED,
@@ -296,6 +298,9 @@ namespace rfb {
     void setWriter(CMsgWriter *w) { writer_ = w; }
 
     ModifiablePixelBuffer* getFramebuffer() { return framebuffer; }
+
+    // Expose decoder statistics to derived classes (e.g. viewers)
+    void logDecodeStats();
 
   protected:
     // Optional capabilities that a subclass is expected to set to true

@@ -44,6 +44,9 @@ public:
   unsigned getPixelCount();
   unsigned getPosition();
   
+  // Log framebuffer/decoder statistics for this connection (used by e2e tests)
+  void logFramebufferStats();
+  
   // Debug: Request full framebuffer refresh and verify against current state
   void verifyFramebuffer();
 

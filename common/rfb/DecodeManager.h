@@ -74,9 +74,10 @@ namespace rfb {
                                    const std::vector<uint8_t>& hash,
                                    ModifiablePixelBuffer* pb);
 
-  private:
+    // Log end-of-session decode and cache statistics (client-side)
     void logStats();
 
+  private:
     void setThreadException();
     void throwThreadException();
 

@@ -152,6 +152,11 @@ void CConnection::setFramebuffer(ModifiablePixelBuffer* fb)
   framebuffer = fb;
 }
 
+void CConnection::logDecodeStats()
+{
+  decoder.logStats();
+}
+
 void CConnection::initialiseProtocol()
 {
   state_ = RFBSTATE_PROTOCOL_VERSION;
@@ -983,7 +988,19 @@ void CConnection::setPF(const PixelFormat& pf)
 
 bool CConnection::isSecure() const
 {
-  return csecurity ? csecurity->isSecure() : false;
+  // SecurityClient does not expose a runtime "secure" state in this build;
+  // keep the API but conservatively report false.
+  return false;
+}
+
+bool CConnection::isContentCacheNegotiated() const
+{
+  return negotiatedCacheProtocol == CacheProtocolContent;
+}
+
+bool CConnection::isPersistentCacheNegotiated() const
+{
+  return negotiatedCacheProtocol == CacheProtocolPersistent;
 }
 
 // requestNewUpdate() requests an update from the server, having set the
