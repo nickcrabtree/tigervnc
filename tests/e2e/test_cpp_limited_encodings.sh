@@ -28,10 +28,11 @@ echo "Testing C++ Viewer with Limited Encodings (Raw, CopyRect, ZRLE)"
 echo "==================================================================="
 echo ""
 
-# Kill any existing server on this display
-if ps aux | grep "Xnjcvnc :$DISPLAY_NUM" | grep -v grep > /dev/null; then
-    echo "Cleaning up existing server on :$DISPLAY_NUM..."
-    pkill -f "Xnjcvnc :$DISPLAY_NUM" || true
+# Kill any existing server on this display (by specific PID only)
+EXISTING_PID=$(ps aux | grep "Xnjcvnc :$DISPLAY_NUM" | grep -v grep | awk '{print $2}' || true)
+if [ -n "${EXISTING_PID}" ]; then
+    echo "Cleaning up existing server on :$DISPLAY_NUM (PID ${EXISTING_PID})..."
+    kill "${EXISTING_PID}" 2>/dev/null || true
     sleep 2
 fi
 
@@ -76,15 +77,19 @@ sleep 2
 echo "✓ Test content launched (PID: $XTERM_PID)"
 
 # Run C++ viewer with ZRLE encoding only
-# CRITICAL: Run headless (no DISPLAY) to prevent windows on production display
+# NOTE: We run the viewer on the test display (:${DISPLAY_NUM}) so that
+# any GUI window appears inside the isolated test Xnjcvnc session rather
+# than on a production desktop. Running completely headless with no
+# DISPLAY previously caused the viewer to exit immediately with
+# "Can't open display".
 echo ""
-echo "[4/5] Running C++ viewer HEADLESS with LIMITED encodings (ZRLE preferred)..."
+echo "[4/5] Running C++ viewer on test display with LIMITED encodings (ZRLE preferred)..."
 echo "  Command: njcvncviewer 127.0.0.1::$VNC_PORT PreferredEncoding=ZRLE"
-echo "  DISPLAY: unset (headless - no GUI window)"
+echo "  DISPLAY: :$DISPLAY_NUM (isolated test X server)"
 echo ""
 
-# Unset DISPLAY to run headless - viewer connects but shows no window
-env -u DISPLAY timeout 10 "$PROJECT_ROOT/build/vncviewer/njcvncviewer" \
+# Run viewer on the test display so the window stays confined to :${DISPLAY_NUM}
+DISPLAY=:$DISPLAY_NUM timeout 10 "$PROJECT_ROOT/build/vncviewer/njcvncviewer" \
     "127.0.0.1::$VNC_PORT" \
     "Shared=1" \
     "PreferredEncoding=ZRLE" \
