@@ -21,7 +21,7 @@ from framework import (
     ProcessTracker, VNCServer, check_port_available, check_display_available,
     PROJECT_ROOT
 )
-from scenarios import ScenarioRunner
+from scenarios_static import StaticScenarioRunner
 from log_parser import parse_cpp_log, compute_metrics
 
 
@@ -187,10 +187,13 @@ def main():
             return 1
         print("✓ Test viewer connected")
 
-        # 7. Run scenario to generate content
-        print(f"\n[6/8] Running intensive scenario to force evictions...")
-        runner = ScenarioRunner(args.display_content, verbose=args.verbose)
-        stats = runner.cache_hits_with_clock(duration_sec=args.duration)
+        # 7. Run static repeated-content scenario to force evictions.
+        #    This uses full-screen solid/background changes that mirror
+        #    the static patterns used in the ContentCache tests, but with
+        #    a small PersistentCache so that older entries are evicted.
+        print(f"\n[6/8] Running static repeated-content scenario to force evictions...")
+        runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
+        stats = runner.repeated_static_content(duration_sec=args.duration)
         print(f"  Scenario completed: {stats}")
         time.sleep(5.0)  # Let evictions and notifications complete
 

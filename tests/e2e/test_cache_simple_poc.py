@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Simple proof-of-concept cache test.
+Simple proof-of-concept PersistentCache test.
 
-Uses xclock (analog) which renders similar content repeatedly,
-making it easier to generate cache hits.
+Uses the same tiled-logo static content scenario as the C++
+ContentCache and PersistentCache tests so that, in a cold-cache
+run, PersistentCache sees the same pattern of hits as ContentCache
+for identical content.
 """
 
 import sys
@@ -19,6 +21,7 @@ from framework import (
     ProcessTracker, VNCServer, check_port_available, check_display_available,
     PROJECT_ROOT
 )
+from scenarios_static import StaticScenarioRunner
 from log_parser import parse_cpp_log, parse_server_log
 
 def main():
@@ -114,31 +117,15 @@ def main():
         
         print("✓ Viewer connected")
         
-        # Generate content with xclock (updates every second)
-        print(f"\n[4/6] Generating content with xclock...")
-        print("  Starting analog clock that updates continuously...")
-        
-        env_clock = os.environ.copy()
-        env_clock['DISPLAY'] = f':{display_content}'
-        
-        clock_proc = subprocess.Popen(
-            ['xclock', '-analog', '-update', '1', '-geometry', '300x300+100+100'],
-            env=env_clock, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            preexec_fn=os.setpgrp
-        )
-        tracker.register('clock', clock_proc)
-        
-        # Let it run for 60 seconds - clock updates create repeated similar content
-        print(f"  Running for 60 seconds to accumulate cache data...")
-        for i in range(12):
-            time.sleep(5)
-            print(f"  {(i+1)*5}s elapsed...")
-        
-        print("✓ Content generation complete")
+        # Generate repeated static content using the same tiled-logo
+        # scenario as the ContentCache and C++ PersistentCache tests.
+        print(f"\n[4/6] Generating repeated static content (tiled logos)...")
+        runner = StaticScenarioRunner(display_content, verbose=False)
+        stats = runner.tiled_logos_test(tiles=12, duration=60.0, delay_between=3.0)
+        print(f"  Scenario completed: {stats}")
         
         # Stop and analyze
         print(f"\n[5/6] Analyzing results...")
-        tracker.cleanup('clock')
         tracker.cleanup('poc_viewer')
         time.sleep(1.0)  # Let logs flush
         

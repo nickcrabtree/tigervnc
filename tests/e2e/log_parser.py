@@ -79,6 +79,10 @@ class ParsedLog:
     persistent_bandwidth_reduction: float = 0.0
     persistent_hits: int = 0
     persistent_misses: int = 0
+    # Number of PersistentCachedRectInit messages observed in server logs.
+    # These represent initial full sends ("misses") for the PersistentCache
+    # protocol, analogous to CachedRectInit for ContentCache.
+    persistent_init_count: int = 0
     
     # PersistentCache initialization events (viewer-side) — should be zero when
     # PersistentCache option is disabled (e.g., PersistentCache=0).
@@ -356,7 +360,13 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
             # PersistentCache INIT (full send)
             # Format: "PersistentCache INIT: rect [x,y-x,y] hash=... (now known for session)"
             elif 'persistentcache init' in line.lower():
+                # Treat each PersistentCachedRectInit as a protocol-level miss:
+                # the server had to send full data because the client didn't
+                # yet know this hash. This mirrors how CachedRectInit is
+                # interpreted for ContentCache.
                 persistent_bytes_sent_full += 47  # PersistentCachedRectInit overhead
+                parsed.persistent_init_count += 1
+                parsed.persistent_misses += 1
                 last_was_pc_hit = False
             else:
                 # Not a PC message, reset state
@@ -437,24 +447,32 @@ def compute_metrics(parsed: ParsedLog) -> Dict:
     
     Returns dict suitable for comparison and reporting.
     """
-    # Compute persistent hit rate
-    p_total = parsed.persistent_hits + parsed.persistent_misses
-    p_hit_rate = (100.0 * parsed.persistent_hits / p_total) if p_total > 0 else 0.0
-    
-    # If no explicit hit/miss counts, use protocol messages as proxy
-    # CachedRect = cache hit (reference), CachedRectInit = cache miss (full data)
-    # Note: Client logs often count CachedRect as hits but don't log CachedRectInit as misses
+    # Normalize ContentCache counters based on protocol messages.
+    # CachedRect = cache hit (reference), CachedRectInit = cache miss (full data).
+    # Client logs often count CachedRect as hits but don't log CachedRectInit
+    # as misses, so fall back to treating each CachedRectInit as a miss when
+    # no explicit miss lines were seen.
     if parsed.total_misses == 0 and parsed.cached_rect_init_count > 0:
-        # Client received CachedRectInit but didn't log them as misses
         parsed.total_misses = parsed.cached_rect_init_count  # Initial sends = misses
     
-    # Always recalculate lookups from hits + misses
+    # Always recalculate ContentCache lookups from hits + misses if the caller
+    # didn't provide an explicit lookup count.
     if parsed.total_lookups == 0:
         parsed.total_lookups = parsed.total_hits + parsed.total_misses
     
-    # Stores should match CachedRectInit count
+    # Stores should match CachedRectInit count when not explicitly logged.
     if parsed.total_stores == 0 and parsed.cached_rect_init_count > 0:
         parsed.total_stores = parsed.cached_rect_init_count
+
+    # Normalize PersistentCache counters using the same semantics as
+    # ContentCache: PersistentCachedRectInit lines (persistent_init_count)
+    # are treated as misses when no explicit "miss" log lines were seen.
+    if parsed.persistent_misses == 0 and parsed.persistent_init_count > 0:
+        parsed.persistent_misses = parsed.persistent_init_count
+
+    # Compute persistent hit rate after normalization.
+    p_total = parsed.persistent_hits + parsed.persistent_misses
+    p_hit_rate = (100.0 * parsed.persistent_hits / p_total) if p_total > 0 else 0.0
 
     metrics = {
         'cache_operations': {

@@ -21,7 +21,7 @@ from framework import (
     ProcessTracker, VNCServer, check_port_available, check_display_available,
     PROJECT_ROOT
 )
-from scenarios import ScenarioRunner
+from scenarios_static import StaticScenarioRunner
 from log_parser import parse_cpp_log, compute_metrics
 
 
@@ -180,10 +180,13 @@ def main():
             return 1
         print("✓ Test viewer connected")
 
-        # 7. Run scenario with repeated content (expect high hit rate)
-        print(f"\n[6/8] Running repeated-content scenario...")
-        runner = ScenarioRunner(args.display_content, verbose=args.verbose)
-        stats = runner.cache_hits_minimal(duration_sec=args.duration)
+        # 7. Run tiled-logo scenario matching the ContentCache tests.
+        #    This uses identical logo content at different positions so
+        #    that PersistentCache sees the same repeated rectangles that
+        #    ContentCache does in its C++ test.
+        print(f"\n[6/8] Running tiled-logo repeated-content scenario...")
+        runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
+        stats = runner.tiled_logos_test(tiles=12, duration=args.duration, delay_between=3.0)
         print(f"  Scenario completed: {stats}")
         time.sleep(3.0)
 

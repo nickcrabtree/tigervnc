@@ -91,19 +91,25 @@ void PersistentCacheDebugLogger::log(const std::string& message) {
 // GlobalClientPersistentCache Implementation - ARC Algorithm
 // ============================================================================
 
-GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxSizeMB)
+GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxSizeMB,
+                                                           const std::string& cacheFilePathOverride)
   : maxCacheSize_(maxSizeMB * 1024 * 1024)
 {
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache constructor ENTER: maxSizeMB=" + std::to_string(maxSizeMB));
   
   memset(&stats_, 0, sizeof(stats_));
   
-  // Determine cache file path
-  const char* home = getenv("HOME");
-  if (home) {
-    cacheFilePath_ = std::string(home) + "/.cache/tigervnc/persistentcache.dat";
+  // Determine cache file path: allow viewer parameter override via
+  // PersistentCachePath so tests can control cold vs warm behaviour.
+  if (!cacheFilePathOverride.empty()) {
+    cacheFilePath_ = cacheFilePathOverride;
   } else {
-    cacheFilePath_ = "/tmp/tigervnc_persistentcache.dat";
+    const char* home = getenv("HOME");
+    if (home) {
+      cacheFilePath_ = std::string(home) + "/.cache/tigervnc/persistentcache.dat";
+    } else {
+      cacheFilePath_ = "/tmp/tigervnc_persistentcache.dat";
+    }
   }
   
   vlog.debug("PersistentCache created with ARC: maxSize=%zuMB, path=%s", 

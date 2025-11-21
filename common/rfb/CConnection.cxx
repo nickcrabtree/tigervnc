@@ -402,6 +402,11 @@ void CConnection::securityCompleted()
   writer_ = new CMsgWriter(&server, os);
   vlog.debug("Authentication success!");
   writer_->writeClientInit(shared);
+
+  // After authentication is complete and the CMsgWriter exists, advertise any
+  // hashes loaded from the client-side PersistentCache so the server can
+  // immediately exploit a warm cache.
+  decoder.advertisePersistentCacheHashes();
 }
 
 void CConnection::close()

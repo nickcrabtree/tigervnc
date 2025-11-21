@@ -50,7 +50,8 @@ static bool isFBHashDebugEnabled()
 }
 
 DecodeManager::DecodeManager(CConnection *conn_) :
-  conn(conn_), threadException(nullptr), contentCache(nullptr), persistentCache(nullptr)
+  conn(conn_), threadException(nullptr), contentCache(nullptr), persistentCache(nullptr),
+  persistentHashListSent(false)
 {
   size_t cpuCount;
 
@@ -84,7 +85,9 @@ DecodeManager::DecodeManager(CConnection *conn_) :
     vlog.info("Client ContentCache disabled via ContentCache=0; no client-side content cache will be created");
   }
   
-  // Initialize client-side persistent cache (default 2GB, overridable via PersistentCacheSize)
+  // Initialize client-side persistent cache (default 2GB, overridable via PersistentCacheSize
+  // and PersistentCachePath). This cache is intended to persist across sessions, so tests
+  // must be able to point it at an artifacts-local path.
   bool enablePersistentCache = true;
   if (auto* p = core::Configuration::getParam("PersistentCache")) {
     if (auto* bp = dynamic_cast<core::BoolParameter*>(p))
@@ -97,10 +100,26 @@ DecodeManager::DecodeManager(CConnection *conn_) :
       if (auto* ip = dynamic_cast<core::IntParameter*>(v))
         pcSizeMB = (size_t)(*ip);
     }
-    persistentCache = new GlobalClientPersistentCache(pcSizeMB);
-    vlog.info("Client PersistentCache initialized: %zuMB (ARC-managed)", pcSizeMB);
     
-    // Load persistent cache from disk
+    // Optional override of the on-disk cache location via PersistentCachePath
+    std::string pcPathOverride;
+    if (auto* p = core::Configuration::getParam("PersistentCachePath")) {
+      if (auto* sp = dynamic_cast<core::StringParameter*>(p)) {
+        std::string val = sp->getValueStr();
+        if (!val.empty())
+          pcPathOverride = val;
+      }
+    }
+    
+    persistentCache = new GlobalClientPersistentCache(pcSizeMB, pcPathOverride);
+    vlog.info("Client PersistentCache initialized: %zuMB (ARC-managed)%s",
+              pcSizeMB,
+              pcPathOverride.empty() ? "" : " with custom path override");
+    
+    // Load persistent cache from disk. This may populate a large hash
+    // inventory which we will later advertise to the server via the
+    // PersistentCacheHashList protocol once the CMsgWriter is available
+    // (see advertisePersistentCacheHashes()).
     if (persistentCache->loadFromDisk()) {
       vlog.info("PersistentCache loaded from disk");
     } else {
@@ -318,6 +337,45 @@ void DecodeManager::flush()
   }
 }
 
+void DecodeManager::advertisePersistentCacheHashes()
+{
+  // Only send the HashList once per connection, and only when we have a
+  // fully-initialised CConnection with a valid writer.
+  if (persistentHashListSent)
+    return;
+  if (!persistentCache || !conn || !conn->writer())
+    return;
+
+  std::vector<std::vector<uint8_t>> hashes = persistentCache->getAllHashes();
+  if (hashes.empty()) {
+    vlog.debug("PersistentCache: no hashes available for HashList advertisement");
+    return;
+  }
+
+  const size_t batchSize = 1000;  // conservative chunking
+  uint32_t sequenceId = 1;        // per-connection sequence
+  uint16_t totalChunks = (hashes.size() + batchSize - 1) / batchSize;
+  size_t offset = 0;
+  uint16_t chunkIndex = 0;
+
+  vlog.info("PersistentCache: advertising %zu hashes to server via HashList (%u chunks)",
+            hashes.size(), (unsigned)totalChunks);
+
+  while (offset < hashes.size()) {
+    size_t end = std::min(offset + batchSize, hashes.size());
+    std::vector<std::vector<uint8_t>> chunk(hashes.begin() + offset,
+                                            hashes.begin() + end);
+    conn->writer()->writePersistentHashList(sequenceId,
+                                            totalChunks,
+                                            chunkIndex,
+                                            chunk);
+    offset = end;
+    chunkIndex++;
+  }
+
+  persistentHashListSent = true;
+}
+
 void DecodeManager::logStats()
 {
   size_t i;
@@ -457,6 +515,18 @@ void DecodeManager::logStats()
         persistentCacheBandwidthStats.cachedRectInitCount) {
       const auto ps = persistentCacheBandwidthStats.formatSummary("PersistentCache");
       vlog.info("  %s", ps.c_str());
+    }
+  }
+  
+  // Ensure any accumulated PersistentCache entries are flushed to disk when
+  // we log final stats. Relying solely on the DecodeManager destructor is
+  // fragile when the viewer is terminated via signals, but logStats() is
+  // always called as part of graceful shutdown (see CConn::logFramebufferStats).
+  if (persistentCache != nullptr) {
+    if (persistentCache->saveToDisk()) {
+      vlog.info("PersistentCache saved to disk");
+    } else {
+      vlog.error("Failed to save PersistentCache to disk");
     }
   }
 }

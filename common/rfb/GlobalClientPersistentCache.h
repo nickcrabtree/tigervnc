@@ -89,7 +89,8 @@ namespace rfb {
       }
     };
     
-    GlobalClientPersistentCache(size_t maxSizeMB = 2048);
+    GlobalClientPersistentCache(size_t maxSizeMB = 2048,
+                                 const std::string& cacheFilePathOverride = std::string());
     ~GlobalClientPersistentCache();
     
     // Lifecycle (disk persistence will be added in Phase 7)
