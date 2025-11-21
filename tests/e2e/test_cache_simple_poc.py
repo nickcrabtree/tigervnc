@@ -62,12 +62,20 @@ def main():
     server_mode = 'local' if (local_server_symlink.exists() or local_server_actual.exists()) else 'system'
     
     try:
-        # Start servers
-        print(f"\n[2/6] Starting VNC servers...")
+        # Start servers (force PersistentCache-only path on the server to
+        # ensure that the proof-of-concept actually exercises the
+        # PersistentCache protocol rather than falling back to
+        # ContentCache-only behaviour.
+        print(f"\n[2/6] Starting VNC servers (PersistentCache-focused)...")
         server_content = VNCServer(
             display_content, port_content, "poc_content",
             artifacts, tracker, geometry="800x600",
-            log_level="*:stderr:100", server_choice=server_mode
+            log_level="*:stderr:100", server_choice=server_mode,
+            server_params={
+                'EnableContentCache': '0',        # disable session-only cache
+                'EnablePersistentCache': '1',     # ensure PC is on
+                # PersistentCacheMinRectSize keeps default unless overridden
+            }
         )
         if not server_content.start() or not server_content.start_session(wm='openbox'):
             print("✗ FAIL: Content server failed")
@@ -164,18 +172,15 @@ def main():
         print(f"  Viewer: {viewer_log}")
         print(f"  Server: {server_log}")
         
-        # Success criteria: any cache hits at all proves caching works
+        # Success criteria: any cache hits at all proves PersistentCache
+        # is active for this scenario. We deliberately fail if the cache
+        # is never exercised so that this test can drive regressions.
         if total_pc_hits > 0:
             print("\n✓ SUCCESS: Cache hits detected!")
             print(f"  PersistentCache is working with {total_pc_hits} hits")
             return 0
-        elif total_lookups > 10:
-            print("\n⚠ PARTIAL: Cache enabled but no hits yet")
-            print(f"  {total_lookups} cache lookups occurred (all misses)")
-            print(f"  Content may need more time to repeat")
-            return 0  # Still success - cache is working, just needs more time
         else:
-            print("\n✗ FAIL: No significant cache activity")
+            print("\n✗ FAIL: No significant PersistentCache activity (hits=0, lookups=", total_lookups, ")")
             return 1
             
     except KeyboardInterrupt:

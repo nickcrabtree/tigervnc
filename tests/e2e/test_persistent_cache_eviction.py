@@ -133,14 +133,21 @@ def main():
     print(f"\nUsing server mode: {server_mode}")
 
     try:
-        # 4. Start content server
-        print(f"\n[3/8] Starting content server (:{args.display_content})...")
+        # 4. Start content server in PersistentCache-focused mode.
+        # Disable ContentCache so that the eviction scenario exercises
+        # only the PersistentCache code path.
+        print(f"\n[3/8] Starting content server (:{args.display_content}) with PersistentCache only...")
+        server_params = {
+            'EnableContentCache': '0',             # disable ContentCache
+            'EnablePersistentCache': '1',          # ensure PC is enabled
+        }
         server_content = VNCServer(
             args.display_content, args.port_content, "pc_content_eviction",
             artifacts, tracker,
             geometry="1920x1080",
             log_level="*:stderr:100",
-            server_choice=server_mode
+            server_choice=server_mode,
+            server_params=server_params
         )
 
         if not server_content.start():
@@ -208,17 +215,18 @@ def main():
         print(f"PersistentCache Evictions: {pers['eviction_count']} (IDs: {pers['evicted_ids']})")
         print(f"PersistentCache Bandwidth Reduction: {pers['bandwidth_reduction_pct']:.1f}%")
 
-        # If no PersistentCache activity, skip enforcement
+        # Re-harden: if there is no PersistentCache activity at all, this
+        # is a failure. The test is specifically about eviction signalling
+        # and bandwidth savings from PersistentCache.
         if pers['hits'] == 0 and pers['misses'] == 0:
-            print("\nNote: PersistentCache protocol not observed; skipping eviction enforcement.")
+            print("\n✗ TEST FAILED")
+            print("  • PersistentCache protocol not observed (no hits/misses recorded)")
             print("=" * 70)
             print("ARTIFACTS")
             print("=" * 70)
             print(f"Logs: {artifacts.logs_dir}")
             print(f"Viewer log: {log_path}")
-            print("\n✓ TEST PASSED (skipped enforcement)")
-            print("=" * 70)
-            return 0
+            return 1
 
         success = True
         failures = []
