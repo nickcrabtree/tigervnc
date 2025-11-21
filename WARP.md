@@ -244,6 +244,8 @@ build/unix/xserver/hw/vnc/Xnjcvnc               # Server
 
 ### Running Tests
 
+You can also run all tests (including e2e) via `./run_tests.sh` from the repository root.
+
 ```bash
 # Run all unit tests (requires GTest)
 ctest --test-dir build --output-on-failure -j$(sysctl -n hw.ncpu 2>/dev/null || nproc)
