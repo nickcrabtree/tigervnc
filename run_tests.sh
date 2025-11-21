@@ -8,10 +8,12 @@ print_help() {
   cat <<'EOF'
 Usage: ./run_tests.sh [OPTIONS] [CTEST_ARGS...]
 
-TigerVNC test runner wrapper around CTest.
+TigerVNC test runner wrapper.
 
-By default this runs all CTest tests in the configured build directory,
-including tests labelled "e2e".
+By default this runs:
+  1) Rust tests under rust-vnc-viewer/ (via `cargo test`)
+  2) All CTest tests in the configured build directory (including label "e2e")
+  3) Standalone e2e Python/shell tests in tests/e2e/test_*.py and test_*.sh
 
 Options:
   -h, --help          Show this help message and exit
@@ -38,8 +40,12 @@ Notes:
   - You must configure and build the project first, for example:
         cmake -S . -B build
         cmake --build build
-  - Test failures are reported in the output, but this script always
-    exits with status 0 so that known failing tests do not break wrappers.
+  - Rust tests and standalone e2e scripts may fail depending on your
+    environment; their failures are reported but do not change the
+    wrapper's final exit code.
+  - All test phases report their own warnings but run_tests.sh itself
+    always exits with status 0 so that known failing tests do not
+    break wrappers.
 EOF
 }
 
@@ -99,18 +105,95 @@ else
   fi
 fi
 
-echo "==> Running CTest in '${BUILD_DIR}' with -j${JOBS} (all tests, including e2e)" >&2
+run_rust_tests() {
+  if [[ ! -d "rust-vnc-viewer" ]]; then
+    return
+  fi
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "==> Skipping Rust tests (cargo not found)" >&2
+    return
+  fi
 
-set +e
-ctest --test-dir "${BUILD_DIR}" --output-on-failure -j"${JOBS}" "${CTEST_ARGS[@]}"
-CTEST_STATUS=$?
-set -e
+  echo "==> Running Rust tests (cargo test) in rust-vnc-viewer" >&2
 
-if [[ ${CTEST_STATUS} -ne 0 ]]; then
-  echo >&2
-  echo "WARNING: CTest reported failures (exit code ${CTEST_STATUS})." >&2
-  echo "         See the output above for details. Per wrapper design," >&2
-  echo "         run_tests.sh is exiting with status 0." >&2
-fi
+  set +e
+  (
+    cd rust-vnc-viewer
+    cargo test
+  )
+  local status=$?
+  set -e
+
+  if [[ ${status} -ne 0 ]]; then
+    echo >&2
+    echo "WARNING: Rust tests reported failures (exit code ${status})." >&2
+    echo "         See the output above for details; wrapper will continue." >&2
+  fi
+}
+
+run_ctest_all() {
+  echo "==> Running CTest in '${BUILD_DIR}' with -j${JOBS} (all tests, including e2e)" >&2
+
+  set +e
+  ctest --test-dir "${BUILD_DIR}" --output-on-failure -j"${JOBS}" "${CTEST_ARGS[@]}"
+  local status=$?
+  set -e
+
+  if [[ ${status} -ne 0 ]]; then
+    echo >&2
+    echo "WARNING: CTest reported failures (exit code ${status})." >&2
+    echo "         See the output above for details; wrapper will continue." >&2
+  fi
+}
+
+run_python_e2e_tests() {
+  local e2e_dir="tests/e2e"
+
+  if [[ ! -d "${e2e_dir}" ]]; then
+    return
+  fi
+
+  echo "==> Running standalone e2e scripts in ${e2e_dir} (test_*.py, test_*.sh)" >&2
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "    Skipping Python e2e tests (python3 not found)" >&2
+    return
+  fi
+
+  set +e
+  (
+    cd "${e2e_dir}"
+    for script in test_*; do
+      if [[ ! -f "${script}" ]]; then
+        continue
+      fi
+      case "${script}" in
+        *.py)
+          echo "    -> python3 ${script}" >&2
+          python3 "${script}"
+          local status=$?
+          ;;
+        *.sh)
+          echo "    -> bash ${script}" >&2
+          bash "${script}"
+          local status=$?
+          ;;
+        *)
+          continue
+          ;;
+      esac
+
+      if [[ ${status} -ne 0 ]]; then
+        echo >&2
+        echo "WARNING: e2e script ${script} reported failures (exit code ${status})." >&2
+      fi
+    done
+  )
+  set -e
+}
+
+run_rust_tests
+run_ctest_all
+run_python_e2e_tests
 
 exit 0
