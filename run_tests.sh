@@ -41,11 +41,10 @@ Notes:
         cmake -S . -B build
         cmake --build build
   - Rust tests and standalone e2e scripts may fail depending on your
-    environment; their failures are reported but do not change the
-    wrapper's final exit code.
-  - All test phases report their own warnings but run_tests.sh itself
-    always exits with status 0 so that known failing tests do not
-    break wrappers.
+    environment; their failures are reported with warnings and will
+    cause run_tests.sh to exit with a non-zero status.
+  - All test phases report their own warnings; the wrapper exits with
+    a failing status code if any phase fails.
 EOF
 }
 
@@ -105,6 +104,8 @@ else
   fi
 fi
 
+GLOBAL_STATUS=0
+
 run_rust_tests() {
   if [[ ! -d "rust-vnc-viewer" ]]; then
     return
@@ -127,7 +128,7 @@ run_rust_tests() {
   if [[ ${status} -ne 0 ]]; then
     echo >&2
     echo "WARNING: Rust tests reported failures (exit code ${status})." >&2
-    echo "         See the output above for details; wrapper will continue." >&2
+    GLOBAL_STATUS=1
   fi
 }
 
@@ -142,7 +143,7 @@ run_ctest_all() {
   if [[ ${status} -ne 0 ]]; then
     echo >&2
     echo "WARNING: CTest reported failures (exit code ${status})." >&2
-    echo "         See the output above for details; wrapper will continue." >&2
+    GLOBAL_STATUS=1
   fi
 }
 
@@ -161,34 +162,36 @@ run_python_e2e_tests() {
   fi
 
   set +e
-  (
-    cd "${e2e_dir}"
-    for script in test_*; do
-      if [[ ! -f "${script}" ]]; then
+  local old_pwd
+  old_pwd="$(pwd)"
+  cd "${e2e_dir}" || exit 1
+  for script in test_*; do
+    if [[ ! -f "${script}" ]]; then
+      continue
+    fi
+    case "${script}" in
+      *.py)
+        echo "    -> python3 ${script}" >&2
+        python3 "${script}"
+        local status=$?
+        ;;
+      *.sh)
+        echo "    -> bash ${script}" >&2
+        bash "${script}"
+        local status=$?
+        ;;
+      *)
         continue
-      fi
-      case "${script}" in
-        *.py)
-          echo "    -> python3 ${script}" >&2
-          python3 "${script}"
-          local status=$?
-          ;;
-        *.sh)
-          echo "    -> bash ${script}" >&2
-          bash "${script}"
-          local status=$?
-          ;;
-        *)
-          continue
-          ;;
-      esac
+        ;;
+    esac
 
-      if [[ ${status} -ne 0 ]]; then
-        echo >&2
-        echo "WARNING: e2e script ${script} reported failures (exit code ${status})." >&2
-      fi
-    done
-  )
+    if [[ ${status} -ne 0 ]]; then
+      echo >&2
+      echo "WARNING: e2e script ${script} reported failures (exit code ${status})." >&2
+      GLOBAL_STATUS=1
+    fi
+  done
+  cd "${old_pwd}" || true
   set -e
 }
 
@@ -196,4 +199,4 @@ run_rust_tests
 run_ctest_all
 run_python_e2e_tests
 
-exit 0
+exit "${GLOBAL_STATUS}"
