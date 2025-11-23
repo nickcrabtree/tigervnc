@@ -165,6 +165,17 @@ run_python_e2e_tests() {
   local old_pwd
   old_pwd="$(pwd)"
   cd "${e2e_dir}" || exit 1
+
+  # Best-effort global cleanup of any stray test VNC servers on the
+  # dedicated test displays (:998/:999) before running the standalone
+  # e2e scripts. This helps avoid "port 6898 already in use" failures
+  # when a previous test run crashed or was interrupted.
+  python3 - << 'PY'
+from framework import best_effort_cleanup_test_server
+best_effort_cleanup_test_server(998, 6898, verbose=True)
+best_effort_cleanup_test_server(999, 6899, verbose=True)
+PY
+
   for script in test_*; do
     if [[ ! -f "${script}" ]]; then
       continue

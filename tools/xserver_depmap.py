@@ -191,8 +191,21 @@ def refresh_depmap(force: bool = False) -> None:
         text=True,
     )
 
-    # Perform a full rebuild with captured output for parsing.
-    log_text = _run(["make", "-C", str(XSERVER_BUILD_DIR)], cwd=None)
+    # Perform a full rebuild with captured output for parsing. We must pass
+    # TIGERVNC_SRCDIR and TIGERVNC_BUILDDIR just like the top-level Makefile's
+    # `server` target does, otherwise the xserver build may fail to locate the
+    # correct TigerVNC sources and build artifacts.
+    log_text = _run(
+        [
+            "make",
+            "-C",
+            str(XSERVER_BUILD_DIR),
+            "V=1",
+            f"TIGERVNC_SRCDIR={PROJECT_ROOT}",
+            f"TIGERVNC_BUILDDIR={BUILD_DIR}",
+        ],
+        cwd=None,
+    )
 
     depmap = parse_build_log_for_depmap(log_text)
     if not depmap:

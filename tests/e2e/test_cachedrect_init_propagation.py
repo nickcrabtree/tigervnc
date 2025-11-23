@@ -251,6 +251,14 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
     
     tracker = ProcessTracker()
     
+    # Proactively clean up any stale test servers on the dedicated displays
+    # before we even probe the ports. This is in addition to the best-effort
+    # cleanup inside check_port_available and helps recover from interrupted
+    # or crashed prior runs of the e2e suite.
+    best_effort_cleanup_test_server(display_num, port_num, verbose=True)
+    best_effort_cleanup_test_server(viewer_display_num, viewer_port_num, verbose=True)
+    time.sleep(0.5)
+    
     # Check both test and viewer servers are available
     if not check_port_available(port_num):
         print(f"✗ FAIL: Port {port_num} in use")
