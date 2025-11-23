@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from framework import (
     preflight_check_cpp_only, PreflightError, ArtifactManager,
     ProcessTracker, VNCServer, check_port_available, check_display_available,
-    PROJECT_ROOT
+    PROJECT_ROOT, BUILD_DIR
 )
 from scenarios import ScenarioRunner
 from scenarios_static import StaticScenarioRunner
@@ -142,8 +142,8 @@ def main():
     tracker = ProcessTracker()
 
     # Determine server mode
-    local_server_symlink = PROJECT_ROOT / 'build' / 'unix' / 'vncserver' / 'Xnjcvnc'
-    local_server_actual = PROJECT_ROOT / 'build' / 'unix' / 'xserver' / 'hw' / 'vnc' / 'Xnjcvnc'
+    local_server_symlink = BUILD_DIR / 'unix' / 'vncserver' / 'Xnjcvnc'
+    local_server_actual = BUILD_DIR / 'unix' / 'xserver' / 'hw' / 'vnc' / 'Xnjcvnc'
     
     if local_server_symlink.exists() or local_server_actual.exists():
         server_mode = 'local'

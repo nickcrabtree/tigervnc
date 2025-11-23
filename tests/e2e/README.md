@@ -71,9 +71,64 @@ Running the e2e suite on macOS is not recommended. If you still want to experime
   ```
 - Recommended alternative: run the e2e tests inside a Linux VM or on a remote Linux host.
 
-### TigerVNC Viewers
+### Build Directory and Auto-Build Behaviour
 
-Both viewers must be built before running tests:
+The e2e framework uses a single **build directory** (referred to as `BUILD_DIR`) to
+locate all test binaries:
+
+- By default, `BUILD_DIR` is `build` under the project root.
+- You can override it by setting the `BUILD_DIR` environment variable (e.g.
+  `BUILD_DIR=build-debug`) or by using `--build-dir` when calling `run_tests.sh`.
+
+All server and viewer detection is based on this directory:
+
+- **C++ viewer**: `BUILD_DIR/vncviewer/njcvncviewer`
+- **Rust viewer**: `BUILD_DIR/vncviewer/njcvncviewer-rs` (symlink) or
+  `rust-vnc-viewer/target/release/njcvncviewer-rs`
+- **Custom server (Xnjcvnc)**: `BUILD_DIR/unix/xserver/hw/vnc/Xnjcvnc` (with a
+  convenience symlink at `BUILD_DIR/unix/vncserver/Xnjcvnc`)
+
+The e2e preflight routines will automatically build outdated or missing
+binaries as needed:
+
+- If the C++ viewer is missing, `preflight_check_cpp_only()` and
+  `preflight_check()` run:
+
+  ```bash
+  make viewer
+  ```
+
+- If the Rust viewer is missing, `preflight_check()` runs:
+
+  ```bash
+  make rust_viewer
+  ```
+
+- If a local `Xnjcvnc` server binary exists in `BUILD_DIR` but is **older than
+  the latest git commit**, the framework runs:
+
+  ```bash
+  make server
+  ```
+
+  before using it in tests. This keeps the custom server in sync with the
+  current source tree without requiring manual rebuilds on every change.
+
+Platform-specific behaviour:
+
+- **Linux**: When a test explicitly requests the local server
+  (`server_choice='local'`), the framework requires that an executable
+  `Xnjcvnc` exists under `BUILD_DIR`. If it does not, the test fails fast with
+  a clear `PreflightError` suggesting `make server`.
+- **macOS**: The custom `Xnjcvnc` server is not currently supported. If a test
+  requests `server_choice='local'` but no `Xnjcvnc` is available, the
+  framework falls back to the system `Xtigervnc` with a warning, so
+  viewer-focused tests can still run.
+
+### TigerVNC Viewers (Summary)
+
+If you prefer to build explicitly instead of relying on auto-build, you can
+still run:
 
 ```bash
 # C++ viewer

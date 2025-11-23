@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from framework import (
     preflight_check, PreflightError, ArtifactManager,
     ProcessTracker, VNCServer, check_port_available, check_display_available,
-    PROJECT_ROOT
+    PROJECT_ROOT, BUILD_DIR
 )
 from scenarios_static import StaticScenarioRunner
 from log_parser import parse_cpp_log, compute_metrics
@@ -126,8 +126,8 @@ def main():
     tracker = ProcessTracker()
 
     # Determine server mode
-    local_server_symlink = PROJECT_ROOT / 'build' / 'unix' / 'vncserver' / 'Xnjcvnc'
-    local_server_actual = PROJECT_ROOT / 'build' / 'unix' / 'xserver' / 'hw' / 'vnc' / 'Xnjcvnc'
+    local_server_symlink = BUILD_DIR / 'unix' / 'vncserver' / 'Xnjcvnc'
+    local_server_actual = BUILD_DIR / 'unix' / 'xserver' / 'hw' / 'vnc' / 'Xnjcvnc'
     server_mode = 'local' if (local_server_symlink.exists() or local_server_actual.exists()) else 'system'
 
     print(f"\nUsing server mode: {server_mode}")

@@ -22,7 +22,7 @@ from datetime import datetime
 
 # Project root detection
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-BUILD_DIR = PROJECT_ROOT / "build"
+BUILD_DIR = PROJECT_ROOT / os.environ.get("BUILD_DIR", "build")
 
 # Artifact directories
 ARTIFACTS_BASE = Path(__file__).parent / "_artifacts"
@@ -170,6 +170,145 @@ class ArtifactManager:
         print(f"Artifacts will be saved to: {self.base_dir}")
 
 
+def _run_build_target(target: str, description: str, timeout: float = 600.0, verbose: bool = False) -> None:
+    """Run a top-level make target to build a component needed for tests.
+
+    This is a best-effort helper used by preflight checks to avoid failing
+    just because the viewer binaries have not been built yet.
+    """
+    cmd = ["make", target]
+    if verbose:
+        print(f"Attempting to build {description} via: {' '.join(cmd)}")
+    try:
+        subprocess.run(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            check=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise PreflightError(
+            f"Building {description} timed out after {int(timeout)}s. "
+            f"Command: {' '.join(cmd)}"
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise PreflightError(
+            f"Failed to build {description} using {' '.join(cmd)}: {exc}"
+        )
+
+
+def _ensure_cpp_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
+    """Ensure the C++ viewer binary exists, building it on demand if needed."""
+    cpp_viewer = BUILD_DIR / "vncviewer" / "njcvncviewer"
+    if not cpp_viewer.exists():
+        _run_build_target("viewer", "C++ viewer", verbose=verbose)
+    if not cpp_viewer.exists():
+        raise PreflightError(
+            f"C++ viewer not found after attempting to build it: {cpp_viewer}\n"
+            "Check your build configuration or run 'make viewer' manually."
+        )
+    binaries["cpp_viewer"] = str(cpp_viewer)
+    if verbose:
+        print(f"✓ C++ viewer: {cpp_viewer}")
+
+
+def _ensure_rust_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
+    """Ensure the Rust viewer binary exists, building it on demand if needed."""
+    rust_viewer_symlink = BUILD_DIR / "vncviewer" / "njcvncviewer-rs"
+    rust_viewer_direct = (
+        PROJECT_ROOT / "rust-vnc-viewer" / "target" / "release" / "njcvncviewer-rs"
+    )
+
+    rust_viewer = None
+    if rust_viewer_symlink.exists():
+        rust_viewer = rust_viewer_symlink
+    elif rust_viewer_direct.exists():
+        rust_viewer = rust_viewer_direct
+    else:
+        _run_build_target("rust_viewer", "Rust viewer", verbose=verbose)
+        if rust_viewer_symlink.exists():
+            rust_viewer = rust_viewer_symlink
+        elif rust_viewer_direct.exists():
+            rust_viewer = rust_viewer_direct
+
+    if rust_viewer is None:
+        raise PreflightError(
+            "Rust viewer not found after attempting to build it. "
+            "Ensure 'make rust_viewer' succeeds and that njcvncviewer-rs is available."
+        )
+
+    binaries["rust_viewer"] = str(rust_viewer)
+    if verbose:
+        print(f"✓ Rust viewer: {rust_viewer}")
+
+
+def _get_latest_git_commit_timestamp() -> Optional[float]:
+    """Return the UNIX timestamp of the most recent git commit, or None.
+
+    This is used to decide whether local binaries (like the Xnjcvnc server)
+    are stale and should be rebuilt before running tests.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%ct"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+    except OSError:
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    output = result.stdout.strip()
+    if not output:
+        return None
+
+    try:
+        return float(output)
+    except ValueError:
+        return None
+
+
+def _maybe_rebuild_local_server(server_path: Path, verbose: bool = False) -> None:
+    """Rebuild local Xnjcvnc server if it is older than the latest git commit.
+
+    This is a best-effort helper. If rebuilding fails, the caller will simply
+    proceed with whatever server binary is available (local or system).
+    """
+    if not server_path.exists():
+        # Nothing to compare; respect the fact that the user may not have
+        # set up the Xnjcvnc build environment at all.
+        return
+
+    head_ts = _get_latest_git_commit_timestamp()
+    if head_ts is None:
+        return
+
+    try:
+        mtime = server_path.stat().st_mtime
+    except OSError:
+        # If we can't stat the file, don't attempt cleverness here.
+        return
+
+    if mtime >= head_ts:
+        # Server is at least as new as the latest commit; nothing to do.
+        return
+
+    # At this point the server binary appears stale relative to the repo.
+    # Try to rebuild it via the top-level Makefile.
+    try:
+        _run_build_target("server", "Xnjcvnc server", timeout=1200.0, verbose=verbose)
+    except PreflightError as exc:
+        # Best-effort only: print a warning and continue. Tests that
+        # explicitly require the local server can still fail later with
+        # a clear error if the binary is unusable.
+        if verbose:
+            print(f"⚠ Warning: auto-rebuild of local Xnjcvnc server failed: {exc}")
+
+
 def preflight_check(verbose: bool = False) -> Dict[str, str]:
     """
     Run preflight checks for required dependencies.
@@ -214,28 +353,9 @@ def preflight_check(verbose: bool = False) -> Dict[str, str]:
         elif verbose:
             print(f"⚠ Optional binary not found: {binary}")
     
-    # Check our viewer binaries
-    cpp_viewer = BUILD_DIR / "vncviewer" / "njcvncviewer"
-    rust_viewer_symlink = BUILD_DIR / "vncviewer" / "njcvncviewer-rs"
-    rust_viewer_direct = PROJECT_ROOT / "rust-vnc-viewer" / "target" / "release" / "njcvncviewer-rs"
-    
-    if not cpp_viewer.exists():
-        raise PreflightError(f"C++ viewer not found: {cpp_viewer}\nRun 'make viewer' to build")
-    binaries['cpp_viewer'] = str(cpp_viewer)
-    
-    rust_viewer = None
-    if rust_viewer_symlink.exists():
-        rust_viewer = rust_viewer_symlink
-    elif rust_viewer_direct.exists():
-        rust_viewer = rust_viewer_direct
-    
-    if rust_viewer is None:
-        raise PreflightError(f"Rust viewer not found\nRun 'make rust_viewer' to build")
-    binaries['rust_viewer'] = str(rust_viewer)
-    
-    if verbose:
-        print(f"✓ C++ viewer: {binaries['cpp_viewer']}")
-        print(f"✓ Rust viewer: {binaries['rust_viewer']}")
+    # Ensure viewer binaries exist, building them on demand if needed.
+    _ensure_cpp_viewer(binaries, verbose=verbose)
+    _ensure_rust_viewer(binaries, verbose=verbose)
     
     return binaries
 
@@ -284,15 +404,8 @@ def preflight_check_cpp_only(verbose: bool = False) -> Dict[str, str]:
         elif verbose:
             print(f"⚠ Optional binary not found: {binary}")
     
-    # Check C++ viewer only
-    cpp_viewer = BUILD_DIR / "vncviewer" / "njcvncviewer"
-    
-    if not cpp_viewer.exists():
-        raise PreflightError(f"C++ viewer not found: {cpp_viewer}\nRun 'make viewer' to build")
-    binaries['cpp_viewer'] = str(cpp_viewer)
-    
-    if verbose:
-        print(f"✓ C++ viewer: {binaries['cpp_viewer']}")
+    # Ensure C++ viewer exists, building it on demand if needed.
+    _ensure_cpp_viewer(binaries, verbose=verbose)
     
     return binaries
 
@@ -320,10 +433,26 @@ class VNCServer:
         self.wm_proc: Optional[subprocess.Popen] = None
     
     def _select_server_binary(self) -> str:
-        """Select server binary based on preference and availability."""
+        """Select server binary based on preference and availability.
+
+        When a local Xnjcvnc binary is available, this will also perform a
+        freshness check against the latest git commit and trigger a rebuild
+        via `make server` if the binary appears older than HEAD.
+
+        On Linux, if a test explicitly requests the local server
+        (server_choice='local'), we require that the custom Xnjcvnc binary
+        actually exists and is executable; otherwise we fail fast instead of
+        silently falling back to the system Xtigervnc. On macOS, where the
+        custom server is not currently supported, we gracefully fall back to
+        Xtigervnc when 'local' is requested.
+        """
         # Try both symlink and actual binary location
         local_xnjcvnc_symlink = BUILD_DIR / 'unix' / 'vncserver' / 'Xnjcvnc'
         local_xnjcvnc_actual = BUILD_DIR / 'unix' / 'xserver' / 'hw' / 'vnc' / 'Xnjcvnc'
+
+        # If we appear to have a local server binary, ensure it is up-to-date
+        # relative to the repository before we decide which binary to run.
+        _maybe_rebuild_local_server(local_xnjcvnc_actual, verbose=False)
         
         local_xnjcvnc = None
         if local_xnjcvnc_symlink.exists() and os.access(local_xnjcvnc_symlink, os.X_OK):
@@ -331,12 +460,36 @@ class VNCServer:
         elif local_xnjcvnc_actual.exists() and os.access(local_xnjcvnc_actual, os.X_OK):
             local_xnjcvnc = local_xnjcvnc_actual
         
+        is_macos = (sys.platform == 'darwin')
+
         if self.server_choice == 'local':
-            return str(local_xnjcvnc) if local_xnjcvnc else 'Xtigervnc'
+            if local_xnjcvnc is not None:
+                return str(local_xnjcvnc)
+            # No usable local server binary
+            if is_macos:
+                # Custom Xnjcvnc server is not expected to build on macOS yet;
+                # fall back to the system server so viewer-focused tests can
+                # still run.
+                print(
+                    "⚠ Using system Xtigervnc because local Xnjcvnc server "
+                    "is not available on this platform.",
+                    file=sys.stderr,
+                )
+                return 'Xtigervnc'
+            raise PreflightError(
+                "Local Xnjcvnc server requested (server_choice='local') but "
+                "no executable Xnjcvnc binary was found under the build tree. "
+                "Run 'make server' first, or use server_choice='system' "
+                "if you intentionally want the system Xtigervnc."
+            )
+
         if self.server_choice == 'system':
             return 'Xtigervnc'
-        # auto
-        if local_xnjcvnc:
+
+        # auto: prefer local server when available; otherwise fall back to
+        # system Xtigervnc. Tests that truly require the custom server should
+        # pass server_choice='local' so they fail fast if Xnjcvnc is missing.
+        if local_xnjcvnc is not None:
             return str(local_xnjcvnc)
         return 'Xtigervnc'
     

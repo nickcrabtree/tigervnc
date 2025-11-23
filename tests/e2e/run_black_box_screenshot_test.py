@@ -29,6 +29,7 @@ from framework import (
     PreflightError,
     ProcessTracker,
     PROJECT_ROOT,
+    BUILD_DIR,
     VNCServer,
     check_display_available,
     check_port_available,
@@ -41,10 +42,8 @@ from screenshot_compare import compare_screenshots
 def _select_server_mode() -> str:
     """Choose server mode: local Xnjcvnc if available, else system Xtigervnc."""
 
-    local_server_symlink = PROJECT_ROOT / "build" / "unix" / "vncserver" / "Xnjcvnc"
-    local_server_actual = (
-        PROJECT_ROOT / "build" / "unix" / "xserver" / "hw" / "vnc" / "Xnjcvnc"
-    )
+    local_server_symlink = BUILD_DIR / "unix" / "vncserver" / "Xnjcvnc"
+    local_server_actual = BUILD_DIR / "unix" / "xserver" / "hw" / "vnc" / "Xnjcvnc"
     if local_server_symlink.exists() or local_server_actual.exists():
         return "local"
     return "system"
