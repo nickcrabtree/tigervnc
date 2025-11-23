@@ -100,12 +100,36 @@ def check_binary(name: str, required: bool = True) -> Optional[str]:
 
 
 def check_port_available(port: int) -> bool:
-    """Check if a TCP port is available."""
+    """Check if a TCP port is available.
+
+    For the dedicated test ports (6898 → :998, 6899 → :999), this will also
+    perform a one-shot best-effort cleanup of any orphaned test VNC servers
+    before giving up. This helps ensure that a crashed or interrupted test
+    run does not permanently block subsequent tests.
+    """
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(('127.0.0.1', port))
+            s.bind(("127.0.0.1", port))
             return True
     except OSError:
+        # For known test ports, attempt to clean up any leftover test servers
+        # and retry once.
+        display = None
+        if port == 6898:
+            display = 998
+        elif port == 6899:
+            display = 999
+
+        if display is not None:
+            best_effort_cleanup_test_server(display, port, verbose=False)
+            time.sleep(0.5)
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(("127.0.0.1", port))
+                    return True
+            except OSError:
+                return False
+
         return False
 
 
@@ -144,6 +168,98 @@ def wait_for_x_display(display: int, timeout: float = 10.0) -> bool:
             return True
         time.sleep(0.2)
     return False
+
+
+def best_effort_cleanup_test_server(display: int, port: int, verbose: bool = False) -> None:
+    """Best-effort cleanup for orphaned test VNC servers on :998/:999.
+
+    This is used when a test detects that a known test port (e.g. 6898/6899)
+    is already in use, which typically indicates a previous test run crashed
+    or was interrupted and left an Xtigervnc/Xnjcvnc instance running on one
+    of the dedicated test displays.
+
+    Safety:
+    - Only touches displays 998 and 999 (reserved for tests).
+    - Only considers processes whose command line contains both
+      "Xtigervnc"/"Xnjcvnc" and the exact display string ":<display>".
+    - Kills by specific PID only, never using pkill/killall.
+    """
+    if display not in (998, 999):
+        return
+
+    pattern = f":{display}"
+
+    try:
+        result = subprocess.run(
+            ["ps", "aux"],
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+    except Exception:
+        return
+
+    if result.returncode != 0:
+        return
+
+    pids_to_kill = []
+    for line in result.stdout.splitlines():
+        if ("Xtigervnc" in line or "Xnjcvnc" in line) and pattern in line:
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            try:
+                pid = int(parts[1])
+            except ValueError:
+                continue
+            pids_to_kill.append(pid)
+
+    if not pids_to_kill:
+        return
+
+    if verbose:
+        print(f"⚠ Cleaning up orphaned test VNC servers on :{display} (PIDs: {pids_to_kill})")
+
+    for pid in pids_to_kill:
+        try:
+            # Try to terminate the specific server PID gracefully first.
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            continue
+
+    # Give them a moment to exit and release the port.
+    time.sleep(1.0)
+
+    # Force-kill any stubborn processes.
+    for pid in pids_to_kill:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            continue  # already gone
+        except PermissionError:
+            continue
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            continue
+
+    # Best-effort cleanup of stale X11 socket/lock files for this display,
+    # mirroring the logic used in some individual tests.
+    try:
+        socket_path = Path(f"/tmp/.X11-unix/X{display}")
+        lock_path = Path(f"/tmp/.X{display}-lock")
+        if socket_path.exists():
+            socket_path.unlink()
+        if lock_path.exists():
+            lock_path.unlink()
+    except Exception:
+        # Ignore filesystem cleanup errors; the important part is killing
+        # the actual server process so the TCP port is freed.
+        pass
 
 
 def timestamped_log_path(artifacts_dir: Path, role: str, suffix: str) -> Path:

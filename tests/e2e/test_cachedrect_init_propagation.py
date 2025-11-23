@@ -25,9 +25,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from framework import (
     preflight_check, ArtifactManager, ProcessTracker, VNCServer,
-    check_port_available, check_display_available, PROJECT_ROOT
+    check_port_available, check_display_available, PROJECT_ROOT,
+    BUILD_DIR, best_effort_cleanup_test_server
 )
 from scenarios import ScenarioRunner
+from scenarios_static import StaticScenarioRunner
 
 
 def parse_server_cache_stats(log_path: Path) -> dict:
@@ -126,10 +128,16 @@ def run_test(display_num: int = 998, port_num: int = 6898, duration: int = 60) -
     
     tracker = ProcessTracker()
     
-    # Check availability
+    # Check availability; if the test port is already in use, attempt a
+    # best-effort cleanup of any orphaned test servers on the dedicated
+    # test displays before giving up.
     if not check_port_available(port_num):
-        print(f"✗ FAIL: Port {port_num} in use")
-        return False
+        print(f"⚠ Port {port_num} in use; attempting best-effort cleanup of test server on :{display_num}...")
+        best_effort_cleanup_test_server(display_num, port_num, verbose=True)
+        time.sleep(1.0)
+        if not check_port_available(port_num):
+            print(f"✗ FAIL: Port {port_num} in use after cleanup attempt")
+            return False
     if not check_display_available(display_num):
         print(f"✗ FAIL: Display :{display_num} in use")
         return False
@@ -165,8 +173,8 @@ def run_test(display_num: int = 998, port_num: int = 6898, duration: int = 60) -
         
         print("[4/4] Analyzing logs...")
         
-        # Parse server log
-        server_log = artifacts.logs_dir / "contentcache_test.log"
+        # Parse server log (matches VNCServer log naming convention)
+        server_log = artifacts.logs_dir / f"contentcache_test_server_{display_num}.log"
         server_stats = parse_server_cache_stats(server_log)
         
         print("\nServer-side ContentCache statistics:")
@@ -266,6 +274,11 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
             geometry="1024x768",
             log_level="*:stderr:100",
             server_choice="local",
+            # This test is specifically about the ContentCache (CachedRect)
+            # protocol. Disable PersistentCache on the server to avoid the
+            # default PersistentCache-first behavior masking ContentCache
+            # statistics.
+            server_params={"EnablePersistentCache": "0"},
         )
         
         if not server.start():
@@ -297,7 +310,8 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
         import subprocess
         import os
         
-        viewer_path = PROJECT_ROOT / "build" / "vncviewer" / "njcvncviewer"
+        # Respect BUILD_DIR so tests work with non-default build locations
+        viewer_path = BUILD_DIR / "vncviewer" / "njcvncviewer"
         viewer_log = artifacts.logs_dir / "viewer.log"
         
         cmd = [
@@ -305,6 +319,9 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
             f'127.0.0.1::{port_num}',
             'Shared=1',
             'Log=*:stderr:100',
+            # Disable PersistentCache so that this test focuses on the
+            # ContentCache CachedRect/CachedRectInit flow.
+            'PersistentCache=0',
         ]
         
         # Set DISPLAY to viewer window server
@@ -322,10 +339,13 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
         tracker.register('viewer', viewer_proc)
         time.sleep(3)
         
-        # Run scenario
+        # Run scenario with high-confidence repeated content using the
+        # static tiled-logo scenario. This reliably produces rectangles
+        # above the ContentCache MinRectSize threshold and generates
+        # cache lookups + hits.
         print(f"[4/6] Running scenario ({duration}s)...")
-        runner = ScenarioRunner(display_num, verbose=False)
-        runner.cache_hits_minimal(duration_sec=duration)
+        runner = StaticScenarioRunner(display_num, verbose=False)
+        runner.tiled_logos_test(tiles=12, duration=duration, delay_between=3.0)
         
         # Let viewer finish processing
         time.sleep(2)
@@ -407,7 +427,10 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
         
     finally:
         print("\nFinal cleanup...")
-        log_file.close()
+        try:
+            log_file.close()
+        except Exception:
+            pass
         
         # Cleanup any remaining processes (most should already be stopped)
         if 'viewer_proc' in locals() and viewer_proc.poll() is None:
@@ -451,14 +474,14 @@ if __name__ == '__main__':
         print(f"✗ Preflight failed: {e}")
         sys.exit(1)
     
-    # Run appropriate test
-    if args.with_viewer:
-        success = run_test_with_viewer(
-            args.display, args.port,
-            args.viewer_display, args.viewer_port,
-            args.duration
-        )
-    else:
-        success = run_test(args.display, args.port, args.duration)
+    # Always run the viewer-backed variant. The server-only path does not
+    # exercise the encode pipeline and therefore cannot produce cache
+    # statistics. The --with-viewer flag is retained for compatibility but
+    # no longer changes behavior.
+    success = run_test_with_viewer(
+        args.display, args.port,
+        args.viewer_display, args.viewer_port,
+        args.duration
+    )
     
     sys.exit(0 if success else 1)
