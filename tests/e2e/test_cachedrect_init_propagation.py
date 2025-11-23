@@ -316,8 +316,35 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
         viewer_env = os.environ.get("TIGERVNC_VIEWER_BIN")
         if viewer_env:
             viewer_path = Path(viewer_env)
+            if not viewer_path.exists():
+                print(f"✗ FAIL: TIGERVNC_VIEWER_BIN points to missing binary: {viewer_path}")
+                return False
         else:
             viewer_path = BUILD_DIR / "vncviewer" / "njcvncviewer"
+            if not viewer_path.exists():
+                # The server rebuild path (make server) performs a sledgehammer
+                # clean of the CMake build tree, which can remove the viewer
+                # binary after preflight. Ensure the viewer is present by
+                # rebuilding it on demand here.
+                try:
+                    subprocess.run(
+                        [
+                            "cmake",
+                            "--build",
+                            str(BUILD_DIR),
+                            "--target",
+                            "njcvncviewer",
+                        ],
+                        cwd=str(PROJECT_ROOT),
+                        check=True,
+                        timeout=600.0,
+                    )
+                except Exception as e:
+                    print(f"✗ FAIL: Could not build C++ viewer at {viewer_path}: {e}")
+                    return False
+                if not viewer_path.exists():
+                    print(f"✗ FAIL: Viewer binary still missing after build: {viewer_path}")
+                    return False
 
         viewer_log = artifacts.logs_dir / "viewer.log"
         
