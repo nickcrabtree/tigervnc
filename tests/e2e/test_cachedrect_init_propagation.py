@@ -310,8 +310,15 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
         import subprocess
         import os
         
-        # Respect BUILD_DIR so tests work with non-default build locations
-        viewer_path = BUILD_DIR / "vncviewer" / "njcvncviewer"
+        # Respect BUILD_DIR so tests work with non-default build locations,
+        # but allow an explicit override via TIGERVNC_VIEWER_BIN so the same
+        # test harness can be reused for different viewer implementations.
+        viewer_env = os.environ.get("TIGERVNC_VIEWER_BIN")
+        if viewer_env:
+            viewer_path = Path(viewer_env)
+        else:
+            viewer_path = BUILD_DIR / "vncviewer" / "njcvncviewer"
+
         viewer_log = artifacts.logs_dir / "viewer.log"
         
         cmd = [

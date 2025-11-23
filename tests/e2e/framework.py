@@ -314,7 +314,20 @@ def _run_build_target(target: str, description: str, timeout: float = 600.0, ver
 
 
 def _ensure_cpp_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
-    """Ensure the C++ viewer binary exists, building it on demand if needed."""
+    """Ensure the C++ viewer binary exists, building it on demand if needed.
+
+    If the environment variable ``TIGERVNC_VIEWER_BIN`` is set, it takes
+    precedence and is used as the viewer under test. This allows the same
+    e2e tests to be reused for alternative viewer implementations (for
+    example, the Rust viewer) without changing the test code.
+    """
+    override = os.environ.get("TIGERVNC_VIEWER_BIN")
+    if override:
+        binaries["cpp_viewer"] = override
+        if verbose:
+            print(f"✓ C++ viewer (overridden by $TIGERVNC_VIEWER_BIN): {override}")
+        return
+
     cpp_viewer = BUILD_DIR / "vncviewer" / "njcvncviewer"
     if not cpp_viewer.exists():
         _run_build_target("viewer", "C++ viewer", verbose=verbose)
@@ -329,7 +342,20 @@ def _ensure_cpp_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
 
 
 def _ensure_rust_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
-    """Ensure the Rust viewer binary exists, building it on demand if needed."""
+    """Ensure the Rust viewer binary exists, building it on demand if needed.
+
+    If the environment variable ``TIGERVNC_RUST_VIEWER_BIN`` is set, it
+    overrides the automatically detected/build output path. This mirrors the
+    behaviour of ``TIGERVNC_VIEWER_BIN`` for the C++ viewer and lets higher-
+    level harnesses control exactly which Rust binary is exercised.
+    """
+    override = os.environ.get("TIGERVNC_RUST_VIEWER_BIN")
+    if override:
+        binaries["rust_viewer"] = override
+        if verbose:
+            print(f"✓ Rust viewer (overridden by $TIGERVNC_RUST_VIEWER_BIN): {override}")
+        return
+
     rust_viewer_symlink = BUILD_DIR / "vncviewer" / "njcvncviewer-rs"
     rust_viewer_direct = (
         PROJECT_ROOT / "rust-vnc-viewer" / "target" / "release" / "njcvncviewer-rs"

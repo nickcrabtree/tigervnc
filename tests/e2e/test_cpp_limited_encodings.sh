@@ -19,6 +19,10 @@ if [ ! -f "$PROJECT_ROOT/build/unix/xserver/hw/vnc/Xnjcvnc" ]; then
     exit 1
 fi
 
+# Choose viewer binary: allow override via TIGERVNC_VIEWER_BIN, falling back
+# to the default C++ viewer under the build tree.
+VIEWER_BIN="${TIGERVNC_VIEWER_BIN:-"$PROJECT_ROOT/build/vncviewer/njcvncviewer"}"
+
 # Start VNC server on display :998
 DISPLAY_NUM=998
 VNC_PORT=6898
@@ -84,12 +88,12 @@ echo "✓ Test content launched (PID: $XTERM_PID)"
 # "Can't open display".
 echo ""
 echo "[4/5] Running C++ viewer on test display with LIMITED encodings (ZRLE preferred)..."
-echo "  Command: njcvncviewer 127.0.0.1::$VNC_PORT PreferredEncoding=ZRLE"
+echo "  Command: ${VIEWER_BIN} 127.0.0.1::$VNC_PORT PreferredEncoding=ZRLE"
 echo "  DISPLAY: :$DISPLAY_NUM (isolated test X server)"
 echo ""
 
 # Run viewer on the test display so the window stays confined to :${DISPLAY_NUM}
-DISPLAY=:$DISPLAY_NUM timeout 10 "$PROJECT_ROOT/build/vncviewer/njcvncviewer" \
+DISPLAY=:$DISPLAY_NUM timeout 10 "$VIEWER_BIN" \
     "127.0.0.1::$VNC_PORT" \
     "Shared=1" \
     "PreferredEncoding=ZRLE" \

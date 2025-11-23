@@ -222,23 +222,23 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 )
                 parsed.request_cached_data_count += 1
             
-            # Eviction notifications (ContentCache)
-            elif 'sending' in lower and 'cache eviction' in lower:
-                # Parse: "Sending 5 cache eviction notifications to server"
-                match = re.search(r'sending\s+(\d+)\s+cache\s+eviction', message, re.IGNORECASE)
-                if match:
-                    count = int(match.group(1))
-                    parsed.cache_eviction_count += 1
-                    parsed.evicted_ids_count += count
-            
             # Eviction notifications (PersistentCache)
-            elif 'sending' in lower and 'persistentcache' in lower and 'eviction' in lower:
+            if 'sending' in lower and 'persistentcache' in lower and 'eviction' in lower:
                 # Parse: "Sending 5 PersistentCache eviction notifications"
                 match = re.search(r'sending\s+(\d+).*persistentcache.*eviction', message, re.IGNORECASE)
                 if match:
                     count = int(match.group(1))
                     parsed.persistent_eviction_count += 1
                     parsed.persistent_evicted_ids += count
+
+            # Eviction notifications (ContentCache)
+            elif 'sending' in lower and 'cache eviction' in lower and 'persistentcache' not in lower:
+                # Parse: "Sending 5 cache eviction notifications to server"
+                match = re.search(r'sending\s+(\d+)\s+cache\s+eviction', message, re.IGNORECASE)
+                if match:
+                    count = int(match.group(1))
+                    parsed.cache_eviction_count += 1
+                    parsed.evicted_ids_count += count
             
             # Server-side receipt (SMsgReader) line: "Client evicted N persistent cache entries"
             elif 'client evicted' in lower and 'persistent' in lower and 'cache' in lower:
@@ -248,19 +248,22 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                     parsed.persistent_eviction_count += 1
                     parsed.persistent_evicted_ids += count
             
-            # PersistentCache bandwidth summary
-            elif 'persistentcache:' in message:
-                # Format: "PersistentCache: <size> bandwidth saving (<pct>% reduction)"
-                m = re.search(r'PersistentCache:.*\(([-\d.]+)%\s*reduction\)', message)
+            # PersistentCache bandwidth summary (viewer-side)
+            elif 'persistentcache:' in lower:
+                # Format: "PersistentCache: <size> bandwidth saving (98.4% reduction)"
+                # Logs may wrap the word "reduction" onto the next line, so only
+                # require that the percentage appears inside parentheses.
+                m = re.search(r'PersistentCache:.*\(([-\d.]+)%', message, re.IGNORECASE)
                 if m:
                     try:
                         parsed.persistent_bandwidth_reduction = float(m.group(1))
                     except ValueError:
                         pass
             
-            elif 'contentcache:' in message:
-                # Format: "ContentCache: <size> bandwidth saving (<pct>% reduction)"
-                m = re.search(r'ContentCache:.*\(([-\d.]+)%\s*reduction\)', message)
+            # ContentCache bandwidth summary (viewer-side)
+            elif 'contentcache:' in lower:
+                # Format: "ContentCache: <size> bandwidth saving (98.4% reduction)"
+                m = re.search(r'ContentCache:.*\(([-\d.]+)%', message, re.IGNORECASE)
                 if m:
                     try:
                         parsed.content_bandwidth_reduction = float(m.group(1))
@@ -335,31 +338,32 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
     with open(log_path, 'r', errors='replace') as f:
         for line in f:
             line = line.strip()
+            lower = line.lower()
             
             # PersistentCache HIT with bandwidth savings
             # Format (multi-line):
             #   "EncodeManager: PersistentCache protocol HIT: rect [x,y-x,y]"
             #   "              hash=... saved 10896 bytes"
-            if 'persistentcache' in line.lower() and 'hit' in line.lower():
+            if 'persistentcache' in lower and 'hit' in lower:
                 parsed.persistent_hits += 1
                 if len(hit_samples) < 5:
                     hit_samples.append(line)
                 last_was_pc_hit = True
-            elif last_was_pc_hit and 'saved' in line.lower() and 'bytes' in line.lower():
+            elif last_was_pc_hit and 'saved' in lower and 'bytes' in lower:
                 # Continuation line with "saved N bytes"
-                match = re.search(r'saved\s+(\d+)\s+bytes', line)
+                match = re.search(r'saved\s+(\d+)\s+bytes', lower)
                 if match:
                     persistent_bytes_saved += int(match.group(1))
                     persistent_bytes_sent_as_ref += 47  # PersistentCachedRect protocol overhead
                 last_was_pc_hit = False
-            elif 'persistentcache' in line.lower() and 'miss' in line.lower():
+            elif 'persistentcache' in lower and 'miss' in lower:
                 parsed.persistent_misses += 1
                 if len(miss_samples) < 5:
                     miss_samples.append(line)
                 last_was_pc_hit = False
             # PersistentCache INIT (full send)
             # Format: "PersistentCache INIT: rect [x,y-x,y] hash=... (now known for session)"
-            elif 'persistentcache init' in line.lower():
+            elif 'persistentcache init' in lower:
                 # Treat each PersistentCachedRectInit as a protocol-level miss:
                 # the server had to send full data because the client didn't
                 # yet know this hash. This mirrors how CachedRectInit is
@@ -370,16 +374,16 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
                 last_was_pc_hit = False
             else:
                 # Not a PC message, reset state
-                if last_was_pc_hit and 'hash=' not in line.lower():
+                if last_was_pc_hit and 'hash=' not in lower:
                     # Not a continuation line either
                     last_was_pc_hit = False
             
             # ContentCache operations on server
-            if 'contentcache.*hit' in line.lower() or 'cache.*hit.*id' in line.lower():
+            if 'contentcache.*hit' in lower or 'cache.*hit.*id' in lower:
                 parsed.total_hits += 1
                 if len(hit_samples) < 5:
                     hit_samples.append(line)
-            elif 'contentcache.*miss' in line.lower():
+            elif 'contentcache.*miss' in lower:
                 parsed.total_misses += 1
                 if len(miss_samples) < 5:
                     miss_samples.append(line)
