@@ -157,17 +157,19 @@ def main():
         diff = abs(cc_hit_rate - pc_hit_rate)
         print(f"  Difference: {diff:.1f} percentage points")
 
-        # If PersistentCache not active, skip enforcement
+        # If PersistentCache is not active at all, this is a hard failure: the
+        # purpose of this test is to exercise and compare both caches.
         if pc_hit_rate == 0.0:
-            print("\nNote: PersistentCache activity not observed; skipping parity enforcement.")
+            print("\n✗ TEST FAILED")
+            print("  • PersistentCache activity not observed (hit rate 0.0%)")
+            print("  • Cannot compare hit rates between ContentCache and PersistentCache")
             print("\n" + "=" * 70)
             print("ARTIFACTS")
             print("=" * 70)
             print(f"Logs: {artifacts.logs_dir}")
             print(f"CC log: {log_cc}")
             print(f"PC log: {log_pc}")
-            print("\n✓ TEST PASSED (skipped enforcement)")
-            return 0
+            return 1
 
         success = True
         failures = []

@@ -264,9 +264,11 @@ def main():
         else:
             print(f"\n✓ Cache received content ({proto['CachedRectInit']} CachedRectInit)")
         
-        # 2. Evictions SHOULD occur with small cache, but skip enforcement if not observed
+        # 2. Evictions MUST occur with a small cache in this scenario.
         if proto['CacheEviction'] == 0:
-            print("Note: No eviction notifications observed; skipping strict enforcement.")
+            success = False
+            failures.append("No eviction notifications observed (expected at least one in small-cache scenario)")
+            print("✗ No eviction notifications observed (expected at least one in small-cache scenario)")
         else:
             print(f"✓ Evictions occurred ({proto['CacheEviction']} notifications sent)")
         
@@ -298,11 +300,14 @@ def main():
         
         print("\n" + "=" * 70)
         if success:
-            print("✓ TEST PASSED")
+            print("\n✓ TEST PASSED")
             print("=" * 70)
-            print("\nEviction protocol is working correctly:")
-            print("  • Client evicted entries when cache filled")
-            print("  • Eviction notifications sent to server")
+            print("\nEviction behaviour is working correctly:")
+            print("  • Client evicted entries when cache filled (as evidenced by hits + content churn)")
+            if proto['CacheEviction'] > 0:
+                print("  • Eviction notifications sent to server")
+            else:
+                print("  • No explicit eviction notifications observed (viewer may evict silently)")
             print("  • Cache continued to work after evictions")
             return 0
         else:
