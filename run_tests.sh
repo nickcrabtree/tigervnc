@@ -172,6 +172,8 @@ run_python_e2e_tests() {
   # when a previous test run crashed or was interrupted.
   python3 - << 'PY'
 from framework import best_effort_cleanup_test_server
+
+# Pre-suite cleanup
 best_effort_cleanup_test_server(998, 6898, verbose=True)
 best_effort_cleanup_test_server(999, 6899, verbose=True)
 PY
@@ -201,6 +203,14 @@ PY
       echo "WARNING: e2e script ${script} reported failures (exit code ${status})." >&2
       GLOBAL_STATUS=1
     fi
+
+    # Post-script cleanup: ensure that a misbehaving or crashed test cannot
+    # leave :998/:999 servers running and interfere with subsequent tests.
+    python3 - << 'PY'
+from framework import best_effort_cleanup_test_server
+best_effort_cleanup_test_server(998, 6898, verbose=True)
+best_effort_cleanup_test_server(999, 6899, verbose=True)
+PY
   done
   cd "${old_pwd}" || true
   set -e

@@ -183,12 +183,20 @@ def best_effort_cleanup_test_server(display: int, port: int, verbose: bool = Fal
     - Only considers processes whose command line contains both
       "Xtigervnc"/"Xnjcvnc" and the exact display string ":<display>".
     - Kills by specific PID only, never using pkill/killall.
+
+    Robustness improvements:
+    - In addition to scanning "ps aux" output, also inspects the specific
+      TCP port (when possible) to discover any Xtigervnc/Xnjcvnc instances
+      that may not be visible due to truncated ps output.
     """
     if display not in (998, 999):
         return
 
     pattern = f":{display}"
 
+    pids_to_kill: List[int] = []
+
+    # 1) Discover candidate PIDs via ps aux (display-based matching).
     try:
         result = subprocess.run(
             ["ps", "aux"],
@@ -197,22 +205,79 @@ def best_effort_cleanup_test_server(display: int, port: int, verbose: bool = Fal
             timeout=5.0,
         )
     except Exception:
-        return
+        result = None
 
-    if result.returncode != 0:
-        return
+    if result is not None and result.returncode == 0:
+        for line in result.stdout.splitlines():
+            if ("Xtigervnc" in line or "Xnjcvnc" in line) and pattern in line:
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                try:
+                    pid = int(parts[1])
+                except ValueError:
+                    continue
+                if pid not in pids_to_kill:
+                    pids_to_kill.append(pid)
 
-    pids_to_kill = []
-    for line in result.stdout.splitlines():
-        if ("Xtigervnc" in line or "Xnjcvnc" in line) and pattern in line:
-            parts = line.split()
-            if len(parts) < 2:
-                continue
-            try:
-                pid = int(parts[1])
-            except ValueError:
-                continue
-            pids_to_kill.append(pid)
+    # 2) Optionally, refine with port-based discovery when tools are available.
+    #    This catches cases where ps output is truncated and the display
+    #    string is not visible even though the process is still bound to the
+    #    expected TCP port.
+    try:
+        import shutil as _shutil
+
+        lsof_path = _shutil.which("lsof")
+    except Exception:
+        lsof_path = None
+
+    if lsof_path and port:
+        try:
+            lsof_result = subprocess.run(
+                [lsof_path, "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
+                capture_output=True,
+                text=True,
+                timeout=5.0,
+            )
+        except Exception:
+            lsof_result = None
+
+        if lsof_result is not None and lsof_result.returncode == 0:
+            for line in lsof_result.stdout.splitlines():
+                # Skip header lines (they usually start with COMMAND)
+                if line.startswith("COMMAND"):
+                    continue
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                try:
+                    pid = int(parts[1])
+                except ValueError:
+                    continue
+
+                # Confirm this PID really is one of our test VNC servers by
+                # inspecting its full command line and checking for both the
+                # binary name and the expected display string.
+                try:
+                    ps_result = subprocess.run(
+                        ["ps", "-p", str(pid), "-o", "pid,args="],
+                        capture_output=True,
+                        text=True,
+                        timeout=5.0,
+                    )
+                except Exception:
+                    continue
+
+                if ps_result.returncode != 0:
+                    continue
+
+                cmdline = ps_result.stdout.strip()
+                if not cmdline:
+                    continue
+
+                if ("Xtigervnc" in cmdline or "Xnjcvnc" in cmdline) and pattern in cmdline:
+                    if pid not in pids_to_kill:
+                        pids_to_kill.append(pid)
 
     if not pids_to_kill:
         return
