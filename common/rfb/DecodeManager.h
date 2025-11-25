@@ -81,6 +81,11 @@ namespace rfb {
     // server via the HashList protocol once the CMsgWriter is available.
     void advertisePersistentCacheHashes();
 
+    // Trigger lazy loading of PersistentCache from disk. Called by CConnection
+    // when PersistentCache protocol is first negotiated (on first use).
+    // This defers disk I/O until we know the server actually supports PersistentCache.
+    void triggerPersistentCacheLoad();
+
   private:
     void setThreadException();
     void throwThreadException();
@@ -172,6 +177,9 @@ namespace rfb {
     // One-shot guard to avoid sending the PersistentCache HashList more than
     // once per connection.
     bool persistentHashListSent;
+
+    // Guard to ensure we only trigger PersistentCache disk load once per connection
+    bool persistentCacheLoadTriggered;
 
 #ifdef UNIT_TEST
   public:

@@ -51,7 +51,7 @@ static bool isFBHashDebugEnabled()
 
 DecodeManager::DecodeManager(CConnection *conn_) :
   conn(conn_), threadException(nullptr), contentCache(nullptr), persistentCache(nullptr),
-  persistentHashListSent(false)
+  persistentHashListSent(false), persistentCacheLoadTriggered(false)
 {
   size_t cpuCount;
 
@@ -116,15 +116,12 @@ DecodeManager::DecodeManager(CConnection *conn_) :
               pcSizeMB,
               pcPathOverride.empty() ? "" : " with custom path override");
     
-    // Load persistent cache from disk. This may populate a large hash
-    // inventory which we will later advertise to the server via the
-    // PersistentCacheHashList protocol once the CMsgWriter is available
-    // (see advertisePersistentCacheHashes()).
-    if (persistentCache->loadFromDisk()) {
-      vlog.info("PersistentCache loaded from disk");
-    } else {
-      vlog.debug("PersistentCache starting fresh (no cache file or load failed)");
-    }
+    // NOTE: Disk loading is now DEFERRED until the server negotiates
+    // PersistentCache protocol. This avoids blocking startup and wasting
+    // I/O when connecting to servers that don't support PersistentCache.
+    // See triggerPersistentCacheLoad() which is called from CConnection
+    // when PersistentCache is first negotiated.
+    vlog.debug("PersistentCache disk loading deferred until protocol negotiation");
   } else {
     // When disabled, do not create or load any client-side PersistentCache instance.
     vlog.info("Client PersistentCache disabled via PersistentCache=0; skipping disk cache initialization");
@@ -335,6 +332,39 @@ void DecodeManager::flush()
       conn->writer()->writePersistentCacheEvictionBatched(evictions);
     }
   }
+  
+  // Proactive background hydration: while idle, load remaining PersistentCache entries
+  // This ensures the full cache eventually gets into memory without blocking user interaction
+  if (persistentCache != nullptr) {
+    // Hydrate a small batch each time flush() is called during idle
+    // Using a small batch size (e.g., 5) to avoid blocking for too long
+    size_t hydrated = persistentCache->hydrateNextBatch(5);
+    (void)hydrated;  // suppress unused warning; debug logging is in hydrateNextBatch
+  }
+}
+
+void DecodeManager::triggerPersistentCacheLoad()
+{
+  // Only load once per connection, and only if PersistentCache is enabled
+  if (persistentCacheLoadTriggered)
+    return;
+  if (!persistentCache)
+    return;
+
+  persistentCacheLoadTriggered = true;
+
+  vlog.info("PersistentCache: protocol negotiated, loading index from disk...");
+  
+  // Use v2 lazy loading: only load index, hydrate payloads on-demand or proactively
+  if (persistentCache->loadIndexFromDisk()) {
+    vlog.info("PersistentCache index loaded (entries will hydrate on-demand/background)");
+  } else {
+    vlog.debug("PersistentCache starting fresh (no cache file or load failed)");
+  }
+
+  // After loading index, advertise our hashes to the server
+  // (includes both hydrated and index-only entries)
+  advertisePersistentCacheHashes();
 }
 
 void DecodeManager::advertisePersistentCacheHashes()

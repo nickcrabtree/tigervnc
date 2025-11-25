@@ -93,7 +93,9 @@ void PersistentCacheDebugLogger::log(const std::string& message) {
 
 GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxSizeMB,
                                                            const std::string& cacheFilePathOverride)
-  : maxCacheSize_(maxSizeMB * 1024 * 1024)
+  : maxCacheSize_(maxSizeMB * 1024 * 1024),
+    hydrationState_(HydrationState::Uninitialized),
+    cacheFileHandle_(nullptr)
 {
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache constructor ENTER: maxSizeMB=" + std::to_string(maxSizeMB));
   
@@ -129,6 +131,12 @@ GlobalClientPersistentCache::~GlobalClientPersistentCache()
 {
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache destructor ENTER: entries=" + std::to_string(cache_.size()));
   
+  // Close file handle if still open from lazy loading
+  if (cacheFileHandle_) {
+    fclose(cacheFileHandle_);
+    cacheFileHandle_ = nullptr;
+  }
+  
   vlog.debug("PersistentCache destroyed: %zu entries", cache_.size());
   
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache destructor EXIT");
@@ -136,22 +144,43 @@ GlobalClientPersistentCache::~GlobalClientPersistentCache()
 
 bool GlobalClientPersistentCache::has(const std::vector<uint8_t>& hash) const
 {
-  return arcCache_ && arcCache_->has(hash);
+  // Check both fully-hydrated ARC cache and index-only entries (lazy load)
+  if (arcCache_ && arcCache_->has(hash))
+    return true;
+  // Also check indexMap_ for entries loaded but not yet hydrated
+  return indexMap_.find(hash) != indexMap_.end();
 }
 
 const GlobalClientPersistentCache::CachedPixels* 
 GlobalClientPersistentCache::get(const std::vector<uint8_t>& hash)
 {
   if (!arcCache_) return nullptr;
+  
+  // First check if already in ARC cache (hydrated)
   const CachedPixels* e = arcCache_->get(hash);
-  if (e == nullptr) {
-    // Lookup attempted but no entry present in ARC cache
-    stats_.cacheMisses++;
-    return nullptr;
+  if (e != nullptr) {
+    stats_.cacheHits++;
+    return e;
   }
-  // Successful lookup of existing cached data
-  stats_.cacheHits++;
-  return e;
+  
+  // Check if in index but not yet hydrated (lazy load)
+  auto indexIt = indexMap_.find(hash);
+  if (indexIt != indexMap_.end()) {
+    // Entry exists on disk but not loaded - hydrate it now (on-demand)
+    if (hydrateEntry(hash)) {
+      // Re-fetch from ARC cache after hydration
+      e = arcCache_->get(hash);
+      if (e != nullptr) {
+        stats_.cacheHits++;
+        return e;
+      }
+    }
+    // Hydration failed - treat as miss
+  }
+  
+  // Not found anywhere
+  stats_.cacheMisses++;
+  return nullptr;
 }
 
 void GlobalClientPersistentCache::insert(const std::vector<uint8_t>& hash,
@@ -207,9 +236,17 @@ std::vector<std::vector<uint8_t>>
 GlobalClientPersistentCache::getAllHashes() const
 {
   std::vector<std::vector<uint8_t>> hashes;
-  hashes.reserve(cache_.size());
+  // Include both hydrated entries (cache_) and index-only entries (indexMap_)
+  hashes.reserve(cache_.size() + indexMap_.size());
   for (const auto& entry : cache_) {
     hashes.push_back(entry.first);
+  }
+  // Add index-only entries that haven't been hydrated yet
+  for (const auto& entry : indexMap_) {
+    // Skip if already in cache_ (would be duplicate)
+    if (cache_.find(entry.first) == cache_.end()) {
+      hashes.push_back(entry.first);
+    }
   }
   return hashes;
 }
@@ -379,11 +416,232 @@ bool GlobalClientPersistentCache::loadFromDisk()
   vlog.info("PersistentCache: loaded %zu entries (%zu bytes) from disk",
             loadedEntries, loadedBytes);
   
+  hydrationState_ = HydrationState::FullyHydrated;  // v1 format = eagerly loaded
   return loadedEntries > 0;
+}
+
+bool GlobalClientPersistentCache::loadIndexFromDisk()
+{
+  // Check if file exists
+  FILE* f = fopen(cacheFilePath_.c_str(), "rb");
+  if (!f) {
+    vlog.info("PersistentCache: no cache file found at %s (fresh start)",
+              cacheFilePath_.c_str());
+    hydrationState_ = HydrationState::FullyHydrated;  // Nothing to load
+    return false;
+  }
+  
+  // Read header to check version
+  struct HeaderV1 {
+    uint32_t magic;
+    uint32_t version;
+    uint64_t totalEntries;
+    uint64_t totalBytes;
+    uint64_t created;
+    uint64_t lastAccess;
+    uint8_t reserved[24];
+  } header;
+  
+  if (fread(&header, sizeof(header), 1, f) != 1) {
+    vlog.error("PersistentCache: failed to read header");
+    fclose(f);
+    return false;
+  }
+  
+  const uint32_t MAGIC = 0x50435643;  // "PCVC"
+  if (header.magic != MAGIC) {
+    vlog.error("PersistentCache: invalid magic 0x%08x", header.magic);
+    fclose(f);
+    return false;
+  }
+  
+  // Handle v1 format: delete and start fresh (per user request)
+  if (header.version == 1) {
+    vlog.info("PersistentCache: detected v1 format, deleting to avoid startup hang");
+    fclose(f);
+    // Delete the v1 cache file
+    if (remove(cacheFilePath_.c_str()) != 0) {
+      vlog.error("PersistentCache: failed to delete v1 cache: %s", strerror(errno));
+    }
+    hydrationState_ = HydrationState::FullyHydrated;  // Start fresh
+    return false;
+  }
+  
+  // Handle v2 format: read index section only
+  if (header.version != 2) {
+    vlog.error("PersistentCache: unsupported version %u", header.version);
+    fclose(f);
+    return false;
+  }
+  
+  // v2 header has additional fields for index location
+  struct HeaderV2 {
+    uint32_t magic;
+    uint32_t version;
+    uint64_t indexOffset;    // File offset of index section
+    uint64_t indexCount;     // Number of entries in index
+    uint64_t payloadOffset;  // File offset of payload section (right after header)
+    uint64_t created;
+    uint64_t lastAccess;
+    uint8_t reserved[16];
+  } headerV2;
+  
+  // Re-read as v2 header
+  fseek(f, 0, SEEK_SET);
+  if (fread(&headerV2, sizeof(headerV2), 1, f) != 1) {
+    vlog.error("PersistentCache: failed to read v2 header");
+    fclose(f);
+    return false;
+  }
+  
+  vlog.info("PersistentCache: v2 format, loading index (%llu entries)",
+            (unsigned long long)headerV2.indexCount);
+  
+  // Seek to index section
+  if (fseek(f, headerV2.indexOffset, SEEK_SET) != 0) {
+    vlog.error("PersistentCache: failed to seek to index section");
+    fclose(f);
+    return false;
+  }
+  
+  // Read index entries
+  indexMap_.clear();
+  hydrationQueue_.clear();
+  
+  for (uint64_t i = 0; i < headerV2.indexCount; i++) {
+    // Index entry format:
+    // hashLen(1) + hash(hashLen) + offset(8) + size(4) + width(2) + height(2) + stride(2) + PixelFormat(24)
+    uint8_t hashLen;
+    if (fread(&hashLen, 1, 1, f) != 1) break;
+    
+    std::vector<uint8_t> hash(hashLen);
+    if (fread(hash.data(), 1, hashLen, f) != hashLen) break;
+    
+    IndexEntry entry;
+    if (fread(&entry.payloadOffset, sizeof(entry.payloadOffset), 1, f) != 1) break;
+    if (fread(&entry.payloadSize, sizeof(entry.payloadSize), 1, f) != 1) break;
+    if (fread(&entry.width, sizeof(entry.width), 1, f) != 1) break;
+    if (fread(&entry.height, sizeof(entry.height), 1, f) != 1) break;
+    if (fread(&entry.stridePixels, sizeof(entry.stridePixels), 1, f) != 1) break;
+    if (fread(&entry.format, 24, 1, f) != 1) break;
+    
+    indexMap_[hash] = entry;
+    hydrationQueue_.push_back(hash);
+  }
+  
+  // Keep file open for lazy reads
+  cacheFileHandle_ = f;
+  hydrationState_ = HydrationState::IndexLoaded;
+  
+  vlog.info("PersistentCache: index loaded, %zu entries pending hydration",
+            hydrationQueue_.size());
+  
+  return true;
+}
+
+bool GlobalClientPersistentCache::hydrateEntry(const std::vector<uint8_t>& hash)
+{
+  // Check if already hydrated
+  if (arcCache_ && arcCache_->has(hash))
+    return true;
+  
+  // Find in index
+  auto it = indexMap_.find(hash);
+  if (it == indexMap_.end())
+    return false;  // Not in index
+  
+  // Need file handle for lazy reads
+  if (!cacheFileHandle_) {
+    vlog.error("PersistentCache: cannot hydrate, file handle closed");
+    return false;
+  }
+  
+  const IndexEntry& idx = it->second;
+  
+  // Seek to payload
+  if (fseek(cacheFileHandle_, idx.payloadOffset, SEEK_SET) != 0) {
+    vlog.error("PersistentCache: failed to seek to payload for hydration");
+    return false;
+  }
+  
+  // Read pixel data
+  std::vector<uint8_t> pixelData(idx.payloadSize);
+  if (fread(pixelData.data(), 1, idx.payloadSize, cacheFileHandle_) != idx.payloadSize) {
+    vlog.error("PersistentCache: failed to read payload for hydration");
+    return false;
+  }
+  
+  // Build CachedPixels entry
+  CachedPixels entry;
+  entry.format = idx.format;
+  entry.width = idx.width;
+  entry.height = idx.height;
+  entry.stridePixels = idx.stridePixels;
+  entry.lastAccessTime = getCurrentTime();
+  entry.pixels = std::move(pixelData);
+  
+  // Insert into ARC cache and persistence map
+  cache_[hash] = entry;
+  arcCache_->insert(hash, entry);
+  
+  // Remove from index and hydration queue (now fully loaded)
+  indexMap_.erase(it);
+  hydrationQueue_.remove(hash);
+  
+  // Update hydration state
+  if (indexMap_.empty()) {
+    hydrationState_ = HydrationState::FullyHydrated;
+    // Close file handle when fully hydrated
+    if (cacheFileHandle_) {
+      fclose(cacheFileHandle_);
+      cacheFileHandle_ = nullptr;
+      vlog.debug("PersistentCache: fully hydrated, closed file handle");
+    }
+  } else {
+    hydrationState_ = HydrationState::PartiallyHydrated;
+  }
+  
+  return true;
+}
+
+size_t GlobalClientPersistentCache::hydrateNextBatch(size_t maxEntries)
+{
+  if (hydrationQueue_.empty())
+    return 0;
+  
+  if (!cacheFileHandle_)
+    return 0;
+  
+  size_t hydrated = 0;
+  
+  // Process up to maxEntries from the front of the queue
+  while (hydrated < maxEntries && !hydrationQueue_.empty()) {
+    std::vector<uint8_t> hash = hydrationQueue_.front();
+    
+    if (hydrateEntry(hash)) {
+      hydrated++;
+    } else {
+      // Failed to hydrate, remove from queue anyway to avoid infinite loop
+      hydrationQueue_.pop_front();
+    }
+  }
+  
+  if (hydrated > 0) {
+    vlog.debug("PersistentCache: proactively hydrated %zu entries, %zu remaining",
+               hydrated, hydrationQueue_.size());
+  }
+  
+  return hydrated;
 }
 
 bool GlobalClientPersistentCache::saveToDisk()
 {
+  // Close any open file handle before writing (we may have it open for lazy reads)
+  if (cacheFileHandle_) {
+    fclose(cacheFileHandle_);
+    cacheFileHandle_ = nullptr;
+  }
+  
   if (cache_.empty()) {
     vlog.debug("PersistentCache: cache empty, nothing to save");
     return true;
@@ -395,7 +653,6 @@ bool GlobalClientPersistentCache::saveToDisk()
     std::string dir = cacheFilePath_.substr(0, lastSlash);
     
     // Create directory (mkdir -p equivalent)
-    // Try to create each level
     std::string currentPath;
     for (size_t i = 0; i < dir.length(); i++) {
       if (dir[i] == '/' && i > 0) {
@@ -406,75 +663,113 @@ bool GlobalClientPersistentCache::saveToDisk()
     mkdir(dir.c_str(), 0755);
   }
   
-  std::ofstream file(cacheFilePath_, std::ios::binary | std::ios::trunc);
-  if (!file.is_open()) {
+  FILE* f = fopen(cacheFilePath_.c_str(), "wb");
+  if (!f) {
     vlog.error("PersistentCache: failed to open %s for writing: %s",
                cacheFilePath_.c_str(), strerror(errno));
     return false;
   }
   
-  vlog.info("PersistentCache: saving %zu entries to %s",
+  vlog.info("PersistentCache: saving %zu entries (v2 format) to %s",
             cache_.size(), cacheFilePath_.c_str());
   
-  // Write header
-  struct Header {
+  // v2 Header structure (64 bytes)
+  struct HeaderV2 {
     uint32_t magic;
     uint32_t version;
-    uint64_t totalEntries;
-    uint64_t totalBytes;
+    uint64_t indexOffset;    // File offset of index section (filled later)
+    uint64_t indexCount;     // Number of entries
+    uint64_t payloadOffset;  // File offset of payload section (right after header)
     uint64_t created;
     uint64_t lastAccess;
-    uint8_t reserved[24];
+    uint8_t reserved[16];
   } header;
   
   memset(&header, 0, sizeof(header));
   header.magic = 0x50435643;  // "PCVC"
-  header.version = 1;
-  header.totalEntries = cache_.size();
-  header.totalBytes = arcCache_ ? arcCache_->getStats().totalBytes : 0;
+  header.version = 2;
+  header.indexCount = cache_.size();
+  header.payloadOffset = sizeof(header);  // Payloads start right after header
   header.created = time(nullptr);
   header.lastAccess = time(nullptr);
+  // indexOffset will be filled after writing payloads
   
-  file.write(reinterpret_cast<const char*>(&header), sizeof(header));
+  // Write header placeholder (we'll seek back and rewrite with correct indexOffset)
+  if (fwrite(&header, sizeof(header), 1, f) != 1) {
+    vlog.error("PersistentCache: failed to write header");
+    fclose(f);
+    return false;
+  }
   
-  // Write entries
-  size_t written = 0;
+  // Build index entries while writing payloads
+  struct IndexEntryWrite {
+    std::vector<uint8_t> hash;
+    uint64_t payloadOffset;
+    uint32_t payloadSize;
+    uint16_t width;
+    uint16_t height;
+    uint16_t stridePixels;
+    PixelFormat format;
+  };
+  std::vector<IndexEntryWrite> indexEntries;
+  indexEntries.reserve(cache_.size());
+  
+  // Write payloads section
   for (const auto& entry : cache_) {
     const std::vector<uint8_t>& hash = entry.first;
     const CachedPixels& pixels = entry.second;
     
-    // Write hash
-    uint8_t hashLen = hash.size();
-    file.write(reinterpret_cast<const char*>(&hashLen), 1);
-    file.write(reinterpret_cast<const char*>(hash.data()), hashLen);
-    
-    // Write dimensions
-    file.write(reinterpret_cast<const char*>(&pixels.width), sizeof(pixels.width));
-    file.write(reinterpret_cast<const char*>(&pixels.height), sizeof(pixels.height));
-    file.write(reinterpret_cast<const char*>(&pixels.stridePixels), sizeof(pixels.stridePixels));
-    
-    // Write PixelFormat (24 bytes)
-    file.write(reinterpret_cast<const char*>(&pixels.format), 24);
-    
-    // Write lastAccess
-    file.write(reinterpret_cast<const char*>(&pixels.lastAccessTime), sizeof(pixels.lastAccessTime));
+    IndexEntryWrite idx;
+    idx.hash = hash;
+    idx.payloadOffset = ftell(f);  // Current position is payload start
+    idx.payloadSize = pixels.pixels.size();
+    idx.width = pixels.width;
+    idx.height = pixels.height;
+    idx.stridePixels = pixels.stridePixels;
+    idx.format = pixels.format;
     
     // Write pixel data
-    uint32_t pixelDataLen = pixels.pixels.size();
-    file.write(reinterpret_cast<const char*>(&pixelDataLen), sizeof(pixelDataLen));
-    file.write(reinterpret_cast<const char*>(pixels.pixels.data()), pixelDataLen);
+    if (fwrite(pixels.pixels.data(), 1, pixels.pixels.size(), f) != pixels.pixels.size()) {
+      vlog.error("PersistentCache: failed to write payload");
+      fclose(f);
+      return false;
+    }
     
-    written++;
+    indexEntries.push_back(idx);
   }
   
-  // Write simple checksum (CRC32 for now, SHA-256 would be better)
-  // For simplicity, we'll skip the checksum for now
+  // Record index section offset
+  header.indexOffset = ftell(f);
+  
+  // Write index section
+  for (const auto& idx : indexEntries) {
+    // hashLen(1) + hash(hashLen) + offset(8) + size(4) + width(2) + height(2) + stride(2) + PixelFormat(24)
+    uint8_t hashLen = idx.hash.size();
+    fwrite(&hashLen, 1, 1, f);
+    fwrite(idx.hash.data(), 1, hashLen, f);
+    fwrite(&idx.payloadOffset, sizeof(idx.payloadOffset), 1, f);
+    fwrite(&idx.payloadSize, sizeof(idx.payloadSize), 1, f);
+    fwrite(&idx.width, sizeof(idx.width), 1, f);
+    fwrite(&idx.height, sizeof(idx.height), 1, f);
+    fwrite(&idx.stridePixels, sizeof(idx.stridePixels), 1, f);
+    fwrite(&idx.format, 24, 1, f);
+  }
+  
+  // Write footer (32-byte checksum placeholder)
   uint8_t checksum[32] = {0};
-  file.write(reinterpret_cast<const char*>(checksum), 32);
+  fwrite(checksum, 1, 32, f);
   
-  file.close();
+  // Seek back and update header with correct indexOffset
+  fseek(f, 0, SEEK_SET);
+  if (fwrite(&header, sizeof(header), 1, f) != 1) {
+    vlog.error("PersistentCache: failed to rewrite header with indexOffset");
+    fclose(f);
+    return false;
+  }
   
-  vlog.info("PersistentCache: saved %zu entries to disk", written);
+  fclose(f);
+  
+  vlog.info("PersistentCache: saved %zu entries to disk (v2 format)", indexEntries.size());
   return true;
 }
 

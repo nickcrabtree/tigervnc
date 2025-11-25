@@ -33,6 +33,9 @@
 #include <rfb/PixelFormat.h>
 #include <rfb/cache/ArcCache.h>
 
+// Forward declaration for file I/O
+#include <cstdio>
+
 namespace rfb {
 
   // Debug logger for PersistentCache - logs to tmpfile with timestamps
@@ -72,10 +75,22 @@ namespace rfb {
   // Global client-side persistent cache for PersistentCache protocol
   // Uses content hashes as stable keys for cross-session/cross-server caching
   // Implements ARC (Adaptive Replacement Cache) eviction algorithm
+  //
+  // File Format v2 (lazy load):
+  //   Header (64 bytes) -> Payload Section -> Index Section -> Footer (32 bytes)
+  //   Index is at end for append-only writes; payloads read lazily on demand.
   class GlobalClientPersistentCache {
   public:
+    // Hydration state for lazy-load
+    enum class HydrationState {
+      Uninitialized,      // No disk load attempted
+      IndexLoaded,        // Index loaded, payloads not yet read
+      PartiallyHydrated,  // Some payloads loaded
+      FullyHydrated       // All payloads loaded
+    };
+
     struct CachedPixels {
-      std::vector<uint8_t> pixels;     // Decoded pixel data
+      std::vector<uint8_t> pixels;     // Decoded pixel data (may be empty if not hydrated)
       PixelFormat format;               // Pixel format
       uint16_t width;                   // Rectangle width
       uint16_t height;                  // Rectangle height
@@ -87,15 +102,26 @@ namespace rfb {
       size_t byteSize() const {
         return pixels.size();
       }
+      
+      bool isHydrated() const {
+        return !pixels.empty();
+      }
     };
     
     GlobalClientPersistentCache(size_t maxSizeMB = 2048,
                                  const std::string& cacheFilePathOverride = std::string());
     ~GlobalClientPersistentCache();
     
-    // Lifecycle (disk persistence will be added in Phase 7)
-    bool loadFromDisk();
-    bool saveToDisk();
+    // Lifecycle - lazy-load from disk
+    bool loadFromDisk();        // Legacy v1 eager load (for migration only)
+    bool loadIndexFromDisk();   // v2 fast index-only load
+    bool saveToDisk();          // Full save (rebuilds file)
+    
+    // Lazy hydration - load pixel data on-demand
+    bool hydrateEntry(const std::vector<uint8_t>& hash);  // Load single entry's pixels
+    size_t hydrateNextBatch(size_t maxEntries);           // Proactive background hydration
+    HydrationState getHydrationState() const { return hydrationState_; }
+    size_t getHydrationQueueSize() const { return hydrationQueue_.size(); }
     
     // Protocol operations
     bool has(const std::vector<uint8_t>& hash) const;
@@ -156,6 +182,24 @@ namespace rfb {
     
     // Disk persistence
     std::string cacheFilePath_;
+    
+    // Lazy hydration state (v2 format)
+    HydrationState hydrationState_;
+    FILE* cacheFileHandle_;  // Kept open for lazy reads, nullptr if closed
+    
+    // Index entry for lazy loading (metadata without pixels)
+    struct IndexEntry {
+      uint64_t payloadOffset;   // Offset into payload section
+      uint32_t payloadSize;     // Size of pixel data
+      uint16_t width;
+      uint16_t height;
+      uint16_t stridePixels;
+      PixelFormat format;
+    };
+    std::unordered_map<std::vector<uint8_t>, IndexEntry, HashVectorHasher> indexMap_;
+    
+    // Queue of hashes waiting to be hydrated (background loading)
+    std::list<std::vector<uint8_t>> hydrationQueue_;
 
     // Helper to get current timestamp
     uint32_t getCurrentTime() const;

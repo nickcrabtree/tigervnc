@@ -1159,6 +1159,9 @@ void CConnection::handlePersistentCachedRect(const core::Rect& r,
       vlog.info("Cache protocol: negotiated PersistentCache (-321)");
       negotiatedCacheLogged = true;
     }
+    // Trigger deferred disk load now that we know server supports PersistentCache.
+    // This must happen BEFORE processing the first rect so cached entries are available.
+    decoder.triggerPersistentCacheLoad();
   }
 
   // Forward to decoder manager to handle cache lookup and blit
