@@ -262,11 +262,19 @@ core::BoolParameter
                   true);
 core::IntParameter
   persistentCacheSize("PersistentCacheSize",
-                      "Maximum size of persistent cache in MB",
+                      "Maximum size of persistent cache in memory (MB)",
                       2048, 0, 8192);
+core::IntParameter
+  persistentCacheDiskSize("PersistentCacheDiskSize",
+                          "Maximum size of persistent cache on disk (MB, 0=auto 2x memory)",
+                          0, 0, 16384);
+core::IntParameter
+  persistentCacheShardSize("PersistentCacheShardSize",
+                           "Size of each cache shard file (MB)",
+                           64, 1, 256);
 core::StringParameter
   persistentCachePath("PersistentCachePath",
-                      "Path to persistent cache file (default: ~/.cache/tigervnc/persistentcache.dat)",
+                      "Path to persistent cache directory (default: ~/.cache/tigervnc/persistentcache/)",
                       "");
 
 static const char* IDENTIFIER_STRING = "TigerVNC Configuration file Version 1.0";

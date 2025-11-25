@@ -88,6 +88,8 @@ extern core::IntParameter contentCacheSize;
 extern core::BoolParameter contentCache;
 extern core::BoolParameter persistentCache;
 extern core::IntParameter persistentCacheSize;
+extern core::IntParameter persistentCacheDiskSize;
+extern core::IntParameter persistentCacheShardSize;
 extern core::StringParameter persistentCachePath;
 
 void saveViewerParameters(const char *filename, const char *servername=nullptr);

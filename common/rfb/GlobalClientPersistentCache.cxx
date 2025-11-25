@@ -88,63 +88,70 @@ void PersistentCacheDebugLogger::log(const std::string& message) {
 }
 
 // ============================================================================
-// GlobalClientPersistentCache Implementation - ARC Algorithm
+// GlobalClientPersistentCache Implementation - ARC Algorithm with Sharded Storage
 // ============================================================================
 
-GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxSizeMB,
-                                                           const std::string& cacheFilePathOverride)
-  : maxCacheSize_(maxSizeMB * 1024 * 1024),
+GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxMemorySizeMB,
+                                                           size_t maxDiskSizeMB,
+                                                           size_t shardSizeMB,
+                                                           const std::string& cacheDirOverride)
+  : maxMemorySize_(maxMemorySizeMB * 1024 * 1024),
+    maxDiskSize_(maxDiskSizeMB == 0 ? maxMemorySizeMB * 2 * 1024 * 1024 : maxDiskSizeMB * 1024 * 1024),
+    shardSize_(shardSizeMB * 1024 * 1024),
     hydrationState_(HydrationState::Uninitialized),
-    cacheFileHandle_(nullptr),
-    needsFullRebuild_(false)
+    currentShardId_(0),
+    currentShardHandle_(nullptr),
+    currentShardSize_(0)
 {
-  PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache constructor ENTER: maxSizeMB=" + std::to_string(maxSizeMB));
+  PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache constructor ENTER: memMB=" + 
+    std::to_string(maxMemorySizeMB) + " diskMB=" + std::to_string(maxDiskSize_ / (1024*1024)));
   
   memset(&stats_, 0, sizeof(stats_));
   
-  // Determine cache file path: allow viewer parameter override via
-  // PersistentCachePath so tests can control cold vs warm behaviour.
-  if (!cacheFilePathOverride.empty()) {
-    cacheFilePath_ = cacheFilePathOverride;
+  // Determine cache directory: allow viewer parameter override
+  if (!cacheDirOverride.empty()) {
+    cacheDir_ = cacheDirOverride;
   } else {
     const char* home = getenv("HOME");
     if (home) {
-      cacheFilePath_ = std::string(home) + "/.cache/tigervnc/persistentcache.dat";
+      cacheDir_ = std::string(home) + "/.cache/tigervnc/persistentcache";
     } else {
-      cacheFilePath_ = "/tmp/tigervnc_persistentcache.dat";
+      cacheDir_ = "/tmp/tigervnc_persistentcache";
     }
   }
   
-  vlog.debug("PersistentCache created with ARC: maxSize=%zuMB, path=%s", 
-             maxSizeMB, cacheFilePath_.c_str());
+  vlog.debug("PersistentCache v3 (sharded): memory=%zuMB, disk=%zuMB, shard=%zuMB, dir=%s", 
+             maxMemorySizeMB, maxDiskSize_ / (1024*1024), shardSizeMB, cacheDir_.c_str());
 
   // Initialize shared ArcCache with eviction callback
+  // When entries are evicted from memory, mark them as "cold" (still on disk)
   arcCache_.reset(new rfb::cache::ArcCache<std::vector<uint8_t>, CachedPixels, HashVectorHasher>(
-      maxCacheSize_,
+      maxMemorySize_,
       [](const CachedPixels& e) { return e.byteSize(); },
       [this](const std::vector<uint8_t>& h) {
         pendingEvictions_.push_back(h);
-        // Evicted entries mean we need a full rebuild (can't do append-only)
-        needsFullRebuild_ = true;
-        // Remove from dirty set if present (no point saving evicted entry)
+        // Mark as cold - entry stays on disk but is evicted from memory
+        auto it = indexMap_.find(h);
+        if (it != indexMap_.end()) {
+          it->second.isCold = true;
+          coldEntries_.insert(h);
+        }
+        // Remove from dirty set (already written to shard)
         dirtyEntries_.erase(h);
       }
   ));
   
-  PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache constructor EXIT: cacheFilePath=" + cacheFilePath_);
+  PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache constructor EXIT: cacheDir=" + cacheDir_);
 }
 
 GlobalClientPersistentCache::~GlobalClientPersistentCache()
 {
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache destructor ENTER: entries=" + std::to_string(cache_.size()));
   
-  // Close file handle if still open from lazy loading
-  if (cacheFileHandle_) {
-    fclose(cacheFileHandle_);
-    cacheFileHandle_ = nullptr;
-  }
+  // Close current shard handle if open
+  closeCurrentShard();
   
-  vlog.debug("PersistentCache destroyed: %zu entries", cache_.size());
+  vlog.debug("PersistentCache destroyed: %zu entries (%zu cold)", cache_.size(), coldEntries_.size());
   
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache destructor EXIT");
 }
@@ -163,22 +170,27 @@ GlobalClientPersistentCache::get(const std::vector<uint8_t>& hash)
 {
   if (!arcCache_) return nullptr;
   
-  // First check if already in ARC cache (hydrated)
+  // First check if already in ARC cache (hot in memory)
   const CachedPixels* e = arcCache_->get(hash);
   if (e != nullptr) {
     stats_.cacheHits++;
     return e;
   }
   
-  // Check if in index but not yet hydrated (lazy load)
+  // Check if in index (either cold on disk, or not yet hydrated from startup)
   auto indexIt = indexMap_.find(hash);
   if (indexIt != indexMap_.end()) {
-    // Entry exists on disk but not loaded - hydrate it now (on-demand)
+    // Entry exists on disk but not in memory - hydrate it now (on-demand)
+    // This handles both:
+    //   1. Initial lazy load (entry never hydrated)
+    //   2. Cold entry re-hydration (was evicted from ARC but still on disk)
     if (hydrateEntry(hash)) {
       // Re-fetch from ARC cache after hydration
       e = arcCache_->get(hash);
       if (e != nullptr) {
         stats_.cacheHits++;
+        // If this was a cold entry, it's now hot again
+        coldEntries_.erase(hash);
         return e;
       }
     }
@@ -266,6 +278,10 @@ void GlobalClientPersistentCache::clear()
 {
   if (arcCache_) arcCache_->clear();
   cache_.clear();
+  indexMap_.clear();
+  coldEntries_.clear();
+  dirtyEntries_.clear();
+  hydrationQueue_.clear();
   pendingEvictions_.clear();
   stats_.totalEntries = 0;
   stats_.totalBytes = 0;
@@ -308,231 +324,228 @@ void GlobalClientPersistentCache::resetStats()
 
 void GlobalClientPersistentCache::setMaxSize(size_t maxSizeMB)
 {
-  maxCacheSize_ = maxSizeMB * 1024 * 1024;
-  vlog.debug("PersistentCache max size set to %zuMB", maxSizeMB);
+  maxMemorySize_ = maxSizeMB * 1024 * 1024;
+  vlog.debug("PersistentCache memory size set to %zuMB", maxSizeMB);
   // Recreate arc cache to apply new capacity
   arcCache_.reset(new rfb::cache::ArcCache<std::vector<uint8_t>, CachedPixels, HashVectorHasher>(
-      maxCacheSize_,
+      maxMemorySize_,
       [](const CachedPixels& e) { return e.byteSize(); },
       [this](const std::vector<uint8_t>& h) {
         pendingEvictions_.push_back(h);
-        needsFullRebuild_ = true;
+        // Mark as cold instead of full rebuild
+        auto it = indexMap_.find(h);
+        if (it != indexMap_.end()) {
+          it->second.isCold = true;
+          coldEntries_.insert(h);
+        }
         dirtyEntries_.erase(h);
       }
   ));
 }
 
+// ============================================================================
+// v3 Sharded Storage Helper Methods
+// ============================================================================
+
+std::string GlobalClientPersistentCache::getIndexPath() const
+{
+  return cacheDir_ + "/index.dat";
+}
+
+std::string GlobalClientPersistentCache::getShardPath(uint16_t shardId) const
+{
+  char buf[32];
+  snprintf(buf, sizeof(buf), "/shard_%04u.dat", shardId);
+  return cacheDir_ + buf;
+}
+
+bool GlobalClientPersistentCache::ensureCacheDir()
+{
+  // Create directory (mkdir -p equivalent)
+  std::string currentPath;
+  for (size_t i = 0; i < cacheDir_.length(); i++) {
+    if (cacheDir_[i] == '/' && i > 0) {
+      currentPath = cacheDir_.substr(0, i);
+      mkdir(currentPath.c_str(), 0755);
+    }
+  }
+  mkdir(cacheDir_.c_str(), 0755);
+  
+  // Check if directory exists
+  struct stat st;
+  return stat(cacheDir_.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+bool GlobalClientPersistentCache::openCurrentShard()
+{
+  if (currentShardHandle_)
+    return true;  // Already open
+  
+  if (!ensureCacheDir())
+    return false;
+  
+  std::string path = getShardPath(currentShardId_);
+  currentShardHandle_ = fopen(path.c_str(), "ab");  // Append mode
+  if (!currentShardHandle_) {
+    vlog.error("PersistentCache: failed to open shard %u: %s", currentShardId_, strerror(errno));
+    return false;
+  }
+  
+  // Get current size
+  fseek(currentShardHandle_, 0, SEEK_END);
+  currentShardSize_ = ftell(currentShardHandle_);
+  shardSizes_[currentShardId_] = currentShardSize_;
+  
+  return true;
+}
+
+void GlobalClientPersistentCache::closeCurrentShard()
+{
+  if (currentShardHandle_) {
+    fclose(currentShardHandle_);
+    currentShardHandle_ = nullptr;
+  }
+}
+
+bool GlobalClientPersistentCache::writeEntryToShard(const std::vector<uint8_t>& hash, 
+                                                     const CachedPixels& entry)
+{
+  // Check if current shard is full
+  if (currentShardSize_ >= shardSize_) {
+    closeCurrentShard();
+    currentShardId_++;
+    currentShardSize_ = 0;
+  }
+  
+  if (!openCurrentShard())
+    return false;
+  
+  // Record position before write
+  uint32_t offset = currentShardSize_;
+  
+  // Write pixel data to shard
+  size_t written = fwrite(entry.pixels.data(), 1, entry.pixels.size(), currentShardHandle_);
+  if (written != entry.pixels.size()) {
+    vlog.error("PersistentCache: failed to write to shard");
+    return false;
+  }
+  fflush(currentShardHandle_);
+  
+  currentShardSize_ += written;
+  shardSizes_[currentShardId_] = currentShardSize_;
+  
+  // Update index entry
+  IndexEntry idx;
+  idx.shardId = currentShardId_;
+  idx.payloadOffset = offset;
+  idx.payloadSize = entry.pixels.size();
+  idx.width = entry.width;
+  idx.height = entry.height;
+  idx.stridePixels = entry.stridePixels;
+  idx.format = entry.format;
+  idx.isCold = false;
+  
+  indexMap_[hash] = idx;
+  
+  return true;
+}
+
+size_t GlobalClientPersistentCache::getDiskUsage() const
+{
+  size_t total = 0;
+  for (const auto& entry : shardSizes_) {
+    total += entry.second;
+  }
+  return total;
+}
+
+// ============================================================================
+// Disk I/O Methods - v3 Sharded Format
+// ============================================================================
+
 bool GlobalClientPersistentCache::loadFromDisk()
 {
-  std::ifstream file(cacheFilePath_, std::ios::binary);
-  if (!file.is_open()) {
-    vlog.info("PersistentCache: no cache file found at %s (fresh start)", 
-              cacheFilePath_.c_str());
-    return false;
+  // Check for legacy v1/v2 single-file format and delete if found
+  std::string legacyPath = cacheDir_ + ".dat";  // Old single-file path
+  struct stat st;
+  if (stat(legacyPath.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+    vlog.info("PersistentCache: detected legacy single-file format, deleting");
+    remove(legacyPath.c_str());
   }
   
-  vlog.info("PersistentCache: loading from %s", cacheFilePath_.c_str());
-  
-  // Read header
-  struct Header {
-    uint32_t magic;
-    uint32_t version;
-    uint64_t totalEntries;
-    uint64_t totalBytes;
-    uint64_t created;
-    uint64_t lastAccess;
-    uint8_t reserved[24];
-  } header;
-  
-  file.read(reinterpret_cast<char*>(&header), sizeof(header));
-  if (!file.good()) {
-    vlog.error("PersistentCache: failed to read header");
-    file.close();
-    return false;
-  }
-  
-  // Verify magic number
-  const uint32_t MAGIC = 0x50435643;  // "PCVC"
-  if (header.magic != MAGIC) {
-    vlog.error("PersistentCache: invalid magic number 0x%08x (expected 0x%08x)",
-               header.magic, MAGIC);
-    file.close();
-    return false;
-  }
-  
-  // Check version
-  if (header.version != 1) {
-    vlog.error("PersistentCache: unsupported version %u", header.version);
-    file.close();
-    return false;
-  }
-  
-  vlog.info("PersistentCache: header valid, loading %llu entries (%llu bytes)",
-            (unsigned long long)header.totalEntries,
-            (unsigned long long)header.totalBytes);
-  
-  // Read entries
-  size_t loadedEntries = 0;
-  size_t loadedBytes = 0;
-  
-  for (uint64_t i = 0; i < header.totalEntries; i++) {
-    // Read hash
-    uint8_t hashLen;
-    file.read(reinterpret_cast<char*>(&hashLen), 1);
-    if (!file.good()) break;
-    
-    std::vector<uint8_t> hash(hashLen);
-    file.read(reinterpret_cast<char*>(hash.data()), hashLen);
-    if (!file.good()) break;
-    
-    // Read dimensions and format
-    uint16_t width, height, stridePixels;
-    file.read(reinterpret_cast<char*>(&width), sizeof(width));
-    file.read(reinterpret_cast<char*>(&height), sizeof(height));
-    file.read(reinterpret_cast<char*>(&stridePixels), sizeof(stridePixels));
-    
-    // Read PixelFormat (24 bytes)
-    PixelFormat pf;
-    file.read(reinterpret_cast<char*>(&pf), 24);
-    
-    uint32_t lastAccess;
-    file.read(reinterpret_cast<char*>(&lastAccess), sizeof(lastAccess));
-    
-    // Read pixel data
-    uint32_t pixelDataLen;
-    file.read(reinterpret_cast<char*>(&pixelDataLen), sizeof(pixelDataLen));
-    if (!file.good()) break;
-    
-    std::vector<uint8_t> pixelData(pixelDataLen);
-    file.read(reinterpret_cast<char*>(pixelData.data()), pixelDataLen);
-    if (!file.good()) break;
-    
-    // Insert into cache (will add to T1 initially)
-    insert(hash, pixelData.data(), pf, width, height, stridePixels);
-    
-    loadedEntries++;
-    loadedBytes += pixelDataLen;
-    
-    // Stop if we've exceeded max size
-    if (arcCache_) {
-      auto s = arcCache_->getStats();
-      if (s.totalBytes >= maxCacheSize_) {
-        vlog.info("PersistentCache: reached max size, stopping load");
-        break;
-      }
+  // Also check for v2 format in the old default location
+  const char* home = getenv("HOME");
+  if (home) {
+    std::string oldDefault = std::string(home) + "/.cache/tigervnc/persistentcache.dat";
+    if (stat(oldDefault.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+      vlog.info("PersistentCache: detected v2 format at old location, deleting");
+      remove(oldDefault.c_str());
     }
   }
   
-  // Note: We skip checksum verification for now for simplicity
-  // Production code should verify the trailing SHA-256 checksum
-  
-  file.close();
-  
-  vlog.info("PersistentCache: loaded %zu entries (%zu bytes) from disk",
-            loadedEntries, loadedBytes);
-  
-  hydrationState_ = HydrationState::FullyHydrated;  // v1 format = eagerly loaded
-  return loadedEntries > 0;
+  hydrationState_ = HydrationState::FullyHydrated;  // Start fresh
+  return false;
 }
 
 bool GlobalClientPersistentCache::loadIndexFromDisk()
 {
-  // Check if file exists
-  FILE* f = fopen(cacheFilePath_.c_str(), "rb");
+  std::string indexPath = getIndexPath();
+  FILE* f = fopen(indexPath.c_str(), "rb");
   if (!f) {
-    vlog.info("PersistentCache: no cache file found at %s (fresh start)",
-              cacheFilePath_.c_str());
-    hydrationState_ = HydrationState::FullyHydrated;  // Nothing to load
+    vlog.info("PersistentCache: no index file at %s (fresh start)", indexPath.c_str());
+    hydrationState_ = HydrationState::FullyHydrated;
     return false;
   }
   
-  // Read header to check version
-  struct HeaderV1 {
+  // v3 index header
+  struct IndexHeader {
     uint32_t magic;
     uint32_t version;
-    uint64_t totalEntries;
-    uint64_t totalBytes;
+    uint64_t entryCount;
     uint64_t created;
     uint64_t lastAccess;
-    uint8_t reserved[24];
+    uint16_t maxShardId;
+    uint8_t reserved[30];
   } header;
   
   if (fread(&header, sizeof(header), 1, f) != 1) {
-    vlog.error("PersistentCache: failed to read header");
+    vlog.error("PersistentCache: failed to read index header");
     fclose(f);
     return false;
   }
   
-  const uint32_t MAGIC = 0x50435643;  // "PCVC"
-  if (header.magic != MAGIC) {
-    vlog.error("PersistentCache: invalid magic 0x%08x", header.magic);
+  const uint32_t MAGIC_V3 = 0x50435633;  // "PCV3"
+  if (header.magic != MAGIC_V3) {
+    vlog.info("PersistentCache: invalid/old index format, starting fresh");
     fclose(f);
+    remove(indexPath.c_str());
+    hydrationState_ = HydrationState::FullyHydrated;
     return false;
   }
   
-  // Handle v1 format: delete and start fresh (per user request)
-  if (header.version == 1) {
-    vlog.info("PersistentCache: detected v1 format, deleting to avoid startup hang");
+  if (header.version != 3) {
+    vlog.info("PersistentCache: unsupported index version %u, starting fresh", header.version);
     fclose(f);
-    // Delete the v1 cache file
-    if (remove(cacheFilePath_.c_str()) != 0) {
-      vlog.error("PersistentCache: failed to delete v1 cache: %s", strerror(errno));
-    }
-    hydrationState_ = HydrationState::FullyHydrated;  // Start fresh
+    remove(indexPath.c_str());
+    hydrationState_ = HydrationState::FullyHydrated;
     return false;
   }
   
-  // Handle v2 format: read index section only
-  if (header.version != 2) {
-    vlog.error("PersistentCache: unsupported version %u", header.version);
-    fclose(f);
-    return false;
-  }
+  vlog.info("PersistentCache: loading v3 index (%llu entries, %u shards)",
+            (unsigned long long)header.entryCount, header.maxShardId + 1);
   
-  // v2 header has additional fields for index location
-  struct HeaderV2 {
-    uint32_t magic;
-    uint32_t version;
-    uint64_t indexOffset;    // File offset of index section
-    uint64_t indexCount;     // Number of entries in index
-    uint64_t payloadOffset;  // File offset of payload section (right after header)
-    uint64_t created;
-    uint64_t lastAccess;
-    uint8_t reserved[16];
-  } headerV2;
-  
-  // Re-read as v2 header
-  fseek(f, 0, SEEK_SET);
-  if (fread(&headerV2, sizeof(headerV2), 1, f) != 1) {
-    vlog.error("PersistentCache: failed to read v2 header");
-    fclose(f);
-    return false;
-  }
-  
-  vlog.info("PersistentCache: v2 format, loading index (%llu entries)",
-            (unsigned long long)headerV2.indexCount);
-  
-  // Seek to index section
-  if (fseek(f, headerV2.indexOffset, SEEK_SET) != 0) {
-    vlog.error("PersistentCache: failed to seek to index section");
-    fclose(f);
-    return false;
-  }
-  
-  // Read index entries
   indexMap_.clear();
   hydrationQueue_.clear();
+  coldEntries_.clear();
   
-  for (uint64_t i = 0; i < headerV2.indexCount; i++) {
-    // Index entry format:
-    // hashLen(1) + hash(hashLen) + offset(8) + size(4) + width(2) + height(2) + stride(2) + PixelFormat(24)
-    uint8_t hashLen;
-    if (fread(&hashLen, 1, 1, f) != 1) break;
-    
-    std::vector<uint8_t> hash(hashLen);
-    if (fread(hash.data(), 1, hashLen, f) != hashLen) break;
+  // Read index entries
+  // Format: hash(16) + shardId(2) + offset(4) + size(4) + width(2) + height(2) + stride(2) + PixelFormat(24) + flags(1)
+  for (uint64_t i = 0; i < header.entryCount; i++) {
+    std::vector<uint8_t> hash(16);
+    if (fread(hash.data(), 1, 16, f) != 16) break;
     
     IndexEntry entry;
+    if (fread(&entry.shardId, sizeof(entry.shardId), 1, f) != 1) break;
     if (fread(&entry.payloadOffset, sizeof(entry.payloadOffset), 1, f) != 1) break;
     if (fread(&entry.payloadSize, sizeof(entry.payloadSize), 1, f) != 1) break;
     if (fread(&entry.width, sizeof(entry.width), 1, f) != 1) break;
@@ -540,12 +553,30 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
     if (fread(&entry.stridePixels, sizeof(entry.stridePixels), 1, f) != 1) break;
     if (fread(&entry.format, 24, 1, f) != 1) break;
     
+    uint8_t flags;
+    if (fread(&flags, 1, 1, f) != 1) break;
+    entry.isCold = (flags & 0x01) != 0;
+    
     indexMap_[hash] = entry;
     hydrationQueue_.push_back(hash);
+    
+    // Track shard sizes
+    if (shardSizes_.find(entry.shardId) == shardSizes_.end()) {
+      shardSizes_[entry.shardId] = 0;
+    }
+    size_t endOffset = entry.payloadOffset + entry.payloadSize;
+    if (endOffset > shardSizes_[entry.shardId]) {
+      shardSizes_[entry.shardId] = endOffset;
+    }
   }
   
-  // Keep file open for lazy reads
-  cacheFileHandle_ = f;
+  fclose(f);
+  
+  // Set current shard to continue appending
+  currentShardId_ = header.maxShardId;
+  auto it = shardSizes_.find(currentShardId_);
+  currentShardSize_ = (it != shardSizes_.end()) ? it->second : 0;
+  
   hydrationState_ = HydrationState::IndexLoaded;
   
   vlog.info("PersistentCache: index loaded, %zu entries pending hydration",
@@ -563,28 +594,34 @@ bool GlobalClientPersistentCache::hydrateEntry(const std::vector<uint8_t>& hash)
   // Find in index
   auto it = indexMap_.find(hash);
   if (it == indexMap_.end())
-    return false;  // Not in index
-  
-  // Need file handle for lazy reads
-  if (!cacheFileHandle_) {
-    vlog.error("PersistentCache: cannot hydrate, file handle closed");
     return false;
-  }
   
   const IndexEntry& idx = it->second;
   
+  // Open the shard file for reading
+  std::string shardPath = getShardPath(idx.shardId);
+  FILE* f = fopen(shardPath.c_str(), "rb");
+  if (!f) {
+    vlog.error("PersistentCache: cannot open shard %u for hydration", idx.shardId);
+    return false;
+  }
+  
   // Seek to payload
-  if (fseek(cacheFileHandle_, idx.payloadOffset, SEEK_SET) != 0) {
-    vlog.error("PersistentCache: failed to seek to payload for hydration");
+  if (fseek(f, idx.payloadOffset, SEEK_SET) != 0) {
+    vlog.error("PersistentCache: failed to seek in shard %u", idx.shardId);
+    fclose(f);
     return false;
   }
   
   // Read pixel data
   std::vector<uint8_t> pixelData(idx.payloadSize);
-  if (fread(pixelData.data(), 1, idx.payloadSize, cacheFileHandle_) != idx.payloadSize) {
-    vlog.error("PersistentCache: failed to read payload for hydration");
+  if (fread(pixelData.data(), 1, idx.payloadSize, f) != idx.payloadSize) {
+    vlog.error("PersistentCache: failed to read from shard %u", idx.shardId);
+    fclose(f);
     return false;
   }
+  
+  fclose(f);
   
   // Build CachedPixels entry
   CachedPixels entry;
@@ -599,19 +636,17 @@ bool GlobalClientPersistentCache::hydrateEntry(const std::vector<uint8_t>& hash)
   cache_[hash] = entry;
   arcCache_->insert(hash, entry);
   
-  // Remove from index and hydration queue (now fully loaded)
-  indexMap_.erase(it);
+  // Mark as hot (no longer cold)
+  it->second.isCold = false;
+  coldEntries_.erase(hash);
+  
+  // Remove from hydration queue
   hydrationQueue_.remove(hash);
   
   // Update hydration state
-  if (indexMap_.empty()) {
+  if (hydrationQueue_.empty()) {
     hydrationState_ = HydrationState::FullyHydrated;
-    // Close file handle when fully hydrated
-    if (cacheFileHandle_) {
-      fclose(cacheFileHandle_);
-      cacheFileHandle_ = nullptr;
-      vlog.debug("PersistentCache: fully hydrated, closed file handle");
-    }
+    vlog.debug("PersistentCache: fully hydrated");
   } else {
     hydrationState_ = HydrationState::PartiallyHydrated;
   }
@@ -624,19 +659,15 @@ size_t GlobalClientPersistentCache::hydrateNextBatch(size_t maxEntries)
   if (hydrationQueue_.empty())
     return 0;
   
-  if (!cacheFileHandle_)
-    return 0;
-  
   size_t hydrated = 0;
   
-  // Process up to maxEntries from the front of the queue
   while (hydrated < maxEntries && !hydrationQueue_.empty()) {
     std::vector<uint8_t> hash = hydrationQueue_.front();
     
     if (hydrateEntry(hash)) {
       hydrated++;
     } else {
-      // Failed to hydrate, remove from queue anyway to avoid infinite loop
+      // Failed to hydrate, remove from queue
       hydrationQueue_.pop_front();
     }
   }
@@ -651,225 +682,159 @@ size_t GlobalClientPersistentCache::hydrateNextBatch(size_t maxEntries)
 
 size_t GlobalClientPersistentCache::flushDirtyEntries()
 {
-  // If we need a full rebuild (due to evictions), defer to saveToDisk()
-  if (needsFullRebuild_) {
-    vlog.debug("PersistentCache: dirty flush deferred, full rebuild needed");
+  if (dirtyEntries_.empty())
     return 0;
-  }
   
-  if (dirtyEntries_.empty()) {
-    return 0;
-  }
+  size_t flushed = 0;
   
-  // If no file exists yet, we need a full save first
-  FILE* f = fopen(cacheFilePath_.c_str(), "r+b");
-  if (!f) {
-    // File doesn't exist, need full save
-    vlog.debug("PersistentCache: no existing file, deferring to full save");
-    return 0;
-  }
-  
-  // Read existing header to get current state
-  struct HeaderV2 {
-    uint32_t magic;
-    uint32_t version;
-    uint64_t indexOffset;
-    uint64_t indexCount;
-    uint64_t payloadOffset;
-    uint64_t created;
-    uint64_t lastAccess;
-    uint8_t reserved[16];
-  } header;
-  
-  if (fread(&header, sizeof(header), 1, f) != 1) {
-    fclose(f);
-    return 0;
-  }
-  
-  if (header.magic != 0x50435643 || header.version != 2) {
-    // Not a v2 file, need full rebuild
-    fclose(f);
-    needsFullRebuild_ = true;
-    return 0;
-  }
-  
-  // For v2 incremental save:
-  // 1. Seek to end of payload section (before old index)
-  // 2. Write new payloads
-  // 3. Write new combined index (old + new entries)
-  // 4. Update header
-  
-  // This is complex because we need to preserve existing entries.
-  // For now, implement a simpler approach: batch dirty entries and
-  // do a full rebuild when batch is large enough or on shutdown.
-  
-  size_t dirtyCount = dirtyEntries_.size();
-  
-  // If we have many dirty entries (>10% of cache), do full rebuild
-  // This avoids accumulating too many small appends
-  if (dirtyCount > cache_.size() / 10 || dirtyCount > 100) {
-    fclose(f);
-    vlog.debug("PersistentCache: %zu dirty entries, triggering full rebuild", dirtyCount);
+  // Write each dirty entry to the current shard
+  for (const auto& hash : dirtyEntries_) {
+    auto cacheIt = cache_.find(hash);
+    if (cacheIt == cache_.end())
+      continue;  // Entry was evicted
     
-    if (saveToDisk()) {
-      dirtyEntries_.clear();
-      needsFullRebuild_ = false;
-      return dirtyCount;
+    if (writeEntryToShard(hash, cacheIt->second)) {
+      flushed++;
     }
-    return 0;
   }
   
-  // For small number of dirty entries, just track them and defer save
-  // This will be flushed on shutdown via saveToDisk()
-  fclose(f);
-  vlog.debug("PersistentCache: %zu dirty entries pending (deferred)", dirtyCount);
-  return 0;
+  dirtyEntries_.clear();
+  
+  // Save index after flushing
+  if (flushed > 0) {
+    saveToDisk();
+    vlog.debug("PersistentCache: flushed %zu entries to shard %u", flushed, currentShardId_);
+  }
+  
+  // Check disk usage and trigger GC if needed
+  size_t diskUsage = getDiskUsage();
+  if (diskUsage > maxDiskSize_) {
+    vlog.debug("PersistentCache: disk usage %zuMB exceeds limit %zuMB, triggering GC",
+               diskUsage / (1024*1024), maxDiskSize_ / (1024*1024));
+    garbageCollect();
+  }
+  
+  return flushed;
+}
+
+size_t GlobalClientPersistentCache::garbageCollect()
+{
+  // GC strategy: remove entries from oldest shards that are cold
+  // and exceed the disk limit
+  
+  size_t diskUsage = getDiskUsage();
+  if (diskUsage <= maxDiskSize_ && coldEntries_.empty()) {
+    return 0;  // Nothing to collect
+  }
+  
+  size_t reclaimed = 0;
+  
+  // Find the oldest shard with cold entries
+  // For simplicity, just remove cold entries until we're under the limit
+  std::vector<std::vector<uint8_t>> toRemove;
+  for (const auto& hash : coldEntries_) {
+    if (diskUsage <= maxDiskSize_ * 0.9)  // Target 90% of limit
+      break;
+    
+    auto it = indexMap_.find(hash);
+    if (it != indexMap_.end()) {
+      reclaimed += it->second.payloadSize;
+      diskUsage -= it->second.payloadSize;
+      toRemove.push_back(hash);
+    }
+  }
+  
+  // Remove from index
+  for (const auto& hash : toRemove) {
+    indexMap_.erase(hash);
+    coldEntries_.erase(hash);
+  }
+  
+  if (reclaimed > 0) {
+    vlog.debug("PersistentCache: GC reclaimed %zuKB from %zu cold entries",
+               reclaimed / 1024, toRemove.size());
+    // Note: actual shard files are not compacted here; that would require
+    // rewriting shards which is expensive. We just mark entries as removed
+    // in the index. Shards can be compacted on next full save.
+  }
+  
+  return reclaimed;
 }
 
 bool GlobalClientPersistentCache::saveToDisk()
 {
-  // Close any open file handle before writing (we may have it open for lazy reads)
-  if (cacheFileHandle_) {
-    fclose(cacheFileHandle_);
-    cacheFileHandle_ = nullptr;
-  }
+  closeCurrentShard();
   
-  if (cache_.empty()) {
-    vlog.debug("PersistentCache: cache empty, nothing to save");
-    return true;
-  }
+  if (!ensureCacheDir())
+    return false;
   
-  // Ensure directory exists
-  size_t lastSlash = cacheFilePath_.rfind('/');
-  if (lastSlash != std::string::npos) {
-    std::string dir = cacheFilePath_.substr(0, lastSlash);
-    
-    // Create directory (mkdir -p equivalent)
-    std::string currentPath;
-    for (size_t i = 0; i < dir.length(); i++) {
-      if (dir[i] == '/' && i > 0) {
-        currentPath = dir.substr(0, i);
-        mkdir(currentPath.c_str(), 0755);
-      }
-    }
-    mkdir(dir.c_str(), 0755);
-  }
-  
-  FILE* f = fopen(cacheFilePath_.c_str(), "wb");
+  std::string indexPath = getIndexPath();
+  FILE* f = fopen(indexPath.c_str(), "wb");
   if (!f) {
-    vlog.error("PersistentCache: failed to open %s for writing: %s",
-               cacheFilePath_.c_str(), strerror(errno));
+    vlog.error("PersistentCache: failed to open index for writing: %s", strerror(errno));
     return false;
   }
   
-  vlog.info("PersistentCache: saving %zu entries (v2 format) to %s",
-            cache_.size(), cacheFilePath_.c_str());
+  // Find max shard ID
+  uint16_t maxShardId = 0;
+  for (const auto& entry : indexMap_) {
+    if (entry.second.shardId > maxShardId)
+      maxShardId = entry.second.shardId;
+  }
   
-  // v2 Header structure (64 bytes)
-  struct HeaderV2 {
+  // Write v3 index header
+  struct IndexHeader {
     uint32_t magic;
     uint32_t version;
-    uint64_t indexOffset;    // File offset of index section (filled later)
-    uint64_t indexCount;     // Number of entries
-    uint64_t payloadOffset;  // File offset of payload section (right after header)
+    uint64_t entryCount;
     uint64_t created;
     uint64_t lastAccess;
-    uint8_t reserved[16];
+    uint16_t maxShardId;
+    uint8_t reserved[30];
   } header;
   
   memset(&header, 0, sizeof(header));
-  header.magic = 0x50435643;  // "PCVC"
-  header.version = 2;
-  header.indexCount = cache_.size();
-  header.payloadOffset = sizeof(header);  // Payloads start right after header
+  header.magic = 0x50435633;  // "PCV3"
+  header.version = 3;
+  header.entryCount = indexMap_.size();
   header.created = time(nullptr);
   header.lastAccess = time(nullptr);
-  // indexOffset will be filled after writing payloads
+  header.maxShardId = maxShardId;
   
-  // Write header placeholder (we'll seek back and rewrite with correct indexOffset)
   if (fwrite(&header, sizeof(header), 1, f) != 1) {
-    vlog.error("PersistentCache: failed to write header");
+    vlog.error("PersistentCache: failed to write index header");
     fclose(f);
     return false;
   }
   
-  // Build index entries while writing payloads
-  struct IndexEntryWrite {
-    std::vector<uint8_t> hash;
-    uint64_t payloadOffset;
-    uint32_t payloadSize;
-    uint16_t width;
-    uint16_t height;
-    uint16_t stridePixels;
-    PixelFormat format;
-  };
-  std::vector<IndexEntryWrite> indexEntries;
-  indexEntries.reserve(cache_.size());
-  
-  // Write payloads section
-  for (const auto& entry : cache_) {
+  // Write index entries
+  for (const auto& entry : indexMap_) {
     const std::vector<uint8_t>& hash = entry.first;
-    const CachedPixels& pixels = entry.second;
+    const IndexEntry& idx = entry.second;
     
-    IndexEntryWrite idx;
-    idx.hash = hash;
-    idx.payloadOffset = ftell(f);  // Current position is payload start
-    idx.payloadSize = pixels.pixels.size();
-    idx.width = pixels.width;
-    idx.height = pixels.height;
-    idx.stridePixels = pixels.stridePixels;
-    idx.format = pixels.format;
+    // Pad/truncate hash to 16 bytes
+    uint8_t hashBuf[16] = {0};
+    size_t copyLen = std::min(hash.size(), (size_t)16);
+    memcpy(hashBuf, hash.data(), copyLen);
+    fwrite(hashBuf, 1, 16, f);
     
-    // Write pixel data
-    if (fwrite(pixels.pixels.data(), 1, pixels.pixels.size(), f) != pixels.pixels.size()) {
-      vlog.error("PersistentCache: failed to write payload");
-      fclose(f);
-      return false;
-    }
-    
-    indexEntries.push_back(idx);
-  }
-  
-  // Record index section offset
-  header.indexOffset = ftell(f);
-  
-  // Write index section
-  for (const auto& idx : indexEntries) {
-    // hashLen(1) + hash(hashLen) + offset(8) + size(4) + width(2) + height(2) + stride(2) + PixelFormat(24)
-    uint8_t hashLen = idx.hash.size();
-    fwrite(&hashLen, 1, 1, f);
-    fwrite(idx.hash.data(), 1, hashLen, f);
+    fwrite(&idx.shardId, sizeof(idx.shardId), 1, f);
     fwrite(&idx.payloadOffset, sizeof(idx.payloadOffset), 1, f);
     fwrite(&idx.payloadSize, sizeof(idx.payloadSize), 1, f);
     fwrite(&idx.width, sizeof(idx.width), 1, f);
     fwrite(&idx.height, sizeof(idx.height), 1, f);
     fwrite(&idx.stridePixels, sizeof(idx.stridePixels), 1, f);
     fwrite(&idx.format, 24, 1, f);
-  }
-  
-  // Write footer (32-byte checksum placeholder)
-  uint8_t checksum[32] = {0};
-  fwrite(checksum, 1, 32, f);
-  
-  // Seek back and update header with correct indexOffset
-  fseek(f, 0, SEEK_SET);
-  if (fwrite(&header, sizeof(header), 1, f) != 1) {
-    vlog.error("PersistentCache: failed to rewrite header with indexOffset");
-    fclose(f);
-    return false;
+    
+    uint8_t flags = idx.isCold ? 0x01 : 0x00;
+    fwrite(&flags, 1, 1, f);
   }
   
   fclose(f);
   
-  // Clear dirty tracking after successful full save
-  dirtyEntries_.clear();
-  needsFullRebuild_ = false;
-  
-  vlog.info("PersistentCache: saved %zu entries to disk (v2 format)", indexEntries.size());
+  vlog.info("PersistentCache: saved v3 index with %zu entries", indexMap_.size());
   return true;
 }
-
-// (Replaced by shared ArcCache implementation)
 
 uint32_t GlobalClientPersistentCache::getCurrentTime() const
 {

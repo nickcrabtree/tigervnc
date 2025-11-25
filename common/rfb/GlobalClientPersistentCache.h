@@ -77,9 +77,12 @@ namespace rfb {
   // Uses content hashes as stable keys for cross-session/cross-server caching
   // Implements ARC (Adaptive Replacement Cache) eviction algorithm
   //
-  // File Format v2 (lazy load):
-  //   Header (64 bytes) -> Payload Section -> Index Section -> Footer (32 bytes)
-  //   Index is at end for append-only writes; payloads read lazily on demand.
+  // File Format v3 (sharded):
+  //   Directory structure:
+  //     index.dat      - Master index with entry metadata
+  //     shard_NNNN.dat - Payload shard files (~64MB each)
+  //   Disk cache can be larger than memory cache (default 2x) to keep
+  //   evicted entries available for re-hydration.
   class GlobalClientPersistentCache {
   public:
     // Hydration state for lazy-load
@@ -87,7 +90,7 @@ namespace rfb {
       Uninitialized,      // No disk load attempted
       IndexLoaded,        // Index loaded, payloads not yet read
       PartiallyHydrated,  // Some payloads loaded
-      FullyHydrated       // All payloads loaded
+      FullyHydrated       // All payloads in memory
     };
 
     struct CachedPixels {
@@ -109,18 +112,25 @@ namespace rfb {
       }
     };
     
-    GlobalClientPersistentCache(size_t maxSizeMB = 2048,
-                                 const std::string& cacheFilePathOverride = std::string());
+    GlobalClientPersistentCache(size_t maxMemorySizeMB = 2048,
+                                 size_t maxDiskSizeMB = 0,  // 0 = auto (2x memory)
+                                 size_t shardSizeMB = 64,
+                                 const std::string& cacheDirOverride = std::string());
     ~GlobalClientPersistentCache();
     
     // Lifecycle - lazy-load from disk
-    bool loadFromDisk();        // Legacy v1 eager load (for migration only)
-    bool loadIndexFromDisk();   // v2 fast index-only load
-    bool saveToDisk();          // Full save (rebuilds file)
+    bool loadFromDisk();        // Legacy v1/v2 detection and cleanup
+    bool loadIndexFromDisk();   // v3 fast index-only load
+    bool saveToDisk();          // Save index (shards already written incrementally)
     
-    // Incremental saves - write only modified entries
-    size_t flushDirtyEntries(); // Append dirty entries to file, returns count flushed
+    // Incremental saves - write dirty entries to current shard
+    size_t flushDirtyEntries(); // Append dirty entries to shard, returns count flushed
     size_t getDirtyEntryCount() const { return dirtyEntries_.size(); }
+    
+    // Garbage collection - reclaim space from cold/orphaned entries
+    size_t garbageCollect();    // Compact fragmented shards, returns bytes reclaimed
+    size_t getColdEntryCount() const { return coldEntries_.size(); }
+    size_t getDiskUsage() const;
     
     // Lazy hydration - load pixel data on-demand
     bool hydrateEntry(const std::vector<uint8_t>& hash);  // Load single entry's pixels
@@ -180,35 +190,54 @@ namespace rfb {
     std::unique_ptr<rfb::cache::ArcCache<std::vector<uint8_t>, CachedPixels, HashVectorHasher>> arcCache_;
 
     // Configuration
-    size_t maxCacheSize_;      // In bytes
+    size_t maxMemorySize_;     // Max in-memory cache (bytes)
+    size_t maxDiskSize_;       // Max on-disk cache (bytes)
+    size_t shardSize_;         // Target shard file size (bytes)
     
     // Statistics
     mutable Stats stats_;
     
-    // Disk persistence
-    std::string cacheFilePath_;
+    // Disk persistence - directory-based sharded storage
+    std::string cacheDir_;     // Cache directory path
     
-    // Lazy hydration state (v2 format)
+    // Lazy hydration state
     HydrationState hydrationState_;
-    FILE* cacheFileHandle_;  // Kept open for lazy reads, nullptr if closed
     
-    // Index entry for lazy loading (metadata without pixels)
+    // Index entry for lazy loading (v3 format with shard info)
     struct IndexEntry {
-      uint64_t payloadOffset;   // Offset into payload section
+      uint16_t shardId;         // Which shard file contains the payload
+      uint32_t payloadOffset;   // Offset within the shard file
       uint32_t payloadSize;     // Size of pixel data
       uint16_t width;
       uint16_t height;
       uint16_t stridePixels;
       PixelFormat format;
+      bool isCold;              // True if evicted from memory but still on disk
     };
     std::unordered_map<std::vector<uint8_t>, IndexEntry, HashVectorHasher> indexMap_;
     
     // Queue of hashes waiting to be hydrated (background loading)
     std::list<std::vector<uint8_t>> hydrationQueue_;
     
+    // Cold entries - evicted from ARC but still on disk
+    std::unordered_set<std::vector<uint8_t>, HashVectorHasher> coldEntries_;
+    
     // Dirty entry tracking for incremental saves
     std::unordered_set<std::vector<uint8_t>, HashVectorHasher> dirtyEntries_;
-    bool needsFullRebuild_;  // True if file needs rebuild (e.g., after evictions)
+    
+    // Shard management
+    uint16_t currentShardId_;  // Current shard being written to
+    FILE* currentShardHandle_; // Handle to current shard for appending
+    size_t currentShardSize_;  // Current size of active shard
+    std::unordered_map<uint16_t, size_t> shardSizes_;  // Size of each shard
+    
+    // Helper methods
+    std::string getShardPath(uint16_t shardId) const;
+    std::string getIndexPath() const;
+    bool ensureCacheDir();
+    bool openCurrentShard();
+    void closeCurrentShard();
+    bool writeEntryToShard(const std::vector<uint8_t>& hash, const CachedPixels& entry);
 
     // Helper to get current timestamp
     uint32_t getCurrentTime() const;

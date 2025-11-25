@@ -95,10 +95,25 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   }
   
   if (enablePersistentCache) {
-    size_t pcSizeMB = 2048;
+    // Memory cache size (default 2GB)
+    size_t pcMemSizeMB = 2048;
     if (auto* v = core::Configuration::getParam("PersistentCacheSize")) {
       if (auto* ip = dynamic_cast<core::IntParameter*>(v))
-        pcSizeMB = (size_t)(*ip);
+        pcMemSizeMB = (size_t)(*ip);
+    }
+    
+    // Disk cache size (default 0 = 2x memory, max 16GB)
+    size_t pcDiskSizeMB = 0;
+    if (auto* v = core::Configuration::getParam("PersistentCacheDiskSize")) {
+      if (auto* ip = dynamic_cast<core::IntParameter*>(v))
+        pcDiskSizeMB = (size_t)(*ip);
+    }
+    
+    // Shard size (default 64MB)
+    size_t pcShardSizeMB = 64;
+    if (auto* v = core::Configuration::getParam("PersistentCacheShardSize")) {
+      if (auto* ip = dynamic_cast<core::IntParameter*>(v))
+        pcShardSizeMB = (size_t)(*ip);
     }
     
     // Optional override of the on-disk cache location via PersistentCachePath
@@ -111,10 +126,12 @@ DecodeManager::DecodeManager(CConnection *conn_) :
       }
     }
     
-    persistentCache = new GlobalClientPersistentCache(pcSizeMB, pcPathOverride);
-    vlog.info("Client PersistentCache initialized: %zuMB (ARC-managed)%s",
-              pcSizeMB,
-              pcPathOverride.empty() ? "" : " with custom path override");
+    persistentCache = new GlobalClientPersistentCache(pcMemSizeMB, pcDiskSizeMB, pcShardSizeMB, pcPathOverride);
+    // Calculate effective disk size for logging (0 means 2x memory)
+    size_t effectiveDiskMB = (pcDiskSizeMB == 0) ? pcMemSizeMB * 2 : pcDiskSizeMB;
+    vlog.info("Client PersistentCache v3: mem=%zuMB, disk=%zuMB, shard=%zuMB%s",
+              pcMemSizeMB, effectiveDiskMB, pcShardSizeMB,
+              pcPathOverride.empty() ? "" : " (custom path)");
     
     // NOTE: Disk loading is now DEFERRED until the server negotiates
     // PersistentCache protocol. This avoids blocking startup and wasting
