@@ -169,6 +169,10 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 or 'persistentcache loaded from disk' in lower
                 or 'persistentcache starting fresh' in lower
                 or 'persistentcache debug log:' in lower
+                # v3 sharded format messages
+                or 'persistentcache v3' in lower
+                or 'persistentcache: loading v3 index' in lower
+                or 'persistentcache: saved v3 index' in lower
             ):
                 parsed.persistent_init_events += 1
                 if len(parsed.persistent_init_messages) < 10:
