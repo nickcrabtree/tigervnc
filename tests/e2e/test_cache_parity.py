@@ -63,10 +63,9 @@ def main():
     parser.add_argument('--duration', type=int, default=90)
     parser.add_argument('--wm', default='openbox')
     parser.add_argument('--verbose', action='store_true')
-    parser.add_argument('--tolerance', type=float, default=15.0,
+    parser.add_argument('--tolerance', type=float, default=0.0,
                         help='Allowed hit rate difference (percentage points). '
-                             'PersistentCache naturally achieves higher hit rates '
-                             'due to cross-session persistence.')
+                             'With cold caches and identical workload, hit rates must match exactly.')
 
     args = parser.parse_args()
 
@@ -135,11 +134,35 @@ def main():
         parsed_cc = parse_cpp_log(log_cc)
         metrics_cc = compute_metrics(parsed_cc)
 
-        # 5. PersistentCache run
-        print("\n[Run 2/2] PersistentCache-focused run")
+        # Stop servers to guarantee cold server-side state for next phase
+        server_viewer.stop()
+        server_content.stop()
+
+        # Restart servers for PersistentCache phase
+        print(f"\n[Servers] Restarting for PersistentCache phase :{args.display_content} and :{args.display_viewer}...")
+        server_content = VNCServer(args.display_content, args.port_content, 'pc_parity_content2',
+                                   artifacts, tracker, geometry='1920x1080',
+                                   log_level='*:stderr:30', server_choice=server_mode)
+        if not server_content.start() or not server_content.start_session(wm=args.wm):
+            print("\n✗ FAIL: Could not restart content server")
+            return 1
+        server_viewer = VNCServer(args.display_viewer, args.port_viewer, 'pc_parity_viewerwin2',
+                                  artifacts, tracker, geometry='1920x1080',
+                                  log_level='*:stderr:30', server_choice=server_mode)
+        if not server_viewer.start() or not server_viewer.start_session(wm=args.wm):
+            print("\n✗ FAIL: Could not restart viewer window server")
+            return 1
+
+        # 5. PersistentCache run (use fresh cache path for cold start)
+        print("\n[Run 2/2] PersistentCache-focused run (cold cache)")
+        pc_cache_path = artifacts.logs_dir / 'pc_test_cache.dat'
         viewer2 = run_viewer(
             binaries['cpp_viewer'], args.port_content, artifacts, tracker,
-            'parity_pc_viewer', params=['PersistentCache=1', 'ContentCache=0'],
+            'parity_pc_viewer', params=[
+                'PersistentCache=1',
+                'ContentCache=0',
+                f'PersistentCachePath={pc_cache_path}',  # Fresh cache path
+            ],
             display_for_viewer=args.display_viewer,
         )
         runner.cache_hits_minimal(duration_sec=args.duration)
