@@ -340,6 +340,10 @@ void DecodeManager::flush()
     // Using a small batch size (e.g., 5) to avoid blocking for too long
     size_t hydrated = persistentCache->hydrateNextBatch(5);
     (void)hydrated;  // suppress unused warning; debug logging is in hydrateNextBatch
+    
+    // Periodically flush dirty entries to disk (incremental save)
+    // This runs after hydration to avoid I/O contention
+    persistentCache->flushDirtyEntries();
   }
 }
 

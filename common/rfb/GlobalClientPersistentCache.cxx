@@ -95,7 +95,8 @@ GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxSizeMB,
                                                            const std::string& cacheFilePathOverride)
   : maxCacheSize_(maxSizeMB * 1024 * 1024),
     hydrationState_(HydrationState::Uninitialized),
-    cacheFileHandle_(nullptr)
+    cacheFileHandle_(nullptr),
+    needsFullRebuild_(false)
 {
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache constructor ENTER: maxSizeMB=" + std::to_string(maxSizeMB));
   
@@ -121,7 +122,13 @@ GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxSizeMB,
   arcCache_.reset(new rfb::cache::ArcCache<std::vector<uint8_t>, CachedPixels, HashVectorHasher>(
       maxCacheSize_,
       [](const CachedPixels& e) { return e.byteSize(); },
-      [this](const std::vector<uint8_t>& h) { pendingEvictions_.push_back(h); }
+      [this](const std::vector<uint8_t>& h) {
+        pendingEvictions_.push_back(h);
+        // Evicted entries mean we need a full rebuild (can't do append-only)
+        needsFullRebuild_ = true;
+        // Remove from dirty set if present (no point saving evicted entry)
+        dirtyEntries_.erase(h);
+      }
   ));
   
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache constructor EXIT: cacheFilePath=" + cacheFilePath_);
@@ -230,6 +237,10 @@ void GlobalClientPersistentCache::insert(const std::vector<uint8_t>& hash,
   // Keep persistence map in sync (used for save/load); note this duplicates memory temporarily
   cache_[hash] = entry;
   arcCache_->insert(hash, entry);
+  
+  // Mark as dirty for incremental save (only new entries, not re-hydrated ones)
+  // Note: entries loaded from disk via hydration are not marked dirty
+  dirtyEntries_.insert(hash);
 }
 
 std::vector<std::vector<uint8_t>> 
@@ -303,7 +314,11 @@ void GlobalClientPersistentCache::setMaxSize(size_t maxSizeMB)
   arcCache_.reset(new rfb::cache::ArcCache<std::vector<uint8_t>, CachedPixels, HashVectorHasher>(
       maxCacheSize_,
       [](const CachedPixels& e) { return e.byteSize(); },
-      [this](const std::vector<uint8_t>& h) { pendingEvictions_.push_back(h); }
+      [this](const std::vector<uint8_t>& h) {
+        pendingEvictions_.push_back(h);
+        needsFullRebuild_ = true;
+        dirtyEntries_.erase(h);
+      }
   ));
 }
 
@@ -634,6 +649,83 @@ size_t GlobalClientPersistentCache::hydrateNextBatch(size_t maxEntries)
   return hydrated;
 }
 
+size_t GlobalClientPersistentCache::flushDirtyEntries()
+{
+  // If we need a full rebuild (due to evictions), defer to saveToDisk()
+  if (needsFullRebuild_) {
+    vlog.debug("PersistentCache: dirty flush deferred, full rebuild needed");
+    return 0;
+  }
+  
+  if (dirtyEntries_.empty()) {
+    return 0;
+  }
+  
+  // If no file exists yet, we need a full save first
+  FILE* f = fopen(cacheFilePath_.c_str(), "r+b");
+  if (!f) {
+    // File doesn't exist, need full save
+    vlog.debug("PersistentCache: no existing file, deferring to full save");
+    return 0;
+  }
+  
+  // Read existing header to get current state
+  struct HeaderV2 {
+    uint32_t magic;
+    uint32_t version;
+    uint64_t indexOffset;
+    uint64_t indexCount;
+    uint64_t payloadOffset;
+    uint64_t created;
+    uint64_t lastAccess;
+    uint8_t reserved[16];
+  } header;
+  
+  if (fread(&header, sizeof(header), 1, f) != 1) {
+    fclose(f);
+    return 0;
+  }
+  
+  if (header.magic != 0x50435643 || header.version != 2) {
+    // Not a v2 file, need full rebuild
+    fclose(f);
+    needsFullRebuild_ = true;
+    return 0;
+  }
+  
+  // For v2 incremental save:
+  // 1. Seek to end of payload section (before old index)
+  // 2. Write new payloads
+  // 3. Write new combined index (old + new entries)
+  // 4. Update header
+  
+  // This is complex because we need to preserve existing entries.
+  // For now, implement a simpler approach: batch dirty entries and
+  // do a full rebuild when batch is large enough or on shutdown.
+  
+  size_t dirtyCount = dirtyEntries_.size();
+  
+  // If we have many dirty entries (>10% of cache), do full rebuild
+  // This avoids accumulating too many small appends
+  if (dirtyCount > cache_.size() / 10 || dirtyCount > 100) {
+    fclose(f);
+    vlog.debug("PersistentCache: %zu dirty entries, triggering full rebuild", dirtyCount);
+    
+    if (saveToDisk()) {
+      dirtyEntries_.clear();
+      needsFullRebuild_ = false;
+      return dirtyCount;
+    }
+    return 0;
+  }
+  
+  // For small number of dirty entries, just track them and defer save
+  // This will be flushed on shutdown via saveToDisk()
+  fclose(f);
+  vlog.debug("PersistentCache: %zu dirty entries pending (deferred)", dirtyCount);
+  return 0;
+}
+
 bool GlobalClientPersistentCache::saveToDisk()
 {
   // Close any open file handle before writing (we may have it open for lazy reads)
@@ -768,6 +860,10 @@ bool GlobalClientPersistentCache::saveToDisk()
   }
   
   fclose(f);
+  
+  // Clear dirty tracking after successful full save
+  dirtyEntries_.clear();
+  needsFullRebuild_ = false;
   
   vlog.info("PersistentCache: saved %zu entries to disk (v2 format)", indexEntries.size());
   return true;

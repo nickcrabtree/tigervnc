@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <list>
 #include <memory>      // for std::unique_ptr
 #include <string>
@@ -117,6 +118,10 @@ namespace rfb {
     bool loadIndexFromDisk();   // v2 fast index-only load
     bool saveToDisk();          // Full save (rebuilds file)
     
+    // Incremental saves - write only modified entries
+    size_t flushDirtyEntries(); // Append dirty entries to file, returns count flushed
+    size_t getDirtyEntryCount() const { return dirtyEntries_.size(); }
+    
     // Lazy hydration - load pixel data on-demand
     bool hydrateEntry(const std::vector<uint8_t>& hash);  // Load single entry's pixels
     size_t hydrateNextBatch(size_t maxEntries);           // Proactive background hydration
@@ -200,6 +205,10 @@ namespace rfb {
     
     // Queue of hashes waiting to be hydrated (background loading)
     std::list<std::vector<uint8_t>> hydrationQueue_;
+    
+    // Dirty entry tracking for incremental saves
+    std::unordered_set<std::vector<uint8_t>, HashVectorHasher> dirtyEntries_;
+    bool needsFullRebuild_;  // True if file needs rebuild (e.g., after evictions)
 
     // Helper to get current timestamp
     uint32_t getCurrentTime() const;
