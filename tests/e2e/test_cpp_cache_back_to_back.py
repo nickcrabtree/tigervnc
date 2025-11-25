@@ -152,8 +152,9 @@ def main():
         server_mode = "system"
         print("\nUsing system Xtigervnc server")
 
-    # Prepare a per-test PersistentCache path under artifacts
-    pcache_path = artifacts.logs_dir / "back_to_back_persistentcache.dat"
+    # Prepare a per-test PersistentCache directory under artifacts
+    # v3 uses a directory with index.dat + shard files instead of a single file
+    pcache_path = artifacts.logs_dir / "back_to_back_persistentcache"
 
     try:
         # ==============================
@@ -258,11 +259,12 @@ def main():
         print(f"\n[6/9] Phase 2: PersistentCache cold run (server :{args.display_content})...")
         print("  Server config: EnableContentCache=0, EnablePersistentCache=1")
 
-        # Ensure cold disk cache by removing any prior file
+        # Ensure cold disk cache by removing any prior directory
+        import shutil
         if pcache_path.exists():
             try:
-                pcache_path.unlink()
-            except FileNotFoundError:
+                shutil.rmtree(pcache_path)
+            except Exception:
                 pass
 
         server_content_pc = VNCServer(
