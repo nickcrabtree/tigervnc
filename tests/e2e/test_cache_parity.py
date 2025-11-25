@@ -63,7 +63,10 @@ def main():
     parser.add_argument('--duration', type=int, default=90)
     parser.add_argument('--wm', default='openbox')
     parser.add_argument('--verbose', action='store_true')
-    parser.add_argument('--tolerance', type=float, default=5.0, help='Allowed hit rate difference (percentage points)')
+    parser.add_argument('--tolerance', type=float, default=15.0,
+                        help='Allowed hit rate difference (percentage points). '
+                             'PersistentCache naturally achieves higher hit rates '
+                             'due to cross-session persistence.')
 
     args = parser.parse_args()
 
@@ -136,7 +139,7 @@ def main():
         print("\n[Run 2/2] PersistentCache-focused run")
         viewer2 = run_viewer(
             binaries['cpp_viewer'], args.port_content, artifacts, tracker,
-            'parity_pc_viewer', params=['PersistentCache=1', 'ContentCacheSize=0'],
+            'parity_pc_viewer', params=['PersistentCache=1', 'ContentCache=0'],
             display_for_viewer=args.display_viewer,
         )
         runner.cache_hits_minimal(duration_sec=args.duration)

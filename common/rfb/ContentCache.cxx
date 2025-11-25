@@ -135,11 +135,29 @@ ContentCache::ContentCache(size_t maxSizeMB, uint32_t maxAgeSec)
   vlog.debug("ContentCache created with ARC: maxSize=%zuMB, maxAge=%us",
              maxSizeMB, maxAgeSec);
              
-  // Initialize shared ArcCache for client pixel cache
+  // Initialize shared ArcCache for client pixel cache. When entries are evicted
+  // from the pixel cache we must notify the server so it stops sending
+  // references to cache IDs we no longer store locally.
   arcPixelCache_.reset(new rfb::cache::ArcCache<ContentKey, CachedPixels, ContentKeyHash>(
       maxPixelCacheSize_,
       [](const CachedPixels& e) { return e.bytes; },
-      nullptr /* no eviction notification from pixel cache at present */
+      [this](const ContentKey& key) {
+        // Use the ContentKey's contentHash as the cacheId for eviction
+        // notifications. For ContentCache we deliberately chose
+        // cacheId == contentHash when inserting entries, so this gives the
+        // server the exact IDs it previously referenced in CachedRect
+        // messages.
+        uint64_t cacheId = key.contentHash;
+        if (cacheId == 0)
+          return;  // 0 is reserved / unused
+        pendingEvictions_.push_back(cacheId);
+        // Best-effort cleanup of any auxiliary mappings if they exist.
+        auto idIt = keyToCacheId_.find(key);
+        if (idIt != keyToCacheId_.end()) {
+          cacheIdToKey_.erase(idIt->second);
+          keyToCacheId_.erase(idIt);
+        }
+      }
   ));
 
   //DebugContentCache_2025-10-14
@@ -364,6 +382,8 @@ ContentCache::Stats ContentCache::getStats() const
     current.b1Size = ps.b1Size;
     current.b2Size = ps.b2Size;
     current.targetT1Size = ps.targetT1Size;
+    // Include eviction count from pixel ArcCache (client-side evictions)
+    current.evictions = ps.evictions;
   } else {
     // Use hash cache stats (already in stats_)
     current.t1Size = t1_.size();

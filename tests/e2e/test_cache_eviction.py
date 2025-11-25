@@ -31,9 +31,13 @@ from log_parser import parse_cpp_log, compute_metrics
 
 
 def run_viewer_with_small_cache(viewer_path, port, artifacts, tracker, name, 
-                                 cache_size_mb=16, display_for_viewer=None):
+                                 cache_size_mb=1, display_for_viewer=None):
     """
-    Run viewer with a small cache to force evictions.
+    Run viewer with a small ContentCache to force evictions.
+    
+    IMPORTANT: We disable PersistentCache so that the server negotiates
+    ContentCache instead. Otherwise PersistentCache takes precedence and
+    ContentCache evictions won't occur.
     
     Args:
         viewer_path: Path to viewer binary
@@ -41,7 +45,7 @@ def run_viewer_with_small_cache(viewer_path, port, artifacts, tracker, name,
         artifacts: ArtifactManager
         tracker: ProcessTracker
         name: Process name
-        cache_size_mb: Cache size in MB (default 16MB to force evictions)
+        cache_size_mb: Cache size in MB (default 1MB to force evictions)
         display_for_viewer: Optional X display
     
     Returns:
@@ -53,6 +57,7 @@ def run_viewer_with_small_cache(viewer_path, port, artifacts, tracker, name,
         'Shared=1',
         'Log=*:stderr:100',
         f'ContentCacheSize={cache_size_mb}',
+        'PersistentCache=0',  # Disable PersistentCache to force ContentCache usage
     ]
     
     log_path = artifacts.logs_dir / f'{name}.log'
@@ -94,8 +99,8 @@ def main():
                        help='Port for viewer window server (default: 6899)')
     parser.add_argument('--duration', type=int, default=60,
                        help='Test duration in seconds (default: 60)')
-    parser.add_argument('--cache-size', type=int, default=16,
-                       help='Client cache size in MB (default: 16MB to force evictions)')
+    parser.add_argument('--cache-size', type=int, default=1,
+                       help='Client cache size in MB (default: 1MB to force evictions)')
     parser.add_argument('--wm', default='openbox',
                        help='Window manager (default: openbox)')
     parser.add_argument('--verbose', action='store_true',
@@ -213,10 +218,11 @@ def main():
         print(f"\n[6/8] Running intensive scenario to force evictions...")
         runner = ScenarioRunner(args.display_content, verbose=args.verbose)
         
-        # Use animated scenario for maximum cache pressure
+        # Use eviction_stress scenario for maximum cache pressure
+        # This generates many unique windows at varying positions to fill the cache
         print("  Generating diverse content to fill cache...")
-        stats = runner.cache_hits_with_clock(duration_sec=args.duration)
-        print(f"  Scenario completed: {stats['windows_opened']} windows, {stats['commands_typed']} commands")
+        stats = runner.eviction_stress(duration_sec=args.duration)
+        print(f"  Scenario completed: {stats['windows_opened']} windows, {stats['unique_positions']} unique positions")
         
         time.sleep(5.0)  # Let evictions and notifications complete
         
