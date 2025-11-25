@@ -244,8 +244,8 @@ def main():
     artifacts = ArtifactManager()
     artifacts.create()
     
-    # Create data_dir for cache
-    artifacts.data_dir = artifacts.run_dir / 'data'
+    # Create data_dir for cache (use base_dir not run_dir)
+    artifacts.data_dir = artifacts.base_dir / 'data'
     artifacts.data_dir.mkdir(exist_ok=True)
     
     cache_dir = get_cache_dir(artifacts)
