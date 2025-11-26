@@ -1171,6 +1171,20 @@ void CConnection::handlePersistentCachedRect(const core::Rect& r,
 void CConnection::storePersistentCachedRect(const core::Rect& r,
                                            const std::vector<uint8_t>& hash)
 {
+  // On first use, record and log negotiated cache protocol and trigger disk load.
+  // PersistentCachedRectInit may be the first message if server is sending new content,
+  // so we must trigger disk load here too (not just in handlePersistentCachedRect).
+  if (negotiatedCacheProtocol == CacheProtocolNone) {
+    negotiatedCacheProtocol = CacheProtocolPersistent;
+    if (!negotiatedCacheLogged) {
+      vlog.info("Cache protocol: negotiated PersistentCache (-321)");
+      negotiatedCacheLogged = true;
+    }
+    // Trigger deferred disk load BEFORE storing, so subsequent lookups benefit
+    // from existing disk cache entries.
+    decoder.triggerPersistentCacheLoad();
+  }
+
   // Forward to decoder manager to store decoded content with hash
   decoder.storePersistentCachedRect(r, hash, framebuffer);
 }

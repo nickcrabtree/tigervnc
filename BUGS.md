@@ -103,3 +103,44 @@ After this point, the process is busy loading data and does not respond to user 
   - Does not block the main thread for extended periods on cache loading.
 - `-PersistentCache=0` fully disables both negotiation and any cache initialization / loading. (Done for the C++ viewer via `DecodeManager` gating on 2025-11-19.)
 - When connecting to servers that do not support PersistentCache, the disk cache is never opened or loaded for that session.
+
+---
+
+## 4. Viewer bandwidth statistics differ from server-calculated values
+
+### Summary
+The C++ viewer emits bandwidth reduction statistics that may differ significantly from the server-side calculation. End users see viewer stats, but the e2e tests currently rely on server log parsing to get accurate bandwidth metrics.
+
+### Evidence
+- `test_persistent_cache_bandwidth.py` reports 60.7% reduction from viewer log
+- Same workload shows 99.6% reduction when parsed from server log
+- Viewer summary: `PersistentCache: 41.3 KiB bandwidth saving (60.7% reduction)`
+- Server reports accurate byte counts: `saved=427008B, ref_overhead=1222B`
+
+### Impact
+- Users cannot rely on viewer-reported bandwidth stats for accurate measurement
+- Tests must parse server logs for reliable metrics, which is not user-facing
+
+### Expected Behaviour
+Viewer should emit accurate bandwidth reduction stats that match the actual savings from cache hits vs full transfers.
+
+---
+
+## 5. E2E test log parser incorrectly calculates ContentCache hit rate
+
+### Summary
+The `log_parser.py` in `tests/e2e/` treats all `CachedRectInit` messages as cache misses, but some of these occur during initial cache population before any lookups happen. This causes the parser to report lower hit rates than the viewer's self-reported stats.
+
+### Evidence
+- Viewer log shows: `Lookups: 41, Hits: 41 (100.0%)`
+- Parser calculates: `total_hits: 41, total_misses: 4` → 91.1% hit rate
+- The 4 "misses" are initial `CachedRectInit` messages before the first cache lookup
+
+### Impact
+- `test_cache_parity.py` fails with false positive difference between ContentCache (91.1%) and PersistentCache (100%)
+- Tests don't accurately reflect actual cache performance
+
+### Expected Behaviour
+Parser should either:
+1. Use the viewer's self-reported stats (Lookups/Hits/Misses lines)
+2. Only count `CachedRectInit` as misses if they occur AFTER a cache lookup
