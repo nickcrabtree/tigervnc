@@ -33,7 +33,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BUILD_DIR = PROJECT_ROOT / os.environ.get("BUILD_DIR", "build")
@@ -44,7 +44,7 @@ DEPMAP_PATH = XSERVER_BUILD_DIR / ".tigervnc_depmap.json"
 DEPMAP_MAX_AGE_SECS = 30 * 24 * 60 * 60
 
 
-def _run(cmd: List[str], cwd: Path | None = None) -> str:
+def _run(cmd: List[str], cwd: Optional[Path] = None) -> str:
     """Run a command and return its stdout as text, raising on failure."""
     proc = subprocess.run(
         cmd,
@@ -108,8 +108,8 @@ def parse_build_log_for_depmap(log_text: str) -> Dict[str, List[str]]:
             # Malformed shell quoting; skip conservatively
             continue
 
-        src_path: Path | None = None
-        obj_path: Path | None = None
+        src_path: Optional[Path] = None
+        obj_path: Optional[Path] = None
 
         # Walk args, look for "-c <src>" and "-o <obj>"
         it = iter(range(len(args)))
