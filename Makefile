@@ -14,8 +14,15 @@ XSERVER_DEPMAP := $(XSERVER_BUILD_DIR)/.tigervnc_depmap.json
 # Default: build viewer, server, and Rust viewer
 all: viewer server rustviewer
 
-# Viewer (CMake will rebuild its dependencies as needed)
+# Viewer (CMake will (re)configure as needed and rebuild its dependencies)
 viewer:
+	@if [ ! -f $(BUILD_DIR)/CMakeCache.txt ]; then \
+		echo "[viewer] Configuring CMake with BUILD_VIEWER=ON..."; \
+		cmake -S . -B $(BUILD_DIR) -DBUILD_VIEWER=ON; \
+	elif grep -q "BUILD_VIEWER:.*=0" $(BUILD_DIR)/CMakeCache.txt; then \
+		echo "[viewer] Re-configuring CMake with BUILD_VIEWER=ON (was 0)..."; \
+		cmake -S . -B $(BUILD_DIR) -DBUILD_VIEWER=ON; \
+	fi
 	cmake --build $(BUILD_DIR) --target njcvncviewer
 
 # Server: build CMake library deps first, then the Xorg-based Xnjcvnc.
