@@ -226,9 +226,9 @@ def main():
         success = True
         failures = []
 
-        if pers['bandwidth_reduction_pct'] < 50.0:
+        if pers['bandwidth_reduction_pct'] < 80.0:
             success = False
-            failures.append(f"Insufficient PersistentCache reduction: {pers['bandwidth_reduction_pct']:.1f}% (< 50%)")
+            failures.append(f"Insufficient PersistentCache reduction: {pers['bandwidth_reduction_pct']:.1f}% (< 80%)")
 
         print("\n" + "=" * 70)
         print("ARTIFACTS")
