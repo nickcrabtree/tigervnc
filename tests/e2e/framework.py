@@ -550,7 +550,7 @@ def preflight_check(verbose: bool = False) -> Dict[str, str]:
         raise PreflightError(msg)
     
     # Optional binaries
-    optional = ['Xvfb', 'xwd', 'convert', 'vncsnapshot', 'xclock']
+    optional = ['Xvfb', 'xwd', 'convert', 'vncsnapshot', 'xclock', 'display', 'feh', 'xloadimage']
     for binary in optional:
         path = check_binary(binary, required=False)
         if path:
@@ -601,7 +601,7 @@ def preflight_check_cpp_only(verbose: bool = False) -> Dict[str, str]:
         raise PreflightError(msg)
     
     # Optional binaries
-    optional = ['Xvfb', 'xwd', 'convert', 'vncsnapshot', 'xclock']
+    optional = ['Xvfb', 'xwd', 'convert', 'vncsnapshot', 'xclock', 'display', 'feh', 'xloadimage']
     for binary in optional:
         path = check_binary(binary, required=False)
         if path:

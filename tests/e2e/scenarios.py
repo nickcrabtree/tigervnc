@@ -196,6 +196,55 @@ class ScenarioRunner:
             except ProcessLookupError:
                 pass
     
+    # --- Variable-content helpers (xclock grid) ---
+    def _spawn_xclock(self, x: int, y: int, size: int = 160, update: int = 1, analog: bool = True) -> int:
+        """Spawn a single xclock at x,y with given size and update interval.
+        Returns the PID (or raises if xclock missing)."""
+        env = {**os.environ, 'DISPLAY': f':{self.display}'}
+        args = ['xclock', '-geometry', f'{size}x{size}+{x}+{y}', '-update', str(update)]
+        if analog:
+            args.insert(1, '-analog')
+        proc = subprocess.Popen(args, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.pids.append(proc.pid)
+        return proc.pid
+    
+    def xclock_grid(self, cols: int = 6, rows: int = 2, size: int = 160, update: int = 1,
+                    duration_sec: float = 60.0) -> dict:
+        """Start a grid of ticking xclocks to generate variable pixel content.
+        Falls back to eviction_stress if xclock is not available."""
+        self.log(f"Starting xclock grid: {cols}x{rows}, size={size}, update={update}s, duration={duration_sec}s")
+        stats = {'clocks_started': 0, 'fallback_used': False}
+        try:
+            # Quickly verify availability
+            if subprocess.call(['bash', '-lc', 'command -v xclock >/dev/null 2>&1']) != 0:
+                raise FileNotFoundError('xclock not found')
+            # Launch grid
+            spacing_x = size + 10
+            spacing_y = size + 10
+            start_x, start_y = 40, 40
+            for r in range(rows):
+                for c in range(cols):
+                    x = start_x + c * spacing_x
+                    y = start_y + r * spacing_y
+                    try:
+                        self._spawn_xclock(x, y, size=size, update=update, analog=True)
+                        stats['clocks_started'] += 1
+                    except Exception:
+                        # If any spawn fails, attempt to continue launching others
+                        continue
+            # Let them tick for duration
+            wait_idle(duration_sec)
+        except FileNotFoundError:
+            # Fallback to the existing eviction_stress scenario
+            self.log("xclock not available; falling back to eviction_stress")
+            stats['fallback_used'] = True
+            stats.update(self.eviction_stress(duration_sec=duration_sec))
+        finally:
+            # Do not cleanup here; caller decides when to clean up (we keep PIDs)
+            pass
+        self.log(f"xclock grid stats: {stats}")
+        return stats
+    
     def cache_hits_minimal(self, cycles: int = 15, duration_sec: Optional[float] = None) -> dict:
         """
         Generate ContentCache hits through repetitive window operations without relying on XTEST.

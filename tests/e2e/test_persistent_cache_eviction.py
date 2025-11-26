@@ -21,8 +21,9 @@ from framework import (
     ProcessTracker, VNCServer, check_port_available, check_display_available,
     PROJECT_ROOT, BUILD_DIR
 )
+from scenarios import ScenarioRunner
 from scenarios_static import StaticScenarioRunner
-from log_parser import parse_cpp_log, compute_metrics
+from log_parser import parse_cpp_log, parse_server_log, compute_metrics
 
 
 def run_viewer_with_small_persistent_cache(viewer_path, port, artifacts, tracker, name,
@@ -33,6 +34,7 @@ def run_viewer_with_small_persistent_cache(viewer_path, port, artifacts, tracker
         f'127.0.0.1::{port}',
         'Shared=1',
         'Log=*:stderr:100',
+        'PreferredEncoding=ZRLE',
         'PersistentCache=1',
         f'PersistentCacheSize={cache_size_mb}',
     ]
@@ -75,9 +77,19 @@ def main():
     parser.add_argument('--port-viewer', type=int, default=6899,
                         help='Port for viewer window server (default: 6899)')
     parser.add_argument('--duration', type=int, default=60,
-                        help='Test duration in seconds (default: 60)')
-    parser.add_argument('--cache-size', type=int, default=16,
-                        help='Persistent cache size in MB (default: 16MB)')
+                        help='Variable-content phase duration in seconds (default: 60)')
+    parser.add_argument('--verify-duration', type=int, default=12,
+                        help='Verification phase duration with repeated static logos (default: 12)')
+    parser.add_argument('--variable-content', choices=['images','xclock','fullscreen','none'], default='images',
+                        help='Variable content generator (default: images from system datasets)')
+    parser.add_argument('--grid-cols', type=int, default=6,
+                        help='xclock grid columns (default: 6)')
+    parser.add_argument('--grid-rows', type=int, default=2,
+                        help='xclock grid rows (default: 2)')
+    parser.add_argument('--clock-size', type=int, default=160,
+                        help='xclock window size (default: 160)')
+    parser.add_argument('--cache-size', type=int, default=4,
+                        help='Persistent cache size in MB (default: 4MB)')
     parser.add_argument('--wm', default='openbox',
                         help='Window manager (default: openbox)')
     parser.add_argument('--verbose', action='store_true',
@@ -187,14 +199,42 @@ def main():
             return 1
         print("✓ Test viewer connected")
 
-        # 7. Run static repeated-content scenario to force evictions.
-        #    This uses full-screen solid/background changes that mirror
-        #    the static patterns used in the ContentCache tests, but with
-        #    a small PersistentCache so that older entries are evicted.
-        print(f"\n[6/8] Running static repeated-content scenario to force evictions...")
-        runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
-        stats = runner.repeated_static_content(duration_sec=args.duration)
-        print(f"  Scenario completed: {stats}")
+        # 7. Variable-content phase (xclock grid) to overflow the cache, then
+        #    a short repeated-content phase to ensure hits survive eviction.
+        print(f"\n[6/8] Running variable-content phase to force evictions...")
+        vrunner = ScenarioRunner(args.display_content, verbose=args.verbose)
+        srunner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
+        if args.variable_content == 'images':
+            print("  Generating variable content from system image set (cycle set + churn)...")
+            # First ensure repeated content for PersistentCache hits
+            vstats_cycle = srunner.image_cycle(set_size=24, cycles=2, size=max(args.clock_size, 240),
+                                               cols=args.grid_cols, rows=max(args.grid_rows, 3),
+                                               delay_between=0.15)
+            print(f"  Cycle phase completed: {vstats_cycle}")
+            # Then general churn to overflow memory
+            vstats = srunner.image_churn(duration_sec=args.duration, cols=args.grid_cols, rows=args.grid_rows,
+                                         size=args.clock_size, interval_sec=0.6, max_windows=96)
+        elif args.variable_content == 'xclock':
+            print("  Generating variable content with xclock grid...")
+            vstats = vrunner.xclock_grid(cols=args.grid_cols, rows=args.grid_rows,
+                                         size=args.clock_size, update=1,
+                                         duration_sec=args.duration)
+        elif args.variable_content == 'fullscreen':
+            print("  Generating variable content with fullscreen random colors...")
+            vstats = srunner.random_fullscreen_colors(duration_sec=args.duration, interval_sec=0.4)
+        else:
+            print("  Using eviction_stress fallback...")
+            vstats = vrunner.eviction_stress(duration_sec=args.duration)
+        print(f"  Variable phase completed: {vstats}")
+
+        # Aggressive eviction burst to ensure memory pressure
+        print("  Running eviction burst with large images (size=320, count=24)...")
+        burst_stats = srunner.image_burst(count=24, size=320, cols=4, rows=6, interval_ms=80)
+        print(f"  Eviction burst completed: {burst_stats}")
+
+        print(f"  Running verification phase with tiled logos for {args.verify_duration}s...")
+        sstats = srunner.tiled_logos_test(tiles=12, duration=args.verify_duration, delay_between=1.0)
+        print(f"  Verification phase completed: {sstats}")
         time.sleep(5.0)  # Let evictions and notifications complete
 
         # 8. Stop viewer and analyze
@@ -209,23 +249,37 @@ def main():
         parsed = parse_cpp_log(log_path)
         metrics = compute_metrics(parsed)
 
+        # Also parse server log for eviction notifications
+        server_log_path = artifacts.logs_dir / f'pc_content_eviction_server_{args.display_content}.log'
+        server_metrics = None
+        if server_log_path.exists():
+            server_parsed = parse_server_log(server_log_path)
+            server_metrics = compute_metrics(server_parsed)
+        
         print("\n[8/8] Verification...")
         print("\n" + "=" * 70)
         print("TEST RESULTS")
         print("=" * 70)
 
         pers = metrics['persistent']
-        print(f"PersistentCache Evictions: {pers['eviction_count']} (IDs: {pers['evicted_ids']})")
+        evict_v = pers['eviction_count']
+        evicted_ids_v = pers['evicted_ids']
+        evict_s = 0
+        evicted_ids_s = 0
+        if server_metrics is not None:
+            evict_s = server_metrics['persistent']['eviction_count']
+            evicted_ids_s = server_metrics['persistent']['evicted_ids']
+        eviction_count = max(evict_v, evict_s)
+        evicted_ids = max(evicted_ids_v, evicted_ids_s)
+
+        print(f"PersistentCache Evictions (viewer/server): {evict_v}/{evict_s} (IDs: {evicted_ids_v}/{evicted_ids_s})")
         print(f"PersistentCache Bandwidth Reduction: {pers['bandwidth_reduction_pct']:.1f}%")
 
-        # If there is no PersistentCache activity at all (no hits, misses,
-        # evictions, or initialization events), treat this as a hard failure.
-        # In practice we often exercise the protocol via eviction notifications
-        # and preloaded cache state rather than explicit hit/miss counters.
+        # Hard failure if absolutely no activity
         if (
             pers['hits'] == 0
             and pers['misses'] == 0
-            and pers['eviction_count'] == 0
+            and eviction_count == 0
             and pers['init_events'] == 0
         ):
             print("\n✗ TEST FAILED")
@@ -235,20 +289,39 @@ def main():
             print("=" * 70)
             print(f"Logs: {artifacts.logs_dir}")
             print(f"Viewer log: {log_path}")
+            if server_log_path.exists():
+                print(f"Server log: {server_log_path}")
             return 1
 
         success = True
         failures = []
 
-        # Evictions must occur
-        if pers['eviction_count'] == 0 and pers['evicted_ids'] == 0:
+        # HARSH thresholds
+        MIN_LOOKUPS = 50
+        MIN_EVICTIONS = 12
+        MIN_EVICTED_IDS = 16
+        MIN_HIT_RATE = 25.0  # after verify phase, should be non-trivial
+
+        lookups = pers['hits'] + pers['misses']
+        if lookups < MIN_LOOKUPS:
             success = False
-            failures.append("No PersistentCache eviction notifications detected")
+            failures.append(f"Too few PersistentCache lookups ({lookups} < {MIN_LOOKUPS})")
+
+        if eviction_count < MIN_EVICTIONS:
+            success = False
+            failures.append(f"Too few eviction notifications ({eviction_count} < {MIN_EVICTIONS})")
+
+        if evicted_ids < MIN_EVICTED_IDS:
+            success = False
+            failures.append(f"Too few evicted IDs ({evicted_ids} < {MIN_EVICTED_IDS})")
+
+        if pers['hit_rate'] < MIN_HIT_RATE:
+            success = False
+            failures.append(f"PersistentCache hit rate too low ({pers['hit_rate']:.1f}% < {MIN_HIT_RATE}%)")
 
         # Some reduction may be reported, but in eviction-focused scenarios we
         # primarily care that evictions are signalled and the cache continues
-        # to function. A zero bandwidth reduction is therefore not treated as
-        # a test failure here.
+        # to function. A zero bandwidth reduction is not a failure here.
 
         print("\n" + "=" * 70)
         print("ARTIFACTS")

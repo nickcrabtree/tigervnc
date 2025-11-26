@@ -27,6 +27,7 @@ from framework import (
     PROJECT_ROOT, BUILD_DIR
 )
 from scenarios import ScenarioRunner
+from scenarios_static import StaticScenarioRunner
 from log_parser import parse_cpp_log, compute_metrics
 
 
@@ -56,6 +57,7 @@ def run_viewer_with_small_cache(viewer_path, port, artifacts, tracker, name,
         f'127.0.0.1::{port}',
         'Shared=1',
         'Log=*:stderr:100',
+        'PreferredEncoding=ZRLE',
         f'ContentCacheSize={cache_size_mb}',
         'PersistentCache=0',  # Disable PersistentCache to force ContentCache usage
     ]
@@ -98,7 +100,19 @@ def main():
     parser.add_argument('--port-viewer', type=int, default=6899,
                        help='Port for viewer window server (default: 6899)')
     parser.add_argument('--duration', type=int, default=60,
-                       help='Test duration in seconds (default: 60)')
+                       help='Variable-content phase duration in seconds (default: 60)')
+    parser.add_argument('--verify-duration', type=int, default=12,
+                       help='Verification phase duration with repeated static logos (default: 12)')
+    parser.add_argument('--verify-tiles', type=int, default=12,
+                       help='Number of tiled logos to display in verification (default: 12)')
+    parser.add_argument('--variable-content', choices=['images','xclock','fullscreen','none'], default='images',
+                       help='Variable content generator (default: images from system datasets)')
+    parser.add_argument('--grid-cols', type=int, default=6,
+                       help='xclock grid columns (default: 6)')
+    parser.add_argument('--grid-rows', type=int, default=2,
+                       help='xclock grid rows (default: 2)')
+    parser.add_argument('--clock-size', type=int, default=160,
+                       help='xclock window size (default: 160)')
     parser.add_argument('--cache-size', type=int, default=1,
                        help='Client cache size in MB (default: 1MB to force evictions)')
     parser.add_argument('--wm', default='openbox',
@@ -214,15 +228,38 @@ def main():
         
         print("✓ Test viewer connected")
         
-        # 7. Run scenario to generate LOTS of different content
-        print(f"\n[6/8] Running intensive scenario to force evictions...")
+        # 7. Run variable-content phase to force evictions, then a short
+        #    repeated-content phase to verify the cache still produces hits.
+        print(f"\n[6/8] Running variable-content phase to force evictions...")
         runner = ScenarioRunner(args.display_content, verbose=args.verbose)
-        
-        # Use eviction_stress scenario for maximum cache pressure
-        # This generates many unique windows at varying positions to fill the cache
-        print("  Generating diverse content to fill cache...")
-        stats = runner.eviction_stress(duration_sec=args.duration)
-        print(f"  Scenario completed: {stats['windows_opened']} windows, {stats['unique_positions']} unique positions")
+        static_runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
+        if args.variable_content == 'images':
+            print("  Generating variable content from system image set...")
+            vstats = static_runner.image_churn(duration_sec=args.duration, cols=args.grid_cols, rows=args.grid_rows,
+                                               size=args.clock_size, interval_sec=0.8, max_windows=72)
+        elif args.variable_content == 'fullscreen':
+            print("  Generating variable content with fullscreen random colors...")
+            vstats = static_runner.random_fullscreen_colors(duration_sec=args.duration, interval_sec=0.4)
+        elif args.variable_content == 'xclock':
+            print("  Generating variable content with xclock grid...")
+            vstats = runner.xclock_grid(cols=args.grid_cols, rows=args.grid_rows,
+                                        size=args.clock_size, update=1,
+                                        duration_sec=args.duration)
+        else:
+            print("  Using eviction_stress fallback...")
+            vstats = runner.eviction_stress(duration_sec=args.duration)
+        print(f"  Variable phase completed: {vstats}")
+
+        # Aggressive eviction burst to ensure enough evictions are generated
+        print("  Running eviction burst with large images (size=320, count=24)...")
+        burst_stats = static_runner.image_burst(count=24, size=320, cols=4, rows=6, interval_ms=80)
+        print(f"  Eviction burst completed: {burst_stats}")
+
+        # Brief verification phase with static repeated content
+        print(f"  Running verification phase with tiled logos for {args.verify_duration}s...")
+        static_runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
+        sstats = static_runner.tiled_logos_test(tiles=args.verify_tiles, duration=args.verify_duration, delay_between=1.0)
+        print(f"  Verification phase completed: {sstats}")
         
         time.sleep(5.0)  # Let evictions and notifications complete
         
@@ -259,38 +296,51 @@ def main():
         print(f"  CacheEviction: {proto['CacheEviction']}")
         print(f"  Evicted IDs: {proto['EvictedIDs']}")
         
-        # Success criteria
+        # Success criteria (HARSH)
         success = True
         failures = []
-        
-        # 1. Cache must have received some content
-        if proto['CachedRectInit'] < 10:
+
+        MIN_LOOKUPS = 100
+        MIN_INITS = 48
+        MIN_EVICTIONS = 8
+        MIN_EVICTED_IDS = 12
+        MIN_HIT_RATE = 25.0
+
+        # 0. Ensure enough churn happened (compute lookups from hits+misses for robustness)
+        computed_lookups = cache_ops['total_hits'] + cache_ops['total_misses']
+        if computed_lookups < MIN_LOOKUPS:
             success = False
-            failures.append(f"Too few CachedRectInit messages ({proto['CachedRectInit']} < 10)")
+            failures.append(f"Too few cache lookups ({computed_lookups} < {MIN_LOOKUPS}); insufficient churn")
         else:
-            print(f"\n✓ Cache received content ({proto['CachedRectInit']} CachedRectInit)")
+            print(f"\n✓ Sufficient churn: {computed_lookups} lookups (>= {MIN_LOOKUPS})")
         
-        # 2. Evictions MUST occur with a small cache in this scenario.
-        if proto['CacheEviction'] == 0:
+        # 1. Cache must have received substantial content
+        if proto['CachedRectInit'] < MIN_INITS:
             success = False
-            failures.append("No eviction notifications observed (expected at least one in small-cache scenario)")
-            print("✗ No eviction notifications observed (expected at least one in small-cache scenario)")
+            failures.append(f"Too few CachedRectInit messages ({proto['CachedRectInit']} < {MIN_INITS})")
         else:
-            print(f"✓ Evictions occurred ({proto['CacheEviction']} notifications sent)")
+            print(f"✓ Cache received content ({proto['CachedRectInit']} CachedRectInit >= {MIN_INITS})")
         
-        # 3. Multiple IDs must have been evicted
-        if proto['EvictedIDs'] < proto['CacheEviction']:
+        # 2. Evictions MUST occur in quantity
+        if proto['CacheEviction'] < MIN_EVICTIONS:
             success = False
-            failures.append(f"Evicted ID count suspiciously low ({proto['EvictedIDs']})")
+            failures.append(f"Too few eviction notifications ({proto['CacheEviction']} < {MIN_EVICTIONS})")
         else:
-            print(f"✓ Cache IDs evicted ({proto['EvictedIDs']} total)")
+            print(f"✓ Evictions occurred ({proto['CacheEviction']} notifications >= {MIN_EVICTIONS})")
+        
+        # 3. Evicted ID count must be healthy
+        if proto['EvictedIDs'] < MIN_EVICTED_IDS:
+            success = False
+            failures.append(f"Too few evicted IDs ({proto['EvictedIDs']} < {MIN_EVICTED_IDS})")
+        else:
+            print(f"✓ Cache IDs evicted ({proto['EvictedIDs']} >= {MIN_EVICTED_IDS})")
         
         # 4. Cache should still be working (hits after evictions)
-        if cache_ops['total_hits'] == 0:
+        if cache_ops['hit_rate'] < MIN_HIT_RATE:
             success = False
-            failures.append("No cache hits recorded")
+            failures.append(f"Hit rate too low after evictions ({cache_ops['hit_rate']:.1f}% < {MIN_HIT_RATE}%)")
         else:
-            print(f"✓ Cache still working ({cache_ops['total_hits']} hits)")
+            print(f"✓ Cache still effective after evictions (hit rate {cache_ops['hit_rate']:.1f}% >= {MIN_HIT_RATE}%)")
         
         # 5. Check for errors
         if metrics['errors'] > 0:

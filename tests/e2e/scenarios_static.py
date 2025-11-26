@@ -10,7 +10,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 
 def wait_idle(seconds: float):
@@ -19,7 +19,7 @@ def wait_idle(seconds: float):
 
 
 class StaticPatternGenerator:
-    """Generate static bitmap patterns using X11 primitives."""
+    """Generate static bitmap patterns using X11 primitives and images."""
     
     def __init__(self, display: int):
         self.display = display
@@ -80,36 +80,39 @@ class StaticPatternGenerator:
         subprocess.run(cmd, check=True, env=self.env)
         return output_path
     
+    def _which(self, name: str) -> Optional[str]:
+        try:
+            import shutil
+            return shutil.which(name)
+        except Exception:
+            return None
+    
+    def _pick_image_viewer(self) -> Optional[str]:
+        # Prefer ImageMagick 'display', fall back to 'feh' or 'xloadimage'
+        for candidate in ('display', 'feh', 'xloadimage'):
+            p = self._which(candidate)
+            if p:
+                return candidate
+        return None
+    
     def display_static_window(self, image_path: str, x: int, y: int, 
-                             title: str = "static") -> Optional[int]:
+                             title: str = "static", width: int = 160, height: int = 160) -> Optional[int]:
         """
-        Display a static image in an X window using xloadimage or display.
-        
-        Args:
-            image_path: Path to image file
-            x, y: Window position
-            title: Window title for identification
-        
-        Returns:
-            Process PID
+        Display a static image in an X window using display/feh/xloadimage.
+        Returns the spawned PID or None on failure.
         """
-        # Try display (ImageMagick) first - more reliable for our use case
-        cmd = [
-            'display',
-            '-title', title,
-            '-geometry', f'+{x}+{y}',
-            '-window', 'root',  # Use root window hints for placement
-            image_path
-        ]
+        viewer = self._pick_image_viewer()
+        if not viewer:
+            return None
+        if viewer == 'display':
+            cmd = ['display', '-title', title, '-geometry', f'{width}x{height}+{x}+{y}', image_path]
+        elif viewer == 'feh':
+            cmd = ['feh', '-x', '-g', f'{width}x{height}+{x}+{y}', image_path]
+        else:  # xloadimage
+            cmd = ['xloadimage', '-geometry', f'{width}x{height}+{x}+{y}', image_path]
         
-        proc = subprocess.Popen(
-            cmd,
-            env=self.env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        
-        wait_idle(0.5)  # Allow window to appear
+        proc = subprocess.Popen(cmd, env=self.env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        wait_idle(0.2)
         return proc.pid
     
     def draw_rectangle(self, x: int, y: int, width: int, height: int, 
@@ -134,6 +137,155 @@ class StaticScenarioRunner:
         self.generator = StaticPatternGenerator(display)
         self.pids = []
         self.temp_files = []
+    
+    def discover_system_images(self, max_count: int = 300) -> List[str]:
+        """Discover a set of system images (PNGs/JPEGs/SVGs) for churn.
+        Searches common locations on Linux.
+        """
+        import glob
+        candidates: List[str] = []
+        dirs = [
+            '/usr/share/pixmaps',
+            '/usr/share/icons/hicolor',
+            '/usr/share/icons',
+            '/usr/share/backgrounds',
+            '/usr/share/wallpapers',
+        ]
+        exts = ('*.png', '*.jpg', '*.jpeg', '*.svg', '*.bmp')
+        for d in dirs:
+            for ext in exts:
+                candidates.extend(glob.glob(f"{d}/**/{ext}", recursive=True))
+        # Deduplicate and cap
+        uniq = []
+        seen = set()
+        for p in candidates:
+            if p not in seen and os.path.getsize(p) > 0:
+                seen.add(p)
+                uniq.append(p)
+            if len(uniq) >= max_count:
+                break
+        return uniq
+    
+    def image_churn(self, duration_sec: float = 60.0, cols: int = 6, rows: int = 2,
+                    size: int = 160, interval_sec: float = 0.8, max_windows: int = 60) -> dict:
+        """Continuously open batches of images in a grid to create content churn.
+        Limits the number of live windows by retiring oldest ones.
+        """
+        images = self.discover_system_images(max_count=500)
+        stats = {'images_found': len(images), 'batches': 0, 'windows_opened': 0}
+        if not images:
+            return stats
+        
+        import random
+        random.shuffle(images)
+        index = 0
+        start = time.time()
+        while time.time() - start < duration_sec:
+            stats['batches'] += 1
+            for r in range(rows):
+                for c in range(cols):
+                    if index >= len(images):
+                        index = 0
+                    x = 40 + c * (size + 10)
+                    y = 40 + r * (size + 10)
+                    img = images[index]
+                    index += 1
+                    pid = self.generator.display_static_window(img, x, y, title=f"img{index}", width=size, height=size)
+                    if pid:
+                        self.pids.append(pid)
+                        stats['windows_opened'] += 1
+            # Retire oldest windows if we have too many
+            while len(self.pids) > max_windows:
+                old = self.pids.pop(0)
+                try:
+                    os.kill(old, 15)
+                except ProcessLookupError:
+                    pass
+            wait_idle(interval_sec)
+        return stats
+    
+    def image_burst(self, count: int = 24, size: int = 320, cols: int = 4, rows: int = 6, interval_ms: int = 100) -> dict:
+        """Open a burst of large images to force rapid cache evictions.
+        Opens up to `count` windows quickly (interval_ms between opens).
+        """
+        images = self.discover_system_images(max_count=count * 3 or 60)
+        stats = {'images_found': len(images), 'windows_opened': 0}
+        if not images:
+            return stats
+        import random
+        random.shuffle(images)
+        start_x, start_y = 40, 40
+        spacing_x = size + 10
+        spacing_y = size + 10
+        idx = 0
+        for i in range(count):
+            r = (i // cols) % rows
+            c = i % cols
+            x = start_x + c * spacing_x
+            y = start_y + r * spacing_y
+            img = images[idx % len(images)]
+            idx += 1
+            pid = self.generator.display_static_window(img, x, y, title=f"burst{i}", width=size, height=size)
+            if pid:
+                self.pids.append(pid)
+                stats['windows_opened'] += 1
+            # small pacing to allow processing, but keep it aggressive
+            wait_idle(max(0.0, interval_ms / 1000.0))
+        return stats
+    
+    def image_cycle(self, set_size: int = 24, cycles: int = 3, size: int = 320,
+                    cols: int = 4, rows: int = 6, delay_between: float = 0.2) -> dict:
+        """Repeat a fixed set of images multiple times at varying positions.
+        Goal: ensure PersistentCache inserts on cycle 1 and hits on later cycles.
+        """
+        images = self.discover_system_images(max_count=set_size)
+        stats = {'images_found': len(images), 'cycles': cycles, 'windows_opened': 0}
+        if len(images) < set_size:
+            # not enough images found; just use what we have
+            set_size = len(images)
+        if set_size == 0:
+            return stats
+        # fixed set
+        fixed = images[:set_size]
+        start_x, start_y = 40, 40
+        spacing_x = size + 10
+        spacing_y = size + 10
+        for cycle in range(cycles):
+            for i, img in enumerate(fixed):
+                r = (i // cols) % rows
+                c = i % cols
+                # vary position slightly per cycle to change rect coords
+                dx = (cycle % 3) * 20
+                dy = (cycle % 3) * 15
+                x = start_x + c * spacing_x + dx
+                y = start_y + r * spacing_y + dy
+                pid = self.generator.display_static_window(img, x, y, title=f"cycle{cycle}_img{i}", width=size, height=size)
+                if pid:
+                    self.pids.append(pid)
+                    stats['windows_opened'] += 1
+                wait_idle(delay_between)
+        return stats
+    
+    def random_fullscreen_colors(self, duration_sec: float = 60.0, interval_sec: float = 0.5) -> dict:
+        """
+        Rapidly change the root window to random solid colors to generate
+        large, unique rectangles that quickly fill the cache.
+        
+        Returns a dict with the number of changes performed.
+        """
+        import random
+        env = {**os.environ, 'DISPLAY': f':{self.display}'}
+        start = time.time()
+        changes = 0
+        while time.time() - start < duration_sec:
+            color = '#%06x' % random.randint(0, 0xFFFFFF)
+            try:
+                subprocess.run(['xsetroot', '-solid', color], env=env, check=False)
+            except Exception:
+                pass
+            changes += 1
+            wait_idle(interval_sec)
+        return {'fullscreen_color_changes': changes}
     
     def log(self, msg: str):
         """Log scenario progress."""
