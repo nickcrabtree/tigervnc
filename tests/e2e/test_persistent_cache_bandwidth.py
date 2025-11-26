@@ -22,17 +22,16 @@ from framework import (
     PROJECT_ROOT, BUILD_DIR
 )
 from scenarios_static import StaticScenarioRunner
-from log_parser import parse_cpp_log, parse_server_log, compute_metrics
+from log_parser import parse_cpp_log, compute_metrics
 
 
 def run_viewer_with_persistent_cache(viewer_path, port, artifacts, tracker, name, display_for_viewer=None):
-    """Run viewer with PersistentCache enabled (ContentCache disabled for isolation)."""
+    """Run viewer with PersistentCache enabled (default size)."""
     cmd = [
         viewer_path,
         f'127.0.0.1::{port}',
         'Shared=1',
         'Log=*:stderr:100',
-        'ContentCache=0',      # Disable ContentCache to isolate PersistentCache metrics
         'PersistentCache=1',
     ]
 
@@ -138,7 +137,7 @@ def main():
             args.display_content, args.port_content, "pc_content_bandwidth",
             artifacts, tracker,
             geometry="1920x1080",
-            log_level="*:stderr:100",  # Verbose for bandwidth metrics
+            log_level="*:stderr:30",
             server_choice=server_mode,
             server_params={
                 'EnableContentCache': '0',        # disable ContentCache
@@ -196,19 +195,11 @@ def main():
         tracker.cleanup('pc_bandwidth_test_viewer')
 
         log_path = artifacts.logs_dir / 'pc_bandwidth_test_viewer.log'
-        server_log_path = artifacts.logs_dir / f'pc_content_bandwidth_server_{args.display_content}.log'
         if not log_path.exists():
             print(f"\n✗ FAIL: Log file not found: {log_path}")
             return 1
 
-        # Parse both viewer and server logs (server has accurate bandwidth metrics)
         parsed = parse_cpp_log(log_path)
-        server_parsed = parse_server_log(server_log_path, verbose=args.verbose)
-        
-        # Use server-side bandwidth calculation (more accurate)
-        if server_parsed.persistent_bandwidth_reduction > 0:
-            parsed.persistent_bandwidth_reduction = server_parsed.persistent_bandwidth_reduction
-        
         metrics = compute_metrics(parsed)
 
         print("\n[8/8] Verification...")
