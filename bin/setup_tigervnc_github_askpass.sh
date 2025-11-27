@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
-cd /data_parallel/PreStackPro/share/nickc/tigervnc
-
-cat > /tmp/gh-askpass-tigervnc.sh << 'EOS'
+cat > /tmp/gh-askpass-tigervnc.sh << 'EOS3'
 #!/usr/bin/env bash
 set -euo pipefail
 prompt="$1"
@@ -17,7 +14,7 @@ elif echo "$prompt" | grep -qi 'password'; then
 else
   printf ''
 fi
-EOS
+EOS3
 
 chmod 700 /tmp/gh-askpass-tigervnc.sh
 

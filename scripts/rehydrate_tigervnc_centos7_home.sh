@@ -91,6 +91,20 @@ else
 fi
 
 cd "$ROOT_DIR"
+
+# --- 4. Install default xstartup matching current :0 KDE session ---
+CONFIG_DIR="$HOME/.config/tigervnc"
+mkdir -p "$CONFIG_DIR"
+install -m 0755 "$ROOT_DIR/unix/vncserver/xstartup.centos7" "$CONFIG_DIR/xstartup"
+
+echo "[rehydrate] Installed xstartup to $CONFIG_DIR/xstartup (KDE/startkde-based session)"
+
 echo "[rehydrate] You can now run, for example:"
 echo "  cmake -S . -B build -DBUILD_VIEWER=ON"
 echo "  make viewer server"
+
+# Create symlinks for tigervnc binaries
+BUILD_DIR="/data_parallel/PreStackPro/share/nickc/tigervnc/build/unix"
+ln -sf ../vncpasswd/vncpasswd "$BUILD_DIR/vncserver/tigervncpasswd" 2>/dev/null
+ln -sf ../vncconfig/vncconfig "$BUILD_DIR/vncserver/vncconfig" 2>/dev/null
+echo "[rehydrate] Created symlinks for tigervnc binaries"

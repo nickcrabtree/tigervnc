@@ -51,7 +51,7 @@ def _run(cmd: List[str], cwd: Optional[Path] = None) -> str:
         cwd=str(cwd) if cwd is not None else None,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
+        universal_newlines=True,
         check=True,
     )
     return proc.stdout
@@ -188,7 +188,7 @@ def refresh_depmap(force: bool = False) -> None:
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
+        universal_newlines=True,
     )
 
     # Perform a full rebuild with captured output for parsing. We must pass
@@ -261,7 +261,7 @@ def sync_and_invalidate(verbose: bool = True) -> None:
         rsync_cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
+        universal_newlines=True,
         check=True,
     )
 
@@ -327,7 +327,7 @@ def sync_and_invalidate(verbose: bool = True) -> None:
 
 def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(description="Maintain and use Xnjcvnc depmap")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub = parser.add_subparsers(dest="cmd")
 
     p_refresh = sub.add_parser("refresh", help="Refresh dependency map if stale")
     p_refresh.add_argument("--force", action="store_true", help="Force regeneration even if fresh")
@@ -336,6 +336,9 @@ def main(argv: List[str]) -> int:
     p_sync.add_argument("--quiet", action="store_true", help="Reduce logging output")
 
     args = parser.parse_args(argv)
+
+    if args.cmd is None:
+        parser.error("a subcommand is required (refresh or sync)")
 
     if args.cmd == "refresh":
         refresh_depmap(force=args.force)
