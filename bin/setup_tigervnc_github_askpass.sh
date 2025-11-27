@@ -11,16 +11,12 @@ elif echo "$prompt" | grep -qi 'password'; then
   : "${GITHUB_OWNER:?Set GITHUB_OWNER}"
   : "${GITHUB_REPO:?Set GITHUB_REPO}"
 
-  cache_ttl="${GITHUB_TOKEN_TTL:-900}"
   cache_file="/tmp/gh-askpass-${GITHUB_OWNER}-${GITHUB_REPO}.cache"
-  now="$(date +%s)"
 
   if [ -r "$cache_file" ]; then
-    read -r cache_time cached_token < "$cache_file" || cache_time=0
-    if [ "$cache_time" -gt 0 ] && [ "$((now - cache_time))" -lt "$cache_ttl" ]; then
-      printf '%s' "$cached_token"
-      exit 0
-    fi
+    read -r cached_token < "$cache_file"
+    printf '%s' "$cached_token"
+    exit 0
   fi
 
   token="$(ssh nickc@birdsurvey.hopto.org "~/bin/ghapp-token ${GITHUB_OWNER} ${GITHUB_REPO}")"
