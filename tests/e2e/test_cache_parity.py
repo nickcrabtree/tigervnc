@@ -63,11 +63,9 @@ def main():
     parser.add_argument('--duration', type=int, default=90)
     parser.add_argument('--wm', default='openbox')
     parser.add_argument('--verbose', action='store_true')
-    # BUGS.md #5: Log parser incorrectly calculates ContentCache hit rate,
-    # causing false differences. Set tolerance to 10pp until parser is fixed.
-    parser.add_argument('--tolerance', type=float, default=10.0,
+    parser.add_argument('--tolerance', type=float, default=0.0,
                         help='Allowed hit rate difference (percentage points). '
-                             'See BUGS.md #5 for known parser issue causing false differences.')
+                             'With cold caches and identical workload, hit rates must match exactly.')
 
     args = parser.parse_args()
 
