@@ -402,6 +402,11 @@ void CConnection::securityCompleted()
   writer_ = new CMsgWriter(&server, os);
   vlog.debug("Authentication success!");
   writer_->writeClientInit(shared);
+
+  // After authentication is complete and the CMsgWriter exists, advertise any
+  // hashes loaded from the client-side PersistentCache so the server can
+  // immediately exploit a warm cache.
+  decoder.advertisePersistentCacheHashes();
 }
 
 void CConnection::close()
@@ -1087,6 +1092,11 @@ void CConnection::updateEncodings()
   // Advertise based on configuration (can be controlled via vncviewer parameters)
   // Note: Server will use ONE cache protocol per connection (first supported in list)
   if (supportsPersistentCache) {
+    // CRITICAL: Load disk cache BEFORE advertising capability so we can
+    // immediately send HashList with our known hashes. If we wait until
+    // receiving the first PersistentCachedRectInit, that rect is already
+    // a guaranteed miss (server didn't know we had the hash).
+    decoder.triggerPersistentCacheLoad();
     encodings.push_back(pseudoEncodingPersistentCache);
     vlog.info("Cache protocol: advertising PersistentCache (-321)");
   }
@@ -1154,6 +1164,9 @@ void CConnection::handlePersistentCachedRect(const core::Rect& r,
       vlog.info("Cache protocol: negotiated PersistentCache (-321)");
       negotiatedCacheLogged = true;
     }
+    // Trigger deferred disk load now that we know server supports PersistentCache.
+    // This must happen BEFORE processing the first rect so cached entries are available.
+    decoder.triggerPersistentCacheLoad();
   }
 
   // Forward to decoder manager to handle cache lookup and blit
@@ -1163,6 +1176,20 @@ void CConnection::handlePersistentCachedRect(const core::Rect& r,
 void CConnection::storePersistentCachedRect(const core::Rect& r,
                                            const std::vector<uint8_t>& hash)
 {
+  // On first use, record and log negotiated cache protocol and trigger disk load.
+  // PersistentCachedRectInit may be the first message if server is sending new content,
+  // so we must trigger disk load here too (not just in handlePersistentCachedRect).
+  if (negotiatedCacheProtocol == CacheProtocolNone) {
+    negotiatedCacheProtocol = CacheProtocolPersistent;
+    if (!negotiatedCacheLogged) {
+      vlog.info("Cache protocol: negotiated PersistentCache (-321)");
+      negotiatedCacheLogged = true;
+    }
+    // Trigger deferred disk load BEFORE storing, so subsequent lookups benefit
+    // from existing disk cache entries.
+    decoder.triggerPersistentCacheLoad();
+  }
+
   // Forward to decoder manager to store decoded content with hash
   decoder.storePersistentCachedRect(r, hash, framebuffer);
 }

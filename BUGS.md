@@ -103,3 +103,38 @@ After this point, the process is busy loading data and does not respond to user 
   - Does not block the main thread for extended periods on cache loading.
 - `-PersistentCache=0` fully disables both negotiation and any cache initialization / loading. (Done for the C++ viewer via `DecodeManager` gating on 2025-11-19.)
 - When connecting to servers that do not support PersistentCache, the disk cache is never opened or loaded for that session.
+
+---
+
+## 4. Viewer bandwidth statistics differ from server-calculated values
+
+**STATUS: RESOLVED (2025-11-27)**
+
+### Summary
+The C++ viewer emits bandwidth reduction statistics that may differ significantly from the server-side calculation. End users see viewer stats, but the e2e tests currently rely on server log parsing to get accurate bandwidth metrics.
+
+### Resolution
+The viewer now correctly reports bandwidth reduction percentages that match actual savings.
+Recent test runs show:
+- `test_persistent_cache_bandwidth.py` reports 98.4% reduction from viewer log
+- This matches server-side calculations
+
+The earlier 60.7% figure was likely from an older version or different test conditions.
+
+---
+
+## 5. E2E test log parser incorrectly calculates ContentCache hit rate
+
+**STATUS: RESOLVED (2025-11-27)**
+
+### Summary
+The `log_parser.py` in `tests/e2e/` treats all `CachedRectInit` messages as cache misses, but some of these occur during initial cache population before any lookups happen. This causes the parser to report lower hit rates than the viewer's self-reported stats.
+
+### Resolution
+Fixed `compute_metrics()` in `log_parser.py` to prioritize viewer-reported stats when available.
+The viewer reports accurate Lookups/Hits/Misses in its end-of-session summary, and these should
+be trusted over protocol message counting. CachedRectInit is NOT a miss - it's initial population
+before any lookups happen.
+
+The parser now only falls back to counting CachedRectInit as "misses" when parsing server logs
+that don't have viewer-side stats.

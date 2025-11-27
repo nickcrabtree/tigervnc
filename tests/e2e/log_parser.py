@@ -79,6 +79,10 @@ class ParsedLog:
     persistent_bandwidth_reduction: float = 0.0
     persistent_hits: int = 0
     persistent_misses: int = 0
+    # Number of PersistentCachedRectInit messages observed in server logs.
+    # These represent initial full sends ("misses") for the PersistentCache
+    # protocol, analogous to CachedRectInit for ContentCache.
+    persistent_init_count: int = 0
     
     # PersistentCache initialization events (viewer-side) — should be zero when
     # PersistentCache option is disabled (e.g., PersistentCache=0).
@@ -165,6 +169,10 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 or 'persistentcache loaded from disk' in lower
                 or 'persistentcache starting fresh' in lower
                 or 'persistentcache debug log:' in lower
+                # v3 sharded format messages
+                or 'persistentcache v3' in lower
+                or 'persistentcache: loading v3 index' in lower
+                or 'persistentcache: saved v3 index' in lower
             ):
                 parsed.persistent_init_events += 1
                 if len(parsed.persistent_init_messages) < 10:
@@ -218,23 +226,23 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 )
                 parsed.request_cached_data_count += 1
             
-            # Eviction notifications (ContentCache)
-            elif 'sending' in lower and 'cache eviction' in lower:
-                # Parse: "Sending 5 cache eviction notifications to server"
-                match = re.search(r'sending\s+(\d+)\s+cache\s+eviction', message, re.IGNORECASE)
-                if match:
-                    count = int(match.group(1))
-                    parsed.cache_eviction_count += 1
-                    parsed.evicted_ids_count += count
-            
             # Eviction notifications (PersistentCache)
-            elif 'sending' in lower and 'persistentcache' in lower and 'eviction' in lower:
+            if 'sending' in lower and 'persistentcache' in lower and 'eviction' in lower:
                 # Parse: "Sending 5 PersistentCache eviction notifications"
                 match = re.search(r'sending\s+(\d+).*persistentcache.*eviction', message, re.IGNORECASE)
                 if match:
                     count = int(match.group(1))
                     parsed.persistent_eviction_count += 1
                     parsed.persistent_evicted_ids += count
+
+            # Eviction notifications (ContentCache)
+            elif 'sending' in lower and 'cache eviction' in lower and 'persistentcache' not in lower:
+                # Parse: "Sending 5 cache eviction notifications to server"
+                match = re.search(r'sending\s+(\d+)\s+cache\s+eviction', message, re.IGNORECASE)
+                if match:
+                    count = int(match.group(1))
+                    parsed.cache_eviction_count += 1
+                    parsed.evicted_ids_count += count
             
             # Server-side receipt (SMsgReader) line: "Client evicted N persistent cache entries"
             elif 'client evicted' in lower and 'persistent' in lower and 'cache' in lower:
@@ -244,19 +252,22 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                     parsed.persistent_eviction_count += 1
                     parsed.persistent_evicted_ids += count
             
-            # PersistentCache bandwidth summary
-            elif 'persistentcache:' in message:
-                # Format: "PersistentCache: <size> bandwidth saving (<pct>% reduction)"
-                m = re.search(r'PersistentCache:.*\(([-\d.]+)%\s*reduction\)', message)
+            # PersistentCache bandwidth summary (viewer-side)
+            elif 'persistentcache:' in lower:
+                # Format: "PersistentCache: <size> bandwidth saving (98.4% reduction)"
+                # Logs may wrap the word "reduction" onto the next line, so only
+                # require that the percentage appears inside parentheses.
+                m = re.search(r'PersistentCache:.*\(([-\d.]+)%', message, re.IGNORECASE)
                 if m:
                     try:
                         parsed.persistent_bandwidth_reduction = float(m.group(1))
                     except ValueError:
                         pass
             
-            elif 'contentcache:' in message:
-                # Format: "ContentCache: <size> bandwidth saving (<pct>% reduction)"
-                m = re.search(r'ContentCache:.*\(([-\d.]+)%\s*reduction\)', message)
+            # ContentCache bandwidth summary (viewer-side)
+            elif 'contentcache:' in lower:
+                # Format: "ContentCache: <size> bandwidth saving (98.4% reduction)"
+                m = re.search(r'ContentCache:.*\(([-\d.]+)%', message, re.IGNORECASE)
                 if m:
                     try:
                         parsed.content_bandwidth_reduction = float(m.group(1))
@@ -331,45 +342,52 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
     with open(log_path, 'r', errors='replace') as f:
         for line in f:
             line = line.strip()
+            lower = line.lower()
             
             # PersistentCache HIT with bandwidth savings
             # Format (multi-line):
             #   "EncodeManager: PersistentCache protocol HIT: rect [x,y-x,y]"
             #   "              hash=... saved 10896 bytes"
-            if 'persistentcache' in line.lower() and 'hit' in line.lower():
+            if 'persistentcache' in lower and 'hit' in lower:
                 parsed.persistent_hits += 1
                 if len(hit_samples) < 5:
                     hit_samples.append(line)
                 last_was_pc_hit = True
-            elif last_was_pc_hit and 'saved' in line.lower() and 'bytes' in line.lower():
+            elif last_was_pc_hit and 'saved' in lower and 'bytes' in lower:
                 # Continuation line with "saved N bytes"
-                match = re.search(r'saved\s+(\d+)\s+bytes', line)
+                match = re.search(r'saved\s+(\d+)\s+bytes', lower)
                 if match:
                     persistent_bytes_saved += int(match.group(1))
                     persistent_bytes_sent_as_ref += 47  # PersistentCachedRect protocol overhead
                 last_was_pc_hit = False
-            elif 'persistentcache' in line.lower() and 'miss' in line.lower():
+            elif 'persistentcache' in lower and 'miss' in lower:
                 parsed.persistent_misses += 1
                 if len(miss_samples) < 5:
                     miss_samples.append(line)
                 last_was_pc_hit = False
             # PersistentCache INIT (full send)
             # Format: "PersistentCache INIT: rect [x,y-x,y] hash=... (now known for session)"
-            elif 'persistentcache init' in line.lower():
+            elif 'persistentcache init' in lower:
+                # Treat each PersistentCachedRectInit as a protocol-level miss:
+                # the server had to send full data because the client didn't
+                # yet know this hash. This mirrors how CachedRectInit is
+                # interpreted for ContentCache.
                 persistent_bytes_sent_full += 47  # PersistentCachedRectInit overhead
+                parsed.persistent_init_count += 1
+                parsed.persistent_misses += 1
                 last_was_pc_hit = False
             else:
                 # Not a PC message, reset state
-                if last_was_pc_hit and 'hash=' not in line.lower():
+                if last_was_pc_hit and 'hash=' not in lower:
                     # Not a continuation line either
                     last_was_pc_hit = False
             
             # ContentCache operations on server
-            if 'contentcache.*hit' in line.lower() or 'cache.*hit.*id' in line.lower():
+            if 'contentcache.*hit' in lower or 'cache.*hit.*id' in lower:
                 parsed.total_hits += 1
                 if len(hit_samples) < 5:
                     hit_samples.append(line)
-            elif 'contentcache.*miss' in line.lower():
+            elif 'contentcache.*miss' in lower:
                 parsed.total_misses += 1
                 if len(miss_samples) < 5:
                     miss_samples.append(line)
@@ -436,25 +454,52 @@ def compute_metrics(parsed: ParsedLog) -> Dict:
     Compute aggregate metrics from parsed log.
     
     Returns dict suitable for comparison and reporting.
+    
+    IMPORTANT: This function prioritizes viewer-reported stats (from "Lookups: N,
+    Hits: M" lines) over counting protocol messages. The viewer's self-reported
+    stats are accurate because:
+    - ContentCache: "Lookups" = CachedRect received, "Hits" = local cache found data
+    - CachedRectInit is initial population, NOT a lookup (so not counted as miss)
+    
+    Only fall back to protocol message counting when viewer stats are absent.
     """
-    # Compute persistent hit rate
-    p_total = parsed.persistent_hits + parsed.persistent_misses
-    p_hit_rate = (100.0 * parsed.persistent_hits / p_total) if p_total > 0 else 0.0
+    # If viewer reported explicit stats, trust them over protocol message counts.
+    # The viewer reports Lookups/Hits/Misses in its summary, and these are accurate.
+    # We only fall back to counting CachedRectInit as "misses" when parsing server
+    # logs that don't have viewer-side stats.
+    #
+    # NOTE: viewer-reported total_misses=0 is VALID (no RequestCachedData sent).
+    # CachedRectInit is NOT a miss - it's initial population before any lookups.
+    # Only override if total_lookups is 0 (no viewer stats at all).
     
-    # If no explicit hit/miss counts, use protocol messages as proxy
-    # CachedRect = cache hit (reference), CachedRectInit = cache miss (full data)
-    # Note: Client logs often count CachedRect as hits but don't log CachedRectInit as misses
-    if parsed.total_misses == 0 and parsed.cached_rect_init_count > 0:
-        # Client received CachedRectInit but didn't log them as misses
-        parsed.total_misses = parsed.cached_rect_init_count  # Initial sends = misses
+    viewer_reported_stats = (parsed.total_lookups > 0)
     
-    # Always recalculate lookups from hits + misses
-    if parsed.total_lookups == 0:
-        parsed.total_lookups = parsed.total_hits + parsed.total_misses
+    if not viewer_reported_stats:
+        # No viewer stats - fall back to protocol message counting (server logs)
+        # In this case, CachedRectInit represents content the client didn't have.
+        if parsed.cached_rect_init_count > 0 and parsed.total_misses == 0:
+            parsed.total_misses = parsed.cached_rect_init_count
+        
+        # Recalculate lookups from hits + misses
+        if parsed.total_lookups == 0:
+            parsed.total_lookups = parsed.total_hits + parsed.total_misses
     
-    # Stores should match CachedRectInit count
+    # Stores should match CachedRectInit count when not explicitly logged.
     if parsed.total_stores == 0 and parsed.cached_rect_init_count > 0:
         parsed.total_stores = parsed.cached_rect_init_count
+
+    # PersistentCache: Same logic - trust viewer stats if available.
+    # For PersistentCache, the viewer reports hits/misses directly in
+    # "PersistentCache HIT/MISS" lines, which we count separately.
+    # Only use persistent_init_count as fallback for server-only logs.
+    pc_viewer_stats = (parsed.persistent_hits > 0 or parsed.persistent_misses > 0)
+    if not pc_viewer_stats and parsed.persistent_init_count > 0:
+        # Server log only - treat init messages as "misses"
+        parsed.persistent_misses = parsed.persistent_init_count
+
+    # Compute persistent hit rate after normalization.
+    p_total = parsed.persistent_hits + parsed.persistent_misses
+    p_hit_rate = (100.0 * parsed.persistent_hits / p_total) if p_total > 0 else 0.0
 
     metrics = {
         'cache_operations': {

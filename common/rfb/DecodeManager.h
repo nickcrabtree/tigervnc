@@ -77,6 +77,15 @@ namespace rfb {
     // Log end-of-session decode and cache statistics (client-side)
     void logStats();
 
+    // Advertise any hashes loaded into the client-side PersistentCache to the
+    // server via the HashList protocol once the CMsgWriter is available.
+    void advertisePersistentCacheHashes();
+
+    // Trigger lazy loading of PersistentCache from disk. Called by CConnection
+    // when PersistentCache protocol is first negotiated (on first use).
+    // This defers disk I/O until we know the server actually supports PersistentCache.
+    void triggerPersistentCacheLoad();
+
   private:
     void setThreadException();
     void throwThreadException();
@@ -164,6 +173,13 @@ namespace rfb {
     // Batching for PersistentCache queries
     std::vector<std::vector<uint8_t>> pendingQueries;
     void flushPendingQueries();
+
+    // One-shot guard to avoid sending the PersistentCache HashList more than
+    // once per connection.
+    bool persistentHashListSent;
+
+    // Guard to ensure we only trigger PersistentCache disk load once per connection
+    bool persistentCacheLoadTriggered;
 
 #ifdef UNIT_TEST
   public:

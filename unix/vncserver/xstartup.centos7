@@ -1,0 +1,34 @@
+#!/bin/sh
+
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+
+# If there is a system-wide default, use that.
+if [ -x /etc/vnc/xstartup ]; then
+    exec /etc/vnc/xstartup
+fi
+
+# Load user X resources if present.
+if [ -r "$HOME/.Xresources" ]; then
+    xrdb "$HOME/.Xresources"
+fi
+
+# Enable clipboard integration where available.
+if command -v vncconfig >/dev/null 2>&1; then
+    vncconfig -iconic &
+fi
+
+# Start a desktop that matches the local :0 session.
+# This host is running KDE via startkde, so prefer that.
+if command -v startkde >/dev/null 2>&1; then
+    exec startkde
+elif command -v gnome-session >/dev/null 2>&1; then
+    exec gnome-session
+elif command -v startxfce4 >/dev/null 2>&1; then
+    exec startxfce4
+else
+    # Very minimal fallback session.
+    xsetroot -solid grey
+    xterm -geometry 80x24+10+10 -ls -title "TigerVNC" &
+    twm &
+fi

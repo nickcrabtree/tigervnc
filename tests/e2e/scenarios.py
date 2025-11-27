@@ -196,6 +196,55 @@ class ScenarioRunner:
             except ProcessLookupError:
                 pass
     
+    # --- Variable-content helpers (xclock grid) ---
+    def _spawn_xclock(self, x: int, y: int, size: int = 160, update: int = 1, analog: bool = True) -> int:
+        """Spawn a single xclock at x,y with given size and update interval.
+        Returns the PID (or raises if xclock missing)."""
+        env = {**os.environ, 'DISPLAY': f':{self.display}'}
+        args = ['xclock', '-geometry', f'{size}x{size}+{x}+{y}', '-update', str(update)]
+        if analog:
+            args.insert(1, '-analog')
+        proc = subprocess.Popen(args, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.pids.append(proc.pid)
+        return proc.pid
+    
+    def xclock_grid(self, cols: int = 6, rows: int = 2, size: int = 160, update: int = 1,
+                    duration_sec: float = 60.0) -> dict:
+        """Start a grid of ticking xclocks to generate variable pixel content.
+        Falls back to eviction_stress if xclock is not available."""
+        self.log(f"Starting xclock grid: {cols}x{rows}, size={size}, update={update}s, duration={duration_sec}s")
+        stats = {'clocks_started': 0, 'fallback_used': False}
+        try:
+            # Quickly verify availability
+            if subprocess.call(['bash', '-lc', 'command -v xclock >/dev/null 2>&1']) != 0:
+                raise FileNotFoundError('xclock not found')
+            # Launch grid
+            spacing_x = size + 10
+            spacing_y = size + 10
+            start_x, start_y = 40, 40
+            for r in range(rows):
+                for c in range(cols):
+                    x = start_x + c * spacing_x
+                    y = start_y + r * spacing_y
+                    try:
+                        self._spawn_xclock(x, y, size=size, update=update, analog=True)
+                        stats['clocks_started'] += 1
+                    except Exception:
+                        # If any spawn fails, attempt to continue launching others
+                        continue
+            # Let them tick for duration
+            wait_idle(duration_sec)
+        except FileNotFoundError:
+            # Fallback to the existing eviction_stress scenario
+            self.log("xclock not available; falling back to eviction_stress")
+            stats['fallback_used'] = True
+            stats.update(self.eviction_stress(duration_sec=duration_sec))
+        finally:
+            # Do not cleanup here; caller decides when to clean up (we keep PIDs)
+            pass
+        self.log(f"xclock grid stats: {stats}")
+        return stats
+    
     def cache_hits_minimal(self, cycles: int = 15, duration_sec: Optional[float] = None) -> dict:
         """
         Generate ContentCache hits through repetitive window operations without relying on XTEST.
@@ -319,4 +368,68 @@ class ScenarioRunner:
         # Run cache_hits_minimal with duration
         stats.update(self.cache_hits_minimal(duration_sec=duration_sec))
         
+        return stats
+    
+    def eviction_stress(self, duration_sec: float = 60.0) -> dict:
+        """
+        Generate many unique rectangles to stress cache eviction.
+        
+        Opens xterm windows at many different positions with unique content
+        to ensure the cache fills up and evictions occur.
+        
+        Args:
+            duration_sec: How long to run scenario
+        
+        Returns:
+            dict with statistics
+        """
+        self.log(f"Starting eviction_stress scenario (duration={duration_sec}s)")
+        
+        stats = {'windows_opened': 0, 'unique_positions': 0, 'commands_typed': 0}
+        env = {**os.environ, 'DISPLAY': f':{self.display}'}
+        
+        start_time = time.time()
+        position_counter = 0
+        
+        # Generate many windows at different positions with unique content
+        while time.time() - start_time < duration_sec:
+            # Use varying positions to generate unique cached rectangles
+            x = 50 + (position_counter * 47) % 800
+            y = 50 + (position_counter * 31) % 500
+            geom = f"60x10+{x}+{y}"
+            
+            # Unique content per window to ensure unique cache entries
+            unique_cmd = f"echo 'Window {position_counter} at {x},{y}'; date; uname -a; sleep 0.5"
+            
+            self.log(f"Opening window {position_counter} at {x},{y}")
+            
+            pid = open_xterm_run(f"evict{position_counter}", geom, self.display, unique_cmd)
+            if pid:
+                self.pids.append(pid)
+                stats['windows_opened'] += 1
+            
+            position_counter += 1
+            stats['unique_positions'] = position_counter
+            
+            # Shorter wait to generate more content faster
+            wait_idle(0.8)
+            
+            # Every 5 windows, generate some large content
+            if position_counter % 5 == 0:
+                large_cmd = f"cat /etc/passwd; ls -la /usr/bin | head -50; echo 'Iteration {position_counter}'; sleep 0.5"
+                lg_geom = f"80x25+{(x + 100) % 800}+{(y + 100) % 500}"
+                pid = open_xterm_run(f"evictlarge{position_counter}", lg_geom, self.display, large_cmd)
+                if pid:
+                    self.pids.append(pid)
+                    stats['windows_opened'] += 1
+                wait_idle(1.0)
+        
+        # Final quiet period for pipeline flush
+        self.log("Scenario complete, waiting for pipeline flush...")
+        wait_idle(2.5)
+        
+        # Cleanup
+        self.cleanup()
+        
+        self.log(f"Scenario stats: {stats}")
         return stats
