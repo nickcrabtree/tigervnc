@@ -24,5 +24,8 @@ chmod 700 /tmp/gh-askpass-tigervnc.sh
 export GITHUB_OWNER=nickcrabtree
 export GITHUB_REPO=tigervnc
 export GIT_ASKPASS=/tmp/gh-askpass-tigervnc.sh
+git config --global user.name "Nick Crabtree"
+git config --global user.email nickcrabtree@gmail.com
+git config --global push.default simple
 
 echo "tigervnc GitHub App askpass configured in this shell. You can now run git pull / git push."
