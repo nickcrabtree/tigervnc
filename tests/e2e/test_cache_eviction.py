@@ -300,19 +300,22 @@ def main():
         success = True
         failures = []
 
-        MIN_LOOKUPS = 100
+        MIN_CACHE_ACTIVITY = 100  # Total cache protocol messages (CachedRect + CachedRectInit)
         MIN_INITS = 48
         MIN_EVICTIONS = 8
         MIN_EVICTED_IDS = 12
         MIN_HIT_RATE = 25.0
 
-        # 0. Ensure enough churn happened (compute lookups from hits+misses for robustness)
-        computed_lookups = cache_ops['total_hits'] + cache_ops['total_misses']
-        if computed_lookups < MIN_LOOKUPS:
+        # 0. Ensure enough cache activity happened.
+        # We measure cache activity as CachedRect (references) + CachedRectInit (initial sends).
+        # This is different from viewer's "Lookups" stat which only counts CachedRect.
+        # For eviction testing, we need to know the total cache protocol traffic.
+        cache_activity = proto['CachedRect'] + proto['CachedRectInit']
+        if cache_activity < MIN_CACHE_ACTIVITY:
             success = False
-            failures.append(f"Too few cache lookups ({computed_lookups} < {MIN_LOOKUPS}); insufficient churn")
+            failures.append(f"Too few cache protocol messages ({cache_activity} < {MIN_CACHE_ACTIVITY}); insufficient churn")
         else:
-            print(f"\n✓ Sufficient churn: {computed_lookups} lookups (>= {MIN_LOOKUPS})")
+            print(f"\n✓ Sufficient cache activity: {cache_activity} messages (>= {MIN_CACHE_ACTIVITY})")
         
         # 1. Cache must have received substantial content
         if proto['CachedRectInit'] < MIN_INITS:

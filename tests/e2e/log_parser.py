@@ -454,28 +454,47 @@ def compute_metrics(parsed: ParsedLog) -> Dict:
     Compute aggregate metrics from parsed log.
     
     Returns dict suitable for comparison and reporting.
-    """
-    # Normalize ContentCache counters based on protocol messages.
-    # CachedRect = cache hit (reference), CachedRectInit = cache miss (full data).
-    # Client logs often count CachedRect as hits but don't log CachedRectInit
-    # as misses, so fall back to treating each CachedRectInit as a miss when
-    # no explicit miss lines were seen.
-    if parsed.total_misses == 0 and parsed.cached_rect_init_count > 0:
-        parsed.total_misses = parsed.cached_rect_init_count  # Initial sends = misses
     
-    # Always recalculate ContentCache lookups from hits + misses if the caller
-    # didn't provide an explicit lookup count.
-    if parsed.total_lookups == 0:
-        parsed.total_lookups = parsed.total_hits + parsed.total_misses
+    IMPORTANT: This function prioritizes viewer-reported stats (from "Lookups: N,
+    Hits: M" lines) over counting protocol messages. The viewer's self-reported
+    stats are accurate because:
+    - ContentCache: "Lookups" = CachedRect received, "Hits" = local cache found data
+    - CachedRectInit is initial population, NOT a lookup (so not counted as miss)
+    
+    Only fall back to protocol message counting when viewer stats are absent.
+    """
+    # If viewer reported explicit stats, trust them over protocol message counts.
+    # The viewer reports Lookups/Hits/Misses in its summary, and these are accurate.
+    # We only fall back to counting CachedRectInit as "misses" when parsing server
+    # logs that don't have viewer-side stats.
+    #
+    # NOTE: viewer-reported total_misses=0 is VALID (no RequestCachedData sent).
+    # CachedRectInit is NOT a miss - it's initial population before any lookups.
+    # Only override if total_lookups is 0 (no viewer stats at all).
+    
+    viewer_reported_stats = (parsed.total_lookups > 0)
+    
+    if not viewer_reported_stats:
+        # No viewer stats - fall back to protocol message counting (server logs)
+        # In this case, CachedRectInit represents content the client didn't have.
+        if parsed.cached_rect_init_count > 0 and parsed.total_misses == 0:
+            parsed.total_misses = parsed.cached_rect_init_count
+        
+        # Recalculate lookups from hits + misses
+        if parsed.total_lookups == 0:
+            parsed.total_lookups = parsed.total_hits + parsed.total_misses
     
     # Stores should match CachedRectInit count when not explicitly logged.
     if parsed.total_stores == 0 and parsed.cached_rect_init_count > 0:
         parsed.total_stores = parsed.cached_rect_init_count
 
-    # Normalize PersistentCache counters using the same semantics as
-    # ContentCache: PersistentCachedRectInit lines (persistent_init_count)
-    # are treated as misses when no explicit "miss" log lines were seen.
-    if parsed.persistent_misses == 0 and parsed.persistent_init_count > 0:
+    # PersistentCache: Same logic - trust viewer stats if available.
+    # For PersistentCache, the viewer reports hits/misses directly in
+    # "PersistentCache HIT/MISS" lines, which we count separately.
+    # Only use persistent_init_count as fallback for server-only logs.
+    pc_viewer_stats = (parsed.persistent_hits > 0 or parsed.persistent_misses > 0)
+    if not pc_viewer_stats and parsed.persistent_init_count > 0:
+        # Server log only - treat init messages as "misses"
         parsed.persistent_misses = parsed.persistent_init_count
 
     # Compute persistent hit rate after normalization.
