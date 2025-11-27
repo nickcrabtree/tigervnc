@@ -593,7 +593,8 @@ static void vncDRI3SourceValidate(DrawablePtr drawable,
   vncDRI3SyncDrawableFromGPU(drawable);
 
   unwrap(screenPriv, screen, SourceValidate);
-  screen->SourceValidate(drawable, x, y, width, height, subWindowMode);
+  if (screen->SourceValidate)
+    screen->SourceValidate(drawable, x, y, width, height, subWindowMode);
   wrap(screenPriv, screen, SourceValidate, vncDRI3SourceValidate);
 }
 
