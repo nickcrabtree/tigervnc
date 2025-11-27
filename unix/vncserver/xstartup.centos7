@@ -18,6 +18,23 @@ if command -v vncconfig >/dev/null 2>&1; then
     vncconfig -iconic &
 fi
 
+# Disable KDE colord module to prevent repeated polkit "authentication is required
+# to create a colour managed device" popups in VNC sessions.
+# We don't need color management for remote desktop sessions.
+if [ -n "$HOME" ]; then
+    KDE_CONFIG_DIR="$HOME/.kde/share/config"
+    mkdir -p "$KDE_CONFIG_DIR"
+    KDEDRC="$KDE_CONFIG_DIR/kdedrc"
+    
+    # Only add the colord disable stanza if not already present
+    if [ -f "$KDEDRC" ] && grep -q "^\[Module-colord\]" "$KDEDRC"; then
+        : # Already configured, do nothing
+    else
+        # Append the disable stanza
+        printf "\n[Module-colord]\nautoload=false\n" >> "$KDEDRC"
+    fi
+fi
+
 # Start a desktop that matches the local :0 session.
 # This host is running KDE via startkde, so prefer that.
 if command -v startkde >/dev/null 2>&1; then
