@@ -1092,6 +1092,11 @@ void CConnection::updateEncodings()
   // Advertise based on configuration (can be controlled via vncviewer parameters)
   // Note: Server will use ONE cache protocol per connection (first supported in list)
   if (supportsPersistentCache) {
+    // CRITICAL: Load disk cache BEFORE advertising capability so we can
+    // immediately send HashList with our known hashes. If we wait until
+    // receiving the first PersistentCachedRectInit, that rect is already
+    // a guaranteed miss (server didn't know we had the hash).
+    decoder.triggerPersistentCacheLoad();
     encodings.push_back(pseudoEncodingPersistentCache);
     vlog.info("Cache protocol: advertising PersistentCache (-321)");
   }
