@@ -25,6 +25,16 @@ if [[ ! -x "${TIGERVNC_BUILD}/Xnjcvnc" ]]; then
     exit 1
 fi
 
+# Reuse the existing VNC password file used by the running X0vncserver
+# X0vncserver is started with: --PasswordFile=${HOME}/.vnc/passwd
+VNC_PASSWD_FILE="${HOME}/.vnc/passwd"
+
+if [[ ! -f "${VNC_PASSWD_FILE}" ]]; then
+    echo "Error: expected VNC password file ${VNC_PASSWD_FILE} (used by X0vncserver) not found."
+    echo "Start X0vncserver or create a VNC password with tigervncpasswd, then rerun this script."
+    exit 1
+fi
+
 # The Xnjcvnc binary was built from TigerVNC 1.15.80 with GLX and contentcache support enabled.
 # Verify GPU acceleration with: DISPLAY=:N glxinfo | grep "direct rendering"
 # (Display auto-selection will pick :2 since :1 is used by systemd vncserver@:1.service)
@@ -32,5 +42,5 @@ fi
 # Auto-select next available display (usually :2 since :1 is systemd-managed)
 # One screen macbook pro: -geometry 1920x1200
 # One 4K screen:
-"${TIGERVNC_BUILD}/tigervncserver" -geometry 3840x2100 -localhost 0 -xstartup "${HOME}/.config/tigervnc/xstartup"
+"${TIGERVNC_BUILD}/tigervncserver" -geometry 3840x2100 -localhost 0 -xstartup "${HOME}/.config/tigervnc/xstartup" -PasswordFile="${VNC_PASSWD_FILE}"
 # one big screen: -geometry 2560x1600
