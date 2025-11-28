@@ -135,7 +135,38 @@ run_rust_tests() {
 run_ctest_all() {
   echo "==> Running CTest in '${BUILD_DIR}' with -j${JOBS} (all tests, including e2e)" >&2
 
+  # Ensure all unit-test gtest targets are built so that gtest_discover_tests
+  # has registered them with CTest. This avoids accidentally skipping unit
+  # tests when the main build was done with a narrower target (e.g. viewer
+  # only).
   set +e
+  local unit_targets=(
+    configargs
+    arccache
+    bandwidthstats
+    contentcache
+    conv
+    convertlf
+    gesturehandler
+    hostport
+    parameters
+    serverhashset
+    persistentcache_protocol
+    decode_manager
+    pixelformat
+    shortcuthandler
+    unicode
+    emulatemb
+    tiling_analysis
+  )
+  cmake --build "${BUILD_DIR}" --target "${unit_targets[@]}" >/dev/null 2>&1
+  local build_status=$?
+  if [[ ${build_status} -ne 0 ]]; then
+    echo >&2
+    echo "WARNING: Failed to build one or more unit-test targets (exit ${build_status})." >&2
+    GLOBAL_STATUS=1
+  fi
+
   ctest --test-dir "${BUILD_DIR}" --output-on-failure -j"${JOBS}" "${CTEST_ARGS[@]}"
   local status=$?
   set -e

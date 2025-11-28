@@ -248,11 +248,12 @@ namespace rfb {
     void handleCachedRect(const core::Rect& r, uint64_t cacheId) override;
     void storeCachedRect(const core::Rect& r, uint64_t cacheId) override;
     
-    // PersistentCache protocol extension handlers (cross-session)
+    // PersistentCache protocol extension handlers (cross-session), using
+    // the shared 64-bit contentHash/cacheId identity on the wire.
     void handlePersistentCachedRect(const core::Rect& r,
-                                    const std::vector<uint8_t>& hash) override;
+                                    uint64_t cacheId) override;
     void storePersistentCachedRect(const core::Rect& r,
-                                   const std::vector<uint8_t>& hash) override;
+                                   uint64_t cacheId) override;
 
     // Methods to be overridden in a derived class
 

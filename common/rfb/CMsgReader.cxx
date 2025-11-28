@@ -954,30 +954,21 @@ bool CMsgReader::readCachedRectInit(const core::Rect& r)
 
 bool CMsgReader::readPersistentCachedRect(const core::Rect& r)
 {
-  // Read variable-length hash: hashLen (1 byte) + hashBytes + flags (2 bytes)
-  if (!is->hasData(1))
+  // New PersistentCache wire format: 64-bit contentId/cacheId (two U32s)
+  if (!is->hasData(8))
     return false;
-    
-  is->setRestorePoint();
-  
-  uint8_t hashLen = is->readU8();
-  
-  if (!is->hasDataOrRestore(hashLen + 2))
-    return false;
-  is->clearRestorePoint();
-  
-  std::vector<uint8_t> hash(hashLen);
-  is->readBytes(hash.data(), hashLen);
-  
-  uint16_t flags = is->readU16();  // Reserved, must be 0
-  (void)flags;  // Unused for now
-  
-  vlog.debug("Received PersistentCachedRect: [%d,%d-%d,%d] hashLen=%u",
-             r.tl.x, r.tl.y, r.br.x, r.br.y, hashLen);
-  
+
+  uint32_t hi = is->readU32();
+  uint32_t lo = is->readU32();
+  uint64_t cacheId = ((uint64_t)hi << 32) | lo;
+
+  vlog.debug("Received PersistentCachedRect: [%d,%d-%d,%d] cacheId=%llu",
+             r.tl.x, r.tl.y, r.br.x, r.br.y,
+             (unsigned long long)cacheId);
+
   // Forward to handler to lookup and blit cached content
-  handler->handlePersistentCachedRect(r, hash);
-  
+  handler->handlePersistentCachedRect(r, cacheId);
+
   return true;
 }
 
@@ -985,46 +976,43 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
 {
   // Incremental decode without outer restore point to avoid nesting with decoder
   if (!pendingPersistentCacheInitActive) {
-    // Need header: hashLen + hashBytes + innerEncoding + payloadLen
-    if (!is->hasData(1))
+    // Header: 64-bit cacheId (hi,lo) + 32-bit innerEncoding
+    if (!is->hasData(8 + 4))
       return false;
-      
-    is->setRestorePoint();
-    
-    uint8_t hashLen = is->readU8();
-    
-    if (!is->hasDataOrRestore(hashLen + 4))
-      return false;
-    is->clearRestorePoint();
-    
-    pendingPersistentHash.resize(hashLen);
-    is->readBytes(pendingPersistentHash.data(), hashLen);
-    
+
+    uint32_t hi = is->readU32();
+    uint32_t lo = is->readU32();
+    pendingPersistentCacheId = ((uint64_t)hi << 32) | lo;
     pendingPersistentCacheEncoding = is->readS32();
     pendingPersistentCacheInitActive = true;
-    
-    vlog.debug("Received PersistentCachedRectInit: [%d,%d-%d,%d] hashLen=%u encoding=%d",
-               r.tl.x, r.tl.y, r.br.x, r.br.y, hashLen, pendingPersistentCacheEncoding);
+
+    vlog.debug("Received PersistentCachedRectInit: [%d,%d-%d,%d] cacheId=%llu encoding=%d",
+               r.tl.x, r.tl.y, r.br.x, r.br.y,
+               (unsigned long long)pendingPersistentCacheId,
+               pendingPersistentCacheEncoding);
   }
-  
+
   // Attempt to decode the rect using the remembered encoding
-  vlog.debug("PCDBG: begin decode hashLen=%zu encoding=%d rect=[%d,%d-%d,%d]",
-             pendingPersistentHash.size(), pendingPersistentCacheEncoding,
+  vlog.debug("PCDBG: begin decode cacheId=%llu encoding=%d rect=[%d,%d-%d,%d]",
+             (unsigned long long)pendingPersistentCacheId,
+             pendingPersistentCacheEncoding,
              r.tl.x, r.tl.y, r.br.x, r.br.y);
-  
+
   bool ret = readRect(r, pendingPersistentCacheEncoding);
-  
-  vlog.debug("PCDBG: end decode hashLen=%zu encoding=%d ret=%d",
-             pendingPersistentHash.size(), pendingPersistentCacheEncoding, (int)ret);
-  
+
+  vlog.debug("PCDBG: end decode cacheId=%llu encoding=%d ret=%d",
+             (unsigned long long)pendingPersistentCacheId,
+             pendingPersistentCacheEncoding,
+             (int)ret);
+
   if (ret) {
-    // Notify handler to store this decoded rect with hash
-    handler->storePersistentCachedRect(r, pendingPersistentHash);
+    // Notify handler to store this decoded rect with cacheId
+    handler->storePersistentCachedRect(r, pendingPersistentCacheId);
     // Clear pending state
     pendingPersistentCacheInitActive = false;
-    pendingPersistentHash.clear();
+    pendingPersistentCacheId = 0;
     pendingPersistentCacheEncoding = 0;
   }
-  
+
   return ret;
 }

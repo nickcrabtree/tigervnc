@@ -1,4 +1,4 @@
-/* Unit tests for DecodeManager cache gating (ContentCache & PersistentCache).
+/* Unit tests for DecodeManager cache gating (unified cache engine / PersistentCache).
  */
 
 #ifdef HAVE_CONFIG_H
@@ -29,9 +29,9 @@ TEST(DecodeManagerGating, PersistentCacheDisabledLeavesPointerNull)
   // Act: construct DecodeManager with null connection (safe for this test)
   DecodeManager dm(nullptr);
 
-  // Assert: PersistentCache must not be constructed; ContentCache is present
+  // Assert: unified cache engine should not be constructed when PersistentCache
+  // is disabled and ContentCache is enabled only for legacy reasons.
   EXPECT_EQ(dm.getPersistentCacheForTest(), nullptr);
-  EXPECT_NE(dm.getContentCacheForTest(), nullptr);
 }
 
 TEST(DecodeManagerGating, ContentCacheDisabledLeavesPointerNull)
@@ -42,7 +42,8 @@ TEST(DecodeManagerGating, ContentCacheDisabledLeavesPointerNull)
 
   DecodeManager dm(nullptr);
 
-  EXPECT_EQ(dm.getContentCacheForTest(), nullptr);
+  // With ContentCache disabled but PersistentCache enabled, the unified cache
+  // engine must still be available.
   EXPECT_NE(dm.getPersistentCacheForTest(), nullptr);
 }
 
@@ -53,7 +54,6 @@ TEST(DecodeManagerGating, BothCachesEnabledCreateBoth)
 
   DecodeManager dm(nullptr);
 
-  EXPECT_NE(dm.getContentCacheForTest(), nullptr);
   EXPECT_NE(dm.getPersistentCacheForTest(), nullptr);
 }
 

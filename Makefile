@@ -11,15 +11,18 @@ BUILD_DIR := build
 XSERVER_BUILD_DIR := $(BUILD_DIR)/unix/xserver
 XSERVER_DEPMAP := $(XSERVER_BUILD_DIR)/.tigervnc_depmap.json
 
+# Default parallelism for cmake --build (all cores if detectable)
+NUM_JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
+
 # Default: build viewer, server, and Rust viewer
 all: viewer server rustviewer
 
 # Viewer (CMake will (re)configure as needed and rebuild its dependencies)
 viewer:
 	@echo "[viewer] Configuring CMake with BUILD_VIEWER=ON using $${HOME}/bin/cmake if available..."
-	@PATH="$${HOME}/bin:$${PATH}" cmake -S . -B $(BUILD_DIR) -DBUILD_VIEWER=ON
+	@env MAKEFLAGS= CMAKE_BUILD_PARALLEL_LEVEL=$(NUM_JOBS) PATH="$${HOME}/bin:$${PATH}" cmake -S . -B $(BUILD_DIR) -DBUILD_VIEWER=ON
 	@echo "[viewer] Building C++ viewer (njcvncviewer) via CMake..."
-	@PATH="$${HOME}/bin:$${PATH}" cmake --build $(BUILD_DIR) --target njcvncviewer
+	@env MAKEFLAGS= CMAKE_BUILD_PARALLEL_LEVEL=$(NUM_JOBS) PATH="$${HOME}/bin:$${PATH}" cmake --build $(BUILD_DIR) --target njcvncviewer
 
 
 # Server: build CMake library deps first, then the Xorg-based Xnjcvnc.

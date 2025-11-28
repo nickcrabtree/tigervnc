@@ -27,7 +27,6 @@
 
 #include <core/Region.h>
 
-#include <rfb/ContentCache.h>
 #include <rfb/GlobalClientPersistentCache.h>
 #include <rfb/encodings.h>
 #include <rfb/cache/BandwidthStats.h>
@@ -45,6 +44,7 @@ namespace rfb {
   class CConnection;
   class Decoder;
   class ModifiablePixelBuffer;
+  class ServerParams;
 
   class DecodeManager {
   public:
@@ -56,22 +56,21 @@ namespace rfb {
 
     void flush();
     
-    // Cache protocol extension (ContentCache - session-only)
+    // Cache protocol extension (legacy ContentCache entry point).
+    // In the unified implementation this is handled by the same backing
+    // engine as PersistentCache (GlobalClientPersistentCache).
     void handleCachedRect(const core::Rect& r, uint64_t cacheId,
-                         ModifiablePixelBuffer* pb);
+                          ModifiablePixelBuffer* pb);
     void storeCachedRect(const core::Rect& r, uint64_t cacheId,
-                        ModifiablePixelBuffer* pb);
+                         ModifiablePixelBuffer* pb);
     
-    // Bandwidth tracking for ContentCache
-    void trackCachedRectBandwidth(const core::Rect& r);
-    void trackCachedRectInitBandwidth(const core::Rect& r, size_t compressedBytes);
-    
-    // PersistentCache protocol extension (cross-session)
+    // PersistentCache protocol extension (cross-session), using 64-bit
+    // contentHash/cacheId identifiers on the wire (shared with ContentCache).
     void handlePersistentCachedRect(const core::Rect& r,
-                                    const std::vector<uint8_t>& hash,
+                                    uint64_t cacheId,
                                     ModifiablePixelBuffer* pb);
     void storePersistentCachedRect(const core::Rect& r,
-                                   const std::vector<uint8_t>& hash,
+                                   uint64_t cacheId,
                                    ModifiablePixelBuffer* pb);
 
     // Log end-of-session decode and cache statistics (client-side)
@@ -144,18 +143,9 @@ namespace rfb {
     std::list<DecodeThread*> threads;
     std::exception_ptr threadException;
     
-    // Client-side content cache (ContentCache - session-only)
-    ContentCache* contentCache;
-    struct CacheStats {
-      unsigned cache_hits;
-      unsigned cache_lookups;
-      unsigned cache_misses;
-    };
-    CacheStats cacheStats;
-    
-    // ContentCache bandwidth savings tracking
-    rfb::cache::CacheProtocolStats contentCacheBandwidthStats;
-    size_t lastDecodedRectBytes;  // Track bytes from last decoded rect for CachedRectInit
+    // Track bytes from last decoded rect so we can estimate cache INIT
+    // bandwidth (now used by the unified cache engine / PersistentCache).
+    size_t lastDecodedRectBytes;
     
     // Client-side persistent cache (PersistentCache - cross-session)
     GlobalClientPersistentCache* persistentCache;
@@ -170,8 +160,8 @@ namespace rfb {
     // PersistentCache bandwidth savings tracking
     rfb::cache::CacheProtocolStats persistentCacheBandwidthStats;
     
-    // Batching for PersistentCache queries
-    std::vector<std::vector<uint8_t>> pendingQueries;
+    // Batching for PersistentCache queries (vector of 64-bit content IDs)
+    std::vector<uint64_t> pendingQueries;
     void flushPendingQueries();
 
     // One-shot guard to avoid sending the PersistentCache HashList more than
@@ -183,9 +173,8 @@ namespace rfb {
 
 #ifdef UNIT_TEST
   public:
-    // Test-only helpers to introspect cache pointers from unit tests without
-    // exposing them in production builds.
-    ContentCache* getContentCacheForTest() const { return contentCache; }
+    // Test-only helper to introspect the unified cache pointer from unit tests
+    // without exposing it in production builds.
     GlobalClientPersistentCache* getPersistentCacheForTest() const { return persistentCache; }
 #endif
   };

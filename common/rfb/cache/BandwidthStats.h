@@ -39,14 +39,15 @@ void trackContentCacheRef(CacheProtocolStats& stats,
 void trackContentCacheInit(CacheProtocolStats& stats,
                            size_t compressedBytes);
 
-// PersistentCache: variable-length hash. Reference: 12(header)+1+hashLen.
+// PersistentCache: now uses the same 64-bit ID on the wire as
+// ContentCache. Reference overhead is therefore identical to
+// CachedRect: 20 bytes per rect.
 void trackPersistentCacheRef(CacheProtocolStats& stats,
                              const core::Rect& r,
-                             const rfb::PixelFormat& pf,
-                             size_t hashLen);
+                             const rfb::PixelFormat& pf);
 
+// PersistentCachedRectInit overhead: 24 bytes (rect header + ID + encoding)
 void trackPersistentCacheInit(CacheProtocolStats& stats,
-                              size_t hashLen,
                               size_t compressedBytes);
 
 }} // namespace rfb::cache

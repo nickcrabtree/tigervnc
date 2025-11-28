@@ -89,11 +89,14 @@ namespace rfb {
     virtual void handleCachedRect(const core::Rect& r, uint64_t cacheId) = 0;
     virtual void storeCachedRect(const core::Rect& r, uint64_t cacheId) = 0;
     
-    // PersistentCache protocol extension handlers (cross-session)
-    virtual void handlePersistentCachedRect(const core::Rect& r, 
-                                           const std::vector<uint8_t>& hash) = 0;
+    // PersistentCache protocol extension handlers (cross-session).
+    // Use the same 64-bit contentHash/cacheId identity as ContentCache so
+    // both protocols share ContentKey-based keying. PersistentCache differs
+    // only in that entries persist across sessions and are backed by disk.
+    virtual void handlePersistentCachedRect(const core::Rect& r,
+                                            uint64_t cacheId) = 0;
     virtual void storePersistentCachedRect(const core::Rect& r,
-                                          const std::vector<uint8_t>& hash) = 0;
+                                           uint64_t cacheId) = 0;
 
     ServerParams server;
   };

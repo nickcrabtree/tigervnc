@@ -42,6 +42,8 @@
 #include <rfb/UpdateTracker.h>
 #include <rfb/encodings.h>
 
+#include <rfb/cache/TilingIntegration.h>
+
 #include <rfb/RawEncoder.h>
 #include <rfb/RREEncoder.h>
 #include <rfb/HextileEncoder.h>
@@ -105,13 +107,8 @@ namespace {
     return b ? "yes" : "no";
   }
 
-  // Format ContentKey summary: "WxH,hash:HEX8"
-  inline const char* strContentKey(uint16_t w, uint16_t h, uint64_t hash) {
-    static thread_local char buf[64];
-    snprintf(buf, sizeof(buf), "%ux%u,hash:%s",
-             w, h, hex64(hash));
-    return buf;
-  }
+  // (strContentKey helper removed: unified cache path now logs IDs via hex64
+  // directly where needed.)
 }
 
 // The size in pixels of either side of each block tested when looking
@@ -124,33 +121,6 @@ static const int SolidBlockMinArea = 2048;
 static const int RecentChangeTimeout = 50;
 
 namespace rfb {
-
-enum EncoderClass {
-  encoderRaw,
-  encoderRRE,
-  encoderHextile,
-  encoderTight,
-  encoderTightJPEG,
-  encoderZRLE,
-  encoderClassMax,
-};
-
-enum EncoderType {
-  encoderSolid,
-  encoderBitmap,
-  encoderBitmapRLE,
-  encoderIndexed,
-  encoderIndexedRLE,
-  encoderFullColour,
-  encoderTypeMax,
-};
-
-struct RectInfo {
-  int rleRuns;
-  Palette palette;
-};
-
-};
 
 static const char *encoderClassName(EncoderClass klass)
 {
@@ -203,8 +173,18 @@ static bool isCCDebugEnabled()
   return env && env[0] != '\0' && env[0] != '0';
 }
 
+// Separate knob for enabling experimental tiling diagnostics without
+// changing on-wire behaviour. When enabled, EncodeManager will run a
+// log-only tiling pass on large dirty regions and report what fraction
+// could have been served from cache.
+static bool isCCTilingDebugEnabled()
+{
+  const char* env = getenv("TIGERVNC_CC_TILING_DEBUG");
+  return env && env[0] != '\0' && env[0] != '0';
+}
+
 EncodeManager::EncodeManager(SConnection* conn_)
-  : conn(conn_), recentChangeTimer(this), cacheStatsTimer(this), contentCache(nullptr),
+  : conn(conn_), recentChangeTimer(this), cacheStatsTimer(this),
     usePersistentCache(false)
 {
   StatsVector::iterator iter;
@@ -225,7 +205,6 @@ EncodeManager::EncodeManager(SConnection* conn_)
 
   updates = 0;
   memset(&copyStats, 0, sizeof(copyStats));
-  memset(&cacheStats, 0, sizeof(cacheStats));
   memset(&persistentCacheStats, 0, sizeof(persistentCacheStats));
   stats.resize(encoderClassMax);
   for (iter = stats.begin();iter != stats.end();++iter) {
@@ -234,21 +213,11 @@ EncodeManager::EncodeManager(SConnection* conn_)
     for (iter2 = iter->begin();iter2 != iter->end();++iter2)
       memset(&*iter2, 0, sizeof(EncoderStats));
   }
-
-  // Initialize content cache if enabled
-  if (Server::enableContentCache) {
-    contentCache = new ContentCache(
-      Server::contentCacheSize,
-      Server::contentCacheMaxAge
-    );
-    vlog.info("ContentCache enabled: size=%dMB, maxAge=%ds, minRectSize=%d",
-              (int)Server::contentCacheSize,
-              (int)Server::contentCacheMaxAge,
-              (int)Server::contentCacheMinRectSize);
-    
-    // Start hourly stats logging timer (3600000ms = 1 hour)
-    cacheStatsTimer.start(3600000);
-  }
+  
+  // No separate server-side ContentCache engine: cache protocol now uses
+  // a unified PersistentCache-style 64-bit ID path only. The cacheStatsTimer
+  // remains available for future periodic logging if we wish to extend
+  // persistentCacheStats.
 }
 
 EncodeManager::~EncodeManager()
@@ -257,8 +226,6 @@ EncodeManager::~EncodeManager()
 
   for (Encoder* encoder : encoders)
     delete encoder;
-
-  delete contentCache;
 }
 
 void EncodeManager::logStats()
@@ -332,43 +299,9 @@ void EncodeManager::logStats()
   vlog.info("         %s (1:%g ratio)",
             core::iecPrefix(bytes, "B").c_str(), ratio);
 
-  // Log ContentCache statistics
-  if (contentCache != nullptr) {
-    ContentCache::Stats cstats = contentCache->getStats();
-    size_t totalBytes = contentCache->getTotalBytes();
-    size_t maxBytes = Server::contentCacheSize * 1024 * 1024;
-    double pctUsed = (maxBytes > 0) ? (100.0 * totalBytes / maxBytes) : 0.0;
-    
-    vlog.info("ContentCache statistics:");
-    vlog.info("  Protocol efficiency (CachedRect usage):");
-    vlog.info("    Lookups: %u, References sent: %u (%.1f%%)",
-              cacheStats.cacheLookups,
-              cacheStats.cacheHits,
-              cacheStats.cacheLookups > 0 ?
-                (100.0 * cacheStats.cacheHits / cacheStats.cacheLookups) : 0.0);
-    vlog.info("    Estimated bytes saved: %s",
-              core::iecPrefix(cacheStats.bytesSaved, "B").c_str());
-    vlog.info("  Cache memory usage:");
-    vlog.info("    Hash cache size: %s / %s (%.1f%% used)",
-              core::iecPrefix(totalBytes, "B").c_str(),
-              core::iecPrefix(maxBytes, "B").c_str(),
-              pctUsed);
-    vlog.info("  ARC cache performance:");
-    vlog.info("    Cache entries: %zu, Total size: %s",
-              cstats.totalEntries,
-              core::iecPrefix(cstats.totalBytes, "B").c_str());
-    vlog.info("    Cache hits: %llu, misses: %llu, evictions: %llu",
-              (unsigned long long)cstats.cacheHits,
-              (unsigned long long)cstats.cacheMisses,
-              (unsigned long long)cstats.evictions);
-    vlog.info("    ARC stats: T1=%zu, T2=%zu, B1=%zu, B2=%zu, target=%zu",
-              cstats.t1Size, cstats.t2Size, cstats.b1Size,
-              cstats.b2Size, cstats.targetT1Size);
-    
-    // Log detailed ARC statistics on shutdown
-    vlog.info(" ");
-    contentCache->logArcStats();
-  }
+  // No separate ContentCache statistics block: the cache protocol is now
+  // represented solely by persistentCacheStats and the client-side
+  // PersistentCache engine.
 }
 
 bool EncodeManager::supported(int encoding)
@@ -447,10 +380,8 @@ void EncodeManager::handleTimeout(core::Timer* t)
     if (!lossyRegion.subtract(pendingRefreshRegion).is_empty())
       t->repeat();
   } else if (t == &cacheStatsTimer) {
-    // Log hourly ARC cache statistics
-    if (contentCache != nullptr) {
-      contentCache->logArcStats();
-    }
+    // Periodic cache statistics/logging hook kept for future use with
+    // persistentCacheStats; currently a no-op beyond timer rescheduling.
     t->repeat();  // Continue hourly logging
   }
 }
@@ -471,16 +402,17 @@ void EncodeManager::doUpdate(bool allowLossy, const
 
     updates++;
 
-    // Check for resolution change and clear cache if needed
-    if (contentCache != nullptr && pb != nullptr) {
+    // Check for resolution change; lastFramebufferRect is still tracked so
+    // diagnostics and future policies can react, but there is no longer a
+    // server-side ContentCache to clear.
+    if (pb != nullptr) {
       core::Rect fbRect = pb->getRect();
       if (fbRect != lastFramebufferRect) {
         if (!lastFramebufferRect.is_empty()) {
-          vlog.info("Framebuffer size changed from [%d,%d-%d,%d] to [%d,%d-%d,%d], clearing ContentCache",
+          vlog.info("Framebuffer size changed from [%d,%d-%d,%d] to [%d,%d-%d,%d]",
                     lastFramebufferRect.tl.x, lastFramebufferRect.tl.y,
                     lastFramebufferRect.br.x, lastFramebufferRect.br.y,
                     fbRect.tl.x, fbRect.tl.y, fbRect.br.x, fbRect.br.y);
-          contentCache->clear();
         }
         lastFramebufferRect = fbRect;
       }
@@ -489,6 +421,25 @@ void EncodeManager::doUpdate(bool allowLossy, const
     prepareEncoders(allowLossy);
 
     changed = changed_;
+
+    // Optional experimental tiling analysis (log-only). This does not
+    // change encoding behaviour; it just logs what portion of the
+    // bounding dirty region could be satisfied purely from cache based
+    // on current PersistentCache state.
+    if (isCCTilingDebugEnabled() && pb != nullptr && !changed.is_empty()) {
+      int tileSize = 128;
+      if (const char* envTile = getenv("TIGERVNC_CC_TILE_SIZE")) {
+        int v = atoi(envTile);
+        if (v > 0)
+          tileSize = v;
+      }
+      int minTiles = 4; // require at least a 2x2 region by default
+
+      if (usePersistentCache && conn->client.supportsEncoding(pseudoEncodingPersistentCache)) {
+        cache::PersistentCacheQuery pq(conn);
+        cache::analyzeRegionTilingLogOnly(changed, tileSize, minTiles, pb, pq);
+      }
+    }
 
     if (!conn->client.supportsEncoding(encodingCopyRect))
       changed.assign_union(copied);
@@ -543,44 +494,10 @@ void EncodeManager::doUpdate(bool allowLossy, const
           // Encode this rect now and send as CachedRectInit
           // Reuse the same selection logic as normal rectangles
           PixelBuffer *ppb;
-          Encoder *encoder;
           struct RectInfo info;
-          unsigned int divisor, maxColours;
-          bool useRLE;
           EncoderType type;
 
-          if (conn->client.compressLevel == -1)
-            divisor = 2 * 8;
-          else
-            divisor = conn->client.compressLevel * 8;
-          if (divisor < 4)
-            divisor = 4;
-          maxColours = r.area()/divisor;
-          if (activeEncoders[encoderFullColour] == encoderTightJPEG) {
-            if ((conn->client.compressLevel != -1) && (conn->client.compressLevel < 2))
-              maxColours = 24;
-            else
-              maxColours = 96;
-          }
-          if (maxColours < 2)
-            maxColours = 2;
-          encoder = encoders[activeEncoders[encoderIndexedRLE]];
-          if (maxColours > encoder->maxPaletteSize)
-            maxColours = encoder->maxPaletteSize;
-          encoder = encoders[activeEncoders[encoderIndexed]];
-          if (maxColours > encoder->maxPaletteSize)
-            maxColours = encoder->maxPaletteSize;
-
-          ppb = preparePixelBuffer(r, pb, true);
-          if (!analyseRect(ppb, &info, maxColours))
-            info.palette.clear();
-          useRLE = info.rleRuns <= (r.area() * 2);
-          switch (info.palette.size()) {
-          case 0: type = encoderFullColour; break;
-          case 1: type = encoderSolid; break;
-          case 2: type = useRLE ? encoderBitmapRLE : encoderBitmap; break;
-          default: type = useRLE ? encoderIndexedRLE : encoderIndexed; break;
-          }
+          selectEncoderForRect(r, pb, ppb, &info, type);
 
           Encoder* payloadEnc = encoders[activeEncoders[type]];
           // Emit CachedRectInit header (cacheId + encoding)
@@ -1052,121 +969,33 @@ void EncodeManager::writeRects(const core::Region& changed,
 void EncodeManager::writeSubRect(const core::Rect& rect,
                                  const PixelBuffer* pb)
 {
-  // Cache protocol selection: Use ONE cache per connection
-  // PersistentCache preferred over ContentCache (cross-session vs session-only)
-  // Cache selection determined by client capabilities
+  // Cache protocol selection: Use at most one cache per connection.
+  // PersistentCache (64-bit ID protocol) is the only remaining cache
+  // engine on the server side; ContentCache now aliases the same
+  // engine via different viewer policy.
   
-  bool passesMinThreshold = (rect.area() >= Server::contentCacheMinRectSize);
-  bool clientSupportsCC = conn->client.supportsEncoding(pseudoEncodingContentCache);
   bool clientSupportsPC = conn->client.supportsEncoding(pseudoEncodingPersistentCache);
   
   if (isCCDebugEnabled()) {
-    vlog.info("CCDBG writeSubRect: rect=%s area=%d passMin=%s clientCC=%s clientPC=%s",
-              strRect(rect), rect.area(), yesNo(passesMinThreshold),
-              yesNo(clientSupportsCC), yesNo(clientSupportsPC));
-    
-    // PRE-CACHE PAYLOAD LOGGING: compute a content hash of the payload that will
-    // be sent for this rect, *before* any ContentCache or PersistentCache logic.
-    // This runs for both the cache-enabled and ground-truth connections so we
-    // can compare what the server actually sends per rect.
-    core::Rect problemRegion(100, 100, 586, 443); // [100,100-586,443]
-    core::Rect r = rect;
-    if (!problemRegion.intersect(r).is_empty()) {
-      std::vector<uint8_t> payloadHash = ContentHash::computeRect(pb, rect);
-      uint64_t payloadHash64 = 0;
-      if (payloadHash.size() >= 8) {
-        memcpy(&payloadHash64, payloadHash.data(), 8);
-      }
-      vlog.info("CCDBG PAYLOAD_PRE: conn=%p rect=%s hash64=%s",
-                (void*)conn,
-                strRect(rect),
-                hex64(payloadHash64));
-    }
+    vlog.info("CCDBG writeSubRect: rect=%s area=%d clientPC=%s",
+              strRect(rect), rect.area(),
+              yesNo(clientSupportsPC));
   }
   
   if (usePersistentCache && clientSupportsPC) {
-    // Use PersistentCache exclusively
-    vlog.debug("CC attempt PersistentCache lookup for rect (%s)", strRect(rect));
+    // Use PersistentCache-style unified cache protocol
+    vlog.debug("CC attempt unified cache lookup for rect (%s)", strRect(rect));
     if (tryPersistentCacheLookup(rect, pb))
-      return;
-  } else if (contentCache != nullptr && clientSupportsCC) {
-    // Use ContentCache exclusively
-    vlog.debug("CC attempt ContentCache lookup for rect (%s)", strRect(rect));
-    if (tryContentCacheLookup(rect, pb))
       return;
   }
 
   PixelBuffer *ppb;
-
   Encoder *encoder;
-
   struct RectInfo info;
-  unsigned int divisor, maxColours;
-
-  bool useRLE;
   EncoderType type;
 
-  // FIXME: This is roughly the algorithm previously used by the Tight
-  //        encoder. It seems a bit backwards though, that higher
-  //        compression setting means spending less effort in building
-  //        a palette. It might be that they figured the increase in
-  //        zlib setting compensated for the loss.
-  if (conn->client.compressLevel == -1)
-    divisor = 2 * 8;
-  else
-    divisor = conn->client.compressLevel * 8;
-  if (divisor < 4)
-    divisor = 4;
-
-  maxColours = rect.area()/divisor;
-
-  // Special exception inherited from the Tight encoder
-  if (activeEncoders[encoderFullColour] == encoderTightJPEG) {
-    if ((conn->client.compressLevel != -1) && (conn->client.compressLevel < 2))
-      maxColours = 24;
-    else
-      maxColours = 96;
-  }
-
-  if (maxColours < 2)
-    maxColours = 2;
-
-  encoder = encoders[activeEncoders[encoderIndexedRLE]];
-  if (maxColours > encoder->maxPaletteSize)
-    maxColours = encoder->maxPaletteSize;
-  encoder = encoders[activeEncoders[encoderIndexed]];
-  if (maxColours > encoder->maxPaletteSize)
-    maxColours = encoder->maxPaletteSize;
-
-  ppb = preparePixelBuffer(rect, pb, true);
-
-  if (!analyseRect(ppb, &info, maxColours))
-    info.palette.clear();
-
-  // Different encoders might have different RLE overhead, but
-  // here we do a guess at RLE being the better choice if reduces
-  // the pixel count by 50%.
-  useRLE = info.rleRuns <= (rect.area() * 2);
-
-  switch (info.palette.size()) {
-  case 0:
-    type = encoderFullColour;
-    break;
-  case 1:
-    type = encoderSolid;
-    break;
-  case 2:
-    if (useRLE)
-      type = encoderBitmapRLE;
-    else
-      type = encoderBitmap;
-    break;
-  default:
-    if (useRLE)
-      type = encoderIndexedRLE;
-    else
-      type = encoderIndexed;
-  }
+  // Shared encoder selection for normal and cache INIT paths
+  selectEncoderForRect(rect, pb, ppb, &info, type);
 
   // Normal rectangle path
   encoder = startRect(rect, type);
@@ -1197,26 +1026,16 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
               hex64(payloadHash64));
   }
  
-  // Insert into the active cache protocol (ONE cache per connection)
-  const char* cachePath = "NORMAL";
-  if (usePersistentCache && 
-      conn->client.supportsEncoding(pseudoEncodingPersistentCache)) {
-    // PersistentCache: Track client-known hashes (insertion happens during INIT messages)
-    // The actual hash tracking is done in handlePersistentCachedRect/storePersistentCachedRect
-  } else if (contentCache != nullptr && 
-             conn->client.supportsEncoding(pseudoEncodingContentCache) &&
-             rect.area() >= Server::contentCacheMinRectSize) {
-    // ContentCache: Insert with server-assigned cache ID
-    insertIntoContentCache(rect, pb);
-    cachePath = "CACHED_INIT_ELIGIBLE";
-  }
+  // Unified cache protocol: no server-side insertion path remains here; the
+  // PersistentCache engine tracks client-known IDs via INIT messages on both
+  // server and client.
 
   if (isCCDebugEnabled() && inProblemRegion) {
     vlog.info("CCDBG SERVER PATH: conn=%p rect=%s enc=%d path=%s hash64=%s",
               (void*)conn,
               strRect(rect),
               encoder->encoding,
-              cachePath,
+              "NORMAL",
               hex64(payloadHash64));
   }
 }
@@ -1400,6 +1219,73 @@ bool EncodeManager::analyseRect(const PixelBuffer *pb,
   }
 }
 
+void EncodeManager::selectEncoderForRect(const core::Rect& rect,
+                                         const PixelBuffer* pb,
+                                         PixelBuffer*& ppb,
+                                         struct RectInfo* info,
+                                         EncoderType& type)
+{
+  unsigned int divisor, maxColours;
+  bool useRLE;
+
+  // FIXME: This is roughly the algorithm previously used by the Tight
+  //        encoder. It seems a bit backwards though, that higher
+  //        compression setting means spending less effort in building
+  //        a palette. It might be that they figured the increase in
+  //        zlib setting compensated for the loss.
+  if (conn->client.compressLevel == -1)
+    divisor = 2 * 8;
+  else
+    divisor = conn->client.compressLevel * 8;
+  if (divisor < 4)
+    divisor = 4;
+
+  maxColours = rect.area() / divisor;
+
+  // Special exception inherited from the Tight encoder
+  if (activeEncoders[encoderFullColour] == encoderTightJPEG) {
+    if ((conn->client.compressLevel != -1) && (conn->client.compressLevel < 2))
+      maxColours = 24;
+    else
+      maxColours = 96;
+  }
+
+  if (maxColours < 2)
+    maxColours = 2;
+
+  Encoder* encoder = encoders[activeEncoders[encoderIndexedRLE]];
+  if (maxColours > encoder->maxPaletteSize)
+    maxColours = encoder->maxPaletteSize;
+  encoder = encoders[activeEncoders[encoderIndexed]];
+  if (maxColours > encoder->maxPaletteSize)
+    maxColours = encoder->maxPaletteSize;
+
+  ppb = preparePixelBuffer(rect, pb, true);
+
+  if (!analyseRect(ppb, info, maxColours))
+    info->palette.clear();
+
+  // Different encoders might have different RLE overhead, but
+  // here we do a guess at RLE being the better choice if reduces
+  // the pixel count by 50%.
+  useRLE = info->rleRuns <= (rect.area() * 2);
+
+  switch (info->palette.size()) {
+  case 0:
+    type = encoderFullColour;
+    break;
+  case 1:
+    type = encoderSolid;
+    break;
+  case 2:
+    type = useRLE ? encoderBitmapRLE : encoderBitmap;
+    break;
+  default:
+    type = useRLE ? encoderIndexedRLE : encoderIndexed;
+    break;
+  }
+}
+
 void EncodeManager::OffsetPixelBuffer::update(const PixelFormat& pf,
                                               int width, int height,
                                               const uint8_t* data_,
@@ -1418,153 +1304,22 @@ uint8_t* EncodeManager::OffsetPixelBuffer::getBufferRW(const core::Rect& /*r*/, 
 bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
                                           const PixelBuffer* pb)
 {
-  if (isCCDebugEnabled()) {
-    vlog.info("CCDBG tryContentCacheLookup ENTER: rect=%s area=%d", strRect(rect), rect.area());
-  }
-
-  if (contentCache == nullptr) {
-    vlog.debug("CC SKIP: contentCache=null rect (%s)", strRect(rect));
-    return false;
-  }
-
-  // Skip if below minimum size threshold
-  if (rect.area() < Server::contentCacheMinRectSize) {
-    vlog.debug("CC SKIP: below minSize=%d rect (%s) area=%d",
-               (int)Server::contentCacheMinRectSize, strRect(rect), rect.area());
-    return false;
-  }
-
-  // Require client support for the ContentCache protocol.
-  // We do not fall back to CopyRect because the cache tracks historical positions,
-  // and CopyRect must only reference currently-visible content. Falling back here
-  // can copy stale content and cause window trails (especially when dragging up/left).
-  if (!conn->client.supportsEncoding(pseudoEncodingContentCache)) {
-    vlog.debug("CC SKIP: client no support rect (%s)", strRect(rect));
-    return false;
-  }
-
-  cacheStats.cacheLookups++;
-
-  // Compute content hash using ContentHash utility (same as PersistentCache)
-  // This includes dimensions and properly handles stride
-  std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, rect);
-  
-  // ContentCache uses 64-bit hash for speed/compatibility with existing code
-  // Extract first 8 bytes as uint64_t
-  uint64_t hash = 0;
-  if (fullHash.size() >= 8) {
-    memcpy(&hash, fullHash.data(), 8);
-  }
-
-  // Look up in cache by ContentKey (dimensions + hash)
-  rfb::ContentKey key(static_cast<uint16_t>(rect.width()), 
-                      static_cast<uint16_t>(rect.height()), hash);
-  uint64_t cacheId = 0;
-  ContentCache::CacheEntry* entry = contentCache->findByKey(key, &cacheId);
-  
-  vlog.debug("CC lookup: rect (%s) key=%s entry=%s cacheId=%llu",
-             strRect(rect), strContentKey(key.width, key.height, hash),
-             entry ? "found" : "null", (unsigned long long)cacheId);
-  
-  if (entry != nullptr && cacheId != 0) {
-    // Cache hit in server content cache, but we must ensure the client
-    // actually knows this cacheId. If not, schedule a CachedRectInit and
-    // skip sending a reference right now.
-    vlog.debug("CC knowsCacheId? id=%llu", (unsigned long long)cacheId);
-    bool clientKnows = conn->knowsCacheId(cacheId);
-    vlog.debug("CC knowsCacheId result: id=%llu known=%s",
-               (unsigned long long)cacheId, yesNo(clientKnows));
-    
-    if (!clientKnows) {
-      vlog.debug("CC MISS client-unknown-id: rect (%s) id=%llu - queueing CachedRectInit",
-                 strRect(rect), (unsigned long long)cacheId);
-      conn->queueCachedInit(cacheId, rect);
-      // Do not treat as copyrect stats as we will send full data
-      // Mark freshly updated region accordingly
-      lossyRegion.assign_subtract(rect);
-      pendingRefreshRegion.assign_subtract(rect);
-      // Update server-side cache entry location and touch
-      entry->lastBounds = rect;
-      contentCache->touchEntry(key);
-      return true; // handled via pending init
-    }
-
-    // Client knows this cacheId: send a reference
-    cacheStats.cacheHits++;
-    int equiv = 12 + rect.area() * (conn->client.pf().bpp/8);
-    cacheStats.bytesSaved += equiv - 20; // CachedRect is 20 bytes
-    copyStats.rects++;
-    copyStats.pixels += rect.area();
-    copyStats.equivalent += equiv;
-    beforeLength = conn->getOutStream()->length();
-    conn->writer()->writeCachedRect(rect, cacheId);
-    copyStats.bytes += conn->getOutStream()->length() - beforeLength;
-    // Record this cacheId->rect mapping so we can respond to RequestCachedData
-    conn->onCachedRectRef(cacheId, rect);
-    vlog.debug("CC HIT: rect (%s) id=%llu saved=%d bytes",
-               strRect(rect), (unsigned long long)cacheId, equiv - 20);
-    lossyRegion.assign_subtract(rect);
-    pendingRefreshRegion.assign_subtract(rect);
-    entry->lastBounds = rect;
-    contentCache->touchEntry(key);
-    return true;
-  }
-
-  vlog.debug("CC MISS not-in-cache: rect (%s) key=%s",
-             strRect(rect), strContentKey(key.width, key.height, hash));
+  // Legacy entry point; server-side ContentCache engine has been removed.
+  // Unified cache lookup is now implemented purely via the PersistentCache
+  // 64-bit ID path, so this function should no longer be called.
+  (void)rect;
+  (void)pb;
   return false;
 }
 
 void EncodeManager::insertIntoContentCache(const core::Rect& rect,
                                            const PixelBuffer* pb)
 {
-  if (contentCache == nullptr)
-    return;
-
-  // Skip if below minimum size threshold
-  if (rect.area() < Server::contentCacheMinRectSize)
-    return;
-
-  // Compute content hash using ContentHash utility (same as PersistentCache)
-  // This includes dimensions and properly handles stride
-  std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, rect);
-  
-  // ContentCache uses 64-bit hash for speed/compatibility with existing code
-  // Extract first 8 bytes as uint64_t
-  uint64_t hash = 0;
-  if (fullHash.size() >= 8) {
-    memcpy(&hash, fullHash.data(), 8);
-  }
-  
-  vlog.debug("CC insert start: rect (%s) hash=%s",
-             strRect(rect), hex64(hash));
-  
-  // dataLen is for memory accounting in ARC, use actual pixels only
-  size_t bytesPerPixel = pb->getPF().bpp / 8;
-  size_t dataLen = rect.height() * rect.width() * bytesPerPixel;
-  
-  // Insert into cache with ContentKey (dimensions + hash)
-  // Pass dataLen so ARC algorithm can track memory usage properly,
-  // even though we're not storing the actual pixel data (keepData=false)
-  rfb::ContentKey key(static_cast<uint16_t>(rect.width()), 
-                      static_cast<uint16_t>(rect.height()), hash);
-  uint64_t cacheId = contentCache->insertContent(key, rect, nullptr, dataLen, false);
-  
-  if (cacheId != 0) {
-    vlog.debug("CC insert ok: rect (%s) key=%s id=%llu dataLen=%zu",
-               strRect(rect), strContentKey(key.width, key.height, hash),
-               (unsigned long long)cacheId, dataLen);
-  } else {
-    vlog.debug("CC insert fail: rect (%s) key=%s reason=returned-zero-id",
-               strRect(rect), strContentKey(key.width, key.height, hash));
-  }
-
-  // EXTRA DEBUG: log hash/cacheId correlation for the problematic rect sizes
-  if (rect.width() == 486 && (rect.height() == 343 || rect.height() == 22)) {
-    vlog.debug("CC DEBUG HASH: rect (%s) width=%d height=%d hash=%s cacheId=%llu",
-               strRect(rect), rect.width(), rect.height(), hex64(hash),
-               (unsigned long long)cacheId);
-  }
+  // No-op: server-side ContentCache engine has been removed. Insertion is
+  // handled implicitly by sending PersistentCachedRectInit messages via the
+  // unified cache protocol.
+  (void)rect;
+  (void)pb;
 }
 
 bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
@@ -1582,87 +1337,62 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     return false;
 
   persistentCacheStats.cacheLookups++;
+  
+  // Compute content hash using ContentHash utility (same as ContentCache)
+  std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, rect);
 
-  // Compute content hash using ContentHash utility
-  std::vector<uint8_t> hash = ContentHash::computeRect(pb, rect);
+  // Derive 64-bit hash for shared ContentKey keying (width/height/hash64)
+  uint64_t cacheId = 0;
+  if (!fullHash.empty()) {
+    size_t n = std::min(fullHash.size(), sizeof(uint64_t));
+    memcpy(&cacheId, fullHash.data(), n);
+  }
 
-  // Check if client knows this hash (from inventory OR sent this session)
-  if (conn->knowsPersistentHash(hash)) {
+  ContentKey key(static_cast<uint16_t>(rect.width()),
+                 static_cast<uint16_t>(rect.height()),
+                 cacheId);
+  
+  // Check if client knows this content via the 64-bit ID. Internally we
+  // track identity as the ContentKey above so ContentCache and
+  // PersistentCache share the same notion of "what" is being cached.
+  if (conn->knowsPersistentId(cacheId)) {
     // Cache hit! Client has this content, send reference
     persistentCacheStats.cacheHits++;
     int equiv = 12 + rect.area() * (conn->client.pf().bpp/8);
-    persistentCacheStats.bytesSaved += equiv - (20 + hash.size()); // PersistentCachedRect overhead
+    // PersistentCachedRect overhead now matches CachedRect: 20 bytes
+    persistentCacheStats.bytesSaved += equiv - 20;
     copyStats.rects++;
     copyStats.pixels += rect.area();
     copyStats.equivalent += equiv;
     beforeLength = conn->getOutStream()->length();
-    conn->writer()->writePersistentCachedRect(rect, hash);
+    conn->writer()->writePersistentCachedRect(rect, cacheId);
     copyStats.bytes += conn->getOutStream()->length() - beforeLength;
     
-    // Format hash for logging (first 8 bytes as hex)
-    char hashStr[32];
-    snprintf(hashStr, sizeof(hashStr), "%02x%02x%02x%02x%02x%02x%02x%02x",
-             hash.size() > 0 ? hash[0] : 0,
-             hash.size() > 1 ? hash[1] : 0,
-             hash.size() > 2 ? hash[2] : 0,
-             hash.size() > 3 ? hash[3] : 0,
-             hash.size() > 4 ? hash[4] : 0,
-             hash.size() > 5 ? hash[5] : 0,
-             hash.size() > 6 ? hash[6] : 0,
-             hash.size() > 7 ? hash[7] : 0);
-    
-    vlog.debug("PersistentCache protocol HIT: rect [%d,%d-%d,%d] hash=%s... saved %d bytes",
-               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y, hashStr,
-               equiv - (20 + (int)hash.size()));
+    vlog.debug("PersistentCache protocol HIT: rect [%d,%d-%d,%d] id=%s saved %d bytes",
+               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
+               hex64(cacheId),
+               equiv - 20);
     
     lossyRegion.assign_subtract(rect);
     pendingRefreshRegion.assign_subtract(rect);
     return true;
   }
   
-  // Client doesn't know this hash - send PersistentCachedRectInit
-  // (This fixes the session bug: we send Init instead of falling back,
-  //  allowing future identical rects to be references)
+  // Client doesn't know this ID - send PersistentCachedRectInit.
+  // This allows future identical rects to be references.
   persistentCacheStats.cacheMisses++;
   
-  // Choose payload encoder similar to normal path
+  // Choose payload encoder using the shared selection logic
   PixelBuffer *ppb;
   Encoder *payloadEnc;
   struct RectInfo info;
-  unsigned int divisor, maxColours;
-  bool useRLE;
   EncoderType type;
 
-  if (conn->client.compressLevel == -1)
-    divisor = 2 * 8;
-  else
-    divisor = conn->client.compressLevel * 8;
-  if (divisor < 4)
-    divisor = 4;
-  maxColours = rect.area()/divisor;
-  if (activeEncoders[encoderFullColour] == encoderTightJPEG) {
-    if ((conn->client.compressLevel != -1) && (conn->client.compressLevel < 2))
-      maxColours = 24;
-    else
-      maxColours = 96;
-  }
-  if (maxColours < 2)
-    maxColours = 2;
-
-  ppb = preparePixelBuffer(rect, pb, true);
-  if (!analyseRect(ppb, &info, maxColours))
-    info.palette.clear();
-  useRLE = info.rleRuns <= (rect.area() * 2);
-  switch (info.palette.size()) {
-  case 0: type = encoderFullColour; break;
-  case 1: type = encoderSolid; break;
-  case 2: type = useRLE ? encoderBitmapRLE : encoderBitmap; break;
-  default: type = useRLE ? encoderIndexedRLE : encoderIndexed; break;
-  }
+  selectEncoderForRect(rect, pb, ppb, &info, type);
 
   payloadEnc = encoders[activeEncoders[type]];
-  // Emit PersistentCachedRectInit header (hash + encoding)
-  conn->writer()->writePersistentCachedRectInit(rect, hash, payloadEnc->encoding);
+  // Emit PersistentCachedRectInit header (ID + encoding)
+  conn->writer()->writePersistentCachedRectInit(rect, cacheId, payloadEnc->encoding);
   // Prepare pixel buffer respecting native-PF usage for the payload encoder
   if (payloadEnc->flags & EncoderUseNativePF)
     ppb = preparePixelBuffer(rect, pb, false);
@@ -1671,48 +1401,36 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   // Close the PersistentCachedRectInit rectangle
   conn->writer()->endRect();
 
-  // Mark hash as known in session tracking (for future hits)
-  conn->markPersistentHashKnown(hash);
+  // Mark ID as known in session tracking (for future hits)
+  conn->markPersistentIdKnown(cacheId);
   // Also track in EncodeManager (legacy, may be redundant with session tracking)
-  clientKnownHashes_.add(hash);
-  // Clear any explicit request for this hash
-  if (conn->clientRequestedPersistent(hash)) {
-    conn->clearClientPersistentRequest(hash);
+  clientKnownIds_.add(cacheId);
+  // Clear any explicit request for this ID
+  if (conn->clientRequestedPersistent(cacheId)) {
+    conn->clearClientPersistentRequest(cacheId);
   }
 
   lossyRegion.assign_subtract(rect);
   pendingRefreshRegion.assign_subtract(rect);
   
-  // Format hash for logging (first 8 bytes as hex)
-  char hashStr[32];
-  snprintf(hashStr, sizeof(hashStr), "%02x%02x%02x%02x%02x%02x%02x%02x",
-           hash.size() > 0 ? hash[0] : 0,
-           hash.size() > 1 ? hash[1] : 0,
-           hash.size() > 2 ? hash[2] : 0,
-           hash.size() > 3 ? hash[3] : 0,
-           hash.size() > 4 ? hash[4] : 0,
-           hash.size() > 5 ? hash[5] : 0,
-           hash.size() > 6 ? hash[6] : 0,
-           hash.size() > 7 ? hash[7] : 0);
-  
-  vlog.debug("PersistentCache INIT: rect [%d,%d-%d,%d] hash=%s... (now known for session)",
-             rect.tl.x, rect.tl.y, rect.br.x, rect.br.y, hashStr);
+  vlog.debug("PersistentCache INIT: rect [%d,%d-%d,%d] id=%s (now known for session)",
+             rect.tl.x, rect.tl.y, rect.br.x, rect.br.y, hex64(cacheId));
   return true;
 }
 
-void EncodeManager::addClientKnownHash(const std::vector<uint8_t>& hash)
+void EncodeManager::addClientKnownHash(uint64_t cacheId)
 {
-  clientKnownHashes_.add(hash);
+  clientKnownIds_.add(cacheId);
 }
 
-void EncodeManager::removeClientKnownHash(const std::vector<uint8_t>& hash)
+void EncodeManager::removeClientKnownHash(uint64_t cacheId)
 {
-  clientKnownHashes_.remove(hash);
+  clientKnownIds_.remove(cacheId);
 }
 
-bool EncodeManager::clientKnowsHash(const std::vector<uint8_t>& hash) const
+bool EncodeManager::clientKnowsHash(uint64_t cacheId) const
 {
-  return clientKnownHashes_.has(hash);
+  return clientKnownIds_.has(cacheId);
 }
 
 template<class T>
@@ -1784,3 +1502,5 @@ inline bool EncodeManager::analyseRect(int width, int height,
 
   return true;
 }
+
+} // namespace rfb

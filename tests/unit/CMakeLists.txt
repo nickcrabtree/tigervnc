@@ -73,3 +73,7 @@ add_executable(emulatemb emulatemb.cxx ../../vncviewer/EmulateMB.cxx)
 target_include_directories(emulatemb SYSTEM PUBLIC ${Intl_INCLUDE_DIR})
 target_link_libraries(emulatemb core ${Intl_LIBRARIES} GTest::gtest_main)
 gtest_discover_tests(emulatemb)
+
+add_executable(tiling_analysis tiling_analysis.cxx)
+target_link_libraries(tiling_analysis rfb core GTest::gtest_main)
+gtest_discover_tests(tiling_analysis)

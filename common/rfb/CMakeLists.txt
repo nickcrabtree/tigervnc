@@ -11,7 +11,6 @@ add_library(rfb STATIC
   CSecurityVncAuth.cxx
   ClientParams.cxx
   ComparingUpdateTracker.cxx
-  ContentCache.cxx
   GlobalClientPersistentCache.cxx
   CopyRectDecoder.cxx
   Cursor.cxx
@@ -54,7 +53,9 @@ add_library(rfb STATIC
   ZRLEDecoder.cxx
   encodings.cxx
   obfuscate.cxx
-  cache/BandwidthStats.cxx)
+  cache/BandwidthStats.cxx
+  cache/TilingAnalysis.cxx
+  cache/TilingIntegration.cxx)
 
 target_include_directories(rfb PUBLIC ${CMAKE_SOURCE_DIR}/common)
 target_include_directories(rfb SYSTEM PUBLIC ${JPEG_INCLUDE_DIR})

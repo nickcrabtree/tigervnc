@@ -125,11 +125,11 @@ namespace rfb {
     // Cache protocol extension: initial transmission with cache ID
     void writeCachedRectInit(const core::Rect& r, uint64_t cacheId, int encoding);
 
-    // PersistentCache protocol extension: reference by content hash
-    void writePersistentCachedRect(const core::Rect& r, const std::vector<uint8_t>& hash);
+    // PersistentCache protocol extension: reference by 64-bit content ID
+    void writePersistentCachedRect(const core::Rect& r, uint64_t cacheId);
     
-    // PersistentCache protocol extension: initial transmission with hash
-    void writePersistentCachedRectInit(const core::Rect& r, const std::vector<uint8_t>& hash, int encoding);
+    // PersistentCache protocol extension: initial transmission with 64-bit ID
+    void writePersistentCachedRectInit(const core::Rect& r, uint64_t cacheId, int encoding);
 
     // Encoders should call these to mark the start and stop of individual
     // rects.

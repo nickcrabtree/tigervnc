@@ -588,28 +588,25 @@ bool SMsgReader::readPersistentCacheQuery()
 
   uint16_t count = is->readU16();
 
-  std::vector<std::vector<uint8_t>> hashes;
-  hashes.reserve(count);
+  // Each entry is a 64-bit cacheId (two U32s)
+  if (!is->hasDataOrRestore(count * 8))
+    return false;
+
+  std::vector<uint64_t> cacheIds;
+  cacheIds.reserve(count);
 
   for (uint16_t i = 0; i < count; i++) {
-    if (!is->hasDataOrRestore(1))
-      return false;
-
-    uint8_t hashLen = is->readU8();
-
-    if (!is->hasDataOrRestore(hashLen))
-      return false;
-
-    std::vector<uint8_t> hash(hashLen);
-    is->readBytes(hash.data(), hashLen);
-    hashes.push_back(hash);
+    uint32_t hi = is->readU32();
+    uint32_t lo = is->readU32();
+    uint64_t id = ((uint64_t)hi << 32) | lo;
+    cacheIds.push_back(id);
   }
 
   is->clearRestorePoint();
 
-  vlog.debug("Client queried %d persistent cache hashes", count);
+  vlog.debug("Client queried %d persistent cache IDs", count);
 
-  handler->handlePersistentCacheQuery(hashes);
+  handler->handlePersistentCacheQuery(cacheIds);
   return true;
 }
 
@@ -625,29 +622,26 @@ bool SMsgReader::readPersistentHashList()
   uint16_t chunkIndex = is->readU16();
   uint16_t count = is->readU16();
 
-  std::vector<std::vector<uint8_t>> hashes;
-  hashes.reserve(count);
+  // Each entry is a 64-bit cacheId (two U32s)
+  if (!is->hasDataOrRestore(count * 8))
+    return false;
+
+  std::vector<uint64_t> cacheIds;
+  cacheIds.reserve(count);
 
   for (uint16_t i = 0; i < count; i++) {
-    if (!is->hasDataOrRestore(1))
-      return false;
-
-    uint8_t hashLen = is->readU8();
-
-    if (!is->hasDataOrRestore(hashLen))
-      return false;
-
-    std::vector<uint8_t> hash(hashLen);
-    is->readBytes(hash.data(), hashLen);
-    hashes.push_back(hash);
+    uint32_t hi = is->readU32();
+    uint32_t lo = is->readU32();
+    uint64_t id = ((uint64_t)hi << 32) | lo;
+    cacheIds.push_back(id);
   }
 
   is->clearRestorePoint();
 
-  vlog.debug("Client advertised %d persistent cache hashes (chunk %d/%d, seq %u)",
+  vlog.debug("Client advertised %d persistent cache IDs (chunk %d/%d, seq %u)",
              count, chunkIndex + 1, totalChunks, sequenceId);
 
-  handler->handlePersistentHashList(sequenceId, totalChunks, chunkIndex, hashes);
+  handler->handlePersistentHashList(sequenceId, totalChunks, chunkIndex, cacheIds);
   return true;
 }
 
@@ -667,33 +661,24 @@ bool SMsgReader::readPersistentCacheEviction()
     throw protocol_error("Invalid persistent cache eviction count");
   }
 
-  std::vector<std::vector<uint8_t>> hashes;
-  hashes.reserve(count);
+  // Each entry is a 64-bit cacheId
+  if (!is->hasDataOrRestore(count * 8))
+    return false;
+
+  std::vector<uint64_t> cacheIds;
+  cacheIds.reserve(count);
 
   for (uint16_t i = 0; i < count; i++) {
-    if (!is->hasDataOrRestore(1))
-      return false;
-
-    uint8_t hashLen = is->readU8();
-
-    // Validate hash length
-    if (hashLen == 0 || hashLen > 64) {
-      vlog.error("Invalid persistent cache eviction hash length: %u", hashLen);
-      throw protocol_error("Invalid persistent cache eviction hash length");
-    }
-
-    if (!is->hasDataOrRestore(hashLen))
-      return false;
-
-    std::vector<uint8_t> hash(hashLen);
-    is->readBytes(hash.data(), hashLen);
-    hashes.push_back(hash);
+    uint32_t hi = is->readU32();
+    uint32_t lo = is->readU32();
+    uint64_t id = ((uint64_t)hi << 32) | lo;
+    cacheIds.push_back(id);
   }
 
   is->clearRestorePoint();
 
   vlog.debug("Client evicted %u persistent cache entries", count);
 
-  handler->handlePersistentCacheEviction(hashes);
+  handler->handlePersistentCacheEviction(cacheIds);
   return true;
 }

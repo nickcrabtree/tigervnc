@@ -897,53 +897,53 @@ void VNCSConnectionST::onCachedRectRef(uint64_t cacheId, const core::Rect& r)
   recordCachedRectRef(cacheId, r);
 }
 
-void VNCSConnectionST::handlePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes)
+void VNCSConnectionST::handlePersistentCacheQuery(const std::vector<uint64_t>& cacheIds)
 {
-  vlog.debug("Client queried %d persistent cache hashes", (int)hashes.size());
+  vlog.debug("Client queried %d persistent cache IDs", (int)cacheIds.size());
 
-  // Track requested hashes so the encoder can choose to send inits
-  for (const auto& h : hashes) {
-    clientRequestedPersistentHashes_.insert(h);
+  // Track requested IDs so the encoder can choose to send inits
+  for (uint64_t id : cacheIds) {
+    clientRequestedPersistentIds_.insert(id);
   }
 }
 
 void VNCSConnectionST::handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
                                                 uint16_t chunkIndex,
-                                                const std::vector<std::vector<uint8_t>>& hashes)
+                                                const std::vector<uint64_t>& cacheIds)
 {
-  vlog.debug("Client advertised %d persistent cache hashes (chunk %d/%d, seq %u)",
-             (int)hashes.size(), chunkIndex + 1, totalChunks, sequenceId);
+  vlog.debug("Client advertised %d persistent cache IDs (chunk %d/%d, seq %u)",
+             (int)cacheIds.size(), chunkIndex + 1, totalChunks, sequenceId);
   
-  // Forward to EncodeManager to track client's known hashes
-  for (const auto& hash : hashes) {
-    encodeManager.addClientKnownHash(hash);
+  // Forward to EncodeManager to track client's known IDs
+  for (uint64_t id : cacheIds) {
+    encodeManager.addClientKnownHash(id);
   }
   
   // Also populate session tracking (for within-session hit detection)
-  for (const auto& hash : hashes) {
-    knownPersistentHashes_.insert(hash);
+  for (uint64_t id : cacheIds) {
+    knownPersistentIds_.insert(id);
   }
   
-  vlog.info("Received hash list: %d hashes (session tracking now has %zu total)",
-            (int)hashes.size(), knownPersistentHashes_.size());
+  vlog.info("Received ID list: %d IDs (session tracking now has %zu total)",
+            (int)cacheIds.size(), knownPersistentIds_.size());
 }
 
-void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes)
+void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds)
 {
-  vlog.debug("Client evicted %u persistent cache entries", (unsigned)hashes.size());
+  vlog.debug("Client evicted %u persistent cache entries", (unsigned)cacheIds.size());
 
-  // Remove hashes from known set in the encoder so we stop sending references
+  // Remove IDs from known set in the encoder so we stop sending references
   size_t removed = 0;
-  for (const auto& h : hashes) {
-    encodeManager.removeClientKnownHash(h);
+  for (uint64_t id : cacheIds) {
+    encodeManager.removeClientKnownHash(id);
     // Also drop any pending request state to avoid stale entries
-    auto it = clientRequestedPersistentHashes_.find(h);
-    if (it != clientRequestedPersistentHashes_.end())
-      clientRequestedPersistentHashes_.erase(it);
+    auto it = clientRequestedPersistentIds_.find(id);
+    if (it != clientRequestedPersistentIds_.end())
+      clientRequestedPersistentIds_.erase(it);
     removed++;
   }
 
-  vlog.info("PersistentCache eviction: removed %zu known hashes (now %zu remain)",
+  vlog.info("PersistentCache eviction: removed %zu known IDs (now %zu remain)",
             removed, (size_t)0 /* total unknown here without accessor */);
 }
 

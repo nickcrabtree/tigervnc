@@ -71,11 +71,13 @@ namespace rfb {
     virtual void handleRequestCachedData(uint64_t cacheId) = 0;
     virtual void handleCacheEviction(const std::vector<uint64_t>& cacheIds) = 0;
 
-    virtual void handlePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes) = 0;
+    // PersistentCache protocol (cross-session), now using the same 64-bit
+    // contentHash/cacheId identity as ContentCache for on-wire messages.
+    virtual void handlePersistentCacheQuery(const std::vector<uint64_t>& cacheIds) = 0;
     virtual void handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
                                           uint16_t chunkIndex,
-                                          const std::vector<std::vector<uint8_t>>& hashes) = 0;
-    virtual void handlePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes) = 0;
+                                          const std::vector<uint64_t>& cacheIds) = 0;
+    virtual void handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds) = 0;
 
     ClientParams client;
   };

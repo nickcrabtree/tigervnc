@@ -41,10 +41,11 @@ void trackContentCacheInit(CacheProtocolStats& stats,
 
 void trackPersistentCacheRef(CacheProtocolStats& stats,
                              const core::Rect& r,
-                             const rfb::PixelFormat& pf,
-                             size_t hashLen)
+                             const rfb::PixelFormat& pf)
 {
-  const size_t overhead = 12 + 1 + hashLen; // rect header + hashLen + hash
+  (void)pf; // Encoding choice is implicit; we just need an estimated baseline.
+  // Overhead matches CachedRect: 20 bytes (12 header + 8 ID).
+  const size_t overhead = 20;
   size_t alt = 16 + estimateCompressed(r.area() * (pf.bpp / 8));
   stats.cachedRectBytes += overhead;
   stats.alternativeBytes += alt;
@@ -52,10 +53,10 @@ void trackPersistentCacheRef(CacheProtocolStats& stats,
 }
 
 void trackPersistentCacheInit(CacheProtocolStats& stats,
-                              size_t hashLen,
                               size_t compressedBytes)
 {
-  const size_t overhead = 12 + 1 + hashLen + 4; // rect header + hashLen + hash + encoding
+  // Overhead matches CachedRectInit: 24 bytes (12 header + 8 ID + 4 encoding)
+  const size_t overhead = 24;
   stats.cachedRectInitBytes += overhead + compressedBytes;
   stats.alternativeBytes += 16 + compressedBytes; // baseline
   stats.cachedRectInitCount++;

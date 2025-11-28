@@ -123,21 +123,27 @@ GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxMemorySizeMB,
   vlog.debug("PersistentCache v3 (sharded): memory=%zuMB, disk=%zuMB, shard=%zuMB, dir=%s", 
              maxMemorySizeMB, maxDiskSize_ / (1024*1024), shardSizeMB, cacheDir_.c_str());
 
-  // Initialize shared ArcCache with eviction callback
-  // When entries are evicted from memory, mark them as "cold" (still on disk)
-  arcCache_.reset(new rfb::cache::ArcCache<std::vector<uint8_t>, CachedPixels, HashVectorHasher>(
+  // Initialize shared ArcCache with eviction callback. The in-memory
+  // keying uses ContentKey (width, height, 64-bit hash) to match
+  // ContentCache; we translate to full protocol hashes only at the
+  // boundaries (pendingEvictions_, disk index, etc.).
+  arcCache_.reset(new rfb::cache::ArcCache<ContentKey, CachedPixels, ContentKeyHash>(
       maxMemorySize_,
       [](const CachedPixels& e) { return e.byteSize(); },
-      [this](const std::vector<uint8_t>& h) {
-        pendingEvictions_.push_back(h);
-        // Mark as cold - entry stays on disk but is evicted from memory
-        auto it = indexMap_.find(h);
-        if (it != indexMap_.end()) {
-          it->second.isCold = true;
-          coldEntries_.insert(h);
+      [this](const ContentKey& key) {
+        auto itHash = keyToHash_.find(key);
+        if (itHash != keyToHash_.end()) {
+          const std::vector<uint8_t>& fullHash = itHash->second;
+          pendingEvictions_.push_back(fullHash);
+          // Mark as cold - entry stays on disk but is evicted from memory
+          auto it = indexMap_.find(fullHash);
+          if (it != indexMap_.end()) {
+            it->second.isCold = true;
+            coldEntries_.insert(fullHash);
+          }
+          // Remove from dirty set (already written to shard)
+          dirtyEntries_.erase(fullHash);
         }
-        // Remove from dirty set (already written to shard)
-        dirtyEntries_.erase(h);
       }
   ));
   
@@ -158,8 +164,9 @@ GlobalClientPersistentCache::~GlobalClientPersistentCache()
 
 bool GlobalClientPersistentCache::has(const std::vector<uint8_t>& hash) const
 {
-  // Check both fully-hydrated ARC cache and index-only entries (lazy load)
-  if (arcCache_ && arcCache_->has(hash))
+  // Translate protocol-level hash to shared in-memory key
+  auto itKey = hashToKey_.find(hash);
+  if (itKey != hashToKey_.end() && arcCache_ && arcCache_->has(itKey->second))
     return true;
   // Also check indexMap_ for entries loaded but not yet hydrated
   return indexMap_.find(hash) != indexMap_.end();
@@ -171,7 +178,11 @@ GlobalClientPersistentCache::get(const std::vector<uint8_t>& hash)
   if (!arcCache_) return nullptr;
   
   // First check if already in ARC cache (hot in memory)
-  const CachedPixels* e = arcCache_->get(hash);
+  const CachedPixels* e = nullptr;
+  auto itKey = hashToKey_.find(hash);
+  if (itKey != hashToKey_.end()) {
+    e = arcCache_->get(itKey->second);
+  }
   if (e != nullptr) {
     stats_.cacheHits++;
     return e;
@@ -186,7 +197,9 @@ GlobalClientPersistentCache::get(const std::vector<uint8_t>& hash)
     //   2. Cold entry re-hydration (was evicted from ARC but still on disk)
     if (hydrateEntry(hash)) {
       // Re-fetch from ARC cache after hydration
-      e = arcCache_->get(hash);
+      auto itKey2 = hashToKey_.find(hash);
+      if (itKey2 != hashToKey_.end())
+        e = arcCache_->get(itKey2->second);
       if (e != nullptr) {
         stats_.cacheHits++;
         // If this was a cold entry, it's now hot again
@@ -202,6 +215,21 @@ GlobalClientPersistentCache::get(const std::vector<uint8_t>& hash)
   return nullptr;
 }
 
+const GlobalClientPersistentCache::CachedPixels*
+GlobalClientPersistentCache::getByKey(const ContentKey& key)
+{
+  // Fast path: look up full hash corresponding to this ContentKey and
+  // delegate to the existing get(const std::vector<uint8_t>&) path so
+  // we reuse all hydration and stats logic.
+  auto it = keyToHash_.find(key);
+  if (it == keyToHash_.end()) {
+    // No mapping from key→hash means we have never seen this content.
+    stats_.cacheMisses++;
+    return nullptr;
+  }
+  return get(it->second);
+}
+
 void GlobalClientPersistentCache::insert(const std::vector<uint8_t>& hash,
                                          const uint8_t* pixels,
                                          const PixelFormat& pf,
@@ -211,13 +239,21 @@ void GlobalClientPersistentCache::insert(const std::vector<uint8_t>& hash,
   if (!arcCache_ || pixels == nullptr || width == 0 || height == 0)
     return;
 
+  // Derive shared ContentKey from width/height and the first 8 bytes
+  // of the protocol-level hash. This mirrors ContentCache's keying
+  // so both caches agree on identity.
+  ContentKey key;
+  key.width = width;
+  key.height = height;
+  key.contentHash = 0;
+  if (!hash.empty()) {
+    size_t n = std::min(hash.size(), sizeof(uint64_t));
+    memcpy(&key.contentHash, hash.data(), n);
+  }
+
   // Update ARC statistics: treat new inserts as misses and
-  // re-initialisations of existing entries as hits. This mirrors
-  // the ContentCache fix in commit 8902e213 ("correct ARC cache
-  // hit/miss statistics in ContentCache") so that persistent
-  // cache stats don't report an impossible 100% hit rate when
-  // many new entries are created.
-  if (arcCache_->has(hash)) {
+  // re-initialisations of existing entries as hits.
+  if (arcCache_->has(key)) {
     stats_.cacheHits++;
   } else {
     stats_.cacheMisses++;
@@ -246,9 +282,15 @@ void GlobalClientPersistentCache::insert(const std::vector<uint8_t>& hash,
     dst += rowBytes;
   }
 
-  // Keep persistence map in sync (used for save/load); note this duplicates memory temporarily
-  cache_[hash] = entry;
-  arcCache_->insert(hash, entry);
+  // Keep persistence map in sync (used for save/load); note this duplicates
+  // memory temporarily. cache_ is keyed by ContentKey, while index/disk are
+  // keyed by the full hash.
+  cache_[key] = entry;
+  arcCache_->insert(key, entry);
+
+  // Maintain bidirectional mapping between key and full hash
+  keyToHash_[key] = hash;
+  hashToKey_[hash] = key;
   
   // Mark as dirty for incremental save (only new entries, not re-hydrated ones)
   // Note: entries loaded from disk via hydration are not marked dirty
@@ -261,17 +303,33 @@ GlobalClientPersistentCache::getAllHashes() const
   std::vector<std::vector<uint8_t>> hashes;
   // Include both hydrated entries (cache_) and index-only entries (indexMap_)
   hashes.reserve(cache_.size() + indexMap_.size());
-  for (const auto& entry : cache_) {
-    hashes.push_back(entry.first);
+  for (const auto& kv : cache_) {
+    auto itHash = keyToHash_.find(kv.first);
+    if (itHash != keyToHash_.end())
+      hashes.push_back(itHash->second);
   }
   // Add index-only entries that haven't been hydrated yet
   for (const auto& entry : indexMap_) {
     // Skip if already in cache_ (would be duplicate)
-    if (cache_.find(entry.first) == cache_.end()) {
+    auto itKey = hashToKey_.find(entry.first);
+    if (itKey == hashToKey_.end() || cache_.find(itKey->second) == cache_.end()) {
       hashes.push_back(entry.first);
     }
   }
   return hashes;
+}
+
+std::vector<uint64_t>
+GlobalClientPersistentCache::getAllContentIds() const
+{
+  // Derive the 64-bit contentHash IDs from the ContentKey mapping. Multiple
+  // full hashes may share the same 64-bit prefix; de-duplicate via a set.
+  std::unordered_set<uint64_t> ids;
+  ids.reserve(keyToHash_.size());
+  for (const auto& kv : keyToHash_) {
+    ids.insert(kv.first.contentHash);
+  }
+  return std::vector<uint64_t>(ids.begin(), ids.end());
 }
 
 void GlobalClientPersistentCache::clear()
@@ -283,6 +341,8 @@ void GlobalClientPersistentCache::clear()
   dirtyEntries_.clear();
   hydrationQueue_.clear();
   pendingEvictions_.clear();
+  keyToHash_.clear();
+  hashToKey_.clear();
   stats_.totalEntries = 0;
   stats_.totalBytes = 0;
   vlog.debug("PersistentCache cleared");
@@ -327,18 +387,21 @@ void GlobalClientPersistentCache::setMaxSize(size_t maxSizeMB)
   maxMemorySize_ = maxSizeMB * 1024 * 1024;
   vlog.debug("PersistentCache memory size set to %zuMB", maxSizeMB);
   // Recreate arc cache to apply new capacity
-  arcCache_.reset(new rfb::cache::ArcCache<std::vector<uint8_t>, CachedPixels, HashVectorHasher>(
+  arcCache_.reset(new rfb::cache::ArcCache<ContentKey, CachedPixels, ContentKeyHash>(
       maxMemorySize_,
       [](const CachedPixels& e) { return e.byteSize(); },
-      [this](const std::vector<uint8_t>& h) {
-        pendingEvictions_.push_back(h);
-        // Mark as cold instead of full rebuild
-        auto it = indexMap_.find(h);
-        if (it != indexMap_.end()) {
-          it->second.isCold = true;
-          coldEntries_.insert(h);
+      [this](const ContentKey& key) {
+        auto itHash = keyToHash_.find(key);
+        if (itHash != keyToHash_.end()) {
+          const std::vector<uint8_t>& fullHash = itHash->second;
+          pendingEvictions_.push_back(fullHash);
+          auto it = indexMap_.find(fullHash);
+          if (it != indexMap_.end()) {
+            it->second.isCold = true;
+            coldEntries_.insert(fullHash);
+          }
+          dirtyEntries_.erase(fullHash);
         }
-        dirtyEntries_.erase(h);
       }
   ));
 }
@@ -537,6 +600,8 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
   indexMap_.clear();
   hydrationQueue_.clear();
   coldEntries_.clear();
+  keyToHash_.clear();
+  hashToKey_.clear();
   
   // Read index entries
   // Format: hash(16) + shardId(2) + offset(4) + size(4) + width(2) + height(2) + stride(2) + PixelFormat(24) + flags(1)
@@ -556,9 +621,22 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
     uint8_t flags;
     if (fread(&flags, 1, 1, f) != 1) break;
     entry.isCold = (flags & 0x01) != 0;
-    
+
+    // Derive ContentKey from width/height and first 8 bytes of hash
+    entry.key.width = entry.width;
+    entry.key.height = entry.height;
+    entry.key.contentHash = 0;
+    if (!hash.empty()) {
+      size_t n = std::min(hash.size(), sizeof(uint64_t));
+      memcpy(&entry.key.contentHash, hash.data(), n);
+    }
+
     indexMap_[hash] = entry;
     hydrationQueue_.push_back(hash);
+
+    // Maintain bidirectional mapping so in-memory ARC/cache use ContentKey
+    keyToHash_[entry.key] = hash;
+    hashToKey_[hash] = entry.key;
     
     // Track shard sizes
     if (shardSizes_.find(entry.shardId) == shardSizes_.end()) {
@@ -587,9 +665,13 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
 
 bool GlobalClientPersistentCache::hydrateEntry(const std::vector<uint8_t>& hash)
 {
-  // Check if already hydrated
-  if (arcCache_ && arcCache_->has(hash))
-    return true;
+  // Check if already hydrated in the ARC cache. Since the ARC key is
+  // ContentKey, translate the protocol-level hash via hashToKey_.
+  if (arcCache_) {
+    auto itKey = hashToKey_.find(hash);
+    if (itKey != hashToKey_.end() && arcCache_->has(itKey->second))
+      return true;
+  }
   
   // Find in index
   auto it = indexMap_.find(hash);
@@ -632,9 +714,10 @@ bool GlobalClientPersistentCache::hydrateEntry(const std::vector<uint8_t>& hash)
   entry.lastAccessTime = getCurrentTime();
   entry.pixels = std::move(pixelData);
   
-  // Insert into ARC cache and persistence map
-  cache_[hash] = entry;
-  arcCache_->insert(hash, entry);
+  // Insert into ARC cache and persistence map using ContentKey
+  ContentKey key = idx.key;
+  cache_[key] = entry;
+  arcCache_->insert(key, entry);
   
   // Mark as hot (no longer cold)
   it->second.isCold = false;
@@ -689,7 +772,10 @@ size_t GlobalClientPersistentCache::flushDirtyEntries()
   
   // Write each dirty entry to the current shard
   for (const auto& hash : dirtyEntries_) {
-    auto cacheIt = cache_.find(hash);
+    auto keyIt = hashToKey_.find(hash);
+    if (keyIt == hashToKey_.end())
+      continue;
+    auto cacheIt = cache_.find(keyIt->second);
     if (cacheIt == cache_.end())
       continue;  // Entry was evicted
     

@@ -421,9 +421,10 @@ void ContentCache::logArcStats() const
   double t2Actual = (maxCacheSize_ > 0) ? (100.0 * t2Size_ / maxCacheSize_) : 0.0;
   
   vlog.info("=== ARC Cache Statistics ===");
-  vlog.info("Hit rate: %.1f%% (%llu hits, %llu misses, %llu total)",
+  vlog.info("Lookup hit rate (internal cache lookups only): %.1f%% (%llu hits, %llu misses, %llu total)",
             hitRate, (unsigned long long)s.cacheHits, 
             (unsigned long long)s.cacheMisses, (unsigned long long)totalLookups);
+  vlog.info("NOTE: These counts exclude initial cache population (CachedRectInit). See the viewer's \"Effective protocol hit rate\" for a bandwidth-level view.");
   vlog.info("Memory: %zuMB / %zuMB (%.1f%% used), %zu entries, %llu evictions",
             usedMB, maxMB, utilization, s.totalEntries, 
             (unsigned long long)s.evictions);

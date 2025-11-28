@@ -32,6 +32,7 @@
 #include <rfb/ContentCache.h>
 #include <rfb/ContentHash.h>
 #include <rfb/PixelBuffer.h>
+#include <rfb/Palette.h>
 #include <rfb/cache/ServerHashSet.h>
 
 namespace rfb {
@@ -42,7 +43,31 @@ namespace rfb {
   class PixelBuffer;
   class RenderedCursor;
 
-  struct RectInfo;
+  // Encoder classes and types shared between implementation and stats
+  enum EncoderClass {
+    encoderRaw,
+    encoderRRE,
+    encoderHextile,
+    encoderTight,
+    encoderTightJPEG,
+    encoderZRLE,
+    encoderClassMax,
+  };
+
+  enum EncoderType {
+    encoderSolid,
+    encoderBitmap,
+    encoderBitmapRLE,
+    encoderIndexed,
+    encoderIndexedRLE,
+    encoderFullColour,
+    encoderTypeMax,
+  };
+
+  struct RectInfo {
+    int rleRuns;
+    Palette palette;
+  };
 
   class EncodeManager : public core::Timer::Callback {
   public:
@@ -69,10 +94,10 @@ namespace rfb {
                               const RenderedCursor* renderedCursor,
                               size_t maxUpdateSize);
 
-    // PersistentCache protocol support - public interface
-    void addClientKnownHash(const std::vector<uint8_t>& hash);
-    void removeClientKnownHash(const std::vector<uint8_t>& hash);
-    bool clientKnowsHash(const std::vector<uint8_t>& hash) const;
+    // PersistentCache protocol support - public interface (64-bit IDs)
+    void addClientKnownHash(uint64_t cacheId);
+    void removeClientKnownHash(uint64_t cacheId);
+    bool clientKnowsHash(uint64_t cacheId) const;
     void setUsePersistentCache(bool enable) { usePersistentCache = enable; }
 
   protected:
@@ -105,7 +130,16 @@ namespace rfb {
     bool tryContentCacheLookup(const core::Rect& rect, const PixelBuffer* pb);
     void insertIntoContentCache(const core::Rect& rect, const PixelBuffer* pb);
 
-    // PersistentCache protocol support (private implementation)
+    // Shared encoder selection for both normal rects and cache INIT
+    // paths (ContentCache and PersistentCache). Populates ppb, info
+    // and type for the given rect.
+    void selectEncoderForRect(const core::Rect& rect,
+                              const PixelBuffer* pb,
+                              PixelBuffer*& ppb,
+                              struct RectInfo* info,
+                              EncoderType& type);
+
+    // Unified cache protocol support (PersistentCache-style, 64-bit IDs)
     bool tryPersistentCacheLookup(const core::Rect& rect, const PixelBuffer* pb);
 
     bool checkSolidTile(const core::Rect& r, const uint8_t* colourValue,
@@ -177,21 +211,16 @@ namespace rfb {
     OffsetPixelBuffer offsetPixelBuffer;
     ManagedPixelBuffer convertedPixelBuffer;
 
-    // Content cache for automatic CopyRect detection
-    ContentCache* contentCache;
+    // Last framebuffer size we saw; used to detect resolution changes.
     core::Rect lastFramebufferRect;
-
-    struct ContentCacheStats {
-      unsigned cacheHits;
-      unsigned cacheLookups;
-      unsigned long long bytesSaved;
-    };
-    ContentCacheStats cacheStats;
 
     // PersistentCache protocol state
     bool usePersistentCache;
-    ServerHashSet<std::vector<uint8_t>, ContentHash::HashVectorHasher> clientKnownHashes_;
-    std::queue<std::pair<std::vector<uint8_t>, core::Rect>> pendingPersistentQueries_;
+    // Set of 64-bit content IDs known to be present on the client. This
+    // mirrors the ContentCache cacheId tracking logic, but for
+    // cross-session PersistentCache entries.
+    ServerHashSet<uint64_t, std::hash<uint64_t>> clientKnownIds_;
+    std::queue<std::pair<uint64_t, core::Rect>> pendingPersistentQueries_;
 
     struct PersistentCacheStats {
       unsigned cacheHits;

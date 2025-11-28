@@ -246,6 +246,28 @@ void SMsgWriter::writeEndOfContinuousUpdates()
   endMsg();
 }
 
+void SMsgWriter::writePersistentCachedRect(const core::Rect& r, uint64_t cacheId)
+{
+  // Server → client: reference to PersistentCache entry by 64-bit ID.
+  // Wire format mirrors ContentCache CachedRect: rect header + U64 ID.
+  startRect(r, encodingPersistentCachedRect);
+  os->writeU32((uint32_t)(cacheId >> 32));
+  os->writeU32((uint32_t)(cacheId & 0xFFFFFFFF));
+  endRect();
+}
+
+void SMsgWriter::writePersistentCachedRectInit(const core::Rect& r,
+                                               uint64_t cacheId,
+                                               int encoding)
+{
+  // Server → client: initial payload plus 64-bit ID and inner encoding.
+  // Wire format mirrors ContentCache CachedRectInit: rect header + U64 ID + S32 encoding.
+  startRect(r, encodingPersistentCachedRectInit);
+  os->writeU32((uint32_t)(cacheId >> 32));
+  os->writeU32((uint32_t)(cacheId & 0xFFFFFFFF));
+  os->writeS32(encoding);
+}
+
 void SMsgWriter::writeDesktopSize(uint16_t reason, uint16_t result)
 {
   ExtendedDesktopSizeMsg msg;
@@ -434,27 +456,6 @@ void SMsgWriter::writeCachedRectInit(const core::Rect& r, uint64_t cacheId, int 
   os->writeU32((uint32_t)(cacheId & 0xFFFFFFFF));
   os->writeU32(encoding);
   // Caller will write encoded pixel data after this
-  // Note: endRect() should be called by caller after writing pixel data
-}
-
-void SMsgWriter::writePersistentCachedRect(const core::Rect& r, const std::vector<uint8_t>& hash)
-{
-  startRect(r, encodingPersistentCachedRect);
-  // Write variable-length hash
-  os->writeU8((uint8_t)hash.size());
-  os->writeBytes(hash.data(), hash.size());
-  os->writeU16(0);  // flags (reserved, must be 0)
-  endRect();
-}
-
-void SMsgWriter::writePersistentCachedRectInit(const core::Rect& r, const std::vector<uint8_t>& hash, int encoding)
-{
-  startRect(r, encodingPersistentCachedRectInit);
-  // Write variable-length hash
-  os->writeU8((uint8_t)hash.size());
-  os->writeBytes(hash.data(), hash.size());
-  os->writeU32(encoding);
-  // Caller will write payloadLen and payloadBytes after this
   // Note: endRect() should be called by caller after writing pixel data
 }
 

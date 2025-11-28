@@ -109,7 +109,7 @@ namespace rfb {
     
     // State for PersistentCachedRectInit decode
     bool pendingPersistentCacheInitActive;
-    std::vector<uint8_t> pendingPersistentHash;
+    uint64_t pendingPersistentCacheId;
     int pendingPersistentCacheEncoding;
 
     static const int maxCursorSize = 256;

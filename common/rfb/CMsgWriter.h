@@ -67,13 +67,14 @@ namespace rfb {
     void writeRequestCachedData(uint64_t cacheId);
     void writeCacheEviction(const std::vector<uint64_t>& cacheIds);
     
-    // PersistentCache protocol (cross-session)
-    void writePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes);
+    // PersistentCache protocol (cross-session) now uses 64-bit content IDs
+    // (cacheIds) on the wire, mirroring ContentCache cacheIds.
+    void writePersistentCacheQuery(const std::vector<uint64_t>& cacheIds);
     void writePersistentHashList(uint32_t sequenceId, uint16_t totalChunks, 
                                  uint16_t chunkIndex,
-                                 const std::vector<std::vector<uint8_t>>& hashes);
-    void writePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes);
-    void writePersistentCacheEvictionBatched(const std::vector<std::vector<uint8_t>>& hashes);
+                                 const std::vector<uint64_t>& cacheIds);
+    void writePersistentCacheEviction(const std::vector<uint64_t>& cacheIds);
+    void writePersistentCacheEvictionBatched(const std::vector<uint64_t>& cacheIds);
 
     void writeClipboardCaps(uint32_t caps, const uint32_t* lengths);
     void writeClipboardRequest(uint32_t flags);

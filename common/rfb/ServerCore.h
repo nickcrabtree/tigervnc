@@ -48,12 +48,6 @@ namespace rfb {
     static core::BoolParameter acceptSetDesktopSize;
     static core::BoolParameter queryConnect;
 
-    // ContentCache parameters (session-only, server-assigned IDs)
-    static core::BoolParameter enableContentCache;
-    static core::IntParameter contentCacheSize;
-    static core::IntParameter contentCacheMaxAge;
-    static core::IntParameter contentCacheMinRectSize;
-
     // PersistentCache parameters (cross-session, content hashes)
     static core::BoolParameter enablePersistentCache;
     static core::IntParameter persistentCacheMinRectSize;

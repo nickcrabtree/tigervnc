@@ -263,17 +263,17 @@ void CMsgWriter::writeCacheEviction(const std::vector<uint64_t>& cacheIds)
   endMsg();
 }
 
-void CMsgWriter::writePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes)
+void CMsgWriter::writePersistentCacheQuery(const std::vector<uint64_t>& cacheIds)
 {
-  if (hashes.empty())
+  if (cacheIds.empty())
     return;
     
   startMsg(msgTypePersistentCacheQuery);
-  os->writeU16(hashes.size());
+  os->writeU16(cacheIds.size());
   
-  for (const auto& hash : hashes) {
-    os->writeU8(hash.size());
-    os->writeBytes(hash.data(), hash.size());
+  for (uint64_t id : cacheIds) {
+    os->writeU32((uint32_t)(id >> 32));
+    os->writeU32((uint32_t)(id & 0xFFFFFFFF));
   }
   
   endMsg();
@@ -281,34 +281,34 @@ void CMsgWriter::writePersistentCacheQuery(const std::vector<std::vector<uint8_t
 
 void CMsgWriter::writePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
                                         uint16_t chunkIndex,
-                                        const std::vector<std::vector<uint8_t>>& hashes)
+                                        const std::vector<uint64_t>& cacheIds)
 {
-  if (hashes.empty())
+  if (cacheIds.empty())
     return;
     
   startMsg(msgTypePersistentCacheHashList);
   os->writeU32(sequenceId);
   os->writeU16(totalChunks);
   os->writeU16(chunkIndex);
-  os->writeU16(hashes.size());
+  os->writeU16(cacheIds.size());
   
-  for (const auto& hash : hashes) {
-    os->writeU8(hash.size());
-    os->writeBytes(hash.data(), hash.size());
+  for (uint64_t id : cacheIds) {
+    os->writeU32((uint32_t)(id >> 32));
+    os->writeU32((uint32_t)(id & 0xFFFFFFFF));
   }
   
   endMsg();
 }
 
-void CMsgWriter::writePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes)
+void CMsgWriter::writePersistentCacheEviction(const std::vector<uint64_t>& cacheIds)
 {
-  if (hashes.empty())
+  if (cacheIds.empty())
     return;
   
   // Validate and clamp count
-  size_t count = hashes.size();
+  size_t count = cacheIds.size();
   if (count > 1000) {
-    vlog.error("Too many hashes to evict (%zu), clamping to 1000", count);
+    vlog.error("Too many PersistentCache IDs to evict (%zu), clamping to 1000", count);
     count = 1000;
   }
   
@@ -317,33 +317,25 @@ void CMsgWriter::writePersistentCacheEviction(const std::vector<std::vector<uint
   os->writeU16(count);
   
   for (size_t i = 0; i < count; i++) {
-    const auto& hash = hashes[i];
-    
-    // Validate hash length
-    if (hash.empty() || hash.size() > 64) {
-      vlog.error("Invalid hash length (%zu bytes), skipping", hash.size());
-      continue;
-    }
-    
-    os->writeU8((uint8_t)hash.size());
-    os->writeBytes(hash.data(), hash.size());
+    uint64_t id = cacheIds[i];
+    os->writeU32((uint32_t)(id >> 32));
+    os->writeU32((uint32_t)(id & 0xFFFFFFFF));
   }
   
   endMsg();
 }
 
-void CMsgWriter::writePersistentCacheEvictionBatched(const std::vector<std::vector<uint8_t>>& hashes)
+void CMsgWriter::writePersistentCacheEvictionBatched(const std::vector<uint64_t>& cacheIds)
 {
-  if (hashes.empty())
+  if (cacheIds.empty())
     return;
     
   // Split into conservative batches to respect message size limits
   const size_t batchSize = 100;
   
-  for (size_t offset = 0; offset < hashes.size(); offset += batchSize) {
-    size_t end = std::min(offset + batchSize, hashes.size());
-    std::vector<std::vector<uint8_t>> batch(
-        hashes.begin() + offset, hashes.begin() + end);
+  for (size_t offset = 0; offset < cacheIds.size(); offset += batchSize) {
+    size_t end = std::min(offset + batchSize, cacheIds.size());
+    std::vector<uint64_t> batch(cacheIds.begin() + offset, cacheIds.begin() + end);
     writePersistentCacheEviction(batch);
   }
 }

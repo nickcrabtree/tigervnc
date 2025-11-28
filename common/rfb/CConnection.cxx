@@ -1155,7 +1155,7 @@ void CConnection::storeCachedRect(const core::Rect& r, uint64_t cacheId)
 }
 
 void CConnection::handlePersistentCachedRect(const core::Rect& r,
-                                            const std::vector<uint8_t>& hash)
+                                            uint64_t cacheId)
 {
   // On first use, record and log negotiated cache protocol
   if (negotiatedCacheProtocol == CacheProtocolNone) {
@@ -1170,11 +1170,11 @@ void CConnection::handlePersistentCachedRect(const core::Rect& r,
   }
 
   // Forward to decoder manager to handle cache lookup and blit
-  decoder.handlePersistentCachedRect(r, hash, framebuffer);
+  decoder.handlePersistentCachedRect(r, cacheId, framebuffer);
 }
 
 void CConnection::storePersistentCachedRect(const core::Rect& r,
-                                           const std::vector<uint8_t>& hash)
+                                           uint64_t cacheId)
 {
   // On first use, record and log negotiated cache protocol and trigger disk load.
   // PersistentCachedRectInit may be the first message if server is sending new content,
@@ -1190,6 +1190,6 @@ void CConnection::storePersistentCachedRect(const core::Rect& r,
     decoder.triggerPersistentCacheLoad();
   }
 
-  // Forward to decoder manager to store decoded content with hash
-  decoder.storePersistentCachedRect(r, hash, framebuffer);
+  // Forward to decoder manager to store decoded content with ID
+  decoder.storePersistentCachedRect(r, cacheId, framebuffer);
 }

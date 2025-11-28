@@ -155,11 +155,11 @@ namespace rfb {
     virtual void queueCachedInit(uint64_t, const core::Rect&) {}
     virtual void markCacheIdKnown(uint64_t) {}
 
-    // PersistentCache helpers (default no-op)
-    virtual bool clientRequestedPersistent(const std::vector<uint8_t>&) const { return false; }
-    virtual void clearClientPersistentRequest(const std::vector<uint8_t>&) {}
-    virtual bool knowsPersistentHash(const std::vector<uint8_t>&) const { return false; }
-    virtual void markPersistentHashKnown(const std::vector<uint8_t>&) {}
+    // PersistentCache helpers (default no-op), using 64-bit content IDs
+    virtual bool clientRequestedPersistent(uint64_t) const { return false; }
+    virtual void clearClientPersistentRequest(uint64_t) {}
+    virtual bool knowsPersistentId(uint64_t) const { return false; }
+    virtual void markPersistentIdKnown(uint64_t) {}
 
   protected:
 
@@ -180,10 +180,11 @@ namespace rfb {
                                 const uint8_t* const* data) override;
     void handleRequestCachedData(uint64_t cacheId) override;
     void handleCacheEviction(const std::vector<uint64_t>& cacheIds) override;
-    void handlePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes) override;
+    void handlePersistentCacheQuery(const std::vector<uint64_t>& cacheIds) override;
     void handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
                                   uint16_t chunkIndex,
-                                  const std::vector<std::vector<uint8_t>>& hashes) override;
+                                  const std::vector<uint64_t>& cacheIds) override;
+    void handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds) override;
 
     // Methods to be overridden in a derived class
 

@@ -150,43 +150,36 @@ namespace rfb {
     void handleRequestCachedData(uint64_t cacheId) override;
     void handleCacheEviction(const std::vector<uint64_t>& cacheIds) override;
     void onCachedRectRef(uint64_t cacheId, const core::Rect& r) override;
-    void handlePersistentCacheQuery(const std::vector<std::vector<uint8_t>>& hashes) override;
+    void handlePersistentCacheQuery(const std::vector<uint64_t>& cacheIds) override;
     void handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
                                   uint16_t chunkIndex,
-                                  const std::vector<std::vector<uint8_t>>& hashes) override;
-    void handlePersistentCacheEviction(const std::vector<std::vector<uint8_t>>& hashes) override;
+                                  const std::vector<uint64_t>& cacheIds) override;
+    void handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds) override;
 
     // PersistentCache request helpers used by encoder
-    bool clientRequestedPersistent(const std::vector<uint8_t>& h) const override {
-      return clientRequestedPersistentHashes_.find(h) != clientRequestedPersistentHashes_.end();
+    bool clientRequestedPersistent(uint64_t id) const override {
+      return clientRequestedPersistentIds_.find(id) != clientRequestedPersistentIds_.end();
     }
-    void clearClientPersistentRequest(const std::vector<uint8_t>& h) override {
-      auto it = clientRequestedPersistentHashes_.find(h);
-      if (it != clientRequestedPersistentHashes_.end())
-        clientRequestedPersistentHashes_.erase(it);
+    void clearClientPersistentRequest(uint64_t id) override {
+      auto it = clientRequestedPersistentIds_.find(id);
+      if (it != clientRequestedPersistentIds_.end())
+        clientRequestedPersistentIds_.erase(it);
     }
 
     // PersistentCache session tracking (mirroring ContentCache's knowsCacheId)
-    bool knowsPersistentHash(const std::vector<uint8_t>& hash) const override {
-      return knownPersistentHashes_.find(hash) != knownPersistentHashes_.end();
+    bool knowsPersistentId(uint64_t id) const override {
+      return knownPersistentIds_.find(id) != knownPersistentIds_.end();
     }
-    void markPersistentHashKnown(const std::vector<uint8_t>& hash) override {
-      knownPersistentHashes_.insert(hash);
+    void markPersistentIdKnown(uint64_t id) override {
+      knownPersistentIds_.insert(id);
     }
 
   private:
-    struct HashVectorHasher {
-      size_t operator()(const std::vector<uint8_t>& v) const {
-        size_t h = 14695981039346656037ULL;
-        for (uint8_t b : v) { h ^= b; h *= 1099511628211ULL; }
-        return h;
-      }
-    };
-    std::unordered_set<std::vector<uint8_t>, HashVectorHasher> clientRequestedPersistentHashes_;
+    std::unordered_set<uint64_t> clientRequestedPersistentIds_;
     
-    // Session-scoped tracking of persistent hashes known by client
+    // Session-scoped tracking of persistent IDs known by client
     // (from initial inventory OR sent via PersistentCachedRectInit this session)
-    std::unordered_set<std::vector<uint8_t>, HashVectorHasher> knownPersistentHashes_;
+    std::unordered_set<uint64_t> knownPersistentIds_;
 
     // Record that we just referenced a CachedRect with this ID for this rect
     void recordCachedRectRef(uint64_t cacheId, const core::Rect& r);
