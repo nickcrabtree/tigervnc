@@ -161,12 +161,57 @@ def parse_build_log_for_depmap(log_text: str) -> Dict[str, List[str]]:
     return depmap
 
 
+def _ensure_cmake_core_libs() -> None:
+    """Ensure the core CMake-built libraries exist before xserver rebuild.
+
+    The Xorg Xnjcvnc build links against several static archives from the
+    CMake build tree. If they are missing (e.g. fresh clone where only the
+    xserver has been built so far), a full xserver rebuild will fail during
+    linking even before we can derive a dependency map.
+
+    To avoid unnecessary recompilation, we only invoke CMake for targets whose
+    expected archives are currently missing.
+    """
+    # Map of expected archive path (relative to BUILD_DIR) -> CMake target
+    rel_archives_and_targets = [
+        (Path("common/core/libcore.a"), "core"),
+        (Path("common/rdr/librdr.a"), "rdr"),
+        (Path("common/network/libnetwork.a"), "network"),
+        (Path("common/rfb/librfb.a"), "rfb"),
+        (Path("unix/common/libunixcommon.a"), "unixcommon"),
+    ]
+
+    missing_targets = []
+    for rel_path, target in rel_archives_and_targets:
+        archive_path = BUILD_DIR / rel_path
+        if not archive_path.exists():
+            missing_targets.append(target)
+
+    if not missing_targets:
+        return
+
+    print(f"[depmap] Missing core libs for xserver link; rebuilding via CMake targets: {', '.join(missing_targets)}")
+    # Use the same PATH behaviour as the top-level Makefile viewer target
+    cmake_cmd = [
+        "cmake",
+        "--build",
+        str(BUILD_DIR),
+        "--target",
+    ]
+    for target in missing_targets:
+        _run(cmake_cmd + [target])
+
+
 def refresh_depmap(force: bool = False) -> None:
     """Ensure the dependency map exists and is recent.
 
     If the map is missing or stale (older than DEPMAP_MAX_AGE_SECS) or
     ``force`` is True, we run a full rebuild of the xserver tree with
     verbose output and derive the mapping from the resulting build log.
+
+    Before kicking off the xserver rebuild we make sure that the core CMake
+    libraries needed for linking (libcore.a, librdr.a, libnetwork.a,
+    librfb.a, libunixcommon.a) exist, rebuilding only what is missing.
     """
     if not force and depmap_is_fresh():
         print("[depmap] Existing depmap is fresh; skipping regeneration")
@@ -178,6 +223,10 @@ def refresh_depmap(force: bool = False) -> None:
             "Make sure you have set up unix/xserver under build/unix/xserver "
             "per BUILDING.txt."
         )
+
+    # Ensure we have the core archives the xserver link depends on. This is a
+    # no-op when they are already present and up to date.
+    _ensure_cmake_core_libs()
 
     print("[depmap] Regenerating Xserver dependency map (full rebuild)...")
 
