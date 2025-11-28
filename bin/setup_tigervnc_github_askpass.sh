@@ -20,9 +20,8 @@ elif echo "$prompt" | grep -qi 'password'; then
   fi
 
   token="$(ssh nickc@birdsurvey.hopto.org "~/bin/ghapp-token ${GITHUB_OWNER} ${GITHUB_REPO}")"
-  now="$(date +%s)"
   umask 0077
-  printf '%s %s\n' "$now" "$token" > "$cache_file"
+  printf '%s\n' "$token" > "$cache_file"
   printf '%s' "$token"
 else
   printf ''
