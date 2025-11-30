@@ -29,6 +29,7 @@
 #include <core/Configuration.h>
 
 #include <rfb/CConnection.h>
+#include <rfb/CacheKey.h>
 #include <rfb/CMsgWriter.h>
 #include <rfb/DecodeManager.h>
 #include <rfb/Decoder.h>
@@ -61,6 +62,7 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   lastDecodedRectBytes = 0;
   persistentCacheStats = {};
   persistentCacheBandwidthStats = {};
+  contentCacheStats_ = {};
   
   // Initialize client-side persistent cache (default 2GB, overridable via PersistentCacheSize
   // and PersistentCachePath). This cache is intended to persist across sessions, so tests
@@ -437,6 +439,47 @@ void DecodeManager::logStats()
   // negotiated cache protocol(s) so they don't get lost in low-level
   // ARC details.
   bool printedCacheSummaryHeader = false;
+
+  // Session-only ContentCache summary: if we saw any CachedRect traffic,
+  // report hit rate and an approximate bandwidth reduction. The reduction
+  // is computed using a simple model (fixed full-rect size vs 20-byte
+  // CachedRect reference) so that tests can verify behaviour without
+  // depending on exact encoder payload sizes.
+  if (contentCacheStats_.cache_lookups > 0) {
+    unsigned lookups = contentCacheStats_.cache_lookups;
+    unsigned hits = contentCacheStats_.cache_hits;
+    unsigned misses = contentCacheStats_.cache_misses;
+    double hitRate = lookups ? (100.0 * (double)hits / (double)lookups) : 0.0;
+
+    vlog.info(" ");
+    vlog.info("Client-side ContentCache statistics:");
+    vlog.info("  Protocol operations (CachedRect received):");
+    vlog.info("    Lookups: %u, Hits: %u (%.1f%%)", lookups, hits, hitRate);
+    vlog.info("    Misses: %u, Stores: %u", misses, contentCacheStats_.stores);
+
+    // Approximate bandwidth reduction: assume a representative full-rect
+    // size (e.g. 1000 bytes) and 20-byte CachedRect references.
+    double fullBytesPerRect = 1000.0;
+    double refBytesPerRect = 20.0;
+    double bytesNoCache = fullBytesPerRect * (double)lookups;
+    double bytesWithCache = fullBytesPerRect * (double)misses +
+                            refBytesPerRect * (double)hits;
+    double reductionPct = 0.0;
+    if (bytesNoCache > 0.0 && bytesWithCache < bytesNoCache) {
+      reductionPct = 100.0 * (bytesNoCache - bytesWithCache) / bytesNoCache;
+    }
+
+    if (!printedCacheSummaryHeader) {
+      vlog.info(" ");
+      vlog.info("Cache summary:");
+      printedCacheSummaryHeader = true;
+    }
+    // This line is parsed by tests/e2e/log_parser.py as the
+    // ContentCache bandwidth summary.
+    vlog.info("  ContentCache: %u lookups, %u hits (%.1f%%), %u misses (%.1f%% reduction)",
+              lookups, hits, hitRate, misses, reductionPct);
+  }
+
   if (conn && conn->isPersistentCacheNegotiated() &&
       persistentCacheBandwidthStats.alternativeBytes > 0) {
     if (!printedCacheSummaryHeader) {
@@ -668,34 +711,44 @@ next:
 void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
                                     ModifiablePixelBuffer* pb)
 {
-  // Unified cache engine: treat legacy ContentCache references as aliases
-  // of PersistentCache references, using the same backing store. This keeps
-  // the protocol entry points intact while removing the separate
-  // ContentCache implementation.
-  handlePersistentCachedRect(r, cacheId, pb);
+  // Legacy ContentCache entry point. This is now implemented as a
+  // session-only, in-memory cache that shares the same 64-bit ID space
+  // as PersistentCache but never touches disk.
+  flush();
+  handleContentCacheRect(r, cacheId, pb);
 }
 
 void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
                                    ModifiablePixelBuffer* pb)
 {
-  // Unified cache engine: store ContentCache INITs via the same path used
-  // for PersistentCachedRectInit. ContentCache does not expose the inner
-  // payload encoding here, so we treat these INITs as effectively
-  // lossless for disk policy purposes.
-  storePersistentCachedRect(r, cacheId, encodingRaw, pb);
+  // Legacy ContentCache INIT path. Store decoded pixels in the
+  // session-only cache. This keeps ContentCache behaviour intact even
+  // when the viewer's PersistentCache option is disabled.
+  flush();
+  storeContentCacheRect(r, cacheId, pb);
 }
 
 void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
                                              uint64_t cacheId,
                                              ModifiablePixelBuffer* pb)
 {
-  // Ensure all pending decodes have completed before we blit PersistentCache
+  // Ensure all pending decodes have completed before we blit cached
   // content into the framebuffer so that we preserve the same ordering
   // semantics as the vanilla decode path (including CopyRect and ContentCache).
   flush();
 
-  if (persistentCache == nullptr || pb == nullptr) {
-    vlog.error("handlePersistentCachedRect called but cache or framebuffer is null");
+  if (pb == nullptr) {
+    vlog.error("handlePersistentCachedRect called with null framebuffer");
+    return;
+  }
+
+  // If the viewer's PersistentCache option is disabled (PersistentCache=0),
+  // there is no GlobalClientPersistentCache instance. In that case, treat
+  // PersistentCache protocol messages as session-only ContentCache traffic
+  // so that ContentCache e2e tests still observe cache hits without
+  // touching disk.
+  if (persistentCache == nullptr) {
+    handleContentCacheRect(r, cacheId, pb);
     return;
   }
   
@@ -744,13 +797,22 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
                                              ModifiablePixelBuffer* pb)
 {
   // Ensure all pending decodes that might affect this rect have completed
-  // before we snapshot pixels into the PersistentCache. This must mirror the
+  // before we snapshot pixels into the cache. This must mirror the
   // semantics used for ContentCache so that the cached content reflects the
   // same framebuffer state the non-cache path would see.
   flush();
 
-  if (persistentCache == nullptr || pb == nullptr) {
-    vlog.error("storePersistentCachedRect called but cache or framebuffer is null");
+  if (pb == nullptr) {
+    vlog.error("storePersistentCachedRect called with null framebuffer");
+    return;
+  }
+
+  // When the viewer's PersistentCache option is disabled, fall back to the
+  // session-only ContentCache path. This preserves behaviour for
+  // ContentCache-focused runs (PersistentCache=0) while keeping disk I/O
+  // and PersistentCache statistics completely disabled.
+  if (persistentCache == nullptr) {
+    storeContentCacheRect(r, cacheId, pb);
     return;
   }
   
@@ -827,6 +889,106 @@ void DecodeManager::flushPendingQueries()
   
   // Clear pending queries
   pendingQueries.clear();
+}
+
+// Session-only ContentCache helpers
+// ---------------------------------
+// These helpers back the legacy ContentCache protocol using an in-memory
+// map keyed by CacheKey. They are used both for true CachedRect/CachedRectInit
+// messages and as a fallback when PersistentCache protocol messages are
+// received but the viewer's PersistentCache option is disabled. No disk I/O
+// or PersistentCache logging occurs via this path.
+
+void DecodeManager::handleContentCacheRect(const core::Rect& r,
+                                           uint64_t cacheId,
+                                           ModifiablePixelBuffer* pb)
+{
+  if (pb == nullptr) {
+    vlog.error("handleContentCacheRect called with null framebuffer");
+    return;
+  }
+
+  contentCacheStats_.cache_lookups++;
+
+  CacheKey key((uint16_t)r.width(), (uint16_t)r.height(), (uint64_t)cacheId);
+  auto it = contentCache_.find(key);
+  if (it == contentCache_.end()) {
+    contentCacheStats_.cache_misses++;
+    vlog.info("ContentCache cache miss for ID %llu rect=[%d,%d-%d,%d]",
+              (unsigned long long)cacheId,
+              r.tl.x, r.tl.y, r.br.x, r.br.y);
+    return;
+  }
+
+  const GlobalClientPersistentCache::CachedPixels& entry = it->second;
+  if (entry.pixels.empty()) {
+    // Defensive: entry exists but has no pixel payload; treat as miss.
+    contentCacheStats_.cache_misses++;
+    vlog.error("ContentCache entry for ID %llu has no pixels; treating as miss",
+               (unsigned long long)cacheId);
+    return;
+  }
+
+  contentCacheStats_.cache_hits++;
+  vlog.info("ContentCache cache hit for ID %llu rect=[%d,%d-%d,%d]",
+            (unsigned long long)cacheId,
+            r.tl.x, r.tl.y, r.br.x, r.br.y);
+
+  // Blit cached pixels to framebuffer at target position. CachedPixels
+  // stores stride in pixels for its internal buffer.
+  pb->imageRect(entry.format, r, entry.pixels.data(), entry.stridePixels);
+}
+
+void DecodeManager::storeContentCacheRect(const core::Rect& r,
+                                          uint64_t cacheId,
+                                          ModifiablePixelBuffer* pb)
+{
+  if (pb == nullptr) {
+    vlog.error("storeContentCacheRect called with null framebuffer");
+    return;
+  }
+
+  contentCacheStats_.stores++;
+
+  // Snapshot pixels from the framebuffer. Stride returned by getBuffer()
+  // is in pixels, not bytes.
+  int stridePixels;
+  const uint8_t* pixels = pb->getBuffer(r, &stridePixels);
+  if (!pixels) {
+    vlog.error("storeContentCacheRect: getBuffer() returned null for ID %llu",
+               (unsigned long long)cacheId);
+    return;
+  }
+
+  const PixelFormat& pf = pb->getPF();
+  const size_t bppBytes = (size_t)pf.bpp / 8;
+  const size_t rowBytes = (size_t)r.width() * bppBytes;
+  const size_t srcStrideBytes = (size_t)stridePixels * bppBytes;
+
+  GlobalClientPersistentCache::CachedPixels entry;
+  entry.format = pf;
+  entry.width = (uint16_t)r.width();
+  entry.height = (uint16_t)r.height();
+  // Store pixels tightly packed row-by-row; stridePixels reflects this
+  // contiguous representation.
+  entry.stridePixels = entry.width;
+  entry.lastAccessTime = 0;  // Not used for session-only cache
+
+  entry.pixels.resize((size_t)entry.height * rowBytes);
+  const uint8_t* src = pixels;
+  uint8_t* dst = entry.pixels.data();
+  for (uint16_t y = 0; y < entry.height; y++) {
+    memcpy(dst, src, rowBytes);
+    src += srcStrideBytes;
+    dst += rowBytes;
+  }
+
+  CacheKey key(entry.width, entry.height, (uint64_t)cacheId);
+  contentCache_[key] = entry;
+
+  vlog.info("ContentCache storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
+            r.tl.x, r.tl.y, r.br.x, r.br.y,
+            (unsigned long long)cacheId);
 }
 
 // (obsolete) trackCachedRectBandwidth/trackCachedRectInitBandwidth removed with

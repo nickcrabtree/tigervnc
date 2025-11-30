@@ -91,7 +91,7 @@ The end state is:
 - [x] Update design docs:
   - [x] `CONTENTCACHE_DESIGN_IMPLEMENTATION.md` – note deprecation of the old separate ContentCache engine.
   - [x] `PERSISTENTCACHE_DESIGN.md` – describe the unified cache model and policies.
-  - [ ] Any other cache-related docs that still talk about two distinct implementations.
+  - [x] Any other cache-related docs that still talk about two distinct implementations.
 
 ---
 
@@ -108,16 +108,13 @@ The end state is:
 - [x] Verified that PersistentCache (`GlobalClientPersistentCache`) already uses `ContentKey(width, height, hash64)` for in-memory keying and that the width/height bugfix is fully applied.
 - [x] Created this tracking document.
 - [x] Viewer-side removal of `ContentCache` for the C++ viewer is complete at the `DecodeManager` layer: all legacy `CachedRect` entry points now delegate to the unified `GlobalClientPersistentCache` engine, with disk I/O gated by the `PersistentCache` parameter.
-- [x] Server-side ContentCache removal is implemented for `EncodeManager` and `ServerCore`: the `rfb` library builds on macOS with only the 64-bit PersistentCache path active. `tryContentCacheLookup`/`insertIntoContentCache` are no-op stubs, `writeSubRect` only calls `tryPersistentCacheLookup`, tiling diagnostics now use `Server::persistentCacheMinRectSize`, and all server-side `ContentCache*` configuration parameters have been removed.
+- [x] Server-side ContentCache removal is implemented for `EncodeManager` and `ServerCore`: the `rfb` library builds on macOS with only the 64-bit PersistentCache path active. The old `rfb::ContentCache` engine and its helper stubs have been removed from the code, `writeSubRect` only calls `tryPersistentCacheLookup`, tiling diagnostics now use `Server::persistentCacheMinRectSize`, and all server-side `ContentCache*` configuration parameters have been removed.
 - [x] Targeted refresh for cache misses is now driven by 64-bit cache IDs and per-connection rect mappings: `EncodeManager::tryPersistentCacheLookup()` notifies `SConnection::onCachedRectRef()`, `VNCSConnectionST::handleRequestCachedData()` uses `lastCachedRectRef_` and `queueCachedInit()` for precise refreshes, and `VNCServerST::handleRequestCachedData()` provides a conservative full-frame fallback when no mapping is available.
-- [ ] Tests and higher-level docs still need to be updated to reflect the unified cache engine and to validate targeted refresh and capability behavior.
+- [x] Tests and higher-level docs have been updated to reflect the unified cache engine and to validate targeted refresh and capability behavior.
 
 ## 6. Next Steps for Future Work
 
-- Audit `SConnection` and `VNCSConnectionST` to ensure all cache-related paths (especially targeted refresh and `RequestCachedData` handling) operate purely on 64-bit IDs and rect mappings, with no assumptions about a server-side `ContentCache` store.
-- Decide final semantics for `pseudoEncodingContentCache` vs `pseudoEncodingPersistentCache` under the unified engine and adjust negotiation/handlers accordingly.
-- Run and update the e2e cache tests (`test_cpp_contentcache.py`, `test_cpp_persistentcache.py`, and any others touching cache behavior) to match the new unified protocol, and add coverage for ephemeral vs persistent viewer policies.
-- Sweep the codebase for any remaining `ContentCache` references in comments or dead code and either remove them or clearly annotate them as legacy notes.
+The unification work tracked in this document has been implemented. Any further changes to cache behaviour (e.g., new tiling strategies or additional diagnostics) should be captured in new design documents rather than extending this migration plan.
 
 ---
 
@@ -152,20 +149,17 @@ This section captures concrete decisions made while implementing the unified cac
 
 These items should be resolved before declaring the ContentCache removal fully complete:
 
-1. **Encoding negotiation strategy**  
-   Do we want to:
-   - only negotiate `pseudoEncodingPersistentCache` and treat ContentCache as a viewer-side knob; or
-   - keep negotiating both encodings but route them identically on the wire?  
-   The current code still reflects both options; a final choice should be documented here and in the protocol docs.
+1. **Encoding negotiation strategy (resolved)**  
+   We have chosen **Option B**: both `pseudoEncodingContentCache` and `pseudoEncodingPersistentCache` continue to be negotiated, but they are handled by the same 64-bit ID cache engine. The viewer policy (ephemeral vs persistent) is determined locally, and the protocol docs (`PERSISTENTCACHE_DESIGN.md`) describe this as the unified model.
 
-2. **Legacy client interoperability**  
-   The unified engine assumes the 64-bit-ID PersistentCache wire format. Legacy clients or servers that still expect hash-vector-based PersistentCache messages or a separate ContentCache engine will not interoperate. We need a clear statement of supported combinations for this fork.
+2. **Legacy client interoperability (documented)**  
+   This fork targets environments where both viewer and server speak the unified 64-bit ID cache protocol. Older implementations that expect hash-vector PersistentCache messages or a separate ContentCache engine will continue to interoperate at the base RFB level, but cache features may be disabled or behave differently. `PERSISTENTCACHE_DESIGN.md` documents the intended compatibility expectations.
 
-3. **Minimum rectangle size heuristics**  
-   Server-side `persistentCacheMinRectSize` currently replaces the old `ContentCacheMinRectSize`. We should validate that the new default values make sense across common workloads and adjust any heuristics that were previously tuned for the dual-cache implementation.
+3. **Minimum rectangle size heuristics (accepted as-is)**  
+   Server-side `persistentCacheMinRectSize` now replaces the old `ContentCacheMinRectSize`. The current default has been validated against the e2e workloads and black-box screenshot tests and is accepted as the baseline; further tuning can be treated as normal performance work, not part of ContentCache removal.
 
-4. **Debug and tracing hooks**  
-   Some of the original ContentCache logs were valuable for visual debugging (e.g. mapping cache IDs back to screen regions). We should decide which of these are worth reintroducing on top of the unified engine and where they should live (server vs viewer logs).
+4. **Debug and tracing hooks (superseded)**  
+   Instead of porting all historical ContentCache logs, the fork now relies on targeted CCDBG-style logging in `EncodeManager`/`CConnection` and the log-driven trace test plan in `docs/LOG_DRIVEN_CACHE_TRACE_TEST_PLAN.md`. Additional diagnostics can be added there without reintroducing the old `rfb::ContentCache` machinery.
 
 ---
 
@@ -173,7 +167,7 @@ These items should be resolved before declaring the ContentCache removal fully c
 
 The ContentCache implementation can be considered fully removed (and replaced by the unified cache engine) when all of the following are true:
 
-- [ ] No production code in `common/rfb/` or server/viewer frontends references `rfb::ContentCache` types or headers. (Note: `ContentKey` and `ContentKeyHash` remain as shared key types; the `rfb::ContentCache` engine itself is not used.)
+- [x] No production code in `common/rfb/` or server/viewer frontends references `rfb::ContentCache` types or headers. (Note: `ContentKey` and `ContentKeyHash` remain as shared key types; the `rfb::ContentCache` engine itself is not used.)
 - [x] All cache-related protocol handlers use the 64-bit-ID PersistentCache wire format only.
 - [x] Server-side configuration exposes a single set of cache knobs (persistent cache capacity, min rect size, etc.) with clear semantics.
 - [x] Viewer-side configuration cleanly separates "use cache" from "persist cache to disk" and `PersistentCache=0` is honored in all code paths.

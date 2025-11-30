@@ -16,6 +16,8 @@
 ## Overview
 
 > Unified cache note (November 2025): The original implementation described in this document used a dedicated `rfb::ContentCache` engine alongside a separate PersistentCache engine. In the current experimental fork, these have been merged into a single cache engine keyed by `ContentKey(width, height, contentHash64)` and using 64-bit IDs on the wire. The legacy "ContentCache protocol" is now an **ephemeral policy** of that unified engine (memory-only, session-scoped), while PersistentCache uses the same engine with disk persistence enabled. All cache protocol messages now use the PersistentCache-style 64-bit ID wire format.
+>
+> The detailed class and configuration descriptions below (for `ContentCache`, `EnableContentCache`, etc.) describe the **historical implementation** that has since been removed from the C++ code in this fork. They are retained for background and for understanding older logs and branches; the live implementation is the unified cache engine documented in `PERSISTENTCACHE_DESIGN.md` and `docs/remove_contentcache_implementation.md`.
 
 ### Problem Statement
 
@@ -81,10 +83,10 @@ Server Side                           Client Side
 
 #### Server Side (`common/rfb/`)
 
-- **`ContentCache`** (`ContentCache.h/cxx`): Core cache data structure with ContentKey and ARC algorithm
-- **`EncodeManager`** (`EncodeManager.h/cxx`): Integration point for cache lookups and insertions
+- **Legacy `ContentCache` engine** (historically `ContentCache.h/cxx`): Core cache data structure with ContentKey and ARC algorithm. This class has been removed from the current fork in favour of the unified PersistentCache-based engine.
+- **`EncodeManager`** (`EncodeManager.h/cxx`): Integration point for cache lookups and insertions (now using only the unified 64-bit ID cache path).
 - **`SMsgWriter`** (`SMsgWriter.h/cxx`): Protocol message serialization
-- **`ServerCore`** (`ServerCore.h/cxx`): Configuration parameters
+- **`ServerCore`** (`ServerCore.h/cxx`): Configuration parameters (see below for legacy vs current knobs).
 
 #### Client Side (`common/rfb/`)
 
@@ -172,6 +174,8 @@ if (conn->client.supportsEncoding(pseudoEncodingContentCache)) {
 ## Server Implementation
 
 ### ContentCache Class
+
+*Legacy implementation – the `rfb::ContentCache` class has been removed from the C++ code in this experimental fork. This section documents the original design for historical/reference purposes only.*
 
 Located in `common/rfb/ContentCache.h` and `ContentCache.cxx`.
 
@@ -617,9 +621,11 @@ ls -lh build/unix/xserver/hw/vnc/Xnjcvnc
 
 ## Configuration
 
-### Server Parameters
+### Server Parameters (legacy)
 
-Add to `~/.vnc/config` or pass on command line:
+> Note: The `EnableContentCache` / `ContentCache*` server parameters documented in this section applied to the old dedicated ContentCache engine. In the unified implementation they have been removed and replaced by the PersistentCache parameters described in `PERSISTENTCACHE_DESIGN.md`.
+
+Add to `~/.vnc/config` or pass on command line in **older builds** that still include `rfb::ContentCache`:
 
 ```bash
 # Enable ContentCache
@@ -659,9 +665,9 @@ core::IntParameter Server::contentCacheMinRectSize
  2048, 0, INT_MAX);
 ```
 
-### Client Configuration
+### Client Configuration (legacy)
 
-Currently hard-coded in `DecodeManager` constructor:
+Historically, the C++ viewer constructed a `ContentCache` instance directly in the `DecodeManager` constructor:
 
 ```cpp
 contentCache = new ContentCache(
@@ -670,7 +676,7 @@ contentCache = new ContentCache(
 );
 ```
 
-Could be exposed as viewer parameters in future.
+In the unified implementation, `DecodeManager` uses `GlobalClientPersistentCache` instead, gated by the `PersistentCache` parameter; there is no longer any client-side `ContentCache` object. This section is kept only to explain older branches and logs.
 
 ## Performance Characteristics
 

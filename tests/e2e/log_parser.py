@@ -70,6 +70,10 @@ class ParsedLog:
     cache_eviction_count: int = 0  # Number of eviction notifications sent
     evicted_ids_count: int = 0  # Total number of cache IDs evicted
     
+    # Negotiated cache protocol (viewer-side CConnection log)
+    negotiated_contentcache: bool = False
+    negotiated_persistentcache: bool = False
+    
     # ContentCache bandwidth (client-side summary line)
     content_bandwidth_reduction: float = 0.0
     
@@ -177,6 +181,12 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 parsed.persistent_init_events += 1
                 if len(parsed.persistent_init_messages) < 10:
                     parsed.persistent_init_messages.append(message)
+            
+            # Cache protocol negotiation (viewer-side CConnection log)
+            if 'cache protocol:' in lower and 'negotiated contentcache' in lower:
+                parsed.negotiated_contentcache = True
+            elif 'cache protocol:' in lower and 'negotiated persistentcache' in lower:
+                parsed.negotiated_persistentcache = True
             
             # ContentCache operations
             if 'cache hit' in lower:

@@ -5,6 +5,8 @@
 **Scope**: Apply ContentCache improvements (ARC eviction, bandwidth tracking, synchronization) to PersistentCache  
 **Status**: Planning Phase
 
+> Unified cache note (November 2025): This plan assumes separate ContentCache and PersistentCache engines on the C++ side. After the unification work tracked in `docs/remove_contentcache_implementation.md`, all cache behaviour is implemented by a single engine. Any remaining ContentCache-specific migration tasks in this document should be read as historical context; new work should target the unified engine only.
+
 ---
 
 ## Executive Summary

@@ -9,6 +9,8 @@
 
 This document specifies **PersistentCache**, a new RFB protocol extension that enables persistent, hash-based client-side caching. Unlike the existing **ContentCache** protocol (server-assigned IDs), PersistentCache uses content hashes as stable keys, allowing cache entries to survive client restarts and work across different VNC servers.
 
+> Unified cache note (November 2025): In the current experimental fork, the old `rfb::ContentCache` engine has been removed and both ContentCache and PersistentCache protocol messages are served by a single unified cache engine keyed by `ContentKey(width, height, contentHash64)` and a 64-bit ID on the wire. Sections that describe two distinct engines reflect the original design; for this fork, see the "Unified Cache Model" section below and `docs/remove_contentcache_implementation.md`.
+
 ### Test Results (November 2025)
 
 **C++ Viewer Tests** (128×128 logos, 30s duration):
@@ -23,10 +25,12 @@ This document specifies **PersistentCache**, a new RFB protocol extension that e
 
 ### Two Distinct Protocols
 
-| Protocol | Pseudo-Encoding | Key Type | Persistence | Negotiation |
-|----------|----------------|----------|-------------|-------------|
-| **ContentCache** (existing) | `-320` | Server-assigned ID | Session-only | Already deployed |
-| **PersistentCache** (new) | `-321` | Content hash | Cross-session | This document |
+> Historical note: The table below describes the original split between ContentCache (session-only) and PersistentCache (cross-session). In the unified implementation used by this fork, both pseudo-encodings are handled by the same 64-bit ID cache engine and differ only in viewer policy (ephemeral vs persistent).
+
+|| Protocol | Pseudo-Encoding | Key Type | Persistence | Negotiation |
+||----------|----------------|----------|-------------|-------------|
+|| **ContentCache** (existing) | `-320` | Server-assigned ID | Session-only | Already deployed |
+|| **PersistentCache** (new) | `-321` | Content hash | Cross-session | This document |
 
 ### Negotiation Rules
 

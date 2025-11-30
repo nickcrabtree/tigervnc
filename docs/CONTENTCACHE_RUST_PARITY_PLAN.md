@@ -4,6 +4,8 @@
 **Created**: November 5, 2025  
 **Status**: Planning Phase  
 
+> Unified cache note (November 2025): This plan was written when the C++ viewer still had a dedicated `rfb::ContentCache` engine. In the current fork that engine has been removed in favour of the unified PersistentCache-based cache. The phases below are therefore **historical** and should not be implemented as a separate ContentCache engine in Rust; instead, new Rust work should target the unified cache model described in `PERSISTENTCACHE_DESIGN.md`.
+
 ---
 
 ## Executive Summary

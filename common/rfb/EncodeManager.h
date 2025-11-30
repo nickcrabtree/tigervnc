@@ -124,9 +124,6 @@ namespace rfb {
 
     void writeSubRect(const core::Rect& rect, const PixelBuffer* pb);
 
-    bool tryContentCacheLookup(const core::Rect& rect, const PixelBuffer* pb);
-    void insertIntoContentCache(const core::Rect& rect, const PixelBuffer* pb);
-
     // Shared encoder selection for both normal rects and cache INIT
     // paths (ContentCache and PersistentCache). Populates ppb, info
     // and type for the given rect.

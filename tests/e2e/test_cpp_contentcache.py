@@ -159,14 +159,13 @@ def main():
     try:
         # 4. Start content server with ContentCache only
         print(f"\n[3/8] Starting content server (:{args.display_content})...")
-        print("  Server config: EnablePersistentCache=0 (ContentCache only)")
+        print("  Server config: unified cache engine enabled; viewer runs in ContentCache (ephemeral) mode via PersistentCache=0")
         server_content = VNCServer(
             args.display_content, args.port_content, "cpp_cc_content",
             artifacts, tracker,
             geometry="1920x1080",
             log_level="*:stderr:100",
             server_choice=server_mode,
-            server_params={'EnablePersistentCache': '0'}  # ContentCache only
         )
 
         if not server_content.start():
@@ -274,14 +273,32 @@ def main():
             success = False
             failures.append(f"Hit rate {hit_rate:.1f}% < {args.hit_rate_threshold}% threshold")
 
-        # Only enforce bandwidth reduction if a summary was logged and threshold > 0
+        # Enforce bandwidth reduction when ContentCache was negotiated. If the
+        # viewer reports that ContentCache is active, we *require* that a
+        # ContentCache bandwidth summary is printed; missing stats are a test
+        # failure, not a skip.
         if args.bandwidth_threshold > 0.0:
-            if bandwidth_reduction > 0.0:
-                if bandwidth_reduction < args.bandwidth_threshold:
+            if parsed.negotiated_contentcache:
+                if bandwidth_reduction <= 0.0:
                     success = False
-                    failures.append(f"Bandwidth reduction {bandwidth_reduction:.1f}% < {args.bandwidth_threshold}% threshold")
+                    failures.append(
+                        "ContentCache statistics were not logged even though ContentCache was negotiated"
+                    )
+                elif bandwidth_reduction < args.bandwidth_threshold:
+                    success = False
+                    failures.append(
+                        f"Bandwidth reduction {bandwidth_reduction:.1f}% < {args.bandwidth_threshold}% threshold"
+                    )
             else:
-                print("\nNote: Bandwidth summary not available in viewer log; skipping bandwidth threshold enforcement.")
+                # If ContentCache was not negotiated (unexpected for this test),
+                # keep the previous soft behaviour.
+                if bandwidth_reduction > 0.0 and bandwidth_reduction < args.bandwidth_threshold:
+                    success = False
+                    failures.append(
+                        f"Bandwidth reduction {bandwidth_reduction:.1f}% < {args.bandwidth_threshold}% threshold"
+                    )
+                elif bandwidth_reduction <= 0.0:
+                    print("\nNote: Bandwidth summary not available in viewer log; skipping bandwidth threshold enforcement.")
 
         print("\n" + "=" * 70)
         print("ARTIFACTS")

@@ -24,10 +24,12 @@
 #include <list>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
 
 #include <core/Region.h>
 
 #include <rfb/GlobalClientPersistentCache.h>
+#include <rfb/CacheKey.h>
 #include <rfb/encodings.h>
 #include <rfb/cache/BandwidthStats.h>
 
@@ -57,8 +59,10 @@ namespace rfb {
     void flush();
     
     // Cache protocol extension (legacy ContentCache entry point).
-    // In the unified implementation this is handled by the same backing
-    // engine as PersistentCache (GlobalClientPersistentCache).
+    // In the unified implementation this is backed by a session-only,
+    // in-memory cache on the client. PersistentCache reuses the same
+    // 64-bit ID space but adds disk-backed persistence and HashList
+    // negotiation.
     void handleCachedRect(const core::Rect& r, uint64_t cacheId,
                           ModifiablePixelBuffer* pb);
     void storeCachedRect(const core::Rect& r, uint64_t cacheId,
@@ -98,6 +102,15 @@ namespace rfb {
   private:
     void setThreadException();
     void throwThreadException();
+
+    // Session-only ContentCache helpers (no on-disk persistence). These are
+    // used both for true ContentCache protocol messages and as a fallback
+    // when PersistentCache protocol messages are received but the viewer's
+    // PersistentCache option is disabled (PersistentCache=0).
+    void handleContentCacheRect(const core::Rect& r, uint64_t cacheId,
+                                ModifiablePixelBuffer* pb);
+    void storeContentCacheRect(const core::Rect& r, uint64_t cacheId,
+                               ModifiablePixelBuffer* pb);
 
   private:
     CConnection *conn;
@@ -166,6 +179,24 @@ namespace rfb {
       unsigned queries_sent;
     };
     PersistentCacheStats persistentCacheStats;
+    
+    // Session-only ContentCache statistics (no disk). These mirror the
+    // semantics of the legacy ContentCache implementation but are backed
+    // by a simple in-memory cache keyed by CacheKey.
+    struct ContentCacheStats {
+      unsigned cache_hits;
+      unsigned cache_lookups;
+      unsigned cache_misses;
+      unsigned stores;
+    };
+    ContentCacheStats contentCacheStats_;
+    
+    // Session-only ContentCache storage: in-memory map keyed by CacheKey,
+    // reusing the CachedPixels struct from GlobalClientPersistentCache so
+    // that blitting logic is identical.
+    std::unordered_map<CacheKey,
+                       GlobalClientPersistentCache::CachedPixels,
+                       CacheKeyHash> contentCache_;
     
     // PersistentCache bandwidth savings tracking
     rfb::cache::CacheProtocolStats persistentCacheBandwidthStats;

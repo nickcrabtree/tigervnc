@@ -18,12 +18,8 @@ gtest_discover_tests(arccache)
 
 add_executable(bandwidthstats bandwidthstats.cxx)
 target_link_libraries(bandwidthstats rfb core GTest::gtest_main)
-gtest_discover_tests(bandwidthstats)
-
-add_executable(contentcache contentcache.cxx)
-target_link_libraries(contentcache rfb core GTest::gtest_main)
-gtest_discover_tests(contentcache)
-
+ gtest_discover_tests(bandwidthstats)
+ 
 add_executable(conv conv.cxx)
 target_link_libraries(conv rfb GTest::gtest_main)
 gtest_discover_tests(conv)

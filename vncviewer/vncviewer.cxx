@@ -681,8 +681,7 @@ int main(int argc, char** argv)
   // Inform user where logs go (stderr so it appears in terminal)
   fprintf(stderr, "Viewer debug log: %s\n", logPath);
 
-  // Route logs to stderr for user-facing output (stats, warnings, etc.)
-  // ContentCache has its own separate debug file for verbose pixel analysis
+  // Route logs to stderr for user-facing output (stats, warnings, etc.).
   core::LogWriter::setLogParams("*:stderr:30");
 
 #ifdef SIGHUP

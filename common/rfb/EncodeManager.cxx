@@ -1319,27 +1319,6 @@ uint8_t* EncodeManager::OffsetPixelBuffer::getBufferRW(const core::Rect& /*r*/, 
   throw std::logic_error("Invalid write attempt to OffsetPixelBuffer");
 }
 
-bool EncodeManager::tryContentCacheLookup(const core::Rect& rect,
-                                          const PixelBuffer* pb)
-{
-  // Legacy entry point; server-side ContentCache engine has been removed.
-  // Unified cache lookup is now implemented purely via the PersistentCache
-  // 64-bit ID path, so this function should no longer be called.
-  (void)rect;
-  (void)pb;
-  return false;
-}
-
-void EncodeManager::insertIntoContentCache(const core::Rect& rect,
-                                           const PixelBuffer* pb)
-{
-  // No-op: server-side ContentCache engine has been removed. Insertion is
-  // handled implicitly by sending PersistentCachedRectInit messages via the
-  // unified cache protocol.
-  (void)rect;
-  (void)pb;
-}
-
 bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
                                              const PixelBuffer* pb)
 {
