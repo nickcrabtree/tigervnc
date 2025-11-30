@@ -30,13 +30,15 @@
 #include <fstream>
 #include <mutex>
 #include <chrono>
-
-#include <rfb/PixelFormat.h>
-#include <rfb/cache/ArcCache.h>
-#include <rfb/ContentCache.h>  // For ContentKey / ContentKeyHash shared with ContentCache
+#include <string.h>    // memcpy
+#include <algorithm>   // std::min
 
 // Forward declaration for file I/O
 #include <cstdio>
+
+#include <rfb/PixelFormat.h>
+#include <rfb/CacheKey.h>
+#include <rfb/cache/ArcCache.h>
 
 namespace rfb {
 
@@ -142,17 +144,19 @@ namespace rfb {
     // Protocol operations
     bool has(const std::vector<uint8_t>& hash) const;
     const CachedPixels* get(const std::vector<uint8_t>& hash);
+    // Convenience lookup by CacheKey used by the unified cache engine
+    const CachedPixels* getByKey(const CacheKey& key);
     
-    // Shared keying with ContentCache via ContentKey. These helpers allow
-    // callers (e.g. DecodeManager) to look up entries directly by
-    // (width,height,contentHash64) without needing the full hash vector.
-    const CachedPixels* getByKey(const ContentKey& key);
-    
+    // Insert/update a cache entry. The isLossless flag indicates whether
+    // this payload is suitable for on-disk persistence. Lossy entries are
+    // still stored in the in-memory ARC cache but are not marked dirty for
+    // disk flush, so they remain session-only.
     void insert(const std::vector<uint8_t>& hash, 
                const uint8_t* pixels,
                const PixelFormat& pf,
                uint16_t width, uint16_t height,
-               uint16_t stridePixels);
+               uint16_t stridePixels,
+               bool isLossless = true);
     
     // Optional: Get all known hashes/IDs for HashList message
     std::vector<std::vector<uint8_t>> getAllHashes() const;
@@ -204,19 +208,22 @@ namespace rfb {
     void clear();
     
   private:
-    // Main in-memory cache storage uses the same composite keying as
-    // ContentCache (width, height, 64-bit content hash).
-    std::unordered_map<ContentKey, CachedPixels, ContentKeyHash> cache_;
     
     // Queue of hashes evicted from ARC; drained by DecodeManager to
     // notify server. Stored as protocol-level full hashes even though
-    // the in-memory ARC key is ContentKey.
+    // the in-memory ARC key is CacheKey.
     std::vector<std::vector<uint8_t>> pendingEvictions_;
     
-    // Shared ARC cache (byte-capacity), keyed by ContentKey just like
-    // ContentCache. PersistentCache differs only in that it also
+    // Shared ARC cache (byte-capacity), keyed by CacheKey just like the
+    // original ContentCache. PersistentCache differs only in that it also
     // persists entries to disk.
-    std::unique_ptr<rfb::cache::ArcCache<ContentKey, CachedPixels, ContentKeyHash>> arcCache_;
+    std::unique_ptr<rfb::cache::ArcCache<CacheKey, CachedPixels, CacheKeyHash>> arcCache_;
+
+    // In-memory view keyed by CacheKey and bidirectional mapping between
+    // CacheKey and full protocol hashes.
+    std::unordered_map<CacheKey, CachedPixels, CacheKeyHash> cache_;
+    std::unordered_map<CacheKey, std::vector<uint8_t>, CacheKeyHash> keyToHash_;
+    std::unordered_map<std::vector<uint8_t>, CacheKey, HashVectorHasher> hashToKey_;
 
     // Configuration
     size_t maxMemorySize_;     // Max in-memory cache (bytes)
@@ -232,9 +239,9 @@ namespace rfb {
     // Lazy hydration state
     HydrationState hydrationState_;
     
-    // Index entry for lazy loading (v3 format with shard info)
+    // Index entry for lazy loading (v3 format with shard info), keyed by
+    // CacheKey so we can reconstitute the in-memory view.
     struct IndexEntry {
-      ContentKey key;              // Shared in-memory key (width/height, hash64)
       uint16_t shardId;         // Which shard file contains the payload
       uint32_t payloadOffset;   // Offset within the shard file
       uint32_t payloadSize;     // Size of pixel data
@@ -243,6 +250,7 @@ namespace rfb {
       uint16_t stridePixels;
       PixelFormat format;
       bool isCold;              // True if evicted from memory but still on disk
+      CacheKey key;             // Corresponding in-memory key
     };
     std::unordered_map<std::vector<uint8_t>, IndexEntry, HashVectorHasher> indexMap_;
     
@@ -261,12 +269,6 @@ namespace rfb {
     size_t currentShardSize_;  // Current size of active shard
     std::unordered_map<uint16_t, size_t> shardSizes_;  // Size of each shard
     
-    // Bidirectional mapping between protocol-level full hashes and
-    // shared in-memory keys. This lets us keep ARC/cache keying
-    // identical to ContentCache while still using full hashes for
-    // protocol and on-disk persistence.
-    std::unordered_map<ContentKey, std::vector<uint8_t>, ContentKeyHash> keyToHash_;
-    std::unordered_map<std::vector<uint8_t>, ContentKey, HashVectorHasher> hashToKey_;
 
     // Helper methods
     std::string getShardPath(uint16_t shardId) const;

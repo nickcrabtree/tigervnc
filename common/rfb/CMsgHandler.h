@@ -95,8 +95,12 @@ namespace rfb {
     // only in that entries persist across sessions and are backed by disk.
     virtual void handlePersistentCachedRect(const core::Rect& r,
                                             uint64_t cacheId) = 0;
+    // encoding is the inner payload encoding used for this INIT (e.g.
+    // encodingRaw, encodingZRLE, encodingTight). This allows the client
+    // implementation to treat lossy payloads differently for persistence.
     virtual void storePersistentCachedRect(const core::Rect& r,
-                                           uint64_t cacheId) = 0;
+                                           uint64_t cacheId,
+                                           int encoding) = 0;
 
     ServerParams server;
   };

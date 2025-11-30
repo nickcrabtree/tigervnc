@@ -488,13 +488,20 @@ void VNCSConnectionST::setEncodings(int nEncodings, const int32_t* encodings)
 {
   SConnection::setEncodings(nEncodings, encodings);
   
-  // Enable PersistentCache on EncodeManager if client supports it
-  if (client.supportsEncoding(pseudoEncodingPersistentCache) && Server::enablePersistentCache) {
+  // Enable the unified cache engine in EncodeManager when the server has
+  // caching enabled and the client has negotiated *any* cache pseudo-encoding
+  // (ContentCache or PersistentCache). The choice of protocol is a
+  // policy/negotiation detail; the backing engine is shared.
+  bool clientWantsPersistent = client.supportsEncoding(pseudoEncodingPersistentCache);
+  bool clientWantsContent = client.supportsEncoding(pseudoEncodingContentCache);
+
+  if (Server::enablePersistentCache && (clientWantsPersistent || clientWantsContent)) {
     encodeManager.setUsePersistentCache(true);
-    vlog.info("PersistentCache enabled for this connection");
-  } else if (client.supportsEncoding(pseudoEncodingContentCache)) {
-    encodeManager.setUsePersistentCache(false);
-    vlog.info("ContentCache enabled for this connection (PersistentCache not available)");
+    if (clientWantsPersistent) {
+      vlog.info("PersistentCache enabled for this connection");
+    } else {
+      vlog.info("ContentCache enabled for this connection (session-only, unified cache engine)");
+    }
   } else {
     encodeManager.setUsePersistentCache(false);
   }

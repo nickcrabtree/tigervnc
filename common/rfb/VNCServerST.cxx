@@ -618,14 +618,10 @@ void VNCServerST::handleRequestCachedData(VNCSConnectionST* client,
   slog.debug("Client requested cached data for ID %llu",
              (unsigned long long)cacheId);
   
-  // Look up the cache entry to get the rectangle bounds where this content
-  // was last seen. The cache is content-addressed (by hash), so we need to
-  // find where this cacheId was last seen to know what region to re-send.
-  
-  // Get the ContentCache from the EncodeManager (it's shared across all connections)
-  // For now, we don't have access to it here. The simplest workaround is to
-  // request a full framebuffer update which will re-send everything including
-  // the missing cached rectangles.
+  // VNCSConnectionST tracks the last rectangle that referenced each cacheId
+  // via onCachedRectRef(). If no mapping exists for this cacheId (e.g. very
+  // old clients, or if the session state has been cleared), fall back to a
+  // conservative full-frame refresh as a safety net.
   
   slog.info("Client cache miss for ID %llu - requesting refresh",
             (unsigned long long)cacheId);

@@ -469,12 +469,16 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
         
     finally:
         print("\nFinal cleanup...")
+        # Close the viewer log file if it was opened
         try:
-            log_file.close()
+            if 'log_file' in locals() and not log_file.closed:
+                log_file.close()
         except Exception:
             pass
         
-        # Cleanup any remaining processes (most should already be stopped)
+        # Targeted cleanup for any processes we know about explicitly. These
+        # calls are idempotent and safe even if the processes have already
+        # exited.
         if 'viewer_proc' in locals() and viewer_proc.poll() is None:
             tracker.cleanup('viewer')
         
@@ -489,6 +493,14 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
                 tracker.cleanup(f"vnc_{server.name}")
             if server.wm_proc and server.wm_proc.poll() is None:
                 tracker.cleanup(f"wm_{server.name}")
+        
+        # As a final safety net, ensure that any other processes registered in
+        # the tracker (e.g. future helpers) are also terminated so they cannot
+        # hold on to the dedicated test ports 6898/6899.
+        try:
+            tracker.cleanup_all()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':

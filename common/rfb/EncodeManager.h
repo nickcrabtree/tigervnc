@@ -28,9 +28,6 @@
 
 #include <core/Region.h>
 #include <core/Timer.h>
-
-#include <rfb/ContentCache.h>
-#include <rfb/ContentHash.h>
 #include <rfb/PixelBuffer.h>
 #include <rfb/Palette.h>
 #include <rfb/cache/ServerHashSet.h>

@@ -1,30 +1,15 @@
 #pragma once
 
 #include <rfb/cache/TilingAnalysis.h>
-#include <rfb/ContentCache.h>
 #include <rfb/ContentHash.h>
 #include <rfb/SConnection.h>
 
 namespace rfb { namespace cache {
 
-// Concrete CacheQueryInterface implementation that queries ContentCache
-// on the server side, respecting the per-connection "knowsCacheId" state.
-
-class ContentCacheQuery : public CacheQueryInterface {
-public:
-  ContentCacheQuery(SConnection* conn, ContentCache* cache)
-    : conn_(conn), cache_(cache) {}
-
-  TileCacheState classifyTile(const core::Rect& tileRect,
-                              const PixelBuffer* pb) override;
-
-private:
-  SConnection* conn_;
-  ContentCache* cache_;
-};
-
-// Concrete CacheQueryInterface implementation for PersistentCache.
-
+// Concrete CacheQueryInterface implementation for PersistentCache. The
+// unified cache engine exposes a single 64-bit ID space, so tiling
+// analysis only needs to consult the PersistentCache session state on
+// the server side.
 class PersistentCacheQuery : public CacheQueryInterface {
 public:
   PersistentCacheQuery(SConnection* conn)

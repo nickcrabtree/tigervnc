@@ -29,7 +29,6 @@
 #include <core/LogWriter.h>
 #include <core/string.h>
 
-#include <rfb/ContentCache.h>
 #include <rfb/ContentHash.h>
 #include <rfb/Cursor.h>
 #include <rfb/EncodeManager.h>
@@ -299,9 +298,18 @@ void EncodeManager::logStats()
   vlog.info("         %s (1:%g ratio)",
             core::iecPrefix(bytes, "B").c_str(), ratio);
 
-  // No separate ContentCache statistics block: the cache protocol is now
-  // represented solely by persistentCacheStats and the client-side
-  // PersistentCache engine.
+  // Unified cache statistics (covers both ContentCache and PersistentCache
+  // protocols on the wire). Preserve the original "Lookups: N, References
+  // sent: M (P%)" format consumed by e2e tests such as
+  // test_cachedrect_init_propagation.py.
+  unsigned cacheLookups = persistentCacheStats.cacheLookups;
+  unsigned cacheHits = persistentCacheStats.cacheHits;
+  double hitPct = cacheLookups ? (100.0 * (double)cacheHits / (double)cacheLookups) : 0.0;
+
+  vlog.info("Lookups: %u, References sent: %u (%.1f%%)",
+            cacheLookups,
+            cacheHits,
+            hitPct);
 }
 
 bool EncodeManager::supported(int encoding)
@@ -435,7 +443,14 @@ void EncodeManager::doUpdate(bool allowLossy, const
       }
       int minTiles = 4; // require at least a 2x2 region by default
 
-      if (usePersistentCache && conn->client.supportsEncoding(pseudoEncodingPersistentCache)) {
+      // Under the unified cache engine, both pseudoEncodingContentCache and
+      // pseudoEncodingPersistentCache map to the same 64-bit ID protocol on
+      // the wire. Tiling diagnostics should therefore run whenever the
+      // client has negotiated *any* cache encoding and the server has
+      // caching enabled.
+      if (usePersistentCache &&
+          (conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
+           conn->client.supportsEncoding(pseudoEncodingContentCache))) {
         cache::PersistentCacheQuery pq(conn);
         cache::analyzeRegionTilingLogOnly(changed, tileSize, minTiles, pb, pq);
       }
@@ -971,19 +986,22 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
 {
   // Cache protocol selection: Use at most one cache per connection.
   // PersistentCache (64-bit ID protocol) is the only remaining cache
-  // engine on the server side; ContentCache now aliases the same
-  // engine via different viewer policy.
+  // engine on the server side; the legacy ContentCache pseudo-encoding
+  // now aliases the same engine via viewer/server policy.
   
-  bool clientSupportsPC = conn->client.supportsEncoding(pseudoEncodingPersistentCache);
+  bool clientSupportsUnifiedCache =
+    conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
+    conn->client.supportsEncoding(pseudoEncodingContentCache);
   
   if (isCCDebugEnabled()) {
-    vlog.info("CCDBG writeSubRect: rect=%s area=%d clientPC=%s",
+    vlog.info("CCDBG writeSubRect: rect=%s area=%d clientCache=%s",
               strRect(rect), rect.area(),
-              yesNo(clientSupportsPC));
+              yesNo(clientSupportsUnifiedCache));
   }
   
-  if (usePersistentCache && clientSupportsPC) {
-    // Use PersistentCache-style unified cache protocol
+  if (usePersistentCache && clientSupportsUnifiedCache) {
+    // Use unified cache protocol whenever the client has negotiated
+    // either ContentCache or PersistentCache encodings.
     vlog.debug("CC attempt unified cache lookup for rect (%s)", strRect(rect));
     if (tryPersistentCacheLookup(rect, pb))
       return;
@@ -1332,8 +1350,12 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   if (rect.area() < Server::persistentCacheMinRectSize)
     return false;
 
-  // Require client support for the PersistentCache protocol
-  if (!conn->client.supportsEncoding(pseudoEncodingPersistentCache))
+  // Require client support for *some* cache protocol. Under the unified
+  // engine, pseudoEncodingContentCache and pseudoEncodingPersistentCache
+  // are handled by the same 64-bit ID path; the difference is purely
+  // policy (ephemeral vs persistent) on the viewer side.
+  if (!conn->client.supportsEncoding(pseudoEncodingPersistentCache) &&
+      !conn->client.supportsEncoding(pseudoEncodingContentCache))
     return false;
 
   persistentCacheStats.cacheLookups++;
@@ -1341,16 +1363,12 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   // Compute content hash using ContentHash utility (same as ContentCache)
   std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, rect);
 
-  // Derive 64-bit hash for shared ContentKey keying (width/height/hash64)
   uint64_t cacheId = 0;
   if (!fullHash.empty()) {
     size_t n = std::min(fullHash.size(), sizeof(uint64_t));
     memcpy(&cacheId, fullHash.data(), n);
   }
 
-  ContentKey key(static_cast<uint16_t>(rect.width()),
-                 static_cast<uint16_t>(rect.height()),
-                 cacheId);
   
   // Check if client knows this content via the 64-bit ID. Internally we
   // track identity as the ContentKey above so ContentCache and
@@ -1372,6 +1390,11 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
                hex64(cacheId),
                equiv - 20);
+    
+    // Remember that this client just referenced this cacheId for this
+    // rectangle so that a subsequent RequestCachedData can trigger a
+    // targeted refresh of the same region.
+    conn->onCachedRectRef(cacheId, rect);
     
     lossyRegion.assign_subtract(rect);
     pendingRefreshRegion.assign_subtract(rect);

@@ -565,6 +565,11 @@ void SConnection::handleCacheEviction(const std::vector<uint64_t>& /*cacheIds*/)
   // Default no-op: servers that track per-client cache IDs override this.
 }
 
+void SConnection::handlePersistentCacheQuery(const std::vector<uint64_t>& /*cacheIds*/)
+{
+  // Default no-op: servers that implement PersistentCache override this.
+}
+
 void SConnection::handlePersistentCacheEviction(const std::vector<uint64_t>& /*cacheIds*/)
 {
   // Default no-op: servers that implement PersistentCache override this.

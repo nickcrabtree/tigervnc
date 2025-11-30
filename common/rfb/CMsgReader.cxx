@@ -1006,8 +1006,13 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
              (int)ret);
 
   if (ret) {
-    // Notify handler to store this decoded rect with cacheId
-    handler->storePersistentCachedRect(r, pendingPersistentCacheId);
+    // Notify handler to store this decoded rect with cacheId and the
+    // inner encoding used for the payload. The encoding allows the
+    // client-side cache to distinguish lossless vs lossy content when
+    // deciding what to persist to disk.
+    handler->storePersistentCachedRect(r,
+                                       pendingPersistentCacheId,
+                                       pendingPersistentCacheEncoding);
     // Clear pending state
     pendingPersistentCacheInitActive = false;
     pendingPersistentCacheId = 0;

@@ -679,14 +679,15 @@ void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
                                    ModifiablePixelBuffer* pb)
 {
   // Unified cache engine: store ContentCache INITs via the same path used
-  // for PersistentCachedRectInit. This ensures cached content is managed
-  // by GlobalClientPersistentCache only.
-  storePersistentCachedRect(r, cacheId, pb);
+  // for PersistentCachedRectInit. ContentCache does not expose the inner
+  // payload encoding here, so we treat these INITs as effectively
+  // lossless for disk policy purposes.
+  storePersistentCachedRect(r, cacheId, encodingRaw, pb);
 }
 
 void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
-                                              uint64_t cacheId,
-                                              ModifiablePixelBuffer* pb)
+                                             uint64_t cacheId,
+                                             ModifiablePixelBuffer* pb)
 {
   // Ensure all pending decodes have completed before we blit PersistentCache
   // content into the framebuffer so that we preserve the same ordering
@@ -703,12 +704,10 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
 
   persistentCacheStats.cache_lookups++;
   
-  // Construct shared ContentKey from rect dimensions and 64-bit ID
-  ContentKey key(static_cast<uint16_t>(r.width()),
-                 static_cast<uint16_t>(r.height()),
-                 cacheId);
-
-  // Lookup cached pixels by ContentKey (shared with ContentCache)
+  // Derive the shared CacheKey from the on-wire cacheId and the rectangle
+  // geometry. This keeps the client-side keying consistent with the
+  // server-side ContentHash/CacheKey mapping.
+  CacheKey key((uint16_t)r.width(), (uint16_t)r.height(), (uint64_t)cacheId);
   const GlobalClientPersistentCache::CachedPixels* cached = persistentCache->getByKey(key);
   
   if (cached == nullptr) {
@@ -741,6 +740,7 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
 
 void DecodeManager::storePersistentCachedRect(const core::Rect& r,
                                              uint64_t cacheId,
+                                             int encoding,
                                              ModifiablePixelBuffer* pb)
 {
   // Ensure all pending decodes that might affect this rect have completed
@@ -754,8 +754,9 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
     return;
   }
   
-  vlog.debug("PersistentCache STORE: rect [%d,%d-%d,%d] cacheId=%llu",
-             r.tl.x, r.tl.y, r.br.x, r.br.y, (unsigned long long)cacheId);
+  vlog.debug("PersistentCache STORE: rect [%d,%d-%d,%d] cacheId=%llu encoding=%d",
+             r.tl.x, r.tl.y, r.br.x, r.br.y,
+             (unsigned long long)cacheId, encoding);
   
   // Get pixel data from framebuffer
   // CRITICAL: stride from getBuffer() is in pixels, not bytes
@@ -773,11 +774,42 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   // Compute full hash for disk/index identity using ContentHash
   std::vector<uint8_t> fullHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
 
+  // Decide whether this payload should be eligible for on-disk
+  // persistence. We conservatively treat only a subset of encodings as
+  // "lossless" at this layer: Raw, ZRLE, Hextile and RRE. Tight (and
+  // other future encodings) may use JPEG or other lossy submodes, so we
+  // avoid persisting those to disk even though we still keep them in the
+  // in-memory ARC cache.
+  bool isLossless = false;
+  switch (encoding) {
+  case encodingRaw:
+  case encodingZRLE:
+  case encodingHextile:
+  case encodingRRE:
+    isLossless = true;
+    break;
+  default:
+    isLossless = false;
+    break;
+  }
+
   // Store in persistent cache with full hash; the shared ContentKey
   // (width,height,contentHash64) is derived internally and kept in sync
-  // with the 64-bit cacheId used on the wire.
+  // with the 64-bit cacheId used on the wire. The cache implementation
+  // will treat non-lossless entries as memory-only (not written to disk).
   persistentCache->insert(fullHash, pixels, pb->getPF(),
-                          r.width(), r.height(), stridePixels);
+                          r.width(), r.height(), stridePixels,
+                          isLossless);
+}
+
+void DecodeManager::storePersistentCachedRect(const core::Rect& r,
+                                             uint64_t cacheId,
+                                             ModifiablePixelBuffer* pb)
+{
+  // Legacy helper for callers that do not propagate an inner encoding
+  // (e.g. unified ContentCache entry point). Treat these as effectively
+  // lossless for policy purposes by using encodingRaw.
+  storePersistentCachedRect(r, cacheId, encodingRaw, pb);
 }
 
 void DecodeManager::flushPendingQueries()

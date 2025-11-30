@@ -69,6 +69,16 @@ namespace rfb {
     void handlePersistentCachedRect(const core::Rect& r,
                                     uint64_t cacheId,
                                     ModifiablePixelBuffer* pb);
+    // PersistentCache INIT: encoding is the inner payload encoding used
+    // for this rect. This allows the client cache to treat lossy and
+    // lossless payloads differently for on-disk persistence.
+    void storePersistentCachedRect(const core::Rect& r,
+                                   uint64_t cacheId,
+                                   int encoding,
+                                   ModifiablePixelBuffer* pb);
+    // Backwards-compatible helper used by the unified ContentCache entry
+    // point, which does not propagate an inner encoding. These rects are
+    // treated as effectively lossless for the purposes of disk policy.
     void storePersistentCachedRect(const core::Rect& r,
                                    uint64_t cacheId,
                                    ModifiablePixelBuffer* pb);

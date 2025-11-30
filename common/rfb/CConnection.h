@@ -253,7 +253,8 @@ namespace rfb {
     void handlePersistentCachedRect(const core::Rect& r,
                                     uint64_t cacheId) override;
     void storePersistentCachedRect(const core::Rect& r,
-                                   uint64_t cacheId) override;
+                                   uint64_t cacheId,
+                                   int encoding) override;
 
     // Methods to be overridden in a derived class
 

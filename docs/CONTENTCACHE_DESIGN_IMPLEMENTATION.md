@@ -15,6 +15,8 @@
 
 ## Overview
 
+> Unified cache note (November 2025): The original implementation described in this document used a dedicated `rfb::ContentCache` engine alongside a separate PersistentCache engine. In the current experimental fork, these have been merged into a single cache engine keyed by `ContentKey(width, height, contentHash64)` and using 64-bit IDs on the wire. The legacy "ContentCache protocol" is now an **ephemeral policy** of that unified engine (memory-only, session-scoped), while PersistentCache uses the same engine with disk persistence enabled. All cache protocol messages now use the PersistentCache-style 64-bit ID wire format.
+
 ### Problem Statement
 
 Traditional VNC implementations only compare the current framebuffer with the immediately previous state. When content that was displayed minutes ago reappears (e.g., switching back to a previous window, scrolling back in a document), it must be re-encoded and re-transmitted even though the client already received that exact pixel data.

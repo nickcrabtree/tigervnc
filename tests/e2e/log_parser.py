@@ -330,10 +330,13 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
     hit_samples = []
     miss_samples = []
     
-    # Track bandwidth savings
+    # Track bandwidth savings. The PersistentCache protocol now uses the
+    # same 64-bit ID wire format and overhead as ContentCache:
+    #   - PersistentCachedRect reference: 20 bytes (12 header + 8 ID)
+    #   - PersistentCachedRectInit: 24 bytes (12 header + 8 ID + 4 encoding)
     persistent_bytes_saved = 0
-    persistent_bytes_sent_as_ref = 0  # 47 bytes per PersistentCachedRect
-    persistent_bytes_sent_full = 0    # Track CachedRectInit overhead
+    persistent_bytes_sent_as_ref = 0  # 20 bytes per PersistentCachedRect
+    persistent_bytes_sent_full = 0    # 24-byte header per PersistentCachedRectInit
     content_bytes_saved = 0
     content_bytes_sent_as_ref = 0     # 20 bytes per CachedRect
     
@@ -358,7 +361,8 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
                 match = re.search(r'saved\s+(\d+)\s+bytes', lower)
                 if match:
                     persistent_bytes_saved += int(match.group(1))
-                    persistent_bytes_sent_as_ref += 47  # PersistentCachedRect protocol overhead
+                    # Unified cache protocol: 20 bytes per PersistentCachedRect reference
+                    persistent_bytes_sent_as_ref += 20
                 last_was_pc_hit = False
             elif 'persistentcache' in lower and 'miss' in lower:
                 parsed.persistent_misses += 1
@@ -370,9 +374,10 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
             elif 'persistentcache init' in lower:
                 # Treat each PersistentCachedRectInit as a protocol-level miss:
                 # the server had to send full data because the client didn't
-                # yet know this hash. This mirrors how CachedRectInit is
+                # yet know this ID. This mirrors how CachedRectInit is
                 # interpreted for ContentCache.
-                persistent_bytes_sent_full += 47  # PersistentCachedRectInit overhead
+                # Unified cache protocol: 24-byte header per INIT (12 header + 8 ID + 4 encoding)
+                persistent_bytes_sent_full += 24
                 parsed.persistent_init_count += 1
                 parsed.persistent_misses += 1
                 last_was_pc_hit = False

@@ -39,40 +39,6 @@ inline TileKey computeTileKey(const core::Rect& tileRect,
 
 } // anonymous namespace
 
-TileCacheState ContentCacheQuery::classifyTile(const core::Rect& tileRect,
-                                               const PixelBuffer* pb)
-{
-  if (!conn_ || !cache_ || !pb)
-    return TileCacheState::NotCacheable;
-
-  // Enforce minimum size threshold so we don't waste effort on tiny tiles.
-  // We now key all cache policy off the unified PersistentCache sizing
-  // parameter so the tiling analysis stays in sync with the active cache
-  // engine.
-  if (tileRect.area() < Server::persistentCacheMinRectSize)
-    return TileCacheState::NotCacheable;
-
-  TileKey keyInfo = computeTileKey(tileRect, pb);
-  if (keyInfo.hash == 0 || keyInfo.width == 0 || keyInfo.height == 0)
-    return TileCacheState::NotCacheable;
-
-  ContentKey key(keyInfo.width, keyInfo.height, keyInfo.hash);
-
-  uint64_t cacheId = 0;
-  ContentCache::CacheEntry* entry = cache_->findByKey(key, &cacheId);
-  if (!entry || cacheId == 0)
-    return TileCacheState::NotCacheable;
-
-  // We have a server-side cache entry; check if this client knows the ID.
-  bool clientKnows = conn_->knowsCacheId(cacheId);
-  if (clientKnows)
-    return TileCacheState::Hit;
-
-  // Content exists in server ContentCache but client hasn't seen this
-  // cacheId yet. Treat as an Init candidate for future optimisation.
-  return TileCacheState::InitCandidate;
-}
-
 TileCacheState PersistentCacheQuery::classifyTile(const core::Rect& tileRect,
                                                   const PixelBuffer* pb)
 {

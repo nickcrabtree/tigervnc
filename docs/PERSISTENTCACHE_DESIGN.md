@@ -737,6 +737,35 @@ TEST(PersistentCache, Eviction) {
 5. Verify immediate cache hits
 ```
 
+## Unified Cache Model (ContentCache + PersistentCache)
+
+In the unified implementation, both ContentCache and PersistentCache are policies of a single cache engine:
+
+- **Shared engine:** A single ARC-based cache keyed by `ContentKey(width, height, contentHash64)`.
+- **Shared wire format:** All cache references use the PersistentCache 64-bit ID format on the wire:
+  - `CachedRect` / `PersistentCachedRect`: 20-byte reference (12-byte rect header + 8-byte ID).
+  - `CachedRectInit` / `PersistentCachedRectInit`: 24-byte header (12-byte rect header + 8-byte ID + 4-byte inner encoding) plus payload.
+- **Viewer policies:**
+  - When the viewer is configured for **ephemeral mode** (historically "ContentCache"), it uses the unified engine but does not open or modify any on-disk cache files.
+  - When the viewer is configured for **persistent mode** (historically "PersistentCache"), it uses the same engine with disk-backed storage enabled.
+
+### Pseudo-encodings semantics
+
+- `pseudoEncodingPersistentCache (-321)` remains the primary negotiation flag for the unified cache protocol and indicates that the client supports the 64-bit ID PersistentCache wire format.
+- `pseudoEncodingContentCache (-320)` is retained for compatibility and for documentation of older implementations, but in this fork it is treated as an alias for the same 64-bit ID protocol.
+- The server prefers `pseudoEncodingPersistentCache` when both are advertised; falling back to `pseudoEncodingContentCache` has identical on-wire behavior, differing only in the viewer's local persistence policy.
+
+### Viewer configuration semantics
+
+- `PersistentCache=1` (default):
+  - Viewer advertises `pseudoEncodingPersistentCache` and, optionally, `pseudoEncodingContentCache` for compatibility.
+  - Unified cache engine is created and backed by on-disk storage according to the size/path parameters described earlier in this document.
+- `PersistentCache=0`:
+  - Viewer does not initialize or load any on-disk cache state for this process.
+  - The viewer may still use an in-memory cache policy internally for experiments, but no disk I/O is performed.
+
+Existing sections that describe separate ContentCache and PersistentCache engines should be read in this fork as describing two *policies* on top of the single unified engine.
+
 ## Backward Compatibility
 
 ### Old Client + New Server

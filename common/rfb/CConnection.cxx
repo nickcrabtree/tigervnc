@@ -1135,17 +1135,9 @@ void CConnection::handleCachedRect(const core::Rect& r, uint64_t cacheId)
     }
   }
 
-  //DebugContentCache_2025-10-14
-  rfb::ContentCacheDebugLogger::getInstance().log("CConnection::handleCachedRect ENTER: rect=[" + std::to_string(r.tl.x) + "," + std::to_string(r.tl.y) + "-" + std::to_string(r.br.x) + "," + std::to_string(r.br.y) + "], cacheId=" + std::to_string(cacheId) + ", framebuffer=" + std::to_string(reinterpret_cast<uintptr_t>(framebuffer)));
-  
-  // Forward to decoder manager to handle cache lookup and blit
-  //DebugContentCache_2025-10-14
-  rfb::ContentCacheDebugLogger::getInstance().log("CConnection::handleCachedRect: about to call decoder.handleCachedRect");
-  
+  // Forward to decoder manager to handle cache lookup and blit using the
+  // unified cache engine (ContentCache now aliases PersistentCache policy).
   decoder.handleCachedRect(r, cacheId, framebuffer);
-  
-  //DebugContentCache_2025-10-14
-  rfb::ContentCacheDebugLogger::getInstance().log("CConnection::handleCachedRect EXIT: decoder.handleCachedRect completed successfully");
 }
 
 void CConnection::storeCachedRect(const core::Rect& r, uint64_t cacheId)
@@ -1174,7 +1166,8 @@ void CConnection::handlePersistentCachedRect(const core::Rect& r,
 }
 
 void CConnection::storePersistentCachedRect(const core::Rect& r,
-                                           uint64_t cacheId)
+                                           uint64_t cacheId,
+                                           int encoding)
 {
   // On first use, record and log negotiated cache protocol and trigger disk load.
   // PersistentCachedRectInit may be the first message if server is sending new content,
@@ -1189,7 +1182,9 @@ void CConnection::storePersistentCachedRect(const core::Rect& r,
     // from existing disk cache entries.
     decoder.triggerPersistentCacheLoad();
   }
-
-  // Forward to decoder manager to store decoded content with ID
-  decoder.storePersistentCachedRect(r, cacheId, framebuffer);
+  
+  // Forward to decoder manager to store decoded content with ID and
+  // inner encoding so it can distinguish lossless vs lossy payloads for
+  // persistence policy.
+  decoder.storePersistentCachedRect(r, cacheId, encoding, framebuffer);
 }
