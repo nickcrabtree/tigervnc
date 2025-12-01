@@ -155,14 +155,16 @@ def main():
     try:
         # 4. Start content server with PersistentCache only
         print(f"\n[3/8] Starting content server (:{args.display_content})...")
-        print("  Server config: EnableContentCache=0 (PersistentCache only)")
+        print("  Server config: PersistentCache-only (unified cache engine)")
         server_content = VNCServer(
             args.display_content, args.port_content, "cpp_pc_content",
             artifacts, tracker,
             geometry="1920x1080",
             log_level="*:stderr:100",
             server_choice=server_mode,
-            server_params={'EnableContentCache': '0'}  # PersistentCache only
+            # ContentCache is now an ephemeral policy of the unified cache
+            # engine; the only server-side toggle is EnablePersistentCache.
+            server_params={'EnablePersistentCache': '1'}
         )
 
         if not server_content.start():

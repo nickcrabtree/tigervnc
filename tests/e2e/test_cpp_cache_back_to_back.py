@@ -276,8 +276,9 @@ def main():
             geometry="1920x1080",
             log_level="*:stderr:100",
             server_choice=server_mode,
+            # ContentCache has been unified into the PersistentCache engine;
+            # only EnablePersistentCache remains as a server-side toggle.
             server_params={
-                "EnableContentCache": "0",
                 "EnablePersistentCache": "1",
             },
         )
@@ -310,6 +311,11 @@ def main():
         print("✓ Viewer window server ready (PersistentCache cold phase)")
 
         pc_cold_params = [
+            # Force a lossless encoding so that PersistentCache entries are
+            # eligible for on-disk persistence. Using ZRLE here ensures that
+            # the cold run populates the disk cache and the warm run can
+            # achieve a strictly better hit profile.
+            "PreferredEncoding=ZRLE",
             "ContentCache=0",
             "PersistentCache=1",
             f"PersistentCacheSize={args.cache_size}",
@@ -390,7 +396,6 @@ def main():
             log_level="*:stderr:100",
             server_choice=server_mode,
             server_params={
-                "EnableContentCache": "0",
                 "EnablePersistentCache": "1",
             },
         )
@@ -421,7 +426,7 @@ def main():
             return 1
         print("✓ Viewer window server ready (PersistentCache warm phase)")
 
-        pc_warm_params = pc_cold_params[:]  # same PC settings, same path
+        pc_warm_params = pc_cold_params[:]  # same PC settings, same path (ZRLE, lossless)
         pc_warm_proc, pc_warm_log_path = run_cpp_viewer(
             binaries["cpp_viewer"],
             args.port_content,

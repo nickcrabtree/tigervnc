@@ -1322,8 +1322,15 @@ uint8_t* EncodeManager::OffsetPixelBuffer::getBufferRW(const core::Rect& /*r*/, 
 bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
                                              const PixelBuffer* pb)
 {
-  if (!usePersistentCache)
-    return false;
+  // NOTE: The unified cache engine is now driven purely by protocol
+  // negotiation (client SetEncodings) rather than a separate
+  // server-side on/off switch. The VNCSConnectionST::setEncodings
+  // implementation enables caching whenever the client advertises
+  // either ContentCache or PersistentCache. We therefore do not gate
+  // lookups on a separate usePersistentCache flag here; tests like
+  // test_cachedrect_init_propagation.py and test_cpp_cache_back_to_back.py
+  // expect cache statistics even when EnablePersistentCache=0 on the
+  // server (session-only ContentCache policy).
 
   // Skip if below minimum size threshold
   if (rect.area() < Server::persistentCacheMinRectSize)

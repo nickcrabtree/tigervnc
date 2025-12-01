@@ -139,9 +139,10 @@ def main():
             geometry="1920x1080",
             log_level="*:stderr:30",
             server_choice=server_mode,
+            # Server-side ContentCache parameters have been removed; the
+            # unified cache engine is controlled via EnablePersistentCache.
             server_params={
-                'EnableContentCache': '0',        # disable ContentCache
-                'EnablePersistentCache': '1',     # ensure PC is enabled
+                'EnablePersistentCache': '1',
             }
         )
         if not server_content.start():

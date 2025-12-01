@@ -123,6 +123,44 @@ DecodeManager::DecodeManager(CConnection *conn_) :
     vlog.info("Client PersistentCache disabled via PersistentCache=0; skipping disk cache initialization");
   }
 
+  // Initialise session-only ContentCache ARC (no disk). This shares the
+  // same CacheKey/CachedPixels types as the PersistentCache engine but is
+  // governed by ContentCache/ContentCacheSize and only ever lives in
+  // memory. Evictions from this cache are reported via the legacy
+  // CacheEviction protocol.
+  bool enableContentCache = true;
+  if (auto* p = core::Configuration::getParam("ContentCache")) {
+    if (auto* bp = dynamic_cast<core::BoolParameter*>(p))
+      enableContentCache = static_cast<bool>(*bp);
+  }
+
+  if (enableContentCache) {
+    size_t ccMemSizeMB = 2048;
+    if (auto* v = core::Configuration::getParam("ContentCacheSize")) {
+      if (auto* ip = dynamic_cast<core::IntParameter*>(v))
+        ccMemSizeMB = (size_t)(*ip);
+    }
+
+    size_t maxBytes = ccMemSizeMB * 1024 * 1024;
+    if (maxBytes > 0) {
+      contentCache_.reset(new rfb::cache::ArcCache<CacheKey,
+                                                   GlobalClientPersistentCache::CachedPixels,
+                                                   CacheKeyHash>(
+          maxBytes,
+          [](const GlobalClientPersistentCache::CachedPixels& e) {
+            return e.byteSize();
+          },
+          [this](const CacheKey& key) {
+            uint64_t id = key.contentHash;
+            if (id != 0)
+              contentCachePendingEvictions_.push_back(id);
+          }));
+      vlog.info("Client-side ContentCache enabled: mem=%zuMB", ccMemSizeMB);
+    }
+  } else {
+    vlog.info("Client-side ContentCache disabled via ContentCache=0");
+  }
+
   cpuCount = std::thread::hardware_concurrency();
   if (cpuCount == 0) {
     vlog.error("Unable to determine the number of CPU cores on this system");
@@ -309,6 +347,14 @@ void DecodeManager::flush()
   // Flush any pending PersistentCache queries
   flushPendingQueries();
 
+  // Send any pending session-only ContentCache eviction notifications
+  if (!contentCachePendingEvictions_.empty() && conn && conn->writer()) {
+    vlog.debug("Sending %zu cache eviction notifications to server",
+               contentCachePendingEvictions_.size());
+    conn->writer()->writeCacheEviction(contentCachePendingEvictions_);
+    contentCachePendingEvictions_.clear();
+  }
+
   // Send any pending PersistentCache eviction notifications
   if (persistentCache != nullptr && persistentCache->hasPendingEvictions()) {
     auto evictions = persistentCache->getPendingEvictions();
@@ -434,6 +480,17 @@ void DecodeManager::logStats()
             core::siPrefix(pixels, "pixels").c_str());
   vlog.info("         %s (1:%g ratio)",
             core::iecPrefix(bytes, "B").c_str(), ratio);
+  
+  // Internal ARC stats for the session-only ContentCache. These are primarily
+  // useful for debugging eviction behaviour in e2e tests and are not parsed
+  // by the log_parser.
+  if (contentCache_) {
+    auto arcStats = contentCache_->getStats();
+    vlog.debug("ContentCache ARC: entries=%zu, bytes=%s, evictions=%llu",
+               arcStats.totalEntries,
+               core::iecPrefix(arcStats.totalBytes, "B").c_str(),
+               (unsigned long long)arcStats.evictions);
+  }
   
   // High-level cache summary: highlight real bandwidth savings for the
   // negotiated cache protocol(s) so they don't get lost in low-level
@@ -833,33 +890,30 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   // Track bandwidth for this PersistentCachedRectInit (ID + encoded data)
   rfb::cache::trackPersistentCacheInit(persistentCacheBandwidthStats, lastDecodedRectBytes);
 
-  // Compute full hash for disk/index identity using ContentHash
+  // Compute full hash for disk/index identity using ContentHash. This is a
+  // pure function of the decoded pixels and does not embed the on-wire
+  // cacheId. We then derive a 64-bit ID from the leading bytes and compare
+  // it to the cacheId to decide if this payload is effectively lossless.
   std::vector<uint8_t> fullHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
-
-  // Decide whether this payload should be eligible for on-disk
-  // persistence. We conservatively treat only a subset of encodings as
-  // "lossless" at this layer: Raw, ZRLE, Hextile and RRE. Tight (and
-  // other future encodings) may use JPEG or other lossy submodes, so we
-  // avoid persisting those to disk even though we still keep them in the
-  // in-memory ARC cache.
-  bool isLossless = false;
-  switch (encoding) {
-  case encodingRaw:
-  case encodingZRLE:
-  case encodingHextile:
-  case encodingRRE:
-    isLossless = true;
-    break;
-  default:
-    isLossless = false;
-    break;
+  uint64_t hashId = 0;
+  if (!fullHash.empty()) {
+    size_t n = std::min(fullHash.size(), sizeof(uint64_t));
+    memcpy(&hashId, fullHash.data(), n);
   }
 
-  // Store in persistent cache with full hash; the shared ContentKey
-  // (width,height,contentHash64) is derived internally and kept in sync
-  // with the 64-bit cacheId used on the wire. The cache implementation
-  // will treat non-lossless entries as memory-only (not written to disk).
-  persistentCache->insert(fullHash, pixels, pb->getPF(),
+  // Decide whether this payload should be eligible for on-disk persistence
+  // based on hash equality rather than encoding heuristics. If the
+  // ContentHash-derived 64-bit ID matches the server-provided cacheId then
+  // the decoded pixels are bit-identical to the server's canonical copy for
+  // the purposes of persistence.
+  bool isLossless = (hashId == cacheId);
+
+  // Store in persistent cache with explicit cacheId and full hash; the
+  // shared ContentKey (width,height,contentHash64) uses cacheId as the
+  // 64-bit ID, while the full hash is used solely for disk/index tracking.
+  // The cache implementation will treat non-lossless entries as memory-only
+  // (not written to disk).
+  persistentCache->insert(cacheId, fullHash, pixels, pb->getPF(),
                           r.width(), r.height(), stridePixels,
                           isLossless);
 }
@@ -911,21 +965,23 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
   contentCacheStats_.cache_lookups++;
 
   CacheKey key((uint16_t)r.width(), (uint16_t)r.height(), (uint64_t)cacheId);
-  auto it = contentCache_.find(key);
-  if (it == contentCache_.end()) {
+
+  if (!contentCache_) {
+    // ContentCache explicitly disabled or not initialised; treat as a miss
+    // so tests can still reason about protocol behaviour when disabled.
     contentCacheStats_.cache_misses++;
-    vlog.info("ContentCache cache miss for ID %llu rect=[%d,%d-%d,%d]",
+    vlog.info("ContentCache cache miss for ID %llu (cache disabled) rect=[%d,%d-%d,%d]",
               (unsigned long long)cacheId,
               r.tl.x, r.tl.y, r.br.x, r.br.y);
     return;
   }
 
-  const GlobalClientPersistentCache::CachedPixels& entry = it->second;
-  if (entry.pixels.empty()) {
-    // Defensive: entry exists but has no pixel payload; treat as miss.
+  const GlobalClientPersistentCache::CachedPixels* entry = contentCache_->get(key);
+  if (!entry || entry->pixels.empty()) {
     contentCacheStats_.cache_misses++;
-    vlog.error("ContentCache entry for ID %llu has no pixels; treating as miss",
-               (unsigned long long)cacheId);
+    vlog.info("ContentCache cache miss for ID %llu rect=[%d,%d-%d,%d]",
+              (unsigned long long)cacheId,
+              r.tl.x, r.tl.y, r.br.x, r.br.y);
     return;
   }
 
@@ -936,7 +992,7 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
 
   // Blit cached pixels to framebuffer at target position. CachedPixels
   // stores stride in pixels for its internal buffer.
-  pb->imageRect(entry.format, r, entry.pixels.data(), entry.stridePixels);
+  pb->imageRect(entry->format, r, entry->pixels.data(), entry->stridePixels);
 }
 
 void DecodeManager::storeContentCacheRect(const core::Rect& r,
@@ -949,6 +1005,13 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   }
 
   contentCacheStats_.stores++;
+
+  if (!contentCache_) {
+    vlog.debug("ContentCache disabled; skipping store for ID %llu rect=[%d,%d-%d,%d]",
+               (unsigned long long)cacheId,
+               r.tl.x, r.tl.y, r.br.x, r.br.y);
+    return;
+  }
 
   // Snapshot pixels from the framebuffer. Stride returned by getBuffer()
   // is in pixels, not bytes.
@@ -972,7 +1035,7 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   // Store pixels tightly packed row-by-row; stridePixels reflects this
   // contiguous representation.
   entry.stridePixels = entry.width;
-  entry.lastAccessTime = 0;  // Not used for session-only cache
+  entry.lastAccessTime = 0;  // Not currently used for session-only cache
 
   entry.pixels.resize((size_t)entry.height * rowBytes);
   const uint8_t* src = pixels;
@@ -984,7 +1047,7 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   }
 
   CacheKey key(entry.width, entry.height, (uint64_t)cacheId);
-  contentCache_[key] = entry;
+  contentCache_->insert(key, std::move(entry));
 
   vlog.info("ContentCache storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
             r.tl.x, r.tl.y, r.br.x, r.br.y,

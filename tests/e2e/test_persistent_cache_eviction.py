@@ -150,8 +150,9 @@ def main():
         # only the PersistentCache code path.
         print(f"\n[3/8] Starting content server (:{args.display_content}) with PersistentCache only...")
         server_params = {
-            'EnableContentCache': '0',             # disable ContentCache
-            'EnablePersistentCache': '1',          # ensure PC is enabled
+            # Server-side ContentCache toggles have been removed; use the
+            # unified PersistentCache engine only.
+            'EnablePersistentCache': '1',
         }
         server_content = VNCServer(
             args.display_content, args.port_content, "pc_content_eviction",
