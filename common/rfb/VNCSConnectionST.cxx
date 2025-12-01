@@ -993,6 +993,13 @@ bool VNCSConnectionST::isCongested()
 
   congestionTimer.stop();
 
+  // Optional diagnostic override: allow disabling congestion control via
+  // TIGERVNC_DISABLE_CONGESTION=1 for resize-latency experiments. When set,
+  // we bypass all congestion gating and always treat the link as uncongested.
+  const char* disableCong = getenv("TIGERVNC_DISABLE_CONGESTION");
+  if (disableCong && disableCong[0] != '\0' && disableCong[0] != '0')
+    return false;
+
   // Stuff still waiting in the send buffer?
   sock->outStream().flush();
   congestion.debugTrace("congestion-trace.csv", sock->getFd());

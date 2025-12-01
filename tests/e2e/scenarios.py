@@ -433,3 +433,187 @@ class ScenarioRunner:
         
         self.log(f"Scenario stats: {stats}")
         return stats
+
+    def typing_stress(self, duration_sec: float = 20.0, delay_ms: int = 80) -> dict:
+        """Simulate continuous typing inside an xterm using an internal script.
+
+        Instead of relying on external focus/xdotool, we start xterm with a
+        shell pipeline that runs a small Python script. That script prints
+        characters with delays and logs per-character timestamps to a file,
+        giving us traceability while guaranteeing that the typing is visible
+        in the xterm.
+        """
+        self.log(f"Starting typing_stress scenario (duration={duration_sec}s, delay_ms={delay_ms})")
+
+        stats = {"bursts": 0, "chars_typed": 0}
+
+        # Build a self-contained Python script to run inside the xterm.
+        # It prints characters with gaps and logs timestamp + character to
+        # /tmp/typing_stress_<display>.log.
+        log_path = f"/tmp/typing_stress_{self.display}.log"
+        text = (
+            "The quick brown fox jumps over the lazy dog. "
+            "Typing latency debug line with numbers 1234567890. "
+        )
+
+        py_script = (
+            "import sys, time, datetime\n"
+            f"text = {text!r}\n"
+            f"delay = {delay_ms} / 1000.0\n"
+            f"end_time = time.time() + {duration_sec}\n"
+            f"log = open({log_path!r}, 'a', buffering=1)\n"
+            "bursts = 0\n"
+            "chars = 0\n"
+            "while time.time() < end_time:\n"
+            "    for ch in text:\n"
+            "        now = time.time()\n"
+            "        if now >= end_time:\n"
+            "            break\n"
+            "        ts = datetime.datetime.now().isoformat()\n"
+            "        line = f'{ts} {ch}\\n'\n"
+            "        log.write(line)\n"
+            "        log.flush()\n"
+            "        sys.stdout.write(ch)\n"
+            "        sys.stdout.flush()\n"
+            "        chars += 1\n"
+            "        time.sleep(delay)\n"
+            "    bursts += 1\n"
+            "log.write(f'BURSTS {bursts} CHARS {chars}\\n')\n"
+            "log.flush()\n"
+            "log.close()\n"
+            "time.sleep(2.0)\n"
+        )
+
+        shell_cmd = f"python3 - << 'EOF'\n{py_script}EOF"
+
+        # Launch a single xterm that runs the above script. We rely on the
+        # script's own timing and logging rather than controlling it from
+        # outside.
+        pid = open_xterm_run("typeterm", "80x24+100+100", self.display, shell_cmd)
+        if pid:
+            self.pids.append(pid)
+        else:
+            self.log("Failed to start typeterm xterm with typing script; aborting typing_stress")
+            return stats
+
+        # Let the script run to completion.
+        wait_idle(duration_sec + 3.0)
+
+        # We don't currently parse the log here; just record approximate stats
+        # based on expected behaviour.
+        stats["bursts"] = int(max(1, duration_sec // ((len(text) * delay_ms / 1000.0) + 0.5)))
+        stats["chars_typed"] = stats["bursts"] * len(text)
+
+        # Final quiet period for pipeline flush
+        self.log("typing_stress complete, waiting for pipeline flush...")
+        wait_idle(1.0)
+
+        # Cleanup
+        self.cleanup()
+
+        self.log(f"typing_stress stats: {stats}")
+        return stats
+
+    def typing_replay_from_log(self, log_path: str, speed_scale: float = 1.0) -> dict:
+        """Replay a captured typing log inside an xterm.
+
+        The log should be produced by tests/e2e/typing_capture.py and contain
+        lines of the form:
+
+            <unix_timestamp> <codepoint>
+
+        Comments starting with "#" are ignored. The relative timing between
+        keystrokes is preserved (optionally scaled by speed_scale), and the
+        characters are printed inside an xterm so the VNC server sees the
+        same pattern of updates.
+        """
+        from pathlib import Path
+
+        self.log(f"Starting typing_replay_from_log: log_path={log_path}, speed_scale={speed_scale}")
+        stats = {"events": 0, "duration": 0.0}
+
+        p = Path(log_path).expanduser()
+        if not p.exists():
+            self.log(f"Log file does not exist: {p}")
+            return stats
+
+        # Parse timestamps and codes to determine total duration for scheduling
+        times = []
+        codes = []
+        with p.open("r") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                try:
+                    t = float(parts[0])
+                    c = int(parts[1])
+                except ValueError:
+                    continue
+                times.append(t)
+                codes.append(c)
+
+        if not times:
+            self.log("No events found in typing log; nothing to replay")
+            return stats
+
+        start_ts = times[0]
+        end_ts = times[-1]
+        duration = max(0.0, (end_ts - start_ts) * speed_scale)
+        stats["events"] = len(times)
+        stats["duration"] = duration
+
+        # Build a Python script that replays this log from within xterm.
+        # We bake the parsed times/codes directly into the script for
+        # simplicity.
+        import textwrap
+
+        times_repr = repr(times)
+        codes_repr = repr(codes)
+
+        py_script = textwrap.dedent(
+            f"""
+            import sys, time
+
+            times = {times_repr}
+            codes = {codes_repr}
+            speed = {speed_scale}
+
+            if not times:
+                sys.exit(0)
+
+            base = times[0]
+            last = base
+            for t, c in zip(times, codes):
+                target = base + (t - base) * speed
+                # Sleep relative to last event
+                now = time.time()
+                delay = (t - last) * speed
+                if delay > 0:
+                    time.sleep(delay)
+                sys.stdout.write(chr(c))
+                sys.stdout.flush()
+                last = t
+
+            # Brief pause so the last characters are visible
+            time.sleep(2.0)
+            """
+        )
+
+        shell_cmd = f"python3 - << 'EOF'\n{py_script}EOF"
+
+        pid = open_xterm_run("typereplay", "80x24+100+350", self.display, shell_cmd)
+        if pid:
+            self.pids.append(pid)
+        else:
+            self.log("Failed to start typereplay xterm; aborting typing_replay_from_log")
+            return stats
+
+        # Wait for the replay to complete plus a small margin.
+        wait_idle(duration + 3.0)
+
+        self.log(f"typing_replay_from_log stats: {stats}")
+        return stats

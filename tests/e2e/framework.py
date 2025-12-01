@@ -760,7 +760,11 @@ class VNCServer:
         return True
     
     def start_session(self, wm: str = "openbox") -> bool:
-        """Start window manager and desktop session."""
+        """Start window manager and desktop session.
+
+        Special case: if ``wm == 'xstartup'``, run the user's VNC xstartup
+        script (full XFCE desktop) on this display instead of a simple WM.
+        """
         display_env = f":{self.display}"
         
         # Set background
@@ -768,7 +772,43 @@ class VNCServer:
                       env={**os.environ, 'DISPLAY': display_env},
                       check=False)
         
-        # Start window manager
+        # Full session via ~/.config/tigervnc/xstartup (matches production :2)
+        if wm == "xstartup":
+            xstartup_path = Path(os.path.expanduser("~/.config/tigervnc/xstartup"))
+            if not xstartup_path.exists():
+                print(f"ERROR: xstartup script not found at {xstartup_path}", file=sys.stderr)
+                return False
+            
+            log_path = self.artifacts.logs_dir / f"{self.name}_xstartup.log"
+            print(f"Starting xstartup session ({xstartup_path}) on :{self.display}...")
+            with open(log_path, 'w') as log_file:
+                self.wm_proc = subprocess.Popen(
+                    ["bash", "-lc", str(xstartup_path)],
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    preexec_fn=os.setpgrp,
+                    env={**os.environ, 'DISPLAY': display_env}
+                )
+            
+            self.tracker.register(f"wm_{self.name}", self.wm_proc)
+            
+            # Give XFCE a moment to start up before probing WM state
+            time.sleep(3.0)
+            result = subprocess.run(
+                ['wmctrl', '-m'],
+                env={**os.environ, 'DISPLAY': display_env},
+                capture_output=True,
+                timeout=5.0,
+            )
+            
+            if result.returncode != 0:
+                print("ERROR: xstartup session failed to start a usable window manager", file=sys.stderr)
+                return False
+            
+            print("✓ xstartup session ready")
+            return True
+        
+        # Start a simple window manager (default: openbox)
         wm_cmd = [wm, '--sm-disable'] if wm == 'openbox' else [wm]
         log_path = self.artifacts.logs_dir / f"{self.name}_wm.log"
         
@@ -786,10 +826,12 @@ class VNCServer:
         
         # Verify WM started
         time.sleep(1.0)
-        result = subprocess.run(['wmctrl', '-m'],
-                               env={**os.environ, 'DISPLAY': display_env},
-                               capture_output=True,
-                               timeout=5.0)
+        result = subprocess.run(
+            ['wmctrl', '-m'],
+            env={**os.environ, 'DISPLAY': display_env},
+            capture_output=True,
+            timeout=5.0,
+        )
         
         if result.returncode != 0:
             print(f"ERROR: Window manager failed to start", file=sys.stderr)
