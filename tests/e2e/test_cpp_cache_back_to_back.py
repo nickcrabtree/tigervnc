@@ -237,6 +237,7 @@ def main():
         cc_parsed = parse_cpp_log(cc_log_path)
         cc_metrics = compute_metrics(cc_parsed)
         cc_hits = cc_metrics["cache_operations"]["total_hits"]
+        cc_misses = cc_metrics["cache_operations"]["total_misses"]
         cc_lookups = cc_metrics["cache_operations"]["total_lookups"]
         cc_hit_rate = cc_metrics["cache_operations"]["hit_rate"]
 
@@ -315,7 +316,11 @@ def main():
             # eligible for on-disk persistence. Using ZRLE here ensures that
             # the cold run populates the disk cache and the warm run can
             # achieve a strictly better hit profile.
+            "AutoSelect=0",
             "PreferredEncoding=ZRLE",
+            # Disable JPEG submodes inside Tight, should they be selected
+            # for any non-cache traffic.
+            "NoJPEG=1",
             "ContentCache=0",
             "PersistentCache=1",
             f"PersistentCacheSize={args.cache_size}",
@@ -353,6 +358,74 @@ def main():
 
         print("  Parsing PersistentCache cold viewer log...")
         pc_cold_viewer_parsed = parse_cpp_log(pc_cold_log_path)
+
+        # Additional sanity checks for the cold PersistentCache run:
+        #  - All PersistentCachedRectInit payloads must use a lossless inner
+        #    encoding (we currently treat Tight and other JPEG-capable
+        #    encodings as lossy for disk persistence purposes).
+        #  - The viewer must actually persist at least one entry to disk so
+        #    that the warm run can exercise a non-empty on-disk cache.
+        lossy_inits = 0
+        disk_entries = None
+        pc_cold_init_count = 0
+        pending_init = False
+        with open(pc_cold_log_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if "Received PersistentCachedRectInit" in line:
+                    # Count every INIT as a miss-equivalent for cold-cache
+                    # semantics, and record that the next line should contain
+                    # cacheId and encoding.
+                    pc_cold_init_count += 1
+                    pending_init = True
+                    continue
+                if pending_init:
+                    pending_init = False
+                    if "encoding=" in line:
+                        # encoding=7 is Tight, which we treat as potentially
+                        # lossy and therefore not suitable for disk-backed
+                        # PersistentCache entries.
+                        try:
+                            enc_str = line.split("encoding=")[-1].strip()
+                            enc_val = int(enc_str.split()[0])
+                            if enc_val == 7:
+                                lossy_inits += 1
+                        except Exception:
+                            pass
+                if "PersistentCache: saved v3 index with" in line:
+                    # Line format: "PersistentCache: saved v3 index with N entries"
+                    try:
+                        parts = line.strip().split()
+                        idx = parts.index("with")
+                        disk_entries = int(parts[idx + 1])
+                    except Exception:
+                        disk_entries = None
+
+        if lossy_inits > 0:
+            print("\n✗ FAIL: PersistentCache cold run used Tight (encoding=7) for one or more PersistentCachedRectInit payloads, which this test treats as lossy and ineligible for disk persistence.")
+            print("  Hint: ensure the scenario and encoder selection produce lossless encodings (e.g. ZRLE) for cacheable rects.")
+            return 1
+
+        if disk_entries is None:
+            print("\n✗ FAIL: PersistentCache cold run did not report any v3 index save; cannot verify that a disk cache was created.")
+            return 1
+        if disk_entries == 0:
+            print("\n✗ FAIL: PersistentCache cold run saved a v3 index with 0 entries; warm-cache phase requires a non-empty disk cache.")
+            return 1
+
+        # For a fair back-to-back comparison, a cold PersistentCache run
+        # should exhibit the same hit/miss profile as a cold ContentCache run
+        # when driven by the same scenario, since they share the same unified
+        # cache engine. Compute viewer-only PersistentCache stats:
+        pc_cold_hits_viewer = pc_cold_viewer_parsed.persistent_hits
+        pc_cold_misses_viewer = pc_cold_init_count
+        pc_cold_lookups_viewer = pc_cold_hits_viewer + pc_cold_misses_viewer
+
+        if pc_cold_hits_viewer != cc_hits or pc_cold_misses_viewer != cc_misses:
+            print("\n✗ FAIL: Cold PersistentCache viewer hits/misses do not match cold ContentCache, but both use the same cache engine.")
+            print(f"  ContentCache hits/misses/lookups:  hits={cc_hits}, misses={cc_misses}, lookups={cc_lookups}")
+            print(f"  PersistentCache (cold, viewer-only): hits={pc_cold_hits_viewer}, misses={pc_cold_misses_viewer}, lookups={pc_cold_lookups_viewer}")
+            return 1
+
         print("  Parsing PersistentCache cold server log...")
         pc_cold_server_parsed = parse_server_log(pc_cold_server_log, verbose=args.verbose)
 

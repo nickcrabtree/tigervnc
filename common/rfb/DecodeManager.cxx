@@ -890,30 +890,59 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   // Track bandwidth for this PersistentCachedRectInit (ID + encoded data)
   rfb::cache::trackPersistentCacheInit(persistentCacheBandwidthStats, lastDecodedRectBytes);
 
-  // Compute full hash for disk/index identity using ContentHash. This is a
-  // pure function of the decoded pixels and does not embed the on-wire
-  // cacheId. We then derive a 64-bit ID from the leading bytes and compare
-  // it to the cacheId to decide if this payload is effectively lossless.
-  std::vector<uint8_t> fullHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
+  // Compute full hash over the decoded pixels for lossless detection. This
+  // hash is not written to disk; instead we derive a disk key from cacheId
+  // so that the on-disk index can reconstruct the same 64-bit ID across
+  // sessions without mutating the ContentHash itself.
+  std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
   uint64_t hashId = 0;
-  if (!fullHash.empty()) {
-    size_t n = std::min(fullHash.size(), sizeof(uint64_t));
-    memcpy(&hashId, fullHash.data(), n);
+  if (!contentHash.empty()) {
+    size_t n = std::min(contentHash.size(), sizeof(uint64_t));
+    memcpy(&hashId, contentHash.data(), n);
   }
 
-  // Decide whether this payload should be eligible for on-disk persistence
-  // based on hash equality rather than encoding heuristics. If the
-  // ContentHash-derived 64-bit ID matches the server-provided cacheId then
-  // the decoded pixels are bit-identical to the server's canonical copy for
-  // the purposes of persistence.
+  // Primary lossless test: if the ContentHash-derived 64-bit ID matches the
+  // server-provided cacheId then the decoded pixels are bit-identical to the
+  // server's canonical copy for persistence purposes.
   bool isLossless = (hashId == cacheId);
 
-  // Store in persistent cache with explicit cacheId and full hash; the
+  // Fallback: if hashes do not line up (e.g. due to pixel format
+  // normalisation differences) then rely on encoding-based heuristics for
+  // clearly lossless encodings. This preserves the guarantee that we never
+  // persist genuinely lossy payloads like Tight/JPEG while still allowing
+  // Raw/ZRLE/Hextile/RRE content to be saved to disk.
+  if (!isLossless) {
+    switch (encoding) {
+    case encodingRaw:
+    case encodingZRLE:
+    case encodingHextile:
+    case encodingRRE:
+      isLossless = true;
+      break;
+    default:
+      break;
+    }
+  }
+
+  // Build a stable disk key from cacheId so the index can round-trip the
+  // 64-bit on-wire ID. We encode cacheId in the first 8 bytes and pad to the
+  // 16-byte slot used by the v3 index format. The actual pixel content is
+  // stored separately in shard files; the disk key only serves as an index
+  // identifier.
+  std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
+  uint64_t id64 = cacheId;
+  memcpy(diskKey.data(), &id64, sizeof(uint64_t));
+  // Ensure we have at least 16 bytes so saveToDisk/loadIndexFromDisk can
+  // safely read/write the fixed-size hash field.
+  if (diskKey.size() < 16)
+    diskKey.resize(16, 0);
+
+  // Store in persistent cache with explicit cacheId and disk key; the
   // shared ContentKey (width,height,contentHash64) uses cacheId as the
-  // 64-bit ID, while the full hash is used solely for disk/index tracking.
+  // 64-bit ID, while diskKey is used solely for index/shard bookkeeping.
   // The cache implementation will treat non-lossless entries as memory-only
   // (not written to disk).
-  persistentCache->insert(cacheId, fullHash, pixels, pb->getPF(),
+  persistentCache->insert(cacheId, diskKey, pixels, pb->getPF(),
                           r.width(), r.height(), stridePixels,
                           isLossless);
 }
@@ -1004,7 +1033,14 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
     return;
   }
 
+  // Treat each INIT/store as an implicit cache lookup that resulted in a
+  // miss. From the protocol's point of view, the server had to send full
+  // pixel data for this ID because the client did not have it yet. This
+  // ensures that cold-cache runs cannot report a misleading 100% hit rate
+  // purely because only reference traffic is counted.
   contentCacheStats_.stores++;
+  contentCacheStats_.cache_lookups++;
+  contentCacheStats_.cache_misses++;
 
   if (!contentCache_) {
     vlog.debug("ContentCache disabled; skipping store for ID %llu rect=[%d,%d-%d,%d]",
