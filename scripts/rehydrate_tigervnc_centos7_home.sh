@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Rehydrate script for TigerVNC on CentOS 7 using $HOME as install root
+# Rehydrate script for TigerVNC on CentOS 7 using /data_parallel/PreStackPro/share/nickc as install root
 # - Installs system packages via yum (requires sudo)
-# - Builds and installs a modern CMake (>= 3.10) into $HOME
+# - Builds and installs a modern CMake (>= 3.10) into /data_parallel/PreStackPro/share/nickc
 # - Leaves the actual TigerVNC build to the user (e.g. `make viewer server`)
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-PREFIX="$HOME"           # All new tools go under $HOME/{bin,lib,include,...}
+PREFIX="/data_parallel/PreStackPro/share/nickc"  # All new tools go under PREFIX/{bin,lib,include,...}
 CMAKE_VERSION="3.24.4"   # Any >= 3.10 is fine; 3.24.x still builds on CentOS 7
 
 mkdir -p "$PREFIX/bin" "$PREFIX/lib" "$PREFIX/include" "$PREFIX/src"
@@ -32,8 +32,8 @@ have_modern_cmake() {
 }
 
 # --- 1. System packages via yum (CentOS 7) ---
-# Note: these install headers and libraries system-wide; custom tools still go under $HOME.
-echo "[rehydrate] Installing development packages via yum (requires sudo)..."
+# Note: these install headers and libraries system-wide; custom tools still go under $PREFIX.
+printf "[rehydrate] Installing development packages via yum (requires sudo)...\n"
 sudo yum -y groupinstall "Development Tools" || true
 sudo yum -y install \
   git wget curl \
@@ -52,7 +52,7 @@ sudo yum -y install \
   fltk-devel xorg-x11-server-devel xorg-x11-server-source \
   perl-File-ReadBackwards || true
 
-# --- 2. Modern CMake under $HOME ---
+# --- 2. Modern CMake under $PREFIX ---
 if have_modern_cmake; then
   echo "[rehydrate] Existing cmake is new enough; skipping local build."
 else
@@ -79,8 +79,8 @@ fi
 
 # --- 3. Environment hints ---
 echo
-echo "[rehydrate] Done. To use the locally installed tools, ensure these are in your shell init (e.g. ~/.bashrc):"
-echo "  export PATH=\"$PREFIX/bin:\$PATH\""
+printf "[rehydrate] Done. To use the locally installed tools under %s, ensure these are in your shell init (e.g. ~/.bashrc):\n" "$PREFIX"
+printf "  export PATH=\"$PREFIX/bin:\$PATH\"\n"
 echo
 
 # Optional: show cmake version we will now use
