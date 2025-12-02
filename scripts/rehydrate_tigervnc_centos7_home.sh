@@ -12,6 +12,9 @@ cd "${ROOT_DIR}"
 PREFIX="/data_parallel/PreStackPro/share/nickc"  # All new tools go under PREFIX/{bin,lib,include,...}
 CMAKE_VERSION="3.24.4"   # Any >= 3.10 is fine; 3.24.x still builds on CentOS 7
 
+# Determine how many parallel jobs to use for compilation steps
+NPROC="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)"
+
 mkdir -p "$PREFIX/bin" "$PREFIX/lib" "$PREFIX/include" "$PREFIX/src"
 
 # Helper: check if a sufficiently new cmake is already available on PATH
@@ -27,6 +30,18 @@ have_modern_cmake() {
   minor="${ver#*.}"; minor="${minor%%.*}"
   if [[ "$major" -gt 3 ]] || { [[ "$major" -eq 3 ]] && [[ "$minor" -ge 10 ]]; }; then
     return 0
+  fi
+  return 1
+}
+
+# Helper: check if the desired CMake version is already installed under $PREFIX
+have_prefix_cmake() {
+  if [[ -x "$PREFIX/bin/cmake" ]]; then
+    local ver
+    ver="$("$PREFIX/bin/cmake" --version 2>/dev/null | head -1 | awk '{print $3}')"
+    if [[ "$ver" == "$CMAKE_VERSION" ]]; then
+      return 0
+    fi
   fi
   return 1
 }
@@ -53,7 +68,9 @@ sudo yum -y install \
   perl-File-ReadBackwards || true
 
 # --- 2. Modern CMake under $PREFIX ---
-if have_modern_cmake; then
+if have_prefix_cmake; then
+  echo "[rehydrate] Found CMake $CMAKE_VERSION under $PREFIX; skipping local build."
+elif have_modern_cmake; then
   echo "[rehydrate] Existing cmake is new enough; skipping local build."
 else
   echo "[rehydrate] Building CMake $CMAKE_VERSION under $PREFIX..."
@@ -70,9 +87,9 @@ else
   tar -xf "$TARBALL"
   cd "cmake-$CMAKE_VERSION"
 
-  ./bootstrap --prefix="$PREFIX" --parallel="$(nproc 2>/dev/null || echo 1)"
-  make -j"$(nproc 2>/dev/null || echo 1)"
-  make install
+  ./bootstrap --prefix="$PREFIX" --parallel="$NPROC"
+  make -j"$NPROC"
+  make -j"$NPROC" install
 
   echo "[rehydrate] Installed CMake $CMAKE_VERSION into $PREFIX/bin/cmake"
 fi
@@ -101,7 +118,7 @@ echo "[rehydrate] Installed xstartup to $CONFIG_DIR/xstartup (KDE/startkde-based
 
 echo "[rehydrate] You can now run, for example:"
 echo "  cmake -S . -B build -DBUILD_VIEWER=ON"
-echo "  make viewer server"
+echo "  make -j$NPROC viewer server"
 
 # Create symlinks for tigervnc binaries
 BUILD_DIR="/data_parallel/PreStackPro/share/nickc/tigervnc/build/unix"
