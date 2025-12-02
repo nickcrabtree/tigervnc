@@ -611,6 +611,109 @@ class StaticScenarioRunner:
         
         self.log(f"Scenario stats: {stats}")
         return stats
+    
+    def toggle_two_pictures_test(self, picture_a_path: Optional[str] = None,
+                                 picture_b_path: Optional[str] = None,
+                                 toggles: int = 10, delay_between: float = 2.0) -> dict:
+        """
+        Toggle between two pictures repeatedly to test cache hits on repeated content.
+        
+        Strategy:
+        1. Display pictureA (full screen)
+        2. Wait for encoding
+        3. Replace with pictureB (identical replacement = 1 cache hit expected)
+        4. Replace with pictureA (identical replacement = 1 cache hit expected)
+        5. Repeat cycle
+        
+        After cache is hydrated, expect exactly 1 cache hit per toggle.
+        
+        Args:
+            picture_a_path: Path to first picture (default: pictureA.png in test dir)
+            picture_b_path: Path to second picture (default: pictureB.png in test dir)
+            toggles: Number of total toggles between the pictures
+            delay_between: Delay between toggles (seconds)
+        
+        Returns:
+            dict with statistics
+        """
+        self.log(f"Starting toggle_two_pictures_test scenario (toggles={toggles})")
+        
+        stats = {
+            'toggles': 0,
+        }
+        
+        # Default to pictureA.png and pictureB.png in tests/e2e
+        if picture_a_path is None or picture_b_path is None:
+            test_dir = Path(__file__).parent.absolute()  # tests/e2e
+            
+            if picture_a_path is None:
+                picture_a_path = test_dir / 'pictureA.png'
+            if picture_b_path is None:
+                picture_b_path = test_dir / 'pictureB.png'
+        
+        picture_a_path = Path(picture_a_path)
+        picture_b_path = Path(picture_b_path)
+        
+        if not picture_a_path.exists():
+            raise FileNotFoundError(f"Picture A not found: {picture_a_path}")
+        if not picture_b_path.exists():
+            raise FileNotFoundError(f"Picture B not found: {picture_b_path}")
+        
+        self.log(f"Using pictureA: {picture_a_path}")
+        self.log(f"Using pictureB: {picture_b_path}")
+        
+        env = {**os.environ, 'DISPLAY': f':{self.display}'}
+        
+        # Display pictureA first (no cache hit expected on first display)
+        self.log("Displaying pictureA (initial)")
+        cmd = ['display', '-title', 'toggle_picture', str(picture_a_path)]
+        proc = subprocess.Popen(
+            cmd,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        self.pids.append(proc.pid)
+        wait_idle(delay_between)
+        
+        current_picture = picture_a_path
+        next_picture = picture_b_path
+        
+        # Toggle between pictures
+        for toggle_num in range(toggles):
+            self.log(f"Toggle {toggle_num + 1}/{toggles}: Switching to {next_picture.name}")
+            
+            # Kill the current display process
+            try:
+                os.kill(proc.pid, 15)  # SIGTERM
+                wait_idle(0.5)
+            except ProcessLookupError:
+                pass
+            
+            # Display next picture
+            cmd = ['display', '-title', 'toggle_picture', str(next_picture)]
+            proc = subprocess.Popen(
+                cmd,
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            self.pids.append(proc.pid)
+            stats['toggles'] += 1
+            
+            # Allow time for VNC encoding/transmission
+            wait_idle(delay_between)
+            
+            # Swap for next iteration
+            current_picture, next_picture = next_picture, current_picture
+        
+        # Final cleanup
+        self.log("Scenario complete, cleaning up...")
+        self.cleanup()
+        wait_idle(1.0)
+        
+        self.log(f"Scenario stats: {stats}")
+        return stats
 
 
 # Convenience function for backward compatibility
