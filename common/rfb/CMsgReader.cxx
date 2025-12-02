@@ -233,6 +233,9 @@ bool CMsgReader::readMsg()
     case encodingPersistentCachedRectInit:
       ret = readPersistentCachedRectInit(dataRect);
       break;
+    case encodingCachedRectSeed:
+      ret = readCachedRectSeed(dataRect);
+      break;
     default:
       ret = readRect(dataRect, rectEncoding);
       break;
@@ -1020,4 +1023,26 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
   }
 
   return ret;
+}
+
+bool CMsgReader::readCachedRectSeed(const core::Rect& r)
+{
+  // CachedRectSeed: server tells client to take existing framebuffer pixels
+  // at rect R and associate them with cache ID. No pixel payload follows.
+  // Wire format: rect header + U64 cache ID
+  if (!is->hasData(8))
+    return false;
+
+  uint32_t hi = is->readU32();
+  uint32_t lo = is->readU32();
+  uint64_t cacheId = ((uint64_t)hi << 32) | lo;
+
+  vlog.info("Received CachedRectSeed: [%d,%d-%d,%d] cacheId=%llu",
+            r.tl.x, r.tl.y, r.br.x, r.br.y,
+            (unsigned long long)cacheId);
+
+  // Tell handler to seed cache using existing framebuffer pixels
+  handler->seedCachedRect(r, cacheId);
+
+  return true;
 }

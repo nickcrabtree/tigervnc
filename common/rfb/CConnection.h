@@ -255,6 +255,10 @@ namespace rfb {
     void storePersistentCachedRect(const core::Rect& r,
                                    uint64_t cacheId,
                                    int encoding) override;
+    
+    // Cache seed: server tells client to associate existing framebuffer pixels
+    // at rect R with cache ID. Used for whole-rectangle caching.
+    void seedCachedRect(const core::Rect& r, uint64_t cacheId) override;
 
     // Methods to be overridden in a derived class
 

@@ -1002,6 +1002,85 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   storePersistentCachedRect(r, cacheId, encodingRaw, pb);
 }
 
+void DecodeManager::seedCachedRect(const core::Rect& r,
+                                   uint64_t cacheId,
+                                   ModifiablePixelBuffer* pb)
+{
+  // Cache seed: server tells us to take existing framebuffer pixels at rect R
+  // and associate them with cache ID. This is used for whole-rectangle caching
+  // where the subrect data was already sent via normal encoding.
+  //
+  // This is similar to storePersistentCachedRect but:
+  // - No new pixel data was sent (we use existing framebuffer)
+  // - Counts as a store, not a miss (cache was seeded, not missed)
+  // - The pixels are already in framebuffer, so no blit needed
+  
+  // Ensure any pending decodes have completed so framebuffer is up-to-date
+  flush();
+  
+  if (pb == nullptr) {
+    vlog.error("seedCachedRect called with null framebuffer");
+    return;
+  }
+  
+  vlog.info("seedCachedRect: [%d,%d-%d,%d] cacheId=%llu",
+            r.tl.x, r.tl.y, r.br.x, r.br.y,
+            (unsigned long long)cacheId);
+  
+  // Get pixel data from existing framebuffer
+  int stridePixels;
+  const uint8_t* pixels = pb->getBuffer(r, &stridePixels);
+  
+  // When viewer's PersistentCache is disabled, fall back to ContentCache
+  if (persistentCache == nullptr) {
+    if (contentCache_) {
+      CacheKey key((uint16_t)r.width(), (uint16_t)r.height(), cacheId);
+      
+      // Store pixel data from framebuffer into cache
+      GlobalClientPersistentCache::CachedPixels entry;
+      entry.format = pb->getPF();
+      entry.width = r.width();
+      entry.height = r.height();
+      entry.stridePixels = stridePixels;
+      
+      size_t bpp = pb->getPF().bpp / 8;
+      size_t rowBytes = (size_t)stridePixels * bpp;
+      size_t totalBytes = (size_t)r.height() * rowBytes;
+      entry.pixels.resize(totalBytes);
+      memcpy(entry.pixels.data(), pixels, totalBytes);
+      
+      contentCache_->insert(key, std::move(entry));
+      contentCacheStats_.stores++;
+      
+      vlog.info("seedCachedRect: stored in ContentCache id=%llu [%d,%d-%d,%d]",
+                (unsigned long long)cacheId,
+                r.tl.x, r.tl.y, r.br.x, r.br.y);
+    }
+    return;
+  }
+  
+  // PersistentCache path: store in persistent cache
+  // Build disk key from cacheId (same as storePersistentCachedRect)
+  std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
+  uint64_t id64 = cacheId;
+  memcpy(diskKey.data(), &id64, sizeof(uint64_t));
+  if (diskKey.size() < 16)
+    diskKey.resize(16, 0);
+  
+  // Seeded rects are always considered lossless since we're storing
+  // the exact framebuffer pixels the user is seeing.
+  bool isLossless = true;
+  
+  persistentCache->insert(cacheId, diskKey, pixels, pb->getPF(),
+                          r.width(), r.height(), stridePixels,
+                          isLossless);
+  persistentCacheStats.stores++;
+  
+  vlog.info("seedCachedRect: stored in PersistentCache id=%llu [%d,%d-%d,%d]",
+            (unsigned long long)cacheId,
+            r.tl.x, r.tl.y, r.br.x, r.br.y);
+}
+
 void DecodeManager::flushPendingQueries()
 {
   if (pendingQueries.empty())

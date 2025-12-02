@@ -88,6 +88,12 @@ namespace rfb {
     void storePersistentCachedRect(const core::Rect& r,
                                    uint64_t cacheId,
                                    ModifiablePixelBuffer* pb);
+    
+    // Cache seed: read existing framebuffer pixels at rect R and store
+    // them in cache with the given ID. Used for whole-rectangle caching.
+    void seedCachedRect(const core::Rect& r,
+                        uint64_t cacheId,
+                        ModifiablePixelBuffer* pb);
 
     // Log end-of-session decode and cache statistics (client-side)
     void logStats();
