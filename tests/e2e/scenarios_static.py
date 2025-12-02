@@ -87,9 +87,16 @@ class StaticPatternGenerator:
         except Exception:
             return None
     
-    def _pick_image_viewer(self) -> Optional[str]:
-        # Prefer ImageMagick 'display', fall back to 'feh' or 'xloadimage'
-        for candidate in ('display', 'feh', 'xloadimage'):
+    def _pick_image_viewer(self, prefer_fullscreen: bool = False) -> Optional[str]:
+        # When prefer_fullscreen is True, prefer viewers that can do fullscreen
+        # (produces cleaner damage regions for cache testing)
+        # Otherwise prefer ImageMagick 'display', fall back to others
+        if prefer_fullscreen:
+            # feh and eog can do fullscreen; prefer them for cleaner damage regions
+            candidates = ('feh', 'eog', 'display', 'xloadimage')
+        else:
+            candidates = ('display', 'feh', 'eog', 'xloadimage')
+        for candidate in candidates:
             p = self._which(candidate)
             if p:
                 return candidate
@@ -664,9 +671,27 @@ class StaticScenarioRunner:
         
         env = {**os.environ, 'DISPLAY': f':{self.display}'}
         
+        # Use feh/eog (if available) as they create cleaner damage regions than ImageMagick display.
+        # If feh/eog not available, fall back to display.
+        viewer = self.generator._pick_image_viewer(prefer_fullscreen=True)
+        if viewer is None:
+            raise FileNotFoundError("No image viewer found (tried: feh, eog, display, xloadimage)")
+        
+        self.log(f"Using image viewer: {viewer}")
+        
         # Display pictureA first (no cache hit expected on first display)
         self.log("Displaying pictureA (initial)")
-        cmd = ['display', '-title', 'toggle_picture', str(picture_a_path)]
+        if viewer == 'feh':
+            # feh with fullscreen creates cleaner single-rect damage
+            cmd = ['feh', '--fullscreen', '--auto-zoom', str(picture_a_path)]
+        elif viewer == 'eog':
+            # eog with fullscreen flag
+            cmd = ['eog', '--fullscreen', str(picture_a_path)]
+        elif viewer == 'display':
+            cmd = ['display', '-title', 'toggle_picture', str(picture_a_path)]
+        else:  # xloadimage
+            cmd = ['xloadimage', str(picture_a_path)]
+        
         proc = subprocess.Popen(
             cmd,
             env=env,
@@ -691,7 +716,15 @@ class StaticScenarioRunner:
                 pass
             
             # Display next picture
-            cmd = ['display', '-title', 'toggle_picture', str(next_picture)]
+            if viewer == 'feh':
+                cmd = ['feh', '--fullscreen', '--auto-zoom', str(next_picture)]
+            elif viewer == 'eog':
+                cmd = ['eog', '--fullscreen', str(next_picture)]
+            elif viewer == 'display':
+                cmd = ['display', '-title', 'toggle_picture', str(next_picture)]
+            else:
+                cmd = ['xloadimage', str(next_picture)]
+            
             proc = subprocess.Popen(
                 cmd,
                 env=env,

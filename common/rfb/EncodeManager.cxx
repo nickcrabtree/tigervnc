@@ -950,6 +950,83 @@ void EncodeManager::writeRects(const core::Region& changed,
     conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
     conn->client.supportsEncoding(pseudoEncodingContentCache);
 
+  // TILING ENHANCEMENT: Before processing individual damage rects, check if
+  // the BOUNDING BOX of the entire changed region matches a known cached
+  // rectangle. This handles the case where X11 reports fragmented damage
+  // (e.g., window borders, compositor effects) but the actual content is a
+  // large previously-cached rectangle like a PowerPoint slide.
+  //
+  // Key insight: even if only parts of the bounding box are "damaged", if
+  // the entire bounding box content matches a cached entry, we can send
+  // ONE cache reference instead of encoding the fragments.
+  
+  if (clientSupportsCache && !changed.is_empty()) {
+    core::Rect bbox = changed.get_bounding_rect();
+    int bboxArea = bbox.area();
+    
+    if (bboxArea >= WholeRectCacheMinArea) {
+      // Compute hash for the entire bounding box (not just damaged parts)
+      std::vector<uint8_t> bboxHash = ContentHash::computeRect(pb, bbox);
+      uint64_t bboxId = 0;
+      if (!bboxHash.empty()) {
+        size_t n = std::min(bboxHash.size(), sizeof(uint64_t));
+        memcpy(&bboxId, bboxHash.data(), n);
+      }
+      
+      if (conn->knowsPersistentId(bboxId)) {
+        // CACHE HIT on bounding box! Send single reference for entire region.
+        persistentCacheStats.cacheHits++;
+        persistentCacheStats.cacheLookups++;
+        int equiv = 12 + bboxArea * (conn->client.pf().bpp / 8);
+        persistentCacheStats.bytesSaved += equiv - 20;
+        copyStats.rects++;
+        copyStats.pixels += bboxArea;
+        copyStats.equivalent += equiv;
+        beforeLength = conn->getOutStream()->length();
+        conn->writer()->writePersistentCachedRect(bbox, bboxId);
+        copyStats.bytes += conn->getOutStream()->length() - beforeLength;
+        
+        vlog.info("TILING: Bounding-box cache HIT [%d,%d-%d,%d] id=%s (saved %d bytes, %d damage rects coalesced)",
+                  bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
+                  hex64(bboxId), equiv - 20, changed.numRects());
+        
+        conn->onCachedRectRef(bboxId, bbox);
+        lossyRegion.assign_subtract(bbox);
+        pendingRefreshRegion.assign_subtract(bbox);
+        return;  // Entire region handled by one cache hit!
+      } else {
+        // Bounding box not in cache - we'll seed it after encoding
+        // but still process the individual damage rects normally
+        vlog.info("TILING: Bounding-box cache MISS [%d,%d-%d,%d] id=%s - will seed after encoding %d rects",
+                  bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
+                  hex64(bboxId), changed.numRects());
+        
+        // Store for seeding after we encode all the damage rects
+        // We'll seed the bounding box hash at the end of this function
+        persistentCacheStats.cacheMisses++;
+        persistentCacheStats.cacheLookups++;
+      }
+    }
+  }
+  
+  // Track bounding box for seeding after encoding individual rects
+  core::Rect bboxForSeeding;
+  uint64_t bboxIdForSeeding = 0;
+  bool shouldSeedBbox = false;
+  
+  if (clientSupportsCache && !changed.is_empty()) {
+    core::Rect bbox = changed.get_bounding_rect();
+    if (bbox.area() >= WholeRectCacheMinArea) {
+      std::vector<uint8_t> bboxHash = ContentHash::computeRect(pb, bbox);
+      if (!bboxHash.empty()) {
+        size_t n = std::min(bboxHash.size(), sizeof(uint64_t));
+        memcpy(&bboxIdForSeeding, bboxHash.data(), n);
+        bboxForSeeding = bbox;
+        shouldSeedBbox = !conn->knowsPersistentId(bboxIdForSeeding);
+      }
+    }
+  }
+
   changed.get_rects(&rects);
   for (rect = rects.begin(); rect != rects.end(); ++rect) {
     int w, h, sw, sh;
@@ -957,98 +1034,6 @@ void EncodeManager::writeRects(const core::Region& changed,
 
     w = rect->width();
     h = rect->height();
-
-    // TILING ENHANCEMENT: Whole-rectangle cache lookup for large rects.
-    // Before decomposing into subrects, check if client already has this
-    // entire rectangle cached. If so, send ONE CachedRect reference instead
-    // of many small subrect cache hits.
-    if (usePersistentCache && clientSupportsCache &&
-        (w * h) >= WholeRectCacheMinArea) {
-      
-      // Compute hash for the ENTIRE rectangle
-      std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, *rect);
-      uint64_t wholeRectId = 0;
-      if (!fullHash.empty()) {
-        size_t n = std::min(fullHash.size(), sizeof(uint64_t));
-        memcpy(&wholeRectId, fullHash.data(), n);
-      }
-      
-      if (conn->knowsPersistentId(wholeRectId)) {
-        // CACHE HIT on whole rectangle! Send single reference.
-        persistentCacheStats.cacheHits++;
-        persistentCacheStats.cacheLookups++;
-        int equiv = 12 + rect->area() * (conn->client.pf().bpp / 8);
-        persistentCacheStats.bytesSaved += equiv - 20;
-        copyStats.rects++;
-        copyStats.pixels += rect->area();
-        copyStats.equivalent += equiv;
-        beforeLength = conn->getOutStream()->length();
-        conn->writer()->writePersistentCachedRect(*rect, wholeRectId);
-        copyStats.bytes += conn->getOutStream()->length() - beforeLength;
-        
-        vlog.info("TILING: Whole-rect cache HIT [%d,%d-%d,%d] id=%s (saved %d bytes)",
-                  rect->tl.x, rect->tl.y, rect->br.x, rect->br.y,
-                  hex64(wholeRectId), equiv - 20);
-        
-        conn->onCachedRectRef(wholeRectId, *rect);
-        lossyRegion.assign_subtract(*rect);
-        pendingRefreshRegion.assign_subtract(*rect);
-        continue;  // Skip to next rect - this one is fully handled
-      } else {
-        // CACHE MISS on whole rectangle. Encode normally, then seed.
-        persistentCacheStats.cacheMisses++;
-        persistentCacheStats.cacheLookups++;
-        
-        vlog.info("TILING: Whole-rect cache MISS [%d,%d-%d,%d] id=%s - will seed after encoding",
-                  rect->tl.x, rect->tl.y, rect->br.x, rect->br.y,
-                  hex64(wholeRectId));
-        
-        // Encode normally (fall through to subrect path below)
-        // After encoding all subrects, we'll seed the whole-rect hash
-        
-        // --- ENCODE THE SUBRECTS ---
-        if (((w*h) < SubRectMaxArea) && (w < SubRectMaxWidth)) {
-          vlog.debug("CC rect no-split: (%s) area=%d", strRect(*rect), w*h);
-          writeSubRect(*rect, pb);
-        } else {
-          if (w <= SubRectMaxWidth)
-            sw = w;
-          else
-            sw = SubRectMaxWidth;
-          sh = SubRectMaxArea / sw;
-          vlog.debug("CC rect split: parent (%s) tileSize=%dx%d", strRect(*rect), sw, sh);
-          for (sr.tl.y = rect->tl.y; sr.tl.y < rect->br.y; sr.tl.y += sh) {
-            sr.br.y = sr.tl.y + sh;
-            if (sr.br.y > rect->br.y)
-              sr.br.y = rect->br.y;
-            for (sr.tl.x = rect->tl.x; sr.tl.x < rect->br.x; sr.tl.x += sw) {
-              sr.br.x = sr.tl.x + sw;
-              if (sr.br.x > rect->br.x)
-                sr.br.x = rect->br.x;
-              vlog.debug("CC subrect: (%s) from parent (%s)", strRect(sr), strRect(*rect));
-              writeSubRect(sr, pb);
-            }
-          }
-        }
-        
-        // --- SEED THE WHOLE-RECT HASH ---
-        // Now that all subrect data has been sent, tell the client to
-        // associate this hash with the entire rectangle region.
-        // This is the "dual path" approach: pixels were already sent via
-        // normal encoding, we're just seeding the cache for future hits.
-        //
-        // We send a CachedRectSeed message that tells the client:
-        // "Take the pixels you now have at rect R and associate them with hash H"
-        conn->writer()->writeCachedRectSeed(*rect, wholeRectId);
-        conn->markPersistentIdKnown(wholeRectId);
-        
-        vlog.info("TILING: Seeded whole-rect hash [%d,%d-%d,%d] id=%s",
-                  rect->tl.x, rect->tl.y, rect->br.x, rect->br.y,
-                  hex64(wholeRectId));
-        
-        continue;  // Already handled this rect fully
-      }
-    }
 
     // No split necessary?
     if (((w*h) < SubRectMaxArea) && (w < SubRectMaxWidth)) {
@@ -1080,6 +1065,20 @@ void EncodeManager::writeRects(const core::Region& changed,
         writeSubRect(sr, pb);
       }
     }
+  }
+  
+  // TILING ENHANCEMENT: Seed the bounding box hash after encoding all damage rects.
+  // This is the "dual path" approach: pixels were already sent via normal encoding
+  // above, and now we tell the client to associate the bounding box with a hash
+  // so future identical updates can be served with a single cache reference.
+  if (shouldSeedBbox) {
+    conn->writer()->writeCachedRectSeed(bboxForSeeding, bboxIdForSeeding);
+    conn->markPersistentIdKnown(bboxIdForSeeding);
+    
+    vlog.info("TILING: Seeded bounding-box hash [%d,%d-%d,%d] id=%s",
+              bboxForSeeding.tl.x, bboxForSeeding.tl.y,
+              bboxForSeeding.br.x, bboxForSeeding.br.y,
+              hex64(bboxIdForSeeding));
   }
 }
 
