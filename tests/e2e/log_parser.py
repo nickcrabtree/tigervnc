@@ -285,16 +285,20 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                         pass
             
             # PersistentCache hit/miss counters from viewer logs
+            # NOTE: Only HIT and MISS messages are counted for hit rate.
+            # STORE messages (from PersistentCachedRectInit) are NOT counted
+            # as misses because they represent initial population, not lookups.
+            # The viewer only counts "lookups" when it receives a
+            # PersistentCachedRect reference and checks its local cache.
             elif 'persistentcache hit' in lower:
                 parsed.persistent_hits += 1
             elif 'persistentcache miss' in lower:
                 parsed.persistent_misses += 1
-            # Treat PersistentCache STORE (INIT) messages as misses for
-            # viewer-side statistics so that cold-cache runs have the same
-            # hit/miss semantics as ContentCache. This aligns
-            # test_cache_parity expectations with the unified cache engine.
+            # PersistentCache STORE is initial population - track separately
+            # but don't add to misses (it's not a cache lookup).
             elif 'persistentcache store' in lower:
-                parsed.persistent_misses += 1
+                # Don't count as miss - STORE is initial population, not lookup
+                pass
             
             elif 'evicted' in lower and 'cache' in lower:
                 # Client or server eviction logging

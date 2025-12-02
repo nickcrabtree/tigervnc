@@ -935,10 +935,11 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   // Track bandwidth for this PersistentCachedRectInit (ID + encoded data)
   rfb::cache::trackPersistentCacheInit(persistentCacheBandwidthStats, lastDecodedRectBytes);
 
-  // Compute full hash over the decoded pixels for lossless detection. This
-  // hash is not written to disk; instead we derive a disk key from cacheId
-  // so that the on-disk index can reconstruct the same 64-bit ID across
-  // sessions without mutating the ContentHash itself.
+  // Compute full hash over the decoded pixels. If this does not match the
+  // server-provided cacheId then the decoded rect is not bit-identical to the
+  // server's canonical content (e.g. truncated transfer, corruption, or
+  // mismatched hashing configuration). In that case we MUST NOT cache it,
+  // otherwise a single bad rect would poison the cache for all future hits.
   std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
   uint64_t hashId = 0;
   if (!contentHash.empty()) {
@@ -946,28 +947,18 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
     memcpy(&hashId, contentHash.data(), n);
   }
 
-  // Primary lossless test: if the ContentHash-derived 64-bit ID matches the
-  // server-provided cacheId then the decoded pixels are bit-identical to the
-  // server's canonical copy for persistence purposes.
-  bool isLossless = (hashId == cacheId);
-
-  // Fallback: if hashes do not line up (e.g. due to pixel format
-  // normalisation differences) then rely on encoding-based heuristics for
-  // clearly lossless encodings. This preserves the guarantee that we never
-  // persist genuinely lossy payloads like Tight/JPEG while still allowing
-  // Raw/ZRLE/Hextile/RRE content to be saved to disk.
-  if (!isLossless) {
-    switch (encoding) {
-    case encodingRaw:
-    case encodingZRLE:
-    case encodingHextile:
-    case encodingRRE:
-      isLossless = true;
-      break;
-    default:
-      break;
-    }
+  if (hashId != cacheId) {
+    vlog.warn("PersistentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu (encoding=%d)",
+              r.tl.x, r.tl.y, r.br.x, r.br.y,
+              (unsigned long long)cacheId,
+              (unsigned long long)hashId,
+              encoding);
+    return;
   }
+
+  // At this point the client-side hash matches the server's cacheId exactly,
+  // so we know the decoded pixels are safe to cache and reuse.
+  bool isLossless = true;
 
   // Build a stable disk key from cacheId so the index can round-trip the
   // 64-bit on-wire ID. We encode cacheId in the first 8 bytes and pad to the
@@ -985,8 +976,9 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   // Store in persistent cache with explicit cacheId and disk key; the
   // shared ContentKey (width,height,contentHash64) uses cacheId as the
   // 64-bit ID, while diskKey is used solely for index/shard bookkeeping.
-  // The cache implementation will treat non-lossless entries as memory-only
-  // (not written to disk).
+  // The cache implementation may still decide whether to persist to disk
+  // based on encoding policy, but at this point the in-memory content is
+  // guaranteed to match the server's hash.
   persistentCache->insert(cacheId, diskKey, pixels, pb->getPF(),
                           r.width(), r.height(), stridePixels,
                           isLossless);
@@ -1184,6 +1176,26 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
     vlog.debug("ContentCache disabled; skipping store for ID %llu rect=[%d,%d-%d,%d]",
                (unsigned long long)cacheId,
                r.tl.x, r.tl.y, r.br.x, r.br.y);
+    return;
+  }
+
+  // Compute content hash over the decoded pixels and ensure it matches the
+  // server-provided cacheId. This keeps ContentCache semantics aligned with
+  // PersistentCache: a rect is only cacheable if the client-side hash agrees
+  // with the server's ID, which protects the cache from truncated or
+  // corrupted transfers.
+  std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
+  uint64_t hashId = 0;
+  if (!contentHash.empty()) {
+    size_t n = std::min(contentHash.size(), sizeof(uint64_t));
+    memcpy(&hashId, contentHash.data(), n);
+  }
+
+  if (hashId != cacheId) {
+    vlog.warn("ContentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu",
+              r.tl.x, r.tl.y, r.br.x, r.br.y,
+              (unsigned long long)cacheId,
+              (unsigned long long)hashId);
     return;
   }
 
