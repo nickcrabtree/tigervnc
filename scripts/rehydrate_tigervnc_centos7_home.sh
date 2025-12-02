@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Rehydrate script for TigerVNC on CentOS 7 using $HOME as install root
+# Rehydrate script for TigerVNC on CentOS 7 using /data_parallel/PreStackPro/share/nickc as install root
 # - Installs system packages via yum (requires sudo)
-# - Builds and installs a modern CMake (>= 3.10) into $HOME
+# - Builds and installs a modern CMake (>= 3.10) into /data_parallel/PreStackPro/share/nickc
 # - Leaves the actual TigerVNC build to the user (e.g. `make viewer server`)
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-PREFIX="$HOME"           # All new tools go under $HOME/{bin,lib,include,...}
+PREFIX="/data_parallel/PreStackPro/share/nickc"           # All new tools go under /data_parallel/PreStackPro/share/nickc/{bin,lib,include,...}
 CMAKE_VERSION="3.24.4"   # Any >= 3.10 is fine; 3.24.x still builds on CentOS 7
 
 mkdir -p "$PREFIX/bin" "$PREFIX/lib" "$PREFIX/include" "$PREFIX/src"
