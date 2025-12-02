@@ -1036,18 +1036,27 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
     if (contentCache_) {
       CacheKey key((uint16_t)r.width(), (uint16_t)r.height(), cacheId);
       
-      // Store pixel data from framebuffer into cache
+      // Store pixel data from framebuffer into cache.
+      // Copy row-by-row since stride may be larger than rect width.
       GlobalClientPersistentCache::CachedPixels entry;
       entry.format = pb->getPF();
-      entry.width = r.width();
-      entry.height = r.height();
-      entry.stridePixels = stridePixels;
+      entry.width = (uint16_t)r.width();
+      entry.height = (uint16_t)r.height();
+      // Store pixels tightly packed; stridePixels reflects this contiguous layout
+      entry.stridePixels = entry.width;
       
-      size_t bpp = pb->getPF().bpp / 8;
-      size_t rowBytes = (size_t)stridePixels * bpp;
-      size_t totalBytes = (size_t)r.height() * rowBytes;
-      entry.pixels.resize(totalBytes);
-      memcpy(entry.pixels.data(), pixels, totalBytes);
+      const size_t bppBytes = (size_t)pb->getPF().bpp / 8;
+      const size_t rowBytes = (size_t)r.width() * bppBytes;
+      const size_t srcStrideBytes = (size_t)stridePixels * bppBytes;
+      
+      entry.pixels.resize((size_t)entry.height * rowBytes);
+      const uint8_t* src = pixels;
+      uint8_t* dst = entry.pixels.data();
+      for (uint16_t y = 0; y < entry.height; y++) {
+        memcpy(dst, src, rowBytes);
+        src += srcStrideBytes;
+        dst += rowBytes;
+      }
       
       contentCache_->insert(key, std::move(entry));
       contentCacheStats_.stores++;
