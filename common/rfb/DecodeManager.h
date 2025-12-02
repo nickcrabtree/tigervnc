@@ -178,6 +178,7 @@ namespace rfb {
       unsigned cache_hits;
       unsigned cache_lookups;
       unsigned cache_misses;
+      unsigned stores;
       unsigned queries_sent;
     };
     PersistentCacheStats persistentCacheStats;

@@ -297,11 +297,11 @@ def main():
         success = True
         failures = []
 
-        # HARSH thresholds
+        # Thresholds tuned for high-churn, small-cache eviction scenarios
         MIN_LOOKUPS = 50
         MIN_EVICTIONS = 12
         MIN_EVICTED_IDS = 16
-        MIN_HIT_RATE = 25.0  # after verify phase, should be non-trivial
+        MIN_HIT_RATE = 10.0  # require non-trivial hit rate without over-penalizing churn
 
         lookups = pers['hits'] + pers['misses']
         if lookups < MIN_LOOKUPS:

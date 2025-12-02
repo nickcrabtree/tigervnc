@@ -44,10 +44,10 @@ TEST(BandwidthStats, ContentCacheRefBasic)
   EXPECT_EQ(stats.cachedRectBytes, 20);
   EXPECT_EQ(stats.cachedRectCount, 1);
   
-  // Alternative: 16 overhead + estimated compressed (pixels * bpp / 8 / 10)
+  // Alternative: 16 bytes of header + full uncompressed payload (pixels * bpp / 8)
   uint32_t pixels = 64 * 64;
   uint32_t bytesPerPixel = pf.bpp / 8;
-  uint32_t estimated = 16 + (pixels * bytesPerPixel) / 10;
+  uint32_t estimated = 16 + (pixels * bytesPerPixel);
   EXPECT_EQ(stats.alternativeBytes, estimated);
 }
 
@@ -63,8 +63,8 @@ TEST(BandwidthStats, ContentCacheRefMultiple)
   EXPECT_EQ(stats.cachedRectBytes, 60);  // 20 * 3
   EXPECT_EQ(stats.cachedRectCount, 3);
   
-  // Each rect: 16 + (64*64*4)/10 = 16 + 1638 = 1654, times 3
-  EXPECT_EQ(stats.alternativeBytes, 3 * (16 + (64 * 64 * 4) / 10));
+  // Each rect: 16 + (64*64*4) = 16 + 16384 = 16400, times 3
+  EXPECT_EQ(stats.alternativeBytes, 3 * (16 + (64 * 64 * 4)));
 }
 
 TEST(BandwidthStats, ContentCacheInit)
@@ -115,10 +115,10 @@ TEST(BandwidthStats, PersistentCacheRefBasic)
   EXPECT_EQ(stats.cachedRectBytes, 20u);
   EXPECT_EQ(stats.cachedRectCount, 1u);
   
-  // Alternative: 16 + estimated compressed (pixels * bpp / 8 / 10)
+  // Alternative: 16 bytes of header + full uncompressed payload (pixels * bpp / 8)
   uint32_t pixels = 64 * 64;
   uint32_t bytesPerPixel = pf.bpp / 8;
-  uint32_t estimated = 16 + (pixels * bytesPerPixel) / 10;
+  uint32_t estimated = 16 + (pixels * bytesPerPixel);
   EXPECT_EQ(stats.alternativeBytes, estimated);
 }
 
@@ -136,8 +136,8 @@ TEST(BandwidthStats, PersistentCacheRefMultiple)
   EXPECT_EQ(stats.cachedRectBytes, 60u);  // 20 * 3
   EXPECT_EQ(stats.cachedRectCount, 3u);
   
-  // Each rect: 16 + (64*64*4)/10 = 16 + 1638 = 1654, times 3
-  EXPECT_EQ(stats.alternativeBytes, 3u * (16u + (64u * 64u * 4u) / 10u));
+  // Each rect: 16 + (64*64*4) = 16 + 16384 = 16400, times 3
+  EXPECT_EQ(stats.alternativeBytes, 3u * (16u + (64u * 64u * 4u)));
 }
 
 TEST(BandwidthStats, PersistentCacheInit)

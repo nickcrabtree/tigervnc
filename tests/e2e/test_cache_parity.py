@@ -172,15 +172,30 @@ def main():
         log_pc = artifacts.logs_dir / 'parity_pc_viewer.log'
         parsed_pc = parse_cpp_log(log_pc)
         metrics_pc = compute_metrics(parsed_pc)
-
+ 
+        # Derive PersistentCache hit/miss counts from viewer logs in the
+        # same way we do for the back-to-back C++ test: count each
+        # PersistentCachedRectInit as a miss-equivalent and each
+        # PersistentCache HIT as a hit. This ensures that, for a cold
+        # cache and identical workload, the hit/miss profile matches the
+        # ContentCache run exactly.
+        pc_init_count = 0
+        with open(log_pc, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if "Received PersistentCachedRectInit" in line:
+                    pc_init_count += 1
+        pc_hits = parsed_pc.persistent_hits
+        pc_misses = pc_init_count
+        pc_lookups = pc_hits + pc_misses
+        pc_hit_rate = (100.0 * pc_hits / pc_lookups) if pc_lookups > 0 else 0.0
+ 
         # 6. Compare
         print("\n[Compare] Results")
         cc_hit_rate = metrics_cc['cache_operations']['hit_rate']
-        pc_hit_rate = metrics_pc['persistent']['hit_rate']
-
+ 
         print(f"  ContentCache hit rate:      {cc_hit_rate:.1f}%")
         print(f"  PersistentCache hit rate:   {pc_hit_rate:.1f}%")
-
+ 
         diff = abs(cc_hit_rate - pc_hit_rate)
         print(f"  Difference: {diff:.1f} percentage points")
 

@@ -43,6 +43,36 @@ using namespace rfb;
 
 static core::LogWriter vlog("DecodeManager");
 
+namespace {
+  // Lightweight view over a cache stats struct so we can share the same
+  // accounting logic between ContentCache and PersistentCache.
+  struct CacheStatsView {
+    unsigned &hits;
+    unsigned &lookups;
+    unsigned &misses;
+    unsigned &stores;
+  };
+
+  inline void recordCacheInit(CacheStatsView stats)
+  {
+    stats.stores++;
+    stats.lookups++;
+    stats.misses++;
+  }
+
+  inline void recordCacheHit(CacheStatsView stats)
+  {
+    stats.lookups++;
+    stats.hits++;
+  }
+
+  inline void recordCacheMiss(CacheStatsView stats)
+  {
+    stats.lookups++;
+    stats.misses++;
+  }
+}
+
 // Optional framebuffer hash debug helper (mirrors CConnection)
 static bool isFBHashDebugEnabled()
 {
@@ -812,7 +842,14 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   // Track bandwidth for this PersistentCachedRect reference (regardless of hit/miss)
   rfb::cache::trackPersistentCacheRef(persistentCacheBandwidthStats, r, conn->server.pf());
 
-  persistentCacheStats.cache_lookups++;
+  CacheStatsView pcStats{persistentCacheStats.cache_hits,
+                         persistentCacheStats.cache_lookups,
+                         persistentCacheStats.cache_misses,
+                         persistentCacheStats.stores};
+
+  // Treat every PersistentCachedRect reference as a cache lookup. The
+  // outcome (hit vs miss) is determined below once we consult the
+  // GlobalClientPersistentCache.
   
   // Derive the shared CacheKey from the on-wire cacheId and the rectangle
   // geometry. This keeps the client-side keying consistent with the
@@ -822,7 +859,7 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   
   if (cached == nullptr) {
     // Cache miss - queue request for later batching
-    persistentCacheStats.cache_misses++;
+    recordCacheMiss(pcStats);
     vlog.debug("PersistentCache MISS: rect [%d,%d-%d,%d] cacheId=%llu, queuing query",
                r.tl.x, r.tl.y, r.br.x, r.br.y, (unsigned long long)cacheId);
     
@@ -837,7 +874,7 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
     return;
   }
   
-  persistentCacheStats.cache_hits++;
+  recordCacheHit(pcStats);
   
   vlog.debug("PersistentCache HIT: rect [%d,%d-%d,%d] cacheId=%llu cached=%dx%d strideStored=%d",
              r.tl.x, r.tl.y, r.br.x, r.br.y,
@@ -873,6 +910,14 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
     return;
   }
   
+  CacheStatsView pcStats{persistentCacheStats.cache_hits,
+                         persistentCacheStats.cache_lookups,
+                         persistentCacheStats.cache_misses,
+                         persistentCacheStats.stores};
+  // A PersistentCachedRectInit represents a cache lookup that missed and
+  // caused the server to send full pixel data for this ID.
+  recordCacheInit(pcStats);
+
   vlog.debug("PersistentCache STORE: rect [%d,%d-%d,%d] cacheId=%llu encoding=%d",
              r.tl.x, r.tl.y, r.br.x, r.br.y,
              (unsigned long long)cacheId, encoding);
@@ -991,14 +1036,17 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
     return;
   }
 
-  contentCacheStats_.cache_lookups++;
+  CacheStatsView ccStats{contentCacheStats_.cache_hits,
+                         contentCacheStats_.cache_lookups,
+                         contentCacheStats_.cache_misses,
+                         contentCacheStats_.stores};
 
   CacheKey key((uint16_t)r.width(), (uint16_t)r.height(), (uint64_t)cacheId);
 
   if (!contentCache_) {
     // ContentCache explicitly disabled or not initialised; treat as a miss
     // so tests can still reason about protocol behaviour when disabled.
-    contentCacheStats_.cache_misses++;
+    recordCacheMiss(ccStats);
     vlog.info("ContentCache cache miss for ID %llu (cache disabled) rect=[%d,%d-%d,%d]",
               (unsigned long long)cacheId,
               r.tl.x, r.tl.y, r.br.x, r.br.y);
@@ -1007,14 +1055,14 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
 
   const GlobalClientPersistentCache::CachedPixels* entry = contentCache_->get(key);
   if (!entry || entry->pixels.empty()) {
-    contentCacheStats_.cache_misses++;
+    recordCacheMiss(ccStats);
     vlog.info("ContentCache cache miss for ID %llu rect=[%d,%d-%d,%d]",
               (unsigned long long)cacheId,
               r.tl.x, r.tl.y, r.br.x, r.br.y);
     return;
   }
-
-  contentCacheStats_.cache_hits++;
+ 
+  recordCacheHit(ccStats);
   vlog.info("ContentCache cache hit for ID %llu rect=[%d,%d-%d,%d]",
             (unsigned long long)cacheId,
             r.tl.x, r.tl.y, r.br.x, r.br.y);
@@ -1038,10 +1086,12 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   // pixel data for this ID because the client did not have it yet. This
   // ensures that cold-cache runs cannot report a misleading 100% hit rate
   // purely because only reference traffic is counted.
-  contentCacheStats_.stores++;
-  contentCacheStats_.cache_lookups++;
-  contentCacheStats_.cache_misses++;
-
+  CacheStatsView ccStats{contentCacheStats_.cache_hits,
+                         contentCacheStats_.cache_lookups,
+                         contentCacheStats_.cache_misses,
+                         contentCacheStats_.stores};
+  recordCacheInit(ccStats);
+  
   if (!contentCache_) {
     vlog.debug("ContentCache disabled; skipping store for ID %llu rect=[%d,%d-%d,%d]",
                (unsigned long long)cacheId,
