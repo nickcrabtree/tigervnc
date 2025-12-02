@@ -950,22 +950,108 @@ void EncodeManager::writeRects(const core::Region& changed,
     conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
     conn->client.supportsEncoding(pseudoEncodingContentCache);
 
-  // TILING ENHANCEMENT: Before processing individual damage rects, check if
-  // the BOUNDING BOX of the entire changed region matches a known cached
-  // rectangle. This handles the case where X11 reports fragmented damage
-  // (e.g., window borders, compositor effects) but the actual content is a
-  // large previously-cached rectangle like a PowerPoint slide.
+  // TILING ENHANCEMENT: Before processing individual damage rects, detect
+  // bordered content regions in the framebuffer. These are rectangular areas
+  // surrounded by solid-colored borders, which typically represent:
+  // - Slide content areas in presentation software
+  // - Document editing areas
+  // - Image/video viewing areas embedded in an application UI
   //
-  // Key insight: even if only parts of the bounding box are "damaged", if
-  // the entire bounding box content matches a cached entry, we can send
-  // ONE cache reference instead of encoding the fragments.
+  // By detecting these regions, we can cache them independently of the
+  // fragmented damage regions reported by X11.
+  
+  std::vector<ContentHash::BorderedRegion> borderedRegions;
+  // Bordered region detection is expensive, so only run it when:
+  // 1. Client supports cache
+  // 2. The damage region is large enough to potentially be a content area change
+  // (Note: We always try detection to seed the perceptual hash index on first pass)
+  bool shouldDetectBorderedRegions = clientSupportsCache && 
+                                      !changed.is_empty() &&
+                                      changed.get_bounding_rect().area() > 10000;
+  
+  if (shouldDetectBorderedRegions) {
+    vlog.info("BORDERED: Attempting detection on %dx%d framebuffer (damage bbox area=%d)",
+              pb->width(), pb->height(), changed.get_bounding_rect().area());
+    
+    // Detect bordered regions in the full framebuffer
+    borderedRegions = ContentHash::detectBorderedRegions(pb, 5, 50000);
+    
+    if (!borderedRegions.empty()) {
+      vlog.info("BORDERED: Detected %d bordered regions", (int)borderedRegions.size());
+      for (const auto& r : borderedRegions) {
+        vlog.info("BORDERED:   Region [%d,%d-%d,%d] border=%d/%d/%d/%d",
+                  r.contentRect.tl.x, r.contentRect.tl.y,
+                  r.contentRect.br.x, r.contentRect.br.y,
+                  r.borderTop, r.borderBottom, r.borderLeft, r.borderRight);
+      }
+    } else {
+      vlog.info("BORDERED: No regions detected (minBorder=5, minArea=50000)");
+    }
+  }
+  
+  if (!borderedRegions.empty()) {
+    // Check if any detected regions match cached content
+    for (const auto& region : borderedRegions) {
+      const core::Rect& contentRect = region.contentRect;
+      
+      // Only process if the damage region intersects this content area
+      if (changed.intersect(contentRect).is_empty()) {
+        continue;
+      }
+      
+      // Compute content hash for this bordered region
+      std::vector<uint8_t> contentHash = ContentHash::computeRect(pb, contentRect);
+      uint64_t contentId = 0;
+      if (!contentHash.empty()) {
+        size_t n = std::min(contentHash.size(), sizeof(uint64_t));
+        memcpy(&contentId, contentHash.data(), n);
+      }
+      
+      // Check if this content is already cached
+      bool hasMatch = conn->knowsPersistentId(contentId);
+      
+      if (hasMatch) {
+        // CACHE HIT on bordered content region!
+        persistentCacheStats.cacheHits++;
+        persistentCacheStats.cacheLookups++;
+        int equiv = 12 + contentRect.area() * (conn->client.pf().bpp / 8);
+        persistentCacheStats.bytesSaved += equiv - 20;
+        copyStats.rects++;
+        copyStats.pixels += contentRect.area();
+        copyStats.equivalent += equiv;
+        beforeLength = conn->getOutStream()->length();
+        conn->writer()->writePersistentCachedRect(contentRect, contentId);
+        copyStats.bytes += conn->getOutStream()->length() - beforeLength;
+        
+        vlog.info("BORDERED: Cache HIT for content region [%d,%d-%d,%d] id=%s",
+                  contentRect.tl.x, contentRect.tl.y,
+                  contentRect.br.x, contentRect.br.y, hex64(contentId));
+        
+        conn->onCachedRectRef(contentId, contentRect);
+        lossyRegion.assign_subtract(contentRect);
+        pendingRefreshRegion.assign_subtract(contentRect);
+        return;  // Entire update handled by content region cache hit
+      } else {
+        // Miss - will seed after encoding
+        vlog.info("BORDERED: Content region [%d,%d-%d,%d] id=%s - will seed",
+                  contentRect.tl.x, contentRect.tl.y,
+                  contentRect.br.x, contentRect.br.y,
+                  hex64(contentId));
+        persistentCacheStats.cacheMisses++;
+        persistentCacheStats.cacheLookups++;
+      }
+    }
+  }
+  
+  // TILING ENHANCEMENT: Also check if the BOUNDING BOX of the changed region
+  // matches a known cached rectangle.
   
   if (clientSupportsCache && !changed.is_empty()) {
     core::Rect bbox = changed.get_bounding_rect();
     int bboxArea = bbox.area();
     
     if (bboxArea >= WholeRectCacheMinArea) {
-      // Compute hash for the entire bounding box (not just damaged parts)
+      // Compute content hash for the entire bounding box
       std::vector<uint8_t> bboxHash = ContentHash::computeRect(pb, bbox);
       uint64_t bboxId = 0;
       if (!bboxHash.empty()) {
@@ -973,8 +1059,11 @@ void EncodeManager::writeRects(const core::Region& changed,
         memcpy(&bboxId, bboxHash.data(), n);
       }
       
-      if (conn->knowsPersistentId(bboxId)) {
-        // CACHE HIT on bounding box! Send single reference for entire region.
+      // Check if bounding box matches cached content
+      bool hasHit = conn->knowsPersistentId(bboxId);
+      
+      if (hasHit) {
+        // CACHE HIT on bounding box!
         persistentCacheStats.cacheHits++;
         persistentCacheStats.cacheLookups++;
         int equiv = 12 + bboxArea * (conn->client.pf().bpp / 8);
@@ -996,13 +1085,10 @@ void EncodeManager::writeRects(const core::Region& changed,
         return;  // Entire region handled by one cache hit!
       } else {
         // Bounding box not in cache - we'll seed it after encoding
-        // but still process the individual damage rects normally
         vlog.info("TILING: Bounding-box cache MISS [%d,%d-%d,%d] id=%s - will seed after encoding %d rects",
                   bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
                   hex64(bboxId), changed.numRects());
         
-        // Store for seeding after we encode all the damage rects
-        // We'll seed the bounding box hash at the end of this function
         persistentCacheStats.cacheMisses++;
         persistentCacheStats.cacheLookups++;
       }
@@ -1079,6 +1165,31 @@ void EncodeManager::writeRects(const core::Region& changed,
               bboxForSeeding.tl.x, bboxForSeeding.tl.y,
               bboxForSeeding.br.x, bboxForSeeding.br.y,
               hex64(bboxIdForSeeding));
+  }
+  
+  // BORDERED REGION SEEDING: Seed any detected bordered content regions
+  // so that future identical content can be served from cache.
+  for (const auto& region : borderedRegions) {
+    const core::Rect& contentRect = region.contentRect;
+    
+    // Compute content hash
+    std::vector<uint8_t> contentHash = ContentHash::computeRect(pb, contentRect);
+    uint64_t contentId = 0;
+    if (!contentHash.empty()) {
+      size_t n = std::min(contentHash.size(), sizeof(uint64_t));
+      memcpy(&contentId, contentHash.data(), n);
+    }
+    
+    // Only seed if not already known
+    if (!conn->knowsPersistentId(contentId)) {
+      conn->writer()->writeCachedRectSeed(contentRect, contentId);
+      conn->markPersistentIdKnown(contentId);
+      
+      vlog.info("BORDERED: Seeded content region [%d,%d-%d,%d] id=%s",
+                contentRect.tl.x, contentRect.tl.y,
+                contentRect.br.x, contentRect.br.y,
+                hex64(contentId));
+    }
   }
 }
 

@@ -135,6 +135,26 @@ namespace rfb {
         return hash;
       }
     };
+
+    // Detect bordered content regions in the framebuffer.
+    // A bordered region is a rectangle surrounded by a border of constant color
+    // (at least minBorderWidth pixels wide on all sides).
+    // This is useful for finding application content areas like slides,
+    // document views, etc. that are embedded in a UI with solid-colored borders.
+    //
+    // Returns a list of detected regions sorted by area (largest first).
+    // Only regions with area >= minArea are returned.
+    struct BorderedRegion {
+      core::Rect contentRect;  // The inner content rectangle
+      core::Rect outerRect;    // The outer rectangle including border
+      uint32_t borderColor;    // The border color (in native format)
+      int borderLeft, borderRight, borderTop, borderBottom;  // Border widths
+    };
+
+    static std::vector<BorderedRegion> detectBorderedRegions(
+        const PixelBuffer* pb,
+        int minBorderWidth = 5,
+        int minArea = 50000);
   };
 
 }  // namespace rfb
