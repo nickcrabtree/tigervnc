@@ -9,7 +9,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-PREFIX="/data_parallel/PreStackPro/share/nickc"  # All new tools go under PREFIX/{bin,lib,include,...}
+PREFIX="/data_parallel/PreStackPro/share/nickc"           # All new tools go under /data_parallel/PreStackPro/share/nickc/{bin,lib,include,...}
+
 CMAKE_VERSION="3.24.4"   # Any >= 3.10 is fine; 3.24.x still builds on CentOS 7
 
 # Determine how many parallel jobs to use for compilation steps

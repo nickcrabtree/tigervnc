@@ -99,7 +99,8 @@ def parse_client_cache_messages(log_path: Path) -> dict:
             line_lower = line.lower()
             
             # Client receives CachedRect (legacy ContentCache)
-            if 'received cachedrect' in line_lower and 'init' not in line_lower and 'persistent' not in line_lower:
+            # Exclude 'seed' to avoid counting CachedRectSeed messages
+            if 'received cachedrect' in line_lower and 'init' not in line_lower and 'persistent' not in line_lower and 'seed' not in line_lower:
                 stats['cached_rect_received'] += 1
             
             # Client receives CachedRectInit (legacy ContentCache)
