@@ -948,7 +948,7 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   }
 
   if (hashId != cacheId) {
-    vlog.warn("PersistentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu (encoding=%d)",
+    vlog.info("PersistentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu (encoding=%d)",
               r.tl.x, r.tl.y, r.br.x, r.br.y,
               (unsigned long long)cacheId,
               (unsigned long long)hashId,
@@ -1192,7 +1192,7 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   }
 
   if (hashId != cacheId) {
-    vlog.warn("ContentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu",
+    vlog.info("ContentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu",
               r.tl.x, r.tl.y, r.br.x, r.br.y,
               (unsigned long long)cacheId,
               (unsigned long long)hashId);
