@@ -32,6 +32,13 @@ viewer:
 # tools/xserver_depmap.py refresh) when missing or older than a threshold,
 # and rsync + targeted object invalidation (tools/xserver_depmap.py sync)
 # are used instead of always cleaning the entire xserver build tree.
+#
+# IMPORTANT: The xserver autotools Makefile doesn't track librfb.a as a
+# dependency, so we explicitly check if the binary needs relinking by
+# comparing timestamps.
+XNJCVNC_BIN := $(XSERVER_BUILD_DIR)/hw/vnc/Xnjcvnc
+LIBRFB := $(BUILD_DIR)/common/rfb/librfb.a
+
 server:
 	@echo "[server] Ensuring Xserver dependency map is up to date..."
 	@python3 tools/xserver_depmap.py refresh
@@ -43,6 +50,11 @@ server:
 	cmake --build $(BUILD_DIR) --target network
 	cmake --build $(BUILD_DIR) --target rfb
 	cmake --build $(BUILD_DIR) --target unixcommon
+	@# Force relink if librfb.a is newer than Xnjcvnc binary
+	@if [ -f "$(XNJCVNC_BIN)" ] && [ -f "$(LIBRFB)" ] && [ "$(LIBRFB)" -nt "$(XNJCVNC_BIN)" ]; then \
+		echo "[server] librfb.a is newer than Xnjcvnc - forcing relink..."; \
+		rm -f "$(XNJCVNC_BIN)"; \
+	fi
 	@echo "[server] Rebuilding Xnjcvnc server incrementally..."
 	$(MAKE) -C $(XSERVER_BUILD_DIR) TIGERVNC_SRCDIR=$(CURDIR) TIGERVNC_BUILDDIR=$(CURDIR)/$(BUILD_DIR)
 

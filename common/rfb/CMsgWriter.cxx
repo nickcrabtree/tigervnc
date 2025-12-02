@@ -302,26 +302,28 @@ void CMsgWriter::writePersistentHashList(uint32_t sequenceId, uint16_t totalChun
 
 void CMsgWriter::writePersistentCacheEviction(const std::vector<uint64_t>& cacheIds)
 {
-  if (cacheIds.empty())
-    return;
-  
+  // Always emit a well-formed message, even for an empty list, so that
+  // the receiver can rely on a header with a count field (possibly zero).
+  // This matches the PersistentCacheProtocol tests and keeps the wire
+  // format consistent with other count-prefixed messages.
+
   // Validate and clamp count
   size_t count = cacheIds.size();
   if (count > 1000) {
     vlog.error("Too many PersistentCache IDs to evict (%zu), clamping to 1000", count);
     count = 1000;
   }
-  
+
   startMsg(msgTypePersistentCacheEviction);
   os->writeU8(0);   // padding
   os->writeU16(count);
-  
+
   for (size_t i = 0; i < count; i++) {
     uint64_t id = cacheIds[i];
     os->writeU32((uint32_t)(id >> 32));
     os->writeU32((uint32_t)(id & 0xFFFFFFFF));
   }
-  
+
   endMsg();
 }
 

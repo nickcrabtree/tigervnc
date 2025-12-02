@@ -74,9 +74,12 @@ def main():
             display_content, port_content, "poc_content",
             artifacts, tracker, geometry="800x600",
             log_level="*:stderr:100", server_choice=server_mode,
+            # Server-side ContentCache parameters have been removed in the
+            # unified cache engine. EnablePersistentCache controls the
+            # unified cache; ContentCache vs PersistentCache is now a
+            # viewer-side policy only.
             server_params={
-                'EnableContentCache': '0',        # disable session-only cache
-                'EnablePersistentCache': '1',     # ensure PC is on
+                'EnablePersistentCache': '1',     # ensure PersistentCache path is enabled
                 # PersistentCacheMinRectSize keeps default unless overridden
             }
         )

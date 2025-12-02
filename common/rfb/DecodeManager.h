@@ -25,6 +25,8 @@
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <memory>
+#include <vector>
 
 #include <core/Region.h>
 
@@ -86,6 +88,12 @@ namespace rfb {
     void storePersistentCachedRect(const core::Rect& r,
                                    uint64_t cacheId,
                                    ModifiablePixelBuffer* pb);
+    
+    // Cache seed: read existing framebuffer pixels at rect R and store
+    // them in cache with the given ID. Used for whole-rectangle caching.
+    void seedCachedRect(const core::Rect& r,
+                        uint64_t cacheId,
+                        ModifiablePixelBuffer* pb);
 
     // Log end-of-session decode and cache statistics (client-side)
     void logStats();
@@ -176,13 +184,14 @@ namespace rfb {
       unsigned cache_hits;
       unsigned cache_lookups;
       unsigned cache_misses;
+      unsigned stores;
       unsigned queries_sent;
     };
     PersistentCacheStats persistentCacheStats;
     
     // Session-only ContentCache statistics (no disk). These mirror the
     // semantics of the legacy ContentCache implementation but are backed
-    // by a simple in-memory cache keyed by CacheKey.
+    // by a byte-bounded ARC in-memory cache keyed by CacheKey.
     struct ContentCacheStats {
       unsigned cache_hits;
       unsigned cache_lookups;
@@ -191,12 +200,17 @@ namespace rfb {
     };
     ContentCacheStats contentCacheStats_;
     
-    // Session-only ContentCache storage: in-memory map keyed by CacheKey,
-    // reusing the CachedPixels struct from GlobalClientPersistentCache so
-    // that blitting logic is identical.
-    std::unordered_map<CacheKey,
-                       GlobalClientPersistentCache::CachedPixels,
-                       CacheKeyHash> contentCache_;
+    // Session-only ContentCache storage: ARC-managed in-memory cache keyed
+    // by CacheKey, reusing the CachedPixels struct from
+    // GlobalClientPersistentCache so that blitting logic is identical.
+    std::unique_ptr<rfb::cache::ArcCache<CacheKey,
+                                         GlobalClientPersistentCache::CachedPixels,
+                                         CacheKeyHash>> contentCache_;
+    
+    // Pending ContentCache evictions to notify the server about at the next
+    // flush(). Stored as 64-bit cache IDs matching the on-wire ContentCache
+    // ID space.
+    std::vector<uint64_t> contentCachePendingEvictions_;
     
     // PersistentCache bandwidth savings tracking
     rfb::cache::CacheProtocolStats persistentCacheBandwidthStats;

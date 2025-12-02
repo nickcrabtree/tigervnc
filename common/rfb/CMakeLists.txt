@@ -2,6 +2,7 @@ add_library(rfb STATIC
   AccessRights.cxx
   Blacklist.cxx
   Congestion.cxx
+  ContentHash.cxx
   CConnection.cxx
   CMsgReader.cxx
   CMsgWriter.cxx

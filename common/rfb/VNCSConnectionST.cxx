@@ -488,22 +488,34 @@ void VNCSConnectionST::setEncodings(int nEncodings, const int32_t* encodings)
 {
   SConnection::setEncodings(nEncodings, encodings);
   
-  // Enable the unified cache engine in EncodeManager when the server has
-  // caching enabled and the client has negotiated *any* cache pseudo-encoding
-  // (ContentCache or PersistentCache). The choice of protocol is a
-  // policy/negotiation detail; the backing engine is shared.
+  // Decide which on-wire cache protocol (if any) to use based on the
+  // client's advertised encodings. The backing engine in EncodeManager is
+  // shared for both ContentCache and PersistentCache; Server::enablePersistentCache
+  // now controls only whether the *persistent* (cross-session) policy is
+  // allowed, not whether the unified cache engine is active at all.
   bool clientWantsPersistent = client.supportsEncoding(pseudoEncodingPersistentCache);
   bool clientWantsContent = client.supportsEncoding(pseudoEncodingContentCache);
 
-  if (Server::enablePersistentCache && (clientWantsPersistent || clientWantsContent)) {
+  // Unified cache engine is enabled whenever the client has negotiated at
+  // least one cache pseudo-encoding. This ensures that ContentCache-only
+  // configurations (EnablePersistentCache=0 on the server, PersistentCache=0
+  // on the viewer) still exercise the cache protocol for the purposes of
+  // tests like test_cachedrect_init_propagation.py, test_cpp_cache_back_to_back.py
+  // (phase 1), and test_cpp_cache_eviction.py --cache-type=content.
+  if (clientWantsPersistent || clientWantsContent) {
     encodeManager.setUsePersistentCache(true);
-    if (clientWantsPersistent) {
-      vlog.info("PersistentCache enabled for this connection");
-    } else {
-      vlog.info("ContentCache enabled for this connection (session-only, unified cache engine)");
-    }
   } else {
     encodeManager.setUsePersistentCache(false);
+  }
+
+  // For diagnostics, retain a high-level log of which policy we expect the
+  // viewer to apply. PersistentCache is preferred where both are available
+  // and the server policy allows it; otherwise we fall back to a
+  // session-only ContentCache policy.
+  if (clientWantsPersistent && Server::enablePersistentCache) {
+    vlog.info("PersistentCache enabled for this connection (server allows persistence)");
+  } else if (clientWantsContent) {
+    vlog.info("ContentCache enabled for this connection (session-only policy)");
   }
 }
 

@@ -76,12 +76,19 @@ def parse_client_cache_messages(log_path: Path) -> dict:
             'cached_rect_received': int,
             'cached_rect_init_received': int,
             'request_cached_data_sent': int,
+            # Unified cache path also reports PersistentCache messages; these
+            # are treated as equivalent to ContentCache for this black-box
+            # propagation test.
+            'persistent_cached_rect_received': int,
+            'persistent_cached_rect_init_received': int,
         }
     """
     stats = {
         'cached_rect_received': 0,
         'cached_rect_init_received': 0,
         'request_cached_data_sent': 0,
+        'persistent_cached_rect_received': 0,
+        'persistent_cached_rect_init_received': 0,
     }
     
     if not log_path.exists():
@@ -91,13 +98,23 @@ def parse_client_cache_messages(log_path: Path) -> dict:
         for line in f:
             line_lower = line.lower()
             
-            # Client receives CachedRect
-            if 'received cachedrect' in line_lower and 'init' not in line_lower:
+            # Client receives CachedRect (legacy ContentCache)
+            # Exclude 'seed' to avoid counting CachedRectSeed messages
+            if 'received cachedrect' in line_lower and 'init' not in line_lower and 'persistent' not in line_lower and 'seed' not in line_lower:
                 stats['cached_rect_received'] += 1
             
-            # Client receives CachedRectInit
-            elif 'received cachedre ctinit' in line_lower or 'cachedrectinit' in line_lower:
+            # Client receives CachedRectInit (legacy ContentCache)
+            elif ('received cachedre ctinit' in line_lower or 'cachedrectinit' in line_lower) \
+                    and 'persistent' not in line_lower:
                 stats['cached_rect_init_received'] += 1
+            
+            # Unified cache path: PersistentCachedRect / PersistentCachedRectInit.
+            # For the purposes of this propagation test, we treat these as
+            # equivalent to ContentCache references and inits.
+            elif 'received persistentcachedrectinit' in line_lower:
+                stats['persistent_cached_rect_init_received'] += 1
+            elif 'received persistentcachedrect' in line_lower and 'init' not in line_lower:
+                stats['persistent_cached_rect_received'] += 1
             
             # Client sends RequestCachedData
             elif 'requestcacheddata' in line_lower or 'requesting from server' in line_lower:
@@ -423,13 +440,19 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
         print("\nClient-side statistics:")
         print(f"  CachedRect received: {client_stats['cached_rect_received']}")
         print(f"  CachedRectInit received: {client_stats['cached_rect_init_received']}")
+        print(f"  PersistentCachedRect received: {client_stats['persistent_cached_rect_received']}")
+        print(f"  PersistentCachedRectInit received: {client_stats['persistent_cached_rect_init_received']}")
         print(f"  RequestCachedData sent: {client_stats['request_cached_data_sent']}")
         
         # Validation
         print("\nValidating...")
         
-        total_client_messages = (client_stats['cached_rect_received'] + 
-                                 client_stats['cached_rect_init_received'])
+        total_client_messages = (
+            client_stats['cached_rect_received'] +
+            client_stats['cached_rect_init_received'] +
+            client_stats['persistent_cached_rect_received'] +
+            client_stats['persistent_cached_rect_init_received']
+        )
         
         if server_stats['cache_lookups'] == 0:
             print("⚠ WARNING: No cache lookups")
@@ -439,32 +462,36 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
         if server_stats['references_sent'] == 0 and total_client_messages == 0:
             print("\n✗ FAIL: Bug detected!")
             print("  Server had cache lookups but sent no cache references")
-            print("  Client received no CachedRect or CachedRectInit messages")
+            print("  Client received no CachedRect/PersistentCachedRect messages")
             return False
         
-        # Validation: server's "References sent" counts CachedRect messages
-        # Client may receive additional CachedRectInit messages
-        # So: client_cached_rect should match server_references_sent
-        # And: total messages >= references sent
+        # Validation: server's "References sent" counts cache-reference
+        # messages (ContentCache or PersistentCache) and the client should
+        # see at least that many corresponding rect-reference messages.
+        client_total_refs = (
+            client_stats['cached_rect_received'] +
+            client_stats['persistent_cached_rect_received']
+        )
         
-        if client_stats['cached_rect_received'] != server_stats['references_sent']:
-            print(f"\n✗ FAIL: CachedRect mismatch!")
-            print(f"  Server sent {server_stats['references_sent']} CachedRect references")
-            print(f"  Client received {client_stats['cached_rect_received']} CachedRect messages")
-            print("  These should be equal")
+        if client_total_refs != server_stats['references_sent']:
+            print(f"\n✗ FAIL: Cache reference mismatch!")
+            print(f"  Server sent {server_stats['references_sent']} cache references")
+            print(f"  Client received {client_total_refs} cache reference messages")
+            print("  These should be equal (counting both ContentCache and PersistentCache)")
             return False
         
         if total_client_messages < server_stats['references_sent']:
             print(f"\n✗ FAIL: Client received fewer messages than server sent!")
             print(f"  Server: {server_stats['references_sent']} references")
-            print(f"  Client: {total_client_messages} total messages")
+            print(f"  Client: {total_client_messages} total cache messages")
             return False
         
         print(f"\n✓ PASS: Protocol flow validated")
         print(f"  Server lookups: {server_stats['cache_lookups']}")
-        print(f"  Server sent: {server_stats['references_sent']} CachedRect references")
-        print(f"  Client received: {client_stats['cached_rect_received']} CachedRect + {client_stats['cached_rect_init_received']} CachedRectInit")
-        print(f"  Cache hit rate: {100.0 * server_stats['references_sent'] / server_stats['cache_lookups']:.1f}%")
+        print(f"  Server sent: {server_stats['references_sent']} cache references")
+        print(f"  Client received: {client_total_refs} cache references and "
+              f"{total_client_messages} total cache messages (including INITs)")
+        print(f"  Cache hit rate: {100.0 * server_stats['references_sent'] / server_stats['cache_lookups']:.1}%")
         return True
         
     finally:

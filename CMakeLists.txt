@@ -21,6 +21,10 @@ include(CMakeMacroLibtoolFile)
 project(tigervnc)
 set(VERSION 1.15.80)
 
+# Enable CTest/CTestTestfile generation so unit and e2e tests
+# registered via add_test()/gtest_discover_tests are visible to ctest.
+include(CTest)
+
 # The RC version must always be four comma-separated numbers
 string(REPLACE . , RCVERSION "${VERSION}.0")
 

@@ -289,6 +289,12 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 parsed.persistent_hits += 1
             elif 'persistentcache miss' in lower:
                 parsed.persistent_misses += 1
+            # Treat PersistentCache STORE (INIT) messages as misses for
+            # viewer-side statistics so that cold-cache runs have the same
+            # hit/miss semantics as ContentCache. This aligns
+            # test_cache_parity expectations with the unified cache engine.
+            elif 'persistentcache store' in lower:
+                parsed.persistent_misses += 1
             
             elif 'evicted' in lower and 'cache' in lower:
                 # Client or server eviction logging

@@ -101,6 +101,11 @@ namespace rfb {
     virtual void storePersistentCachedRect(const core::Rect& r,
                                            uint64_t cacheId,
                                            int encoding) = 0;
+    
+    // Cache seed: server tells client to take existing framebuffer pixels
+    // at rect R and associate them with cache ID. Used for whole-rectangle
+    // caching where subrect data was already sent via normal encoding.
+    virtual void seedCachedRect(const core::Rect& r, uint64_t cacheId) = 0;
 
     ServerParams server;
   };

@@ -268,6 +268,17 @@ void SMsgWriter::writePersistentCachedRectInit(const core::Rect& r,
   os->writeS32(encoding);
 }
 
+void SMsgWriter::writeCachedRectSeed(const core::Rect& r, uint64_t cacheId)
+{
+  // Server → client: seed cache with existing framebuffer pixels.
+  // No pixel payload follows - client reads from its own framebuffer.
+  // Wire format: rect header + U64 cache ID
+  startRect(r, encodingCachedRectSeed);
+  os->writeU32((uint32_t)(cacheId >> 32));
+  os->writeU32((uint32_t)(cacheId & 0xFFFFFFFF));
+  endRect();
+}
+
 void SMsgWriter::writeDesktopSize(uint16_t reason, uint16_t result)
 {
   ExtendedDesktopSizeMsg msg;

@@ -44,6 +44,12 @@ namespace rfb {
   // Sent by client to notify server when cache entries are evicted
   // Format: U32 count, followed by count U64 cache IDs
   const int encodingCacheEviction = 104;
+  
+  // TigerVNC cache seed encoding (server→client)
+  // Tells client to take pixels already in framebuffer at rect R and
+  // associate them with cache ID. No pixel payload follows.
+  // Wire format: rect header + U64 cache ID
+  const int encodingCachedRectSeed = 105;
 
   const int encodingMax = 255;
 

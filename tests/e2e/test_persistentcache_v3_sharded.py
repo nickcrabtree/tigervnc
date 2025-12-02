@@ -237,7 +237,10 @@ def main():
             geometry="1920x1080",
             log_level="*:stderr:100",
             server_choice=server_mode,
-            server_params={'EnableContentCache': '0'}
+            # With the unified cache engine, only EnablePersistentCache is
+            # exposed on the server side. Treat this as a PersistentCache-only
+            # configuration and let the viewer control persistence policy.
+            server_params={'EnablePersistentCache': '1'}
         )
         if not server_content.start():
             print("\n✗ FAIL: Could not start content server")

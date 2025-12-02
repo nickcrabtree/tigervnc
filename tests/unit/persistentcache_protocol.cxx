@@ -79,20 +79,14 @@ TEST(PersistentCacheProtocol, EvictionRoundTripBasic)
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  
   writer.writePersistentCacheEviction(ids);
   
-  // Read back
+  // Read back via SMsgReader, which owns message-type parsing
   rdr::MemInStream inStream(outStream.data(), outStream.length());
   MockSMsgHandler handler;
   SMsgReader reader(&handler, &inStream);
   
-  // Skip message type byte (already read in readMsg())
-  uint8_t msgType = inStream.readU8();
-  EXPECT_EQ(msgType, msgTypePersistentCacheEviction);
-  
-  // Manually invoke reader method
-  EXPECT_TRUE(reader.readMsg());
+  ASSERT_TRUE(reader.readMsg());
   
   // Verify received IDs
   ASSERT_EQ(handler.receivedEvictions.size(), 2);
@@ -107,17 +101,15 @@ TEST(PersistentCacheProtocol, EvictionEmptyList)
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  
   writer.writePersistentCacheEviction(ids);
   
-  // Should write message with count=0
+  // Read back via SMsgReader and verify we receive an empty eviction list
   rdr::MemInStream inStream(outStream.data(), outStream.length());
-  uint8_t msgType = inStream.readU8();
-  EXPECT_EQ(msgType, msgTypePersistentCacheEviction);
+  MockSMsgHandler handler;
+  SMsgReader reader(&handler, &inStream);
   
-  inStream.skip(1);  // padding
-  uint16_t count = inStream.readU16();
-  EXPECT_EQ(count, 0);
+  ASSERT_TRUE(reader.readMsg());
+  EXPECT_TRUE(handler.receivedEvictions.empty());
 }
 
 TEST(PersistentCacheProtocol, EvictionMaxIds)
@@ -131,17 +123,13 @@ TEST(PersistentCacheProtocol, EvictionMaxIds)
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  
   writer.writePersistentCacheEviction(ids);
   
   rdr::MemInStream inStream(outStream.data(), outStream.length());
   MockSMsgHandler handler;
   SMsgReader reader(&handler, &inStream);
   
-  uint8_t msgType = inStream.readU8();
-  EXPECT_EQ(msgType, msgTypePersistentCacheEviction);
-  
-  EXPECT_TRUE(reader.readMsg());
+  ASSERT_TRUE(reader.readMsg());
   EXPECT_EQ(handler.receivedEvictions.size(), 1000);
 }
 

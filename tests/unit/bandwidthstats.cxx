@@ -44,10 +44,10 @@ TEST(BandwidthStats, ContentCacheRefBasic)
   EXPECT_EQ(stats.cachedRectBytes, 20);
   EXPECT_EQ(stats.cachedRectCount, 1);
   
-  // Alternative: 16 overhead + estimated compressed (pixels * bpp / 8 / 10)
+  // Alternative: 16 bytes of header + full uncompressed payload (pixels * bpp / 8)
   uint32_t pixels = 64 * 64;
   uint32_t bytesPerPixel = pf.bpp / 8;
-  uint32_t estimated = 16 + (pixels * bytesPerPixel) / 10;
+  uint32_t estimated = 16 + (pixels * bytesPerPixel);
   EXPECT_EQ(stats.alternativeBytes, estimated);
 }
 
@@ -63,8 +63,8 @@ TEST(BandwidthStats, ContentCacheRefMultiple)
   EXPECT_EQ(stats.cachedRectBytes, 60);  // 20 * 3
   EXPECT_EQ(stats.cachedRectCount, 3);
   
-  // Each rect: 16 + (64*64*4)/10 = 16 + 1638 = 1654, times 3
-  EXPECT_EQ(stats.alternativeBytes, 3 * (16 + (64 * 64 * 4) / 10));
+  // Each rect: 16 + (64*64*4) = 16 + 16384 = 16400, times 3
+  EXPECT_EQ(stats.alternativeBytes, 3 * (16 + (64 * 64 * 4)));
 }
 
 TEST(BandwidthStats, ContentCacheInit)
@@ -107,41 +107,49 @@ TEST(BandwidthStats, PersistentCacheRefBasic)
   rfb::PixelFormat pf(32, 24, false, true, 255, 255, 255, 16, 8, 0);
   core::Rect rect(0, 0, 64, 64);
   
-  trackPersistentCacheRef(stats, rect, pf, 32);  // SHA-256 hash
+  // Unified cache engine: PersistentCache references use the same on-wire
+  // 64-bit ID format as ContentCache (20 bytes per reference).
+  trackPersistentCacheRef(stats, rect, pf);
   
-  // PersistentCachedRect: 12 header + 1 hashLen + 32 hash = 45 bytes
-  EXPECT_EQ(stats.cachedRectBytes, 45);
-  EXPECT_EQ(stats.cachedRectCount, 1);
+  // PersistentCachedRect: 20 bytes (12 header + 8 ID)
+  EXPECT_EQ(stats.cachedRectBytes, 20u);
+  EXPECT_EQ(stats.cachedRectCount, 1u);
   
-  // Alternative: 16 + (64*64*4)/10
-  EXPECT_EQ(stats.alternativeBytes, 16 + (64 * 64 * 4) / 10);
+  // Alternative: 16 bytes of header + full uncompressed payload (pixels * bpp / 8)
+  uint32_t pixels = 64 * 64;
+  uint32_t bytesPerPixel = pf.bpp / 8;
+  uint32_t estimated = 16 + (pixels * bytesPerPixel);
+  EXPECT_EQ(stats.alternativeBytes, estimated);
 }
 
-TEST(BandwidthStats, PersistentCacheRefVariableHash)
+TEST(BandwidthStats, PersistentCacheRefMultiple)
 {
   CacheProtocolStats stats;
   rfb::PixelFormat pf(32, 24, false, true, 255, 255, 255, 16, 8, 0);
-  core::Rect rect(0, 0, 64, 64);
   
-  // Different hash lengths
-  trackPersistentCacheRef(stats, rect, pf, 16);  // MD5
-  trackPersistentCacheRef(stats, rect, pf, 32);  // SHA-256
-  trackPersistentCacheRef(stats, rect, pf, 64);  // SHA-512
+  // Multiple PersistentCache references should accumulate linearly and use
+  // the same accounting as ContentCache (20 bytes per reference).
+  trackPersistentCacheRef(stats, core::Rect(0, 0, 64, 64), pf);
+  trackPersistentCacheRef(stats, core::Rect(64, 0, 128, 64), pf);
+  trackPersistentCacheRef(stats, core::Rect(0, 64, 64, 128), pf);
   
-  // 12+1+16=29, 12+1+32=45, 12+1+64=77 → total 151
-  EXPECT_EQ(stats.cachedRectBytes, 151);
-  EXPECT_EQ(stats.cachedRectCount, 3);
+  EXPECT_EQ(stats.cachedRectBytes, 60u);  // 20 * 3
+  EXPECT_EQ(stats.cachedRectCount, 3u);
+  
+  // Each rect: 16 + (64*64*4) = 16 + 16384 = 16400, times 3
+  EXPECT_EQ(stats.alternativeBytes, 3u * (16u + (64u * 64u * 4u)));
 }
 
 TEST(BandwidthStats, PersistentCacheInit)
 {
   CacheProtocolStats stats;
   
-  trackPersistentCacheInit(stats, 32, 1024);  // SHA-256, 1KB payload
+  // Unified cache engine: PersistentCachedRectInit has the same overhead as
+  // CachedRectInit (24 bytes header + ID + encoding).
+  trackPersistentCacheInit(stats, 1024);  // 1KB payload
   
-  // PersistentCachedRectInit: 12+1+32+4 overhead + 1024 payload = 1073
-  EXPECT_EQ(stats.cachedRectInitBytes, 1073);
-  EXPECT_EQ(stats.cachedRectInitCount, 1);
+  EXPECT_EQ(stats.cachedRectInitBytes, 24u + 1024u);
+  EXPECT_EQ(stats.cachedRectInitCount, 1u);
 }
 
 TEST(BandwidthStats, PersistentCacheMixed)
@@ -150,15 +158,15 @@ TEST(BandwidthStats, PersistentCacheMixed)
   rfb::PixelFormat pf(32, 24, false, true, 255, 255, 255, 16, 8, 0);
   
   // 3 refs, 1 init
-  trackPersistentCacheRef(stats, core::Rect(0, 0, 64, 64), pf, 32);
-  trackPersistentCacheRef(stats, core::Rect(64, 0, 128, 64), pf, 32);
-  trackPersistentCacheRef(stats, core::Rect(0, 64, 64, 128), pf, 32);
-  trackPersistentCacheInit(stats, 32, 512);
+  trackPersistentCacheRef(stats, core::Rect(0, 0, 64, 64), pf);
+  trackPersistentCacheRef(stats, core::Rect(64, 0, 128, 64), pf);
+  trackPersistentCacheRef(stats, core::Rect(0, 64, 64, 128), pf);
+  trackPersistentCacheInit(stats, 512);
   
-  EXPECT_EQ(stats.cachedRectBytes, 135);        // 3 * 45
-  EXPECT_EQ(stats.cachedRectInitBytes, 561);    // 12+1+32+4+512
-  EXPECT_EQ(stats.cachedRectCount, 3);
-  EXPECT_EQ(stats.cachedRectInitCount, 1);
+  EXPECT_EQ(stats.cachedRectBytes, 60u);        // 3 * 20
+  EXPECT_EQ(stats.cachedRectInitBytes, 24u + 512u);
+  EXPECT_EQ(stats.cachedRectCount, 3u);
+  EXPECT_EQ(stats.cachedRectInitCount, 1u);
 }
 
 // ============================================================================
@@ -317,11 +325,11 @@ TEST(BandwidthStats, RealisticPersistentCacheWorkload)
   // - 10 inits (only new content)
   
   for (int i = 0; i < 500; i++) {
-    trackPersistentCacheRef(stats, core::Rect(0, 0, 64, 64), pf, 32);
+    trackPersistentCacheRef(stats, core::Rect(0, 0, 64, 64), pf);
   }
   
   for (int i = 0; i < 10; i++) {
-    trackPersistentCacheInit(stats, 32, 1000);
+    trackPersistentCacheInit(stats, 1000);
   }
   
   // Very high hit rate (98%) should achieve >90% bandwidth savings

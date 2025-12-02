@@ -1188,3 +1188,19 @@ void CConnection::storePersistentCachedRect(const core::Rect& r,
   // persistence policy.
   decoder.storePersistentCachedRect(r, cacheId, encoding, framebuffer);
 }
+
+void CConnection::seedCachedRect(const core::Rect& r, uint64_t cacheId)
+{
+  // Server tells us to take existing framebuffer pixels at rect R and
+  // associate them with cache ID. This is used for whole-rectangle caching
+  // where subrect data was already sent via normal encoding.
+  //
+  // We read pixels from our current framebuffer and store them in the cache.
+  vlog.info("seedCachedRect: [%d,%d-%d,%d] cacheId=%llu",
+            r.tl.x, r.tl.y, r.br.x, r.br.y,
+            (unsigned long long)cacheId);
+  
+  // Forward to decoder manager to seed cache using existing framebuffer pixels.
+  // Use encodingRaw as the "encoding" since we're reading raw pixels from framebuffer.
+  decoder.seedCachedRect(r, cacheId, framebuffer);
+}

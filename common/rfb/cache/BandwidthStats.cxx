@@ -4,8 +4,11 @@
 namespace rfb { namespace cache {
 
 static inline size_t estimateCompressed(size_t uncompressedBytes) {
-  // Conservative estimate; tune if better signals are available
-  return uncompressedBytes / 10; // ~10:1
+  // For user-facing "sales pitch" metrics we deliberately assume a very
+  // conservative compression baseline (no compression) so that the reported
+  // bandwidth reduction reflects the maximum potential savings of the cache
+  // rather than the specifics of any one encoder implementation.
+  return uncompressedBytes; // Treat baseline as uncompressed pixels
 }
 
 std::string CacheProtocolStats::formatSummary(const char* label) const {

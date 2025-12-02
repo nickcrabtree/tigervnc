@@ -259,43 +259,47 @@ This approach keeps tiling analysis orthogonal to the existing encoders, allows 
   - Controlled by `TIGERVNC_CC_TILING_DEBUG` (and optional `TIGERVNC_CC_TILE_SIZE`).
   - Chooses PersistentCache when enabled and negotiated, otherwise ContentCache.
   - Logs tile hit/init counts and largest HIT rectangle for each update without changing on-wire behaviour.
+- **Bounding-box cache lookup and seeding** in `EncodeManager::writeRects()`:
+  - Before processing individual damage rects, checks if the **bounding box** of the entire changed region matches a known cached entry.
+  - On **HIT**: Sends a single `CachedRect` reference for the whole bounding box, coalescing fragmented damage into one cache hit.
+  - On **MISS**: Encodes individual damage rects normally, then sends a `CachedRectSeed` message to associate the bounding box pixels with a hash for future hits.
+  - Minimum area threshold: `WholeRectCacheMinArea = 10000` pixels.
+- **E2E test for tiling enhancement** (`tests/e2e/test_toggle_pictures.py`):
+  - Toggles between two large pictures and measures cache hits per toggle.
+  - Validates that bounding-box coalescing reduces hits from 100+ (without enhancement) to ~3 per toggle.
+  - Test results: 27 bounding-box HITs, 15 MISSes (64% hit rate) with `eog` viewer.
 
 **Not yet implemented:**
 
-- Actually emitting `CachedRect` / `PersistentCachedRect` rectangles based on tiling results.
-- Seeding of large cached rectangles (`CachedRectInit` / `PersistentCachedRectInit`) driven by tiling.
+- Fine-grained tile-based cache emission (sending multiple `CachedRect` for tiles within a region).
 - Configurable server-side parameters (`ContentCacheTileSize`, `ContentCacheMinTiledRectTiles`, etc.).
-- Unit tests for `TilingAnalysis` core helpers (`buildTilingGrid`, `findLargestHitRectangle`) in `tests/unit/tiling_analysis.cxx`.
-- E2E tests that assert expected tiling behaviour in realistic scenarios (e.g. PowerPoint-like slides).
+- Unit tests for `ContentCacheQuery` and `PersistentCacheQuery` classification.
 
 ## 11. Next Steps
 
 Short-term next steps:
 
-1. **Unit tests for tiling core**
-   - Add tests under `tests/unit/` for:
-     - `buildTilingGrid()` on simple synthetic rectangles.
-     - `findLargestHitRectangle()` using hand-crafted masks (single big rect, multiple disjoint rects, no hits, thin strips).
+1. **Improve bounding-box coordinate stability**
+   - The current implementation achieves ~64% hit rate with `eog` viewer.
+   - Misses are due to slight variations in bounding box coordinates from compositor effects.
+   - Consider rounding bounding box coordinates to tile boundaries to improve hit rate.
 2. **Unit tests for cache query adapters**
    - Mock `SConnection` / `ContentCache` to verify `ContentCacheQuery` and `PersistentCacheQuery` classifications (Hit vs InitCandidate vs NotCacheable) without depending on full server state.
-3. **Tuning via log-only runs**
-   - Run with `TIGERVNC_CC_TILING_DEBUG=1` against real workloads.
-   - Capture logs for representative sessions (PowerPoint, code, terminals) and adjust:
-     - Default tile size.
-     - `minTiles` threshold.
-     - Any additional heuristics needed before enabling real emission.
+3. **Tuning via real-world testing**
+   - Test with PowerPoint-like applications where slide regions have consistent coordinates.
+   - Measure hit rate and bandwidth improvements in production scenarios.
 
 Medium-term next steps:
 
-4. **Prototype cache-based emission (behind a feature flag)**
-   - In `EncodeManager`, add an optional path that, for a selected `MaxRect`:
-     - Emits `CachedRect` / `PersistentCachedRect` updates instead of normal `writeRects()` in that region.
-     - Leaves behaviour unchanged when the feature flag is off.
-5. **Seeding large cached rectangles**
-   - Implement an initial seeding policy based on tiling density and region size.
-   - Start with the dual-path approach (seed via Init but still encode normally) until confident.
-6. **Configuration wiring**
-   - Introduce and document server parameters for tile size and thresholds.
+4. **Fine-grained tile-based emission**
+   - For regions that don't match as a single bounding box, use the tile grid approach to find maximal cacheable sub-regions.
+   - Emit multiple `CachedRect` messages for tiles within a region.
+5. **Configuration wiring**
+   - Expose `WholeRectCacheMinArea` as a server parameter.
+   - Add parameters for tile size and thresholds.
+6. **Performance optimization**
+   - Profile hash computation overhead for large bounding boxes.
+   - Consider caching hash results for recently-computed regions.
 
 ## 12. Implementation Checklist
 
@@ -303,9 +307,10 @@ Medium-term next steps:
 - [x] Implement shared tiling utilities (`TilingAnalysis` & `TilingIntegration`).
 - [x] Integrate log-only tiling analysis into `EncodeManager` behind `TIGERVNC_CC_TILING_DEBUG`.
 - [x] Add unit tests for `buildTilingGrid()` and `findLargestHitRectangle()` (see `tests/unit/tiling_analysis.cxx`).
+- [x] Implement bounding-box cache lookup in `EncodeManager::writeRects()`.
+- [x] Implement bounding-box seeding via `CachedRectSeed` message.
+- [x] Add E2E test for tiling enhancement (`tests/e2e/test_toggle_pictures.py`).
 - [ ] Add unit tests for `ContentCacheQuery` and `PersistentCacheQuery` classification.
-- [ ] Run tiling diagnostics on real sessions and tune tile size / thresholds.
-- [ ] Implement optional cache-based emission path (guarded by a feature flag).
-- [ ] Implement initial seeding policy for large cached rectangles.
-- [ ] Add configuration parameters and update user-facing documentation.
-- [ ] Add focused E2E tests validating bandwidth/latency improvements in static-scene scenarios.
+- [ ] Expose `WholeRectCacheMinArea` as a configurable parameter.
+- [ ] Implement fine-grained tile-based emission for partial matches.
+- [ ] Test with real PowerPoint/presentation applications.

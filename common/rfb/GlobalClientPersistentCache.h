@@ -147,11 +147,15 @@ namespace rfb {
     // Convenience lookup by CacheKey used by the unified cache engine
     const CachedPixels* getByKey(const CacheKey& key);
     
-    // Insert/update a cache entry. The isLossless flag indicates whether
-    // this payload is suitable for on-disk persistence. Lossy entries are
-    // still stored in the in-memory ARC cache but are not marked dirty for
-    // disk flush, so they remain session-only.
-    void insert(const std::vector<uint8_t>& hash, 
+    // Insert/update a cache entry. The cacheId is the 64-bit identifier used
+    // on the wire (and in HashList/eviction notifications). The full hash
+    // vector is the canonical ContentHash for this rect and is used for
+    // disk/index bookkeeping. The isLossless flag indicates whether this
+    // payload is suitable for on-disk persistence. Lossy entries are still
+    // stored in the in-memory ARC cache but are not marked dirty for disk
+    // flush, so they remain session-only.
+    void insert(uint64_t cacheId,
+               const std::vector<uint8_t>& hash,
                const uint8_t* pixels,
                const PixelFormat& pf,
                uint16_t width, uint16_t height,

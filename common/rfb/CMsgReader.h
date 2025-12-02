@@ -81,6 +81,9 @@ namespace rfb {
     // PersistentCache protocol extension (cross-session)
     bool readPersistentCachedRect(const core::Rect& r);
     bool readPersistentCachedRectInit(const core::Rect& r);
+    
+    // Cache seed: associate existing framebuffer pixels with cache ID
+    bool readCachedRectSeed(const core::Rect& r);
 
   private:
     CMsgHandler* handler;

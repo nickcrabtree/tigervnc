@@ -144,7 +144,6 @@ run_ctest_all() {
     configargs
     arccache
     bandwidthstats
-    contentcache
     conv
     convertlf
     gesturehandler

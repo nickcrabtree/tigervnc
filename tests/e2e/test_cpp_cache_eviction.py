@@ -162,9 +162,13 @@ def main():
         # 4. Start content server with selected cache only
         server_params = {}
         if args.cache_type == 'content':
-            server_params['EnablePersistentCache'] = '0'  # ContentCache only
+            # Disable the unified cache engine so that only the viewer-side
+            # ephemeral policy ("ContentCache") is exercised.
+            server_params['EnablePersistentCache'] = '0'
         else:
-            server_params['EnableContentCache'] = '0'  # PersistentCache only
+            # PersistentCache-only mode: leave the unified engine enabled.
+            # ContentCache-specific server flags have been removed.
+            server_params['EnablePersistentCache'] = '1'
         
         print(f"\n[3/8] Starting content server (:{args.display_content})...")
         print(f"  Server config: {cache_name} only")

@@ -87,9 +87,16 @@ class StaticPatternGenerator:
         except Exception:
             return None
     
-    def _pick_image_viewer(self) -> Optional[str]:
-        # Prefer ImageMagick 'display', fall back to 'feh' or 'xloadimage'
-        for candidate in ('display', 'feh', 'xloadimage'):
+    def _pick_image_viewer(self, prefer_fullscreen: bool = False) -> Optional[str]:
+        # When prefer_fullscreen is True, prefer viewers that can do fullscreen
+        # (produces cleaner damage regions for cache testing)
+        # Otherwise prefer ImageMagick 'display', fall back to others
+        if prefer_fullscreen:
+            # feh and eog can do fullscreen; prefer them for cleaner damage regions
+            candidates = ('feh', 'eog', 'display', 'xloadimage')
+        else:
+            candidates = ('display', 'feh', 'eog', 'xloadimage')
+        for candidate in candidates:
             p = self._which(candidate)
             if p:
                 return candidate
@@ -605,6 +612,135 @@ class StaticScenarioRunner:
         wait_idle(duration)
         
         # Cleanup
+        self.log("Scenario complete, cleaning up...")
+        self.cleanup()
+        wait_idle(1.0)
+        
+        self.log(f"Scenario stats: {stats}")
+        return stats
+    
+    def toggle_two_pictures_test(self, picture_a_path: Optional[str] = None,
+                                 picture_b_path: Optional[str] = None,
+                                 toggles: int = 10, delay_between: float = 2.0) -> dict:
+        """
+        Toggle between two pictures repeatedly to test cache hits on repeated content.
+        
+        Strategy:
+        1. Display pictureA (full screen)
+        2. Wait for encoding
+        3. Replace with pictureB (identical replacement = 1 cache hit expected)
+        4. Replace with pictureA (identical replacement = 1 cache hit expected)
+        5. Repeat cycle
+        
+        After cache is hydrated, expect exactly 1 cache hit per toggle.
+        
+        Args:
+            picture_a_path: Path to first picture (default: pictureA.png in test dir)
+            picture_b_path: Path to second picture (default: pictureB.png in test dir)
+            toggles: Number of total toggles between the pictures
+            delay_between: Delay between toggles (seconds)
+        
+        Returns:
+            dict with statistics
+        """
+        self.log(f"Starting toggle_two_pictures_test scenario (toggles={toggles})")
+        
+        stats = {
+            'toggles': 0,
+        }
+        
+        # Default to pictureA.png and pictureB.png in tests/e2e
+        if picture_a_path is None or picture_b_path is None:
+            test_dir = Path(__file__).parent.absolute()  # tests/e2e
+            
+            if picture_a_path is None:
+                picture_a_path = test_dir / 'pictureA.png'
+            if picture_b_path is None:
+                picture_b_path = test_dir / 'pictureB.png'
+        
+        picture_a_path = Path(picture_a_path)
+        picture_b_path = Path(picture_b_path)
+        
+        if not picture_a_path.exists():
+            raise FileNotFoundError(f"Picture A not found: {picture_a_path}")
+        if not picture_b_path.exists():
+            raise FileNotFoundError(f"Picture B not found: {picture_b_path}")
+        
+        self.log(f"Using pictureA: {picture_a_path}")
+        self.log(f"Using pictureB: {picture_b_path}")
+        
+        env = {**os.environ, 'DISPLAY': f':{self.display}'}
+        
+        # Use feh/eog (if available) as they create cleaner damage regions than ImageMagick display.
+        # If feh/eog not available, fall back to display.
+        viewer = self.generator._pick_image_viewer(prefer_fullscreen=True)
+        if viewer is None:
+            raise FileNotFoundError("No image viewer found (tried: feh, eog, display, xloadimage)")
+        
+        self.log(f"Using image viewer: {viewer}")
+        
+        # Display pictureA first (no cache hit expected on first display)
+        self.log("Displaying pictureA (initial)")
+        if viewer == 'feh':
+            # feh with fullscreen creates cleaner single-rect damage
+            cmd = ['feh', '--fullscreen', '--auto-zoom', str(picture_a_path)]
+        elif viewer == 'eog':
+            # eog with fullscreen flag
+            cmd = ['eog', '--fullscreen', str(picture_a_path)]
+        elif viewer == 'display':
+            cmd = ['display', '-title', 'toggle_picture', str(picture_a_path)]
+        else:  # xloadimage
+            cmd = ['xloadimage', str(picture_a_path)]
+        
+        proc = subprocess.Popen(
+            cmd,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        self.pids.append(proc.pid)
+        wait_idle(delay_between)
+        
+        current_picture = picture_a_path
+        next_picture = picture_b_path
+        
+        # Toggle between pictures
+        for toggle_num in range(toggles):
+            self.log(f"Toggle {toggle_num + 1}/{toggles}: Switching to {next_picture.name}")
+            
+            # Kill the current display process
+            try:
+                os.kill(proc.pid, 15)  # SIGTERM
+                wait_idle(0.5)
+            except ProcessLookupError:
+                pass
+            
+            # Display next picture
+            if viewer == 'feh':
+                cmd = ['feh', '--fullscreen', '--auto-zoom', str(next_picture)]
+            elif viewer == 'eog':
+                cmd = ['eog', '--fullscreen', str(next_picture)]
+            elif viewer == 'display':
+                cmd = ['display', '-title', 'toggle_picture', str(next_picture)]
+            else:
+                cmd = ['xloadimage', str(next_picture)]
+            
+            proc = subprocess.Popen(
+                cmd,
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            self.pids.append(proc.pid)
+            stats['toggles'] += 1
+            
+            # Allow time for VNC encoding/transmission
+            wait_idle(delay_between)
+            
+            # Swap for next iteration
+            current_picture, next_picture = next_picture, current_picture
+        
+        # Final cleanup
         self.log("Scenario complete, cleaning up...")
         self.cleanup()
         wait_idle(1.0)

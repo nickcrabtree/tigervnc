@@ -230,7 +230,8 @@ GlobalClientPersistentCache::getByKey(const CacheKey& key)
   return get(it->second);
 }
 
-void GlobalClientPersistentCache::insert(const std::vector<uint8_t>& hash,
+void GlobalClientPersistentCache::insert(uint64_t cacheId,
+                                         const std::vector<uint8_t>& hash,
                                          const uint8_t* pixels,
                                          const PixelFormat& pf,
                                          uint16_t width, uint16_t height,
@@ -240,14 +241,15 @@ void GlobalClientPersistentCache::insert(const std::vector<uint8_t>& hash,
   if (!arcCache_ || pixels == nullptr || width == 0 || height == 0)
     return;
 
+  // Construct the shared ContentKey using the explicit cacheId for
+  // contentHash rather than deriving it from the hash bytes. This keeps
+  // the on-wire 64-bit ID and the in-memory key perfectly aligned while
+  // allowing the full hash vector to remain a pure ContentHash of the
+  // decoded pixels.
   CacheKey key;
   key.width = width;
   key.height = height;
-  key.contentHash = 0;
-  if (!hash.empty()) {
-    size_t n = std::min(hash.size(), sizeof(uint64_t));
-    memcpy(&key.contentHash, hash.data(), n);
-  }
+  key.contentHash = cacheId;
 
   // Update ARC statistics: treat new inserts as misses and
   // re-initialisations of existing entries as hits.
