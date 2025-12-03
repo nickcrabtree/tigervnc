@@ -83,17 +83,6 @@ namespace {
     return buf;
   }
 
-  // Format first 8 bytes of hash as hex (no separators)
-  /*inline const char* hex8(const uint8_t* data, size_t len) {
-    static thread_local char buf[17];
-    size_t n = (len < 8) ? len : 8;
-    for (size_t i = 0; i < n; i++) {
-      snprintf(buf + i*2, 3, "%02x", data[i]);
-    }
-    buf[n*2] = '\0';
-    return buf;
-  }*/
-
   // Format a 64-bit hash as hex
   inline const char* hex64(uint64_t hash) {
     static thread_local char buf[17];
@@ -104,6 +93,77 @@ namespace {
   // Format yes/no
   inline const char* yesNo(bool b) {
     return b ? "yes" : "no";
+  }
+
+  // Helper: when TIGERVNC_FB_HASH_DEBUG is set, dump the first few bytes
+  // of the canonical 32bpp little-endian representation for a rectangle
+  // together with its 64-bit cache ID. This lets us compare server/client
+  // hashing domains directly from logs.
+  inline bool isFBHashDebugEnabled() {
+    const char* env = getenv("TIGERVNC_FB_HASH_DEBUG");
+    return env && env[0] != '\0' && env[0] != '0';
+  }
+
+  inline void logFBHashDebug(const char* tag,
+                             const core::Rect& r,
+                             uint64_t cacheId,
+                             const PixelBuffer* pb) {
+    if (!isFBHashDebugEnabled() || !pb)
+      return;
+
+    int width = r.width();
+    int height = r.height();
+    if (width <= 0 || height <= 0)
+      return;
+
+    // Canonical 32bpp format (must match ContentHash::computeRect and
+    // client-side debug helpers).
+    static const PixelFormat canonicalPF(32, 24,
+                                         false,  // little-endian buffer
+                                         true,   // trueColour
+                                         255, 255, 255,
+                                         16, 8, 0);
+
+    const int bppBytes = canonicalPF.bpp / 8; // 4
+    const size_t rowBytes = static_cast<size_t>(width) * bppBytes;
+
+    // Limit to a reasonably small buffer; if the rectangle is huge we
+    // still only need the first few rows for debugging.
+    const int maxRows = 8;
+    int rows = height < maxRows ? height : maxRows;
+
+    std::vector<uint8_t> tmp;
+    try {
+      tmp.resize(static_cast<size_t>(rows) * rowBytes);
+    } catch (...) {
+      return;
+    }
+
+    try {
+      // Use getImage() in canonical format with stride=width so data is
+      // tightly packed; we only copy the top rows into our smaller buffer.
+      std::vector<uint8_t> full;
+      full.resize(static_cast<size_t>(height) * rowBytes);
+      pb->getImage(canonicalPF, full.data(), r, width);
+
+      size_t bytesToCopy = tmp.size();
+      if (bytesToCopy > full.size())
+        bytesToCopy = full.size();
+      memcpy(tmp.data(), full.data(), bytesToCopy);
+    } catch (...) {
+      return;
+    }
+
+    size_t n = tmp.size() < 32 ? tmp.size() : 32;
+    char hexBuf[32 * 2 + 1];
+    for (size_t i = 0; i < n; ++i)
+      snprintf(hexBuf + i * 2, 3, "%02x", tmp[i]);
+    hexBuf[n * 2] = '\0';
+
+    vlog.info("FBHASH %s: rect=[%d,%d-%d,%d] id=%s bytes[0:%zu]=%s",
+              tag,
+              r.tl.x, r.tl.y, r.br.x, r.br.y,
+              hex64(cacheId), n, hexBuf);
   }
 
   // (strContentKey helper removed: unified cache path now logs IDs via hex64
@@ -945,10 +1005,10 @@ void EncodeManager::writeRects(const core::Region& changed,
     vlog.info("CCDBG writeRects: region has %d rects", changed.numRects());
   }
 
-  // Check if client supports cache protocol
+  // Check if client supports the PersistentCache protocol. ContentCache is
+  // now a viewer-side alias and does not have its own pseudo-encoding.
   bool clientSupportsCache =
-    conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
-    conn->client.supportsEncoding(pseudoEncodingContentCache);
+    conn->client.supportsEncoding(pseudoEncodingPersistentCache);
 
   // TILING ENHANCEMENT: Before processing individual damage rects, detect
   // bordered content regions in the framebuffer. These are rectangular areas
@@ -1006,6 +1066,9 @@ void EncodeManager::writeRects(const core::Region& changed,
         size_t n = std::min(contentHash.size(), sizeof(uint64_t));
         memcpy(&contentId, contentHash.data(), n);
       }
+
+      // Debug: record the canonical bytes used for this content region.
+      logFBHashDebug("bordered", contentRect, contentId, pb);
       
       // Check if this content is already cached
       bool hasMatch = conn->knowsPersistentId(contentId);
@@ -1058,6 +1121,9 @@ void EncodeManager::writeRects(const core::Region& changed,
         size_t n = std::min(bboxHash.size(), sizeof(uint64_t));
         memcpy(&bboxId, bboxHash.data(), n);
       }
+
+      // Debug: log canonical bytes for the bounding box domain.
+      logFBHashDebug("bbox", bbox, bboxId, pb);
       
       // Check if bounding box matches cached content
       bool hasHit = conn->knowsPersistentId(bboxId);
@@ -1109,6 +1175,9 @@ void EncodeManager::writeRects(const core::Region& changed,
         memcpy(&bboxIdForSeeding, bboxHash.data(), n);
         bboxForSeeding = bbox;
         shouldSeedBbox = !conn->knowsPersistentId(bboxIdForSeeding);
+
+        // Debug: log canonical bytes for the seeding domain.
+        logFBHashDebug("bboxSeed", bboxForSeeding, bboxIdForSeeding, pb);
       }
     }
   }
@@ -1179,6 +1248,9 @@ void EncodeManager::writeRects(const core::Region& changed,
       size_t n = std::min(contentHash.size(), sizeof(uint64_t));
       memcpy(&contentId, contentHash.data(), n);
     }
+
+    // Debug: log canonical bytes for bordered region seeds.
+    logFBHashDebug("borderedSeed", contentRect, contentId, pb);
     
     // Only seed if not already known
     if (!conn->knowsPersistentId(contentId)) {
@@ -1202,8 +1274,7 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
   // now aliases the same engine via viewer/server policy.
   
   bool clientSupportsUnifiedCache =
-    conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
-    conn->client.supportsEncoding(pseudoEncodingContentCache);
+    conn->client.supportsEncoding(pseudoEncodingPersistentCache);
   
   if (isCCDebugEnabled()) {
     vlog.info("CCDBG writeSubRect: rect=%s area=%d clientCache=%s",
@@ -1212,8 +1283,8 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
   }
   
   if (usePersistentCache && clientSupportsUnifiedCache) {
-    // Use unified cache protocol whenever the client has negotiated
-    // either ContentCache or PersistentCache encodings.
+    // Use unified cache protocol whenever the client has negotiated the
+    // PersistentCache encoding.
     vlog.debug("CC attempt unified cache lookup for rect (%s)", strRect(rect));
     if (tryPersistentCacheLookup(rect, pb))
       return;
@@ -1567,6 +1638,10 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     memcpy(&cacheId, fullHash.data(), n);
   }
 
+  // Optional framebuffer hash debug: log the canonical bytes used for
+  // hashing at the exact point where the server computes cacheId.
+  logFBHashDebug("tryLookup", rect, cacheId, pb);
+
   
   // Check if client knows this content via the 64-bit ID. Internally we
   // track identity as the ContentKey above so ContentCache and
@@ -1612,6 +1687,20 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   selectEncoderForRect(rect, pb, ppb, &info, type);
 
   payloadEnc = encoders[activeEncoders[type]];
+
+  // Do NOT use PersistentCache for rectangles that will be encoded with a
+  // potentially lossy encoder (e.g. Tight with JPEG). In that case the
+  // decoded pixels on the client are not guaranteed to be bit-identical to
+  // the server's framebuffer, so any hash-based identity would be unstable
+  // and could cause visual divergence when reused from cache. Fall back to
+  // the normal encoding path for such rects.
+  if (payloadEnc->flags & EncoderLossy) {
+    vlog.debug("PersistentCache: skipping INIT for rect [%d,%d-%d,%d] id=%s due to lossy encoder %d",
+               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
+               hex64(cacheId), payloadEnc->encoding);
+    return false;
+  }
+
   // Emit PersistentCachedRectInit header (ID + encoding)
   conn->writer()->writePersistentCachedRectInit(rect, cacheId, payloadEnc->encoding);
   // Prepare pixel buffer respecting native-PF usage for the payload encoder

@@ -138,29 +138,117 @@ def _run_cpp_viewer(
     return proc
 
 
+# Track window IDs we have already associated with specific viewers so that
+# fallback logic can pick distinct windows when PID-based lookup fails.
+_assigned_viewer_windows: set[str] = set()
+
+
 def _find_window_id_for_pid(display: int, pid: int) -> str:
-    """Use xdotool to find a window ID for the given PID on the display."""
+    """Find a viewer window ID on the given display.
+
+    Primary strategy:
+    - Use xdotool search --pid to locate a window whose _NET_WM_PID matches
+      the viewer process. This is retried for a short period to handle
+      asynchronous window mapping.
+
+    Fallback strategy:
+    - If no window is ever associated with that PID (for example, if the
+      viewer spawns a helper process that owns the window), fall back to
+      parsing wmctrl -lp output on the same display and pick a suitable
+      candidate window that we have not already assigned.
+    """
 
     import subprocess
+    import time
 
     env = {**os.environ, "DISPLAY": f":{display}"}
-    result = subprocess.run(
-        ["xdotool", "search", "--pid", str(pid)],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=10.0,
-    )
-    if result.returncode != 0:
-        raise PreflightError(
-            f"xdotool could not find a window for viewer PID {pid}: {result.stderr.strip()}"
+    deadline = time.time() + 15.0
+    last_stderr = ""
+
+    # First try the PID-based lookup, which is the most precise when it works.
+    while time.time() < deadline:
+        result = subprocess.run(
+            ["xdotool", "search", "--pid", str(pid)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=5.0,
         )
 
-    lines = [l for l in result.stdout.splitlines() if l.strip()]
-    if not lines:
-        raise PreflightError(f"No window IDs returned for viewer PID {pid}")
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
 
-    return lines[0].strip()
+        if result.returncode == 0 and stdout:
+            lines = [l for l in stdout.splitlines() if l.strip()]
+            if lines:
+                win_id = lines[0].strip()
+                _assigned_viewer_windows.add(win_id)
+                return win_id
+
+        if stderr:
+            last_stderr = stderr
+
+        time.sleep(0.5)
+
+    # PID-based lookup failed; fall back to wmctrl-based discovery on this
+    # dedicated viewer display. We expect only the two viewer windows plus
+    # a tiny helper xterm named "bb_focus_sentinel".
+    try:
+        result = subprocess.run(
+            ["wmctrl", "-lp"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+    except Exception as exc:
+        detail = f" (wmctrl fallback failed: {exc})"
+        detail_err = f": {last_stderr}" if last_stderr else detail
+        raise PreflightError(
+            f"Failed to locate a window for viewer PID {pid}{detail_err}"
+        ) from exc
+
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        detail = f": {stderr}" if stderr else ""
+        raise PreflightError(
+            f"wmctrl could not list windows on display :{display}{detail}"
+        )
+
+    candidates: list[tuple[str, int, str]] = []  # (win_id, pid_col, title)
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 4)
+        if len(parts) < 5:
+            continue
+        win_id_hex, _desktop, pid_str, _host, title = parts
+        # Skip the tiny helper xterm we create to hold focus/cursor.
+        if "bb_focus_sentinel" in title:
+            continue
+        try:
+            pid_col = int(pid_str)
+        except ValueError:
+            pid_col = -1
+        candidates.append((win_id_hex, pid_col, title))
+
+    # 1) Prefer any window whose wmctrl PID column matches the viewer PID.
+    for win_id_hex, pid_col, _title in candidates:
+        if pid_col == pid and win_id_hex not in _assigned_viewer_windows:
+            _assigned_viewer_windows.add(win_id_hex)
+            return win_id_hex
+
+    # 2) Otherwise, fall back to the first unassigned non-helper window.
+    for win_id_hex, _pid_col, _title in candidates:
+        if win_id_hex not in _assigned_viewer_windows:
+            _assigned_viewer_windows.add(win_id_hex)
+            return win_id_hex
+
+    detail = f": {last_stderr}" if last_stderr else ""
+    raise PreflightError(
+        f"xdotool/wmctrl could not find a suitable window for viewer PID {pid}{detail}"
+    )
 
 
 def _arrange_viewer_windows(
@@ -170,13 +258,21 @@ def _arrange_viewer_windows(
     total_width: int,
     total_height: int,
 ) -> None:
-    """Place two viewer windows side-by-side on the viewer display."""
+    """Place two viewer windows side-by-side on the viewer display.
+
+    We intentionally leave a small margin at the top of the display so that
+    a tiny helper window can own the keyboard focus and mouse cursor without
+    overlapping the viewer windows. This keeps both viewers unfocused and
+    the local cursor outside their client areas during screenshot capture.
+    """
 
     import subprocess
 
     env = {**os.environ, "DISPLAY": f":{display}"}
 
     half_width = total_width // 2
+    margin_top = 40
+    usable_height = max(1, total_height - margin_top)
 
     for win_id, x in ((win_a, 0), (win_b, half_width)):
         cmd = [
@@ -185,7 +281,7 @@ def _arrange_viewer_windows(
             "-r",
             win_id,
             "-e",
-            f"0,{x},0,{half_width},{total_height}",
+            f"0,{x},{margin_top},{half_width},{usable_height}",
         ]
         result = subprocess.run(
             cmd,
@@ -209,11 +305,7 @@ def _capture_window(
     win_id: str,
     outfile: Path,
 ) -> Path:
-    """Capture a screenshot of a single viewer window (client area).
-
-    This avoids including window-manager decorations and background,
-    reducing spurious differences between viewers.
-    """
+    """Capture a screenshot of a single viewer window."""
 
     import subprocess
 
@@ -248,21 +340,49 @@ def _capture_window(
             f"Screenshot capture failed for window {win_id} (backend={backend}): {result.stderr.strip()}"
         )
 
-    # Crop away a small border to avoid window frame / rounding artefacts
-    try:
-        from PIL import Image  # type: ignore
-
-        img = Image.open(outfile).convert("RGBA")
-        w, h = img.size
-        margin = 4
-        if w > 2 * margin and h > 2 * margin:
-            cropped = img.crop((margin, margin, w - margin, h - margin))
-            cropped.save(outfile)
-    except Exception:
-        # If cropping fails for any reason, keep the original image
-        pass
-
     return outfile
+
+
+def _defocus_and_hide_cursor(display: int, helper_win: str) -> None:
+    """Give focus to a tiny helper window and move the cursor inside it.
+
+    This ensures both viewer windows remain unfocused and the local cursor
+    stays in the helper window's area (above them) while screenshots are
+    captured.
+    """
+
+    import subprocess
+
+    env = {**os.environ, "DISPLAY": f":{display}"}
+
+    # Activate the helper window so that it owns the keyboard focus.
+    result = subprocess.run(
+        ["wmctrl", "-i", "-a", helper_win],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10.0,
+    )
+    if result.returncode != 0:
+        raise PreflightError(
+            f"Failed to activate helper window {helper_win}: {result.stderr.strip()}"
+        )
+
+    # Warp the cursor inside the helper window. This keeps it away from the
+    # viewer windows, which start below the reserved top margin.
+    result = subprocess.run(
+        ["xdotool", "mousemove", "--window", helper_win, "5", "5"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10.0,
+    )
+    if result.returncode != 0:
+        raise PreflightError(
+            f"Failed to move cursor into helper window {helper_win}: {result.stderr.strip()}"
+        )
+
+    time.sleep(0.2)
 
 
 def main() -> int:
@@ -318,6 +438,15 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--scenario",
+        default="cache",
+        choices=["cache", "browser"],
+        help=(
+            "Content scenario: cache (xterm cache_hits_minimal) or "
+            "browser (bbc.com scroll). Default: cache"
+        ),
+    )
+    parser.add_argument(
         "--viewer-geometry",
         default="1600x1000",
         help="Geometry for viewer window display (default: 1600x1000)",
@@ -340,6 +469,7 @@ def main() -> int:
     print("Black-Box Screenshot Test (C++ viewer vs C++ viewer)")
     print("=" * 70)
     print(f"Mode: {args.mode}")
+    print(f"Scenario: {args.scenario}")
     print(f"Duration: {args.duration}s, Checkpoints: {args.checkpoints}")
     print()
 
@@ -480,8 +610,26 @@ def main() -> int:
         print("  Arranging viewer windows side-by-side...")
         win_ground = _find_window_id_for_pid(args.display_viewer, viewer_ground.pid)
         win_cache = _find_window_id_for_pid(args.display_viewer, viewer_cache.pid)
-        _arrange_viewer_windows(args.display_viewer, win_ground, win_cache, viewer_width, viewer_height)
+        _arrange_viewer_windows(
+            args.display_viewer,
+            win_ground,
+            win_cache,
+            viewer_width,
+            viewer_height,
+        )
         print("  Viewer windows arranged")
+
+        # Create a tiny helper window above the viewers, give it focus and
+        # move the cursor into it so that both viewer windows are unfocused
+        # and cursor-free during screenshot capture.
+        print("  Unfocusing viewer windows and hiding cursor...")
+        helper_proc = server_viewer.run_in_display(
+            ["xterm", "-geometry", "10x1+0+0", "-name", "bb_focus_sentinel"],
+            name="bb_focus_sentinel",
+        )
+        helper_win = _find_window_id_for_pid(args.display_viewer, helper_proc.pid)
+        _defocus_and_hide_cursor(args.display_viewer, helper_win)
+        print("  Viewer focus and cursor normalised")
 
         # 6. Start scenario on content server in background
         print("\n[6/8] Starting scenario on content server...")
@@ -489,7 +637,10 @@ def main() -> int:
 
         def _scenario_thread_body():
             try:
-                runner.cache_hits_minimal(duration_sec=args.duration)
+                if args.scenario == "browser":
+                    runner.browser_scroll_bbc(duration_sec=args.duration)
+                else:
+                    runner.cache_hits_minimal(duration_sec=args.duration)
             finally:
                 runner.cleanup()
 
@@ -546,22 +697,11 @@ def main() -> int:
             diff_png = artifacts.screenshots_dir / f"checkpoint_{idx}_diff.png"
             diff_json = artifacts.reports_dir / f"checkpoint_{idx}_diff.json"
 
-            # Ignore small regions where the local cursor or stats widget live.
-            # Coordinates are in window space; tuned for 800x1000-ish windows but
-            # normalised and clipped inside compare_screenshots.
-            ignore_rects = [
-                # Bottom-left corner: mouse cursor
-                (0, viewer_height - 200, 160, viewer_height - 1),
-                # Bottom-right corner: network stats widget
-                (viewer_width - 320, viewer_height - 220, viewer_width - 1, viewer_height - 1),
-            ]
-
             result = compare_screenshots(
                 gt_path,
                 cache_path,
                 diff_out=diff_png,
                 json_out=diff_json,
-                ignore_rects=ignore_rects,
             )
 
             if result.identical:

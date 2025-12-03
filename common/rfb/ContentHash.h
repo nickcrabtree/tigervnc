@@ -73,54 +73,87 @@ namespace rfb {
 #endif
     }
 
-    // Compute hash for a rectangle region in a PixelBuffer
-    // Handles stride-in-pixels correctly and includes width/height.
+    // Compute hash for a rectangle region in a PixelBuffer.
+    //
+    // IMPORTANT: To guarantee that server and client compute identical
+    // hashes for the same visual content, this helper always hashes a
+    // canonical pixel representation (32bpp little-endian true-colour)
+    // regardless of the underlying PixelFormat of the PixelBuffer.
+    //
+    // The hashing domain is therefore:
+    //   MD5( width || height || canonical_pixels )
+    // where canonical_pixels is a tightly packed stream of RGBA-like
+    // pixels produced via PixelFormat::bufferFromBuffer(). This removes
+    // dependencies on host endianness or framebuffer-native formats and
+    // ensures that PersistentCache/ContentCache IDs are stable across
+    // server and viewer implementations.
     static std::vector<uint8_t> computeRect(const PixelBuffer* pb,
                                            const core::Rect& r) {
-      int stride;
-      const uint8_t* pixels = pb->getBuffer(r, &stride);
-      if (!pixels)
+      if (!pb)
         return std::vector<uint8_t>(16);
 
-      int bytesPerPixel = pb->getPF().bpp / 8;
-      size_t rowBytes = r.width() * bytesPerPixel;
-      size_t strideBytes = stride * bytesPerPixel;
-
-#ifdef HAVE_GNUTLS
-      gnutls_hash_hd_t ctx;
-      if (gnutls_hash_init(&ctx, GNUTLS_DIG_MD5) != 0)
+      if (r.width() <= 0 || r.height() <= 0)
         return std::vector<uint8_t>(16);
 
-      // Include dimensions
+      // Canonical 32bpp, 24-bit depth, little-endian true-colour format.
+      // Masks/shifts correspond to 0x00RRGGBB layout in native byte order
+      // (blue in least-significant byte).
+      static const PixelFormat canonicalPF(32, 24,
+                                           false,  // little-endian buffer
+                                           true,   // trueColour
+                                           255, 255, 255,  // red/green/blue max
+                                           16, 8, 0);      // R,G,B shifts
+
       uint32_t width = r.width();
       uint32_t height = r.height();
-      gnutls_hash(ctx, &width, sizeof(width));
-      gnutls_hash(ctx, &height, sizeof(height));
 
-      for (int y = 0; y < r.height(); y++) {
-        const uint8_t* row = pixels + (y * strideBytes);
-        gnutls_hash(ctx, row, rowBytes);
+      const int bytesPerPixel = canonicalPF.bpp / 8; // 4
+      const size_t rowBytes = static_cast<size_t>(width) * bytesPerPixel;
+
+      // Allocate buffer: width/height header + tightly packed canonical
+      // pixel bytes for the rectangle.
+      std::vector<uint8_t> buf;
+      try {
+        buf.resize(sizeof(width) + sizeof(height) +
+                   static_cast<size_t>(height) * rowBytes);
+      } catch (...) {
+        // On allocation failure, return a zeroed hash vector.
+        return std::vector<uint8_t>(16);
       }
 
-      std::vector<uint8_t> hash(16);
-      gnutls_hash_deinit(ctx, hash.data());
-      return hash;
-#else
-      // Fallback: build a temporary buffer of the exact rect bytes
-      std::vector<uint8_t> tmp;
-      tmp.reserve(sizeof(uint32_t) * 2 + (size_t)r.height() * rowBytes);
-      uint32_t width = r.width();
-      uint32_t height = r.height();
-      tmp.insert(tmp.end(), reinterpret_cast<uint8_t*>(&width),
-                 reinterpret_cast<uint8_t*>(&width) + sizeof(width));
-      tmp.insert(tmp.end(), reinterpret_cast<uint8_t*>(&height),
-                 reinterpret_cast<uint8_t*>(&height) + sizeof(height));
-      for (int y = 0; y < r.height(); y++) {
-        const uint8_t* row = pixels + (y * strideBytes);
-        tmp.insert(tmp.end(), row, row + rowBytes);
+      // Serialize dimensions (host byte order is fine as long as both
+      // sides use the same representation).
+      memcpy(buf.data(), &width, sizeof(width));
+      memcpy(buf.data() + sizeof(width), &height, sizeof(height));
+
+      // Convert the rectangle to the canonical pixel format into the
+      // tail of the buffer.
+      uint8_t* pixelDst = buf.data() + sizeof(width) + sizeof(height);
+      try {
+        // Destination stride is in pixels; use exact width so the
+        // canonical representation is tightly packed.
+        pb->getImage(canonicalPF, pixelDst, r, static_cast<int>(width));
+      } catch (...) {
+        // Any out_of_range or other exceptions indicate a programming
+        // error in the caller; return a zeroed hash to avoid UB.
+        return std::vector<uint8_t>(16);
       }
-      return compute(tmp.data(), tmp.size());
-#endif
+
+      // Normalise the unused/padding byte in our 32bpp representation so
+      // that differences in how various PixelFormats populate the top 8 bits
+      // (e.g. 0x00 vs 0xff) do not affect the hash. Only the low 24 bits of
+      // each pixel (R,G,B) carry semantic information for our purposes.
+      const int bppBytes = canonicalPF.bpp / 8; // expected 4
+      if (bppBytes == 4) {
+        const size_t totalPixels = static_cast<size_t>(width) * height;
+        for (size_t i = 0; i < totalPixels; ++i) {
+          pixelDst[i * 4 + 3] = 0;
+        }
+      }
+
+      // Delegate to the generic byte hashing helper, which will use
+      // MD5 via GnuTLS when available, or the FNV-1a-style fallback.
+      return compute(buf.data(), buf.size());
     }
 
     // Hash vector hasher for use with unordered containers

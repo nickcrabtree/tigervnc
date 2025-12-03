@@ -389,29 +389,25 @@ void SConnection::setEncodings(int nEncodings, const int32_t* encodings)
     
     // Check for key encodings
     bool hasLastRect = false;
-    bool hasContentCache = false;
     bool hasPersistentCache = false;
     for (int i = 0; i < nEncodings; i++) {
       if (encodings[i] == pseudoEncodingLastRect) hasLastRect = true;
-      if (encodings[i] == pseudoEncodingContentCache) hasContentCache = true;
       if (encodings[i] == pseudoEncodingPersistentCache) hasPersistentCache = true;
     }
-    vlog.info("  Key encodings: LastRect=%d ContentCache=%d PersistentCache=%d",
-              hasLastRect, hasContentCache, hasPersistentCache);
+    vlog.info("  Key encodings: LastRect=%d PersistentCache=%d",
+              hasLastRect, hasPersistentCache);
   }
 
   client.setEncodings(nEncodings, encodings);
 
-  // Check for PersistentCache support (preferred over ContentCache)
-  // The protocol negotiation: if client supports PersistentCache, use it
-  // Otherwise fall back to ContentCache if supported
-  vlog.debug("Client encodings: PersistentCache=%d, ContentCache=%d",
-             client.supportsEncoding(pseudoEncodingPersistentCache),
-             client.supportsEncoding(pseudoEncodingContentCache));
+  // Check for PersistentCache support. ContentCache is now treated purely as
+  // a viewer-side policy alias, so the server only considers the
+  // PersistentCache pseudo-encoding when deciding whether to use the cache
+  // protocol on this connection.
+  vlog.debug("Client encodings: PersistentCache=%d",
+             client.supportsEncoding(pseudoEncodingPersistentCache));
   if (client.supportsEncoding(pseudoEncodingPersistentCache) && Server::enablePersistentCache) {
     vlog.info("Using PersistentCache protocol");
-  } else if (client.supportsEncoding(pseudoEncodingContentCache)) {
-    vlog.info("Using ContentCache protocol (PersistentCache not available)");
   }
 
   supportsLocalCursor();

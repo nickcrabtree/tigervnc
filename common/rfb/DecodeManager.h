@@ -114,7 +114,10 @@ namespace rfb {
     // Session-only ContentCache helpers (no on-disk persistence). These are
     // used both for true ContentCache protocol messages and as a fallback
     // when PersistentCache protocol messages are received but the viewer's
-    // PersistentCache option is disabled (PersistentCache=0).
+    // PersistentCache option is disabled (PersistentCache=0). In the unified
+    // implementation they are backed by the same GlobalClientPersistentCache
+    // engine as PersistentCache, but inserts are flagged as non-persistent so
+    // they never hit disk.
     void handleContentCacheRect(const core::Rect& r, uint64_t cacheId,
                                 ModifiablePixelBuffer* pb);
     void storeContentCacheRect(const core::Rect& r, uint64_t cacheId,
@@ -178,8 +181,15 @@ namespace rfb {
     // bandwidth (now used by the unified cache engine / PersistentCache).
     size_t lastDecodedRectBytes;
     
-    // Client-side persistent cache (PersistentCache - cross-session)
+    // Client-side persistent cache engine. This single instance backs both
+    // PersistentCache (cross-session, optionally disk-backed) and session-only
+    // ContentCache (no disk). ContentCache operations share the same 64-bit ID
+    // space but mark inserts as non-persistent so they never produce disk I/O.
     GlobalClientPersistentCache* persistentCache;
+    // Whether disk persistence is enabled for this connection. When false,
+    // the viewer will never read or write any PersistentCache files even
+    // though it may still negotiate the PersistentCache protocol on the wire.
+    bool persistentCacheDiskEnabled_;
     struct PersistentCacheStats {
       unsigned cache_hits;
       unsigned cache_lookups;
@@ -190,8 +200,9 @@ namespace rfb {
     PersistentCacheStats persistentCacheStats;
     
     // Session-only ContentCache statistics (no disk). These mirror the
-    // semantics of the legacy ContentCache implementation but are backed
-    // by a byte-bounded ARC in-memory cache keyed by CacheKey.
+    // semantics of the legacy ContentCache implementation but are now
+    // measured on top of the unified GlobalClientPersistentCache engine
+    // instead of a separate ARC instance.
     struct ContentCacheStats {
       unsigned cache_hits;
       unsigned cache_lookups;
@@ -199,18 +210,6 @@ namespace rfb {
       unsigned stores;
     };
     ContentCacheStats contentCacheStats_;
-    
-    // Session-only ContentCache storage: ARC-managed in-memory cache keyed
-    // by CacheKey, reusing the CachedPixels struct from
-    // GlobalClientPersistentCache so that blitting logic is identical.
-    std::unique_ptr<rfb::cache::ArcCache<CacheKey,
-                                         GlobalClientPersistentCache::CachedPixels,
-                                         CacheKeyHash>> contentCache_;
-    
-    // Pending ContentCache evictions to notify the server about at the next
-    // flush(). Stored as 64-bit cache IDs matching the on-wire ContentCache
-    // ID space.
-    std::vector<uint64_t> contentCachePendingEvictions_;
     
     // PersistentCache bandwidth savings tracking
     rfb::cache::CacheProtocolStats persistentCacheBandwidthStats;
@@ -225,6 +224,15 @@ namespace rfb {
 
     // Guard to ensure we only trigger PersistentCache disk load once per connection
     bool persistentCacheLoadTriggered;
+
+    // When true, the viewer has detected a systemic mismatch between the
+    // server-provided PersistentCache IDs and the locally computed content
+    // hashes. In this mode we continue to request full updates from the
+    // server via PersistentCacheQuery but we no longer trust or mutate any
+    // client-side PersistentCache state. This guards against visual
+    // corruption by effectively degrading to a cache-off behaviour for the
+    // remainder of the session.
+    bool persistentCacheBroken_;
 
 #ifdef UNIT_TEST
   public:

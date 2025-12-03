@@ -488,34 +488,19 @@ void VNCSConnectionST::setEncodings(int nEncodings, const int32_t* encodings)
 {
   SConnection::setEncodings(nEncodings, encodings);
   
-  // Decide which on-wire cache protocol (if any) to use based on the
-  // client's advertised encodings. The backing engine in EncodeManager is
-  // shared for both ContentCache and PersistentCache; Server::enablePersistentCache
-  // now controls only whether the *persistent* (cross-session) policy is
-  // allowed, not whether the unified cache engine is active at all.
+  // Decide whether to use the cache protocol based on the client's
+  // PersistentCache pseudo-encoding. ContentCache is now a viewer-side
+  // alias that reuses the same on-wire protocol.
   bool clientWantsPersistent = client.supportsEncoding(pseudoEncodingPersistentCache);
-  bool clientWantsContent = client.supportsEncoding(pseudoEncodingContentCache);
 
-  // Unified cache engine is enabled whenever the client has negotiated at
-  // least one cache pseudo-encoding. This ensures that ContentCache-only
-  // configurations (EnablePersistentCache=0 on the server, PersistentCache=0
-  // on the viewer) still exercise the cache protocol for the purposes of
-  // tests like test_cachedrect_init_propagation.py, test_cpp_cache_back_to_back.py
-  // (phase 1), and test_cpp_cache_eviction.py --cache-type=content.
-  if (clientWantsPersistent || clientWantsContent) {
+  if (clientWantsPersistent) {
     encodeManager.setUsePersistentCache(true);
   } else {
     encodeManager.setUsePersistentCache(false);
   }
 
-  // For diagnostics, retain a high-level log of which policy we expect the
-  // viewer to apply. PersistentCache is preferred where both are available
-  // and the server policy allows it; otherwise we fall back to a
-  // session-only ContentCache policy.
   if (clientWantsPersistent && Server::enablePersistentCache) {
     vlog.info("PersistentCache enabled for this connection (server allows persistence)");
-  } else if (clientWantsContent) {
-    vlog.info("ContentCache enabled for this connection (session-only policy)");
   }
 }
 
@@ -880,16 +865,22 @@ void VNCSConnectionST::handleRequestCachedData(uint64_t cacheId)
 
 void VNCSConnectionST::handleCacheEviction(const std::vector<uint64_t>& cacheIds)
 {
-  vlog.debug("Client evicted %u cache entries", (unsigned)cacheIds.size());
+  vlog.debug("Client evicted %u cache entries (ContentCache policy)", (unsigned)cacheIds.size());
   
-  // Remove evicted cache IDs from our tracking set
+  // Remove evicted cache IDs from all unified tracking sets so future
+  // lookups will treat them as misses regardless of protocol flavour.
   for (uint64_t cacheId : cacheIds) {
     knownCacheIds_.erase(cacheId);
+    knownPersistentIds_.erase(cacheId);
     lastCachedRectRef_.erase(cacheId);
+    encodeManager.removeClientKnownHash(cacheId);
+    auto it = clientRequestedPersistentIds_.find(cacheId);
+    if (it != clientRequestedPersistentIds_.end())
+      clientRequestedPersistentIds_.erase(it);
   }
   
-  vlog.info("Updated knownCacheIds_: removed %u IDs, %u remaining",
-            (unsigned)cacheIds.size(), (unsigned)knownCacheIds_.size());
+  vlog.info("Updated cache ID tracking after ContentCache eviction: removed %u IDs (session-known IDs may be fewer due to prior evictions)",
+            (unsigned)cacheIds.size());
 }
 
 void VNCSConnectionST::handleTimeout(core::Timer* t)
@@ -951,19 +942,21 @@ void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<uint64_t>
 {
   vlog.debug("Client evicted %u persistent cache entries", (unsigned)cacheIds.size());
 
-  // Remove IDs from known set in the encoder so we stop sending references
+  // Remove IDs from all unified tracking sets so we stop sending references
+  // or targeting refreshes for evicted content.
   size_t removed = 0;
   for (uint64_t id : cacheIds) {
     encodeManager.removeClientKnownHash(id);
-    // Also drop any pending request state to avoid stale entries
+    knownPersistentIds_.erase(id);
+    knownCacheIds_.erase(id);
+    lastCachedRectRef_.erase(id);
     auto it = clientRequestedPersistentIds_.find(id);
     if (it != clientRequestedPersistentIds_.end())
       clientRequestedPersistentIds_.erase(it);
     removed++;
   }
 
-  vlog.info("PersistentCache eviction: removed %zu known IDs (now %zu remain)",
-            removed, (size_t)0 /* total unknown here without accessor */);
+  vlog.info("PersistentCache eviction: removed %zu IDs from unified tracking sets", removed);
 }
 
 bool VNCSConnectionST::isShiftPressed()

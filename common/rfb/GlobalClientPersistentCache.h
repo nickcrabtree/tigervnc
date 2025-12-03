@@ -182,6 +182,14 @@ namespace rfb {
     };
     Stats getStats() const;
     void resetStats();
+
+    // Invalidate all cache entries (in-memory and index) associated with
+    // the given 64-bit content ID. This is used when the viewer detects a
+    // hash mismatch between the server-provided cacheId and the locally
+    // recomputed hash for a rect. Any existing entry for that ID must be
+    // treated as corrupt and removed so that future PersistentCachedRect
+    // references cannot replay stale pixels.
+    void invalidateByContentId(uint64_t cacheId);
     
     // Pending evictions (to notify server). Exposed as 64-bit content IDs
     // (ContentKey::contentHash) even though we internally track full

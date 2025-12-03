@@ -166,12 +166,17 @@ namespace rfb {
         clientRequestedPersistentIds_.erase(it);
     }
 
-    // PersistentCache session tracking (mirroring ContentCache's knowsCacheId)
+    // Unified cache ID tracking for both ContentCache and PersistentCache.
+    // All cache identities are 64-bit content IDs; ContentCache is now an
+    // ephemeral policy of the same engine. We therefore treat "persistent"
+    // and "content" IDs as aliases over a single ID space.
     bool knowsPersistentId(uint64_t id) const override {
-      return knownPersistentIds_.find(id) != knownPersistentIds_.end();
+      return (knownPersistentIds_.find(id) != knownPersistentIds_.end()) ||
+             (knownCacheIds_.find(id) != knownCacheIds_.end());
     }
     void markPersistentIdKnown(uint64_t id) override {
       knownPersistentIds_.insert(id);
+      knownCacheIds_.insert(id);
     }
 
   private:
@@ -186,9 +191,11 @@ namespace rfb {
 
     // Drain pending cache init requests (EncodeManager will send them)
     void drainPendingCachedInits(std::vector<std::pair<uint64_t, core::Rect>>& out) override { out.swap(pendingCacheInit_); }
-    bool knowsCacheId(uint64_t id) const override { return knownCacheIds_.count(id) != 0; }
+    // Legacy ContentCache helpers now delegate to the unified persistent-ID
+    // tracking so both protocols share a single notion of "known" IDs.
+    bool knowsCacheId(uint64_t id) const override { return knowsPersistentId(id); }
     void queueCachedInit(uint64_t cacheId, const core::Rect& r) override { pendingCacheInit_.emplace_back(cacheId, r); }
-    void markCacheIdKnown(uint64_t id) override { knownCacheIds_.insert(id); }
+    void markCacheIdKnown(uint64_t id) override { markPersistentIdKnown(id); }
 
     // Timer callbacks
     void handleTimeout(core::Timer* t) override;

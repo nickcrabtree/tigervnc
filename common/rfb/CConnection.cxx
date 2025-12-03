@@ -1008,6 +1008,27 @@ bool CConnection::isPersistentCacheNegotiated() const
   return negotiatedCacheProtocol == CacheProtocolPersistent;
 }
 
+void CConnection::disablePersistentCacheForSession()
+{
+  // If PersistentCache was not enabled for this connection, nothing to do.
+  if (!supportsPersistentCache && negotiatedCacheProtocol != CacheProtocolPersistent)
+    return;
+
+  // Stop advertising PersistentCache in future SetEncodings so the server
+  // will stop sending PersistentCachedRect references. This prevents further
+  // visual corruption once the client has detected hash mismatches.
+  if (supportsPersistentCache) {
+    supportsPersistentCache = false;
+    encodingChange = true;
+  }
+
+  if (negotiatedCacheProtocol == CacheProtocolPersistent) {
+    negotiatedCacheProtocol = CacheProtocolNone;
+    negotiatedCacheLogged = false;
+    vlog.info("Cache protocol: disabling PersistentCache for this session due to client-side hash mismatches; will re-issue SetEncodings without -321");
+  }
+}
+
 // requestNewUpdate() requests an update from the server, having set the
 // format and encoding appropriately.
 void CConnection::requestNewUpdate()
@@ -1088,9 +1109,10 @@ void CConnection::updateEncodings()
   encodings.push_back(pseudoEncodingQEMUKeyEvent);
   encodings.push_back(pseudoEncodingExtendedMouseButtons);
   
-  // Cache protocol extensions
-  // Advertise based on configuration (can be controlled via vncviewer parameters)
-  // Note: Server will use ONE cache protocol per connection (first supported in list)
+  // Cache protocol extension: we now advertise only the PersistentCache
+  // pseudo-encoding (-321). The "ContentCache" command-line/configuration
+  // option is treated as an alias that enables the same protocol but with
+  // an ephemeral (memory-only) policy at the viewer.
   if (supportsPersistentCache) {
     // CRITICAL: Load disk cache BEFORE advertising capability so we can
     // immediately send HashList with our known hashes. If we wait until
@@ -1099,10 +1121,6 @@ void CConnection::updateEncodings()
     decoder.triggerPersistentCacheLoad();
     encodings.push_back(pseudoEncodingPersistentCache);
     vlog.info("Cache protocol: advertising PersistentCache (-321)");
-  }
-  if (supportsContentCache) {
-    encodings.push_back(pseudoEncodingContentCache);
-    vlog.info("Cache protocol: advertising ContentCache (-320)");
   }
 
   if (Decoder::supported(preferredEncoding)) {

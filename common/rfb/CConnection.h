@@ -166,6 +166,11 @@ namespace rfb {
     bool isContentCacheNegotiated() const;
     bool isPersistentCacheNegotiated() const;
 
+    // Disable PersistentCache for the remainder of this session. Used by
+    // DecodeManager when it detects systemic hash mismatches so we can
+    // gracefully fall back to non-cache behaviour without visual corruption.
+    void disablePersistentCacheForSession();
+
     enum stateEnum {
       RFBSTATE_UNINITIALISED,
       RFBSTATE_PROTOCOL_VERSION,

@@ -385,6 +385,72 @@ void GlobalClientPersistentCache::resetStats()
   stats_.evictions = 0;
 }
 
+void GlobalClientPersistentCache::invalidateByContentId(uint64_t cacheId)
+{
+  // Find all CacheKey entries whose 64-bit contentHash matches cacheId.
+  // There may be multiple hashes/keys that share the same content ID; we
+  // must remove them all and also drop any corresponding disk index
+  // entries so they cannot be re-hydrated later.
+  if (cache_.empty() && indexMap_.empty() && keyToHash_.empty())
+    return;
+
+  std::vector<CacheKey> keysToRemove;
+  keysToRemove.reserve(keyToHash_.size());
+
+  for (const auto &kv : keyToHash_) {
+    const CacheKey &key = kv.first;
+    if (key.contentHash == cacheId)
+      keysToRemove.push_back(key);
+  }
+
+  if (keysToRemove.empty())
+    return;
+
+  for (const CacheKey &key : keysToRemove) {
+    auto itHash = keyToHash_.find(key);
+    if (itHash == keyToHash_.end())
+      continue;
+
+    const std::vector<uint8_t> &hash = itHash->second;
+
+    // Remove from in-memory cache and bookkeeping maps.
+    cache_.erase(key);
+    keyToHash_.erase(itHash);
+
+    auto htIt = hashToKey_.find(hash);
+    if (htIt != hashToKey_.end())
+      hashToKey_.erase(htIt);
+
+    // Drop any index/disk metadata so this entry cannot be
+    // re-hydrated from shards on a future lookup.
+    auto idxIt = indexMap_.find(hash);
+    if (idxIt != indexMap_.end())
+      indexMap_.erase(idxIt);
+
+    coldEntries_.erase(hash);
+    dirtyEntries_.erase(hash);
+
+    // Remove from hydration queue and pending-eviction bookkeeping.
+    hydrationQueue_.remove(hash);
+
+    auto evIt = std::remove(pendingEvictions_.begin(), pendingEvictions_.end(), hash);
+    if (evIt != pendingEvictions_.end())
+      pendingEvictions_.erase(evIt, pendingEvictions_.end());
+  }
+
+  // For correctness, blow away the ARC state entirely. Reconstructing a
+  // precise erase operation is more complex and unnecessary for the cache
+  // sizes used here, while clearing guarantees that no stale entries
+  // remain resident in memory.
+  if (arcCache_) {
+    arcCache_->clear();
+  }
+
+  // Reset aggregate stats to reflect the new empty/trimmed state.
+  stats_.totalEntries = cache_.size();
+  stats_.totalBytes = 0;
+}
+
 void GlobalClientPersistentCache::setMaxSize(size_t maxSizeMB)
 {
   maxMemorySize_ = maxSizeMB * 1024 * 1024;

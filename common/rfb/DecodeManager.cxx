@@ -80,9 +80,71 @@ static bool isFBHashDebugEnabled()
   return env && env[0] != '\0' && env[0] != '0';
 }
 
+// Dump the first few bytes of the canonical 32bpp little-endian
+// representation for a rectangle together with its 64-bit cache ID so
+// we can compare server vs client hashing domains directly in logs.
+static void logFBHashDebug(const char* tag,
+                           const core::Rect& r,
+                           uint64_t cacheId,
+                           const PixelBuffer* pb)
+{
+  if (!isFBHashDebugEnabled() || !pb)
+    return;
+
+  int width = r.width();
+  int height = r.height();
+  if (width <= 0 || height <= 0)
+    return;
+
+  static const PixelFormat canonicalPF(32, 24,
+                                       false,  // little-endian buffer
+                                       true,   // trueColour
+                                       255, 255, 255,
+                                       16, 8, 0);
+
+  const int bppBytes = canonicalPF.bpp / 8; // 4
+  const size_t rowBytes = static_cast<size_t>(width) * bppBytes;
+
+  const int maxRows = 8;
+  int rows = height < maxRows ? height : maxRows;
+
+  std::vector<uint8_t> tmp;
+  try {
+    tmp.resize(static_cast<size_t>(rows) * rowBytes);
+  } catch (...) {
+    return;
+  }
+
+  try {
+    std::vector<uint8_t> full;
+    full.resize(static_cast<size_t>(height) * rowBytes);
+    pb->getImage(canonicalPF, full.data(), r, width);
+
+    size_t bytesToCopy = tmp.size();
+    if (bytesToCopy > full.size())
+      bytesToCopy = full.size();
+    memcpy(tmp.data(), full.data(), bytesToCopy);
+  } catch (...) {
+    return;
+  }
+
+  size_t n = tmp.size() < 32 ? tmp.size() : 32;
+  char hexBuf[32 * 2 + 1];
+  for (size_t i = 0; i < n; ++i)
+    snprintf(hexBuf + i * 2, 3, "%02x", tmp[i]);
+  hexBuf[n * 2] = '\0';
+
+  vlog.info("FBHASH %s: rect=[%d,%d-%d,%d] id=%llu bytes[0:%zu]=%s",
+            tag,
+            r.tl.x, r.tl.y, r.br.x, r.br.y,
+            (unsigned long long)cacheId,
+            n, hexBuf);
+}
+
 DecodeManager::DecodeManager(CConnection *conn_) :
   conn(conn_), threadException(nullptr), persistentCache(nullptr),
-  persistentHashListSent(false), persistentCacheLoadTriggered(false)
+  persistentHashListSent(false), persistentCacheLoadTriggered(false),
+  persistentCacheBroken_(false)
 {
   size_t cpuCount;
 
@@ -94,101 +156,106 @@ DecodeManager::DecodeManager(CConnection *conn_) :
   persistentCacheBandwidthStats = {};
   contentCacheStats_ = {};
   
-  // Initialize client-side persistent cache (default 2GB, overridable via PersistentCacheSize
-  // and PersistentCachePath). This cache is intended to persist across sessions, so tests
-  // must be able to point it at an artifacts-local path.
+  // Cache configuration
   bool enablePersistentCache = true;
   if (auto* p = core::Configuration::getParam("PersistentCache")) {
     if (auto* bp = dynamic_cast<core::BoolParameter*>(p))
       enablePersistentCache = static_cast<bool>(*bp);
   }
-  
-  if (enablePersistentCache) {
-    // Memory cache size (default 2GB)
-    size_t pcMemSizeMB = 2048;
-    if (auto* v = core::Configuration::getParam("PersistentCacheSize")) {
-      if (auto* ip = dynamic_cast<core::IntParameter*>(v))
-        pcMemSizeMB = (size_t)(*ip);
-    }
-    
-    // Disk cache size (default 0 = 2x memory, max 16GB)
-    size_t pcDiskSizeMB = 0;
-    if (auto* v = core::Configuration::getParam("PersistentCacheDiskSize")) {
-      if (auto* ip = dynamic_cast<core::IntParameter*>(v))
-        pcDiskSizeMB = (size_t)(*ip);
-    }
-    
-    // Shard size (default 64MB)
-    size_t pcShardSizeMB = 64;
-    if (auto* v = core::Configuration::getParam("PersistentCacheShardSize")) {
-      if (auto* ip = dynamic_cast<core::IntParameter*>(v))
-        pcShardSizeMB = (size_t)(*ip);
-    }
-    
-    // Optional override of the on-disk cache location via PersistentCachePath
-    std::string pcPathOverride;
-    if (auto* p = core::Configuration::getParam("PersistentCachePath")) {
-      if (auto* sp = dynamic_cast<core::StringParameter*>(p)) {
-        std::string val = sp->getValueStr();
-        if (!val.empty())
-          pcPathOverride = val;
-      }
-    }
-    
-    persistentCache = new GlobalClientPersistentCache(pcMemSizeMB, pcDiskSizeMB, pcShardSizeMB, pcPathOverride);
-    // Calculate effective disk size for logging (0 means 2x memory)
-    size_t effectiveDiskMB = (pcDiskSizeMB == 0) ? pcMemSizeMB * 2 : pcDiskSizeMB;
-    vlog.info("Client PersistentCache v3: mem=%zuMB, disk=%zuMB, shard=%zuMB%s",
-              pcMemSizeMB, effectiveDiskMB, pcShardSizeMB,
-              pcPathOverride.empty() ? "" : " (custom path)");
-    
-    // NOTE: Disk loading is now DEFERRED until the server negotiates
-    // PersistentCache protocol. This avoids blocking startup and wasting
-    // I/O when connecting to servers that don't support PersistentCache.
-    // See triggerPersistentCacheLoad() which is called from CConnection
-    // when PersistentCache is first negotiated.
-    vlog.debug("PersistentCache disk loading deferred until protocol negotiation");
-  } else {
-    // When disabled, do not create or load any client-side PersistentCache instance.
-    vlog.info("Client PersistentCache disabled via PersistentCache=0; skipping disk cache initialization");
-  }
-
-  // Initialise session-only ContentCache ARC (no disk). This shares the
-  // same CacheKey/CachedPixels types as the PersistentCache engine but is
-  // governed by ContentCache/ContentCacheSize and only ever lives in
-  // memory. Evictions from this cache are reported via the legacy
-  // CacheEviction protocol.
   bool enableContentCache = true;
   if (auto* p = core::Configuration::getParam("ContentCache")) {
     if (auto* bp = dynamic_cast<core::BoolParameter*>(p))
       enableContentCache = static_cast<bool>(*bp);
   }
 
-  if (enableContentCache) {
-    size_t ccMemSizeMB = 2048;
-    if (auto* v = core::Configuration::getParam("ContentCacheSize")) {
-      if (auto* ip = dynamic_cast<core::IntParameter*>(v))
-        ccMemSizeMB = (size_t)(*ip);
+  // Unified client-side cache engine: a single GlobalClientPersistentCache
+  // instance backs both PersistentCache (cross-session, optionally disk-backed)
+  // and session-only ContentCache (no disk). When only ContentCache is
+  // enabled (PersistentCache=0, ContentCache=1) we still create the unified
+  // engine but mark all inserts as non-persistent so they never hit disk.
+  persistentCacheDiskEnabled_ = false;
+  if (enablePersistentCache || enableContentCache) {
+    // Memory cache size: prefer explicit PersistentCacheSize when
+    // PersistentCache is enabled, otherwise fall back to ContentCacheSize.
+    size_t pcMemSizeMB = 2048;
+    if (enablePersistentCache) {
+      if (auto* v = core::Configuration::getParam("PersistentCacheSize")) {
+        if (auto* ip = dynamic_cast<core::IntParameter*>(v))
+          pcMemSizeMB = (size_t)(*ip);
+      }
+    } else {
+      if (auto* v = core::Configuration::getParam("ContentCacheSize")) {
+        if (auto* ip = dynamic_cast<core::IntParameter*>(v))
+          pcMemSizeMB = (size_t)(*ip);
+      }
     }
 
-    size_t maxBytes = ccMemSizeMB * 1024 * 1024;
-    if (maxBytes > 0) {
-      contentCache_.reset(new rfb::cache::ArcCache<CacheKey,
-                                                   GlobalClientPersistentCache::CachedPixels,
-                                                   CacheKeyHash>(
-          maxBytes,
-          [](const GlobalClientPersistentCache::CachedPixels& e) {
-            return e.byteSize();
-          },
-          [this](const CacheKey& key) {
-            uint64_t id = key.contentHash;
-            if (id != 0)
-              contentCachePendingEvictions_.push_back(id);
-          }));
-      vlog.info("Client-side ContentCache enabled: mem=%zuMB", ccMemSizeMB);
+    // Disk cache size (default 0 = 2x memory, max 16GB). When only
+    // ContentCache is enabled, disk persistence is effectively disabled by
+    // always inserting entries as non-persistent (isLossless=false) so no
+    // payloads are ever flushed to disk.
+    size_t pcDiskSizeMB = 0;
+    if (enablePersistentCache) {
+      if (auto* v = core::Configuration::getParam("PersistentCacheDiskSize")) {
+        if (auto* ip = dynamic_cast<core::IntParameter*>(v))
+          pcDiskSizeMB = (size_t)(*ip);
+      }
+      // Disk persistence is only enabled when the PersistentCache option
+      // itself is enabled. In pure "ContentCache alias" mode we still
+      // negotiate the PersistentCache protocol but keep all storage
+      // memory-only.
+      persistentCacheDiskEnabled_ = (pcDiskSizeMB != (size_t)-1);
+    } else {
+      persistentCacheDiskEnabled_ = false;
+    }
+
+    // Shard size (default 64MB)
+    size_t pcShardSizeMB = 64;
+    if (enablePersistentCache) {
+      if (auto* v = core::Configuration::getParam("PersistentCacheShardSize")) {
+        if (auto* ip = dynamic_cast<core::IntParameter*>(v))
+          pcShardSizeMB = (size_t)(*ip);
+      }
+    }
+
+    // Optional override of the on-disk cache location via PersistentCachePath
+    std::string pcPathOverride;
+    if (enablePersistentCache) {
+      if (auto* p = core::Configuration::getParam("PersistentCachePath")) {
+        if (auto* sp = dynamic_cast<core::StringParameter*>(p)) {
+          std::string val = sp->getValueStr();
+          if (!val.empty())
+            pcPathOverride = val;
+        }
+      }
+    }
+
+    persistentCache = new GlobalClientPersistentCache(pcMemSizeMB,
+                                                      pcDiskSizeMB,
+                                                      pcShardSizeMB,
+                                                      pcPathOverride);
+
+    size_t effectiveDiskMB = 0;
+    if (enablePersistentCache) {
+      // Calculate effective disk size for logging (0 means 2x memory)
+      effectiveDiskMB = (pcDiskSizeMB == 0) ? pcMemSizeMB * 2 : pcDiskSizeMB;
+    }
+
+    if (enablePersistentCache) {
+      vlog.info("Client PersistentCache v3: mem=%zuMB, disk=%zuMB, shard=%zuMB%s",
+                pcMemSizeMB, effectiveDiskMB, pcShardSizeMB,
+                pcPathOverride.empty() ? "" : " (custom path)");
+      // NOTE: Disk loading is DEFERRED until the server negotiates
+      // PersistentCache protocol. This avoids blocking startup and wasting
+      // I/O when connecting to servers that don't support PersistentCache.
+      // See triggerPersistentCacheLoad() which is called from CConnection
+      // when PersistentCache is first negotiated.
+      vlog.debug("PersistentCache disk loading deferred until protocol negotiation");
+    } else {
+      vlog.info("Client-side ContentCache enabled (session-only) using unified cache engine: mem=%zuMB, disk=0MB", pcMemSizeMB);
     }
   } else {
-    vlog.info("Client-side ContentCache disabled via ContentCache=0");
+    vlog.info("Client PersistentCache and ContentCache both disabled; no unified cache engine will be created");
   }
 
   cpuCount = std::thread::hardware_concurrency();
@@ -232,13 +299,7 @@ DecodeManager::~DecodeManager()
   for (Decoder* decoder : decoders)
     delete decoder;
     
-  // Save persistent cache to disk before destroying
   if (persistentCache) {
-    if (persistentCache->saveToDisk()) {
-      vlog.info("PersistentCache saved to disk");
-    } else {
-      vlog.error("Failed to save PersistentCache to disk");
-    }
     delete persistentCache;
   }
 }
@@ -377,20 +438,19 @@ void DecodeManager::flush()
   // Flush any pending PersistentCache queries
   flushPendingQueries();
 
-  // Send any pending session-only ContentCache eviction notifications
-  if (!contentCachePendingEvictions_.empty() && conn && conn->writer()) {
-    vlog.debug("Sending %zu cache eviction notifications to server",
-               contentCachePendingEvictions_.size());
-    conn->writer()->writeCacheEviction(contentCachePendingEvictions_);
-    contentCachePendingEvictions_.clear();
-  }
-
-  // Send any pending PersistentCache eviction notifications
-  if (persistentCache != nullptr && persistentCache->hasPendingEvictions()) {
+  // Forward any evictions from the unified cache engine to the server using
+  // the protocol negotiated for this connection.
+  if (persistentCache != nullptr && persistentCache->hasPendingEvictions() &&
+      conn && conn->writer()) {
     auto evictions = persistentCache->getPendingEvictions();
     if (!evictions.empty()) {
-      vlog.debug("Sending %zu PersistentCache eviction notifications", evictions.size());
-      conn->writer()->writePersistentCacheEvictionBatched(evictions);
+      if (conn->isPersistentCacheNegotiated()) {
+        vlog.debug("Sending %zu PersistentCache eviction notifications", evictions.size());
+        conn->writer()->writePersistentCacheEvictionBatched(evictions);
+      } else if (conn->isContentCacheNegotiated()) {
+        vlog.debug("Sending %zu ContentCache eviction notifications", evictions.size());
+        conn->writer()->writeCacheEviction(evictions);
+      }
     }
   }
   
@@ -402,18 +462,21 @@ void DecodeManager::flush()
     size_t hydrated = persistentCache->hydrateNextBatch(5);
     (void)hydrated;  // suppress unused warning; debug logging is in hydrateNextBatch
     
-    // Periodically flush dirty entries to disk (incremental save)
-    // This runs after hydration to avoid I/O contention
-    persistentCache->flushDirtyEntries();
+    // Periodically flush dirty entries to disk (incremental save) only when
+    // disk persistence is enabled for this connection.
+    if (persistentCacheDiskEnabled_)
+      persistentCache->flushDirtyEntries();
   }
 }
 
 void DecodeManager::triggerPersistentCacheLoad()
 {
-  // Only load once per connection, and only if PersistentCache is enabled
+  // Only load once per connection, and only if disk persistence is enabled
+  // for this connection. Ephemeral "ContentCache alias" sessions still use
+  // the PersistentCache protocol on the wire but must not touch disk.
   if (persistentCacheLoadTriggered)
     return;
-  if (!persistentCache)
+  if (!persistentCache || !persistentCacheDiskEnabled_)
     return;
 
   persistentCacheLoadTriggered = true;
@@ -511,17 +574,6 @@ void DecodeManager::logStats()
   vlog.info("         %s (1:%g ratio)",
             core::iecPrefix(bytes, "B").c_str(), ratio);
   
-  // Internal ARC stats for the session-only ContentCache. These are primarily
-  // useful for debugging eviction behaviour in e2e tests and are not parsed
-  // by the log_parser.
-  if (contentCache_) {
-    auto arcStats = contentCache_->getStats();
-    vlog.debug("ContentCache ARC: entries=%zu, bytes=%s, evictions=%llu",
-               arcStats.totalEntries,
-               core::iecPrefix(arcStats.totalBytes, "B").c_str(),
-               (unsigned long long)arcStats.evictions);
-  }
-  
   // High-level cache summary: highlight real bandwidth savings for the
   // negotiated cache protocol(s) so they don't get lost in low-level
   // ARC details.
@@ -617,10 +669,12 @@ void DecodeManager::logStats()
   }
   
   // Ensure any accumulated PersistentCache entries are flushed to disk when
-  // we log final stats. Relying solely on the DecodeManager destructor is
-  // fragile when the viewer is terminated via signals, but logStats() is
-  // always called as part of graceful shutdown (see CConn::logFramebufferStats).
-  if (persistentCache != nullptr) {
+  // we log final stats, but only for sessions that actually negotiated the
+  // PersistentCache protocol *and* have disk persistence enabled. Pure
+  // "ContentCache alias" sessions share the unified cache engine but never
+  // persist entries to disk.
+  if (persistentCache != nullptr && conn && conn->isPersistentCacheNegotiated() &&
+      persistentCacheDiskEnabled_) {
     if (persistentCache->saveToDisk()) {
       vlog.info("PersistentCache saved to disk");
     } else {
@@ -798,9 +852,9 @@ next:
 void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
                                     ModifiablePixelBuffer* pb)
 {
-  // Legacy ContentCache entry point. This is now implemented as a
-  // session-only, in-memory cache that shares the same 64-bit ID space
-  // as PersistentCache but never touches disk.
+  // Legacy ContentCache entry point. In the unified implementation this is
+  // backed by the same GlobalClientPersistentCache engine as PersistentCache
+  // but inserts are flagged as non-persistent so they never hit disk.
   flush();
   handleContentCacheRect(r, cacheId, pb);
 }
@@ -808,9 +862,10 @@ void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
 void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
                                    ModifiablePixelBuffer* pb)
 {
-  // Legacy ContentCache INIT path. Store decoded pixels in the
-  // session-only cache. This keeps ContentCache behaviour intact even
-  // when the viewer's PersistentCache option is disabled.
+  // Legacy ContentCache INIT path. Store decoded pixels in the unified cache
+  // engine but mark them as non-persistent so they never hit disk. This keeps
+  // ContentCache behaviour session-only even when PersistentCache is enabled
+  // or disabled.
   flush();
   storeContentCacheRect(r, cacheId, pb);
 }
@@ -836,6 +891,25 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   // touching disk.
   if (persistentCache == nullptr) {
     handleContentCacheRect(r, cacheId, pb);
+    return;
+  }
+
+  // If we have already detected that PersistentCache is misconfigured or
+  // corrupted for this session, do not attempt to use any cached pixels.
+  // Instead, treat every reference as a miss and rely on the
+  // PersistentCacheQuery mechanism to trigger full refreshes from the
+  // server.
+  if (persistentCacheBroken_) {
+    CacheStatsView pcStats{persistentCacheStats.cache_hits,
+                           persistentCacheStats.cache_lookups,
+                           persistentCacheStats.cache_misses,
+                           persistentCacheStats.stores};
+    recordCacheMiss(pcStats);
+    pendingQueries.push_back(cacheId);
+    if (pendingQueries.size() >= 10)
+      flushPendingQueries();
+    vlog.debug("PersistentCache DISABLED for session: treating rect [%d,%d-%d,%d] cacheId=%llu as miss",
+               r.tl.x, r.tl.y, r.br.x, r.br.y, (unsigned long long)cacheId);
     return;
   }
   
@@ -901,12 +975,19 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
     return;
   }
 
-  // When the viewer's PersistentCache option is disabled, fall back to the
-  // session-only ContentCache path. This preserves behaviour for
-  // ContentCache-focused runs (PersistentCache=0) while keeping disk I/O
-  // and PersistentCache statistics completely disabled.
+  // When the unified cache engine is not available (both PersistentCache and
+  // ContentCache disabled), we cannot store anything; treat as a no-op.
   if (persistentCache == nullptr) {
-    storeContentCacheRect(r, cacheId, pb);
+    vlog.debug("storePersistentCachedRect: cache engine disabled; ignoring store for ID %llu",
+               (unsigned long long)cacheId);
+    return;
+  }
+
+  // If we have already detected systemic hash mismatches for this session,
+  // do not mutate or consult the PersistentCache at all. The underlying
+  // framebuffer has already been updated by the normal decode path, so we
+  // can safely skip all cache bookkeeping here.
+  if (persistentCacheBroken_) {
     return;
   }
   
@@ -947,12 +1028,33 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
     memcpy(&hashId, contentHash.data(), n);
   }
 
+  // Debug: log canonical bytes for this INIT rect at the viewer.
+  logFBHashDebug("STORE_INIT", r, cacheId, static_cast<PixelBuffer*>(pb));
+
   if (hashId != cacheId) {
     vlog.info("PersistentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu (encoding=%d)",
               r.tl.x, r.tl.y, r.br.x, r.br.y,
               (unsigned long long)cacheId,
               (unsigned long long)hashId,
               encoding);
+
+    // The existing cache entry (if any) for this cacheId must be treated as
+    // corrupt. Invalidate all entries associated with this 64-bit content
+    // ID so that subsequent PersistentCachedRect references cannot blit
+    // stale pixels into the framebuffer.
+    if (persistentCache != nullptr) {
+      persistentCache->invalidateByContentId(cacheId);
+    }
+
+    // Mark PersistentCache as broken for the remainder of this session so
+    // that future cache operations degrade to a cache-off behaviour.
+    if (!persistentCacheBroken_) {
+      persistentCacheBroken_ = true;
+      vlog.info("PersistentCache: disabling client cache for this session due to hash mismatches");
+      if (conn)
+        conn->disablePersistentCacheForSession();
+    }
+
     return;
   }
 
@@ -1025,41 +1127,47 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
   
   // When viewer's PersistentCache is disabled, fall back to ContentCache
   if (persistentCache == nullptr) {
-    if (contentCache_) {
-      CacheKey key((uint16_t)r.width(), (uint16_t)r.height(), cacheId);
-      
-      // Store pixel data from framebuffer into cache.
-      // Copy row-by-row since stride may be larger than rect width.
-      GlobalClientPersistentCache::CachedPixels entry;
-      entry.format = pb->getPF();
-      entry.width = (uint16_t)r.width();
-      entry.height = (uint16_t)r.height();
-      // Store pixels tightly packed; stridePixels reflects this contiguous layout
-      entry.stridePixels = entry.width;
-      
-      const size_t bppBytes = (size_t)pb->getPF().bpp / 8;
-      const size_t rowBytes = (size_t)r.width() * bppBytes;
-      const size_t srcStrideBytes = (size_t)stridePixels * bppBytes;
-      
-      entry.pixels.resize((size_t)entry.height * rowBytes);
-      const uint8_t* src = pixels;
-      uint8_t* dst = entry.pixels.data();
-      for (uint16_t y = 0; y < entry.height; y++) {
-        memcpy(dst, src, rowBytes);
-        src += srcStrideBytes;
-        dst += rowBytes;
-      }
-      
-      contentCache_->insert(key, std::move(entry));
-      contentCacheStats_.stores++;
-      
-      vlog.info("seedCachedRect: stored in ContentCache id=%llu [%d,%d-%d,%d]",
-                (unsigned long long)cacheId,
-                r.tl.x, r.tl.y, r.br.x, r.br.y);
-    }
+    // Unified cache engine disabled; nothing to seed.
     return;
   }
   
+  // PersistentCache path: store in persistent cache, but first verify that
+  // the locally computed content hash matches the server-provided cacheId.
+  // This prevents us from seeding or reusing entries whose on-disk pixels
+  // no longer match the server's canonical content (e.g. after hash
+  // algorithm changes or partial updates).
+
+  if (persistentCache != nullptr && !persistentCacheBroken_) {
+    std::vector<uint8_t> contentHash =
+      ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
+    uint64_t hashId = 0;
+    if (!contentHash.empty()) {
+      size_t n = std::min(contentHash.size(), sizeof(uint64_t));
+      memcpy(&hashId, contentHash.data(), n);
+    }
+
+    // Debug: log canonical bytes for this SEED rect at the viewer.
+    logFBHashDebug("SEED", r, cacheId, static_cast<PixelBuffer*>(pb));
+
+    if (hashId != cacheId) {
+      vlog.info("seedCachedRect skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu",
+                r.tl.x, r.tl.y, r.br.x, r.br.y,
+                (unsigned long long)cacheId,
+                (unsigned long long)hashId);
+      // Any existing entries for this ID are now suspect; invalidate them so
+      // future PersistentCachedRect references cannot blit stale pixels.
+      persistentCache->invalidateByContentId(cacheId);
+
+      if (!persistentCacheBroken_) {
+        persistentCacheBroken_ = true;
+        vlog.info("PersistentCache: disabling client cache for this session due to seed hash mismatches");
+        if (conn)
+          conn->disablePersistentCacheForSession();
+      }
+      return;
+    }
+  }
+
   // PersistentCache path: store in persistent cache
   // Build disk key from cacheId (same as storePersistentCachedRect)
   std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
@@ -1123,9 +1231,9 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
 
   CacheKey key((uint16_t)r.width(), (uint16_t)r.height(), (uint64_t)cacheId);
 
-  if (!contentCache_) {
-    // ContentCache explicitly disabled or not initialised; treat as a miss
-    // so tests can still reason about protocol behaviour when disabled.
+  if (!persistentCache) {
+    // Unified cache engine disabled; treat as a miss so tests can still
+    // reason about protocol behaviour when caches are turned off.
     recordCacheMiss(ccStats);
     vlog.info("ContentCache cache miss for ID %llu (cache disabled) rect=[%d,%d-%d,%d]",
               (unsigned long long)cacheId,
@@ -1133,7 +1241,7 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
     return;
   }
 
-  const GlobalClientPersistentCache::CachedPixels* entry = contentCache_->get(key);
+  const GlobalClientPersistentCache::CachedPixels* entry = persistentCache->getByKey(key);
   if (!entry || entry->pixels.empty()) {
     recordCacheMiss(ccStats);
     vlog.info("ContentCache cache miss for ID %llu rect=[%d,%d-%d,%d]",
@@ -1172,7 +1280,7 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
                          contentCacheStats_.stores};
   recordCacheInit(ccStats);
   
-  if (!contentCache_) {
+  if (!persistentCache) {
     vlog.debug("ContentCache disabled; skipping store for ID %llu rect=[%d,%d-%d,%d]",
                (unsigned long long)cacheId,
                r.tl.x, r.tl.y, r.br.x, r.br.y);
@@ -1232,8 +1340,17 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
     dst += rowBytes;
   }
 
-  CacheKey key(entry.width, entry.height, (uint64_t)cacheId);
-  contentCache_->insert(key, std::move(entry));
+  // Build a stable disk key from cacheId identical to the PersistentCache
+  // path, but mark the insert as non-persistent so it never hits disk.
+  std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
+  uint64_t id64 = cacheId;
+  memcpy(diskKey.data(), &id64, sizeof(uint64_t));
+  if (diskKey.size() < 16)
+    diskKey.resize(16, 0);
+
+  persistentCache->insert(cacheId, diskKey, entry.pixels.data(), entry.format,
+                          entry.width, entry.height, entry.stridePixels,
+                          /*isLossless=*/false);
 
   vlog.info("ContentCache storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
             r.tl.x, r.tl.y, r.br.x, r.br.y,

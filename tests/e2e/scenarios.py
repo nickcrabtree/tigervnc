@@ -9,6 +9,7 @@ patterns to trigger ContentCache hits.
 import os
 import subprocess
 import time
+import shutil
 from typing import Optional
 
 
@@ -195,6 +196,30 @@ class ScenarioRunner:
                 os.kill(pid, 15)  # SIGTERM
             except ProcessLookupError:
                 pass
+
+    def _pick_browser(self) -> Optional[tuple[str, str]]:
+        """Pick an installed web browser suitable for automated tests.
+
+        Returns a tuple of (binary_path, kind) where kind is a simple
+        classification string (e.g. "firefox" or "chromium"). This allows
+        callers to choose invocation flags appropriate for that family while
+        still keeping discovery logic in one place.
+        """
+        candidates: list[tuple[str, str]] = [
+            ("firefox", "firefox"),
+            ("chromium-browser", "chromium"),
+            ("chromium", "chromium"),
+            ("google-chrome", "chromium"),
+            ("brave-browser", "chromium"),
+        ]
+        for name, kind in candidates:
+            try:
+                path = shutil.which(name)
+            except Exception:
+                path = None
+            if path:
+                return path, kind
+        return None
     
     # --- Variable-content helpers (xclock grid) ---
     def _spawn_xclock(self, x: int, y: int, size: int = 160, update: int = 1, analog: bool = True) -> int:
@@ -335,8 +360,117 @@ class ScenarioRunner:
         
         self.log(f"Scenario stats: {stats}")
         return stats
+
+    def browser_scroll_bbc(self, duration_sec: float = 60.0) -> dict:
+        """Open a browser on bbc.com and continuously scroll the page.
+
+        This is intended as a more "real world" scenario for visual tests,
+        with a long, scrolling document and mixed text/image content.
+        """
+        self.log(f"Starting browser_scroll_bbc scenario (duration={duration_sec}s)")
+
+        stats = {"browser_found": False, "scroll_steps": 0}
+
+        picked = self._pick_browser()
+        if not picked:
+            self.log("No supported browser found; skipping browser_scroll_bbc")
+            wait_idle(duration_sec)
+            return stats
+
+        browser, kind = picked
+        stats["browser_found"] = True
+
+        env = {**os.environ, "DISPLAY": f":{self.display}"}
+
+        # Use a dedicated, throwaway profile directory for the browser so that
+        # the test never reuses or interferes with the user's existing desktop
+        # browser instance. For Firefox this avoids remote-control reusing an
+        # existing process on another display, and for Chromium-family
+        # browsers a separate user-data-dir guarantees a distinct instance.
+        profile_base = f"/tmp/tigervnc_e2e_browser_{kind}_{self.display}"
+        try:
+            os.makedirs(profile_base, exist_ok=True)
+        except Exception:
+            # Best-effort; if we cannot create the directory we still attempt
+            # to launch the browser, but this may fall back to its default
+            # profile behaviour.
+            pass
+
+        url = "https://www.bbc.com"
+        cmd: list[str]
+        if kind == "firefox":
+            cmd = [
+                browser,
+                "--no-remote",  # do not talk to an existing Firefox instance
+                "-profile",
+                profile_base,
+                url,
+            ]
+        else:
+            # Chromium-family: isolate via a separate user-data-dir so this
+            # instance does not attach to an already running browser.
+            cmd = [
+                browser,
+                f"--user-data-dir={profile_base}",
+                "--no-first-run",
+                "--no-default-browser-check",
+                url,
+            ]
+
+        self.log(f"Launching browser {browser} ({kind}) at {url} on :{self.display}")
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.pids.append(proc.pid)
+        except Exception as exc:
+            self.log(f"Failed to launch browser: {exc}")
+            wait_idle(5.0)
+            return stats
+            self.log(f"Failed to launch browser: {exc}")
+            wait_idle(5.0)
+            return stats
+
+        # Give the browser time to start and render content.
+        wait_idle(8.0)
+
+        start = time.time()
+        while time.time() - start < duration_sec:
+            try:
+                # Send Page_Down with cleared modifiers so it works regardless
+                # of current modifier state.
+                subprocess.run(
+                    [
+                        "xdotool",
+                        "key",
+                        "--clearmodifiers",
+                        "Page_Down",
+                    ],
+                    env=env,
+                    capture_output=True,
+                    timeout=5.0,
+                )
+                stats["scroll_steps"] += 1
+            except Exception:
+                # Best-effort; keep going even if a single key event fails.
+                pass
+
+            # Small delay between scrolls so the page has time to redraw.
+            wait_idle(2.0)
+
+        self.log("browser_scroll_bbc complete, waiting for pipeline flush...")
+        wait_idle(3.0)
+
+        # Do not explicitly kill the browser here; cleanup() will handle it.
+        self.cleanup()
+
+        self.log(f"browser_scroll_bbc stats: {stats}")
+        return stats
     
-    def cache_hits_with_clock(self, duration_sec: float = 60.0) -> dict:
+    def eviction_stress(self, duration_sec: float = 60.0) -> dict:
         """
         Generate cache hits with an xclock providing animated updates.
         

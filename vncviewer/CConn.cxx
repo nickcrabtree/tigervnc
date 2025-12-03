@@ -112,15 +112,19 @@ CConn::CConn()
     verificationInProgress_(false), savedFBWidth_(0), savedFBHeight_(0)
 {
   setShared(::shared);
-
+ 
   supportsLocalCursor = true;
   supportsCursorPosition = true;
   supportsDesktopResize = true;
   supportsLEDState = true;
   
-  // Cache protocol support (controlled by command-line/config file)
-  supportsContentCache = ::contentCache;
-  supportsPersistentCache = ::persistentCache;
+  // Cache protocol support (controlled by command-line/config file).
+  // The ContentCache option is now an alias for PersistentCache with
+  // an ephemeral (memory-only) policy: both enable the same on-wire
+  // PersistentCache protocol (-321), but disk I/O is controlled solely
+  // by the PersistentCache parameter in the DecodeManager.
+  supportsContentCache = false;  // no separate ContentCache protocol
+  supportsPersistentCache = (::persistentCache || ::contentCache);
 
   if (customCompressLevel)
     setCompressLevel(::compressLevel);
