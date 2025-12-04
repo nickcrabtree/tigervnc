@@ -808,11 +808,29 @@ def main() -> int:
             diff_png = artifacts.screenshots_dir / f"checkpoint_{idx}_diff.png"
             diff_json = artifacts.reports_dir / f"checkpoint_{idx}_diff.json"
 
+            # Mask unstable regions inside the viewer window where we know
+            # legitimate differences can occur even for "no-cache vs
+            # no-cache" runs:
+            #
+            #  - A small box in the top-left where the remote cursor can be
+            #    visible in one viewer but not the other.
+            #  - A thin vertical strip along the right edge, which is often
+            #    occupied by window-manager border or rounding artefacts that
+            #    differ slightly between windows.
+            #
+            # Coordinates are in window space; screenshot_compare will clip
+            # them to the actual image dimensions.
+            ignore_rects = [
+                (0, 0, 79, 79),
+                (viewer_width - 4, 0, viewer_width - 1, viewer_height - 1),
+            ]
+ 
             result = compare_screenshots(
                 gt_path,
                 cache_path,
                 diff_out=diff_png,
                 json_out=diff_json,
+                ignore_rects=ignore_rects,
             )
 
             if result.identical:
