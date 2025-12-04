@@ -80,13 +80,12 @@ namespace rfb {
     // canonical pixel representation (32bpp little-endian true-colour)
     // regardless of the underlying PixelFormat of the PixelBuffer.
     //
-    // The hashing domain is therefore:
-    //   MD5( width || height || canonical_pixels )
-    // where canonical_pixels is a tightly packed stream of RGBA-like
-    // pixels produced via PixelFormat::bufferFromBuffer(). This removes
-    // dependencies on host endianness or framebuffer-native formats and
-    // ensures that PersistentCache/ContentCache IDs are stable across
-    // server and viewer implementations.
+    // The hashing domain is therefore the tightly packed canonical
+    // pixel stream only:
+    //   MD5( canonical_pixels )
+    // where canonical_pixels is produced via PixelFormat::bufferFromBuffer().
+    // Dimensions are not included in the hash input; callers that need a
+    // stronger identity use (width, height, hash) as a composite key.
     static std::vector<uint8_t> computeRect(const PixelBuffer* pb,
                                            const core::Rect& r) {
       if (!pb)
@@ -110,25 +109,18 @@ namespace rfb {
       const int bytesPerPixel = canonicalPF.bpp / 8; // 4
       const size_t rowBytes = static_cast<size_t>(width) * bytesPerPixel;
 
-      // Allocate buffer: width/height header + tightly packed canonical
-      // pixel bytes for the rectangle.
+      // Allocate buffer for a tightly packed canonical pixel stream.
       std::vector<uint8_t> buf;
       try {
-        buf.resize(sizeof(width) + sizeof(height) +
-                   static_cast<size_t>(height) * rowBytes);
+        buf.resize(static_cast<size_t>(height) * rowBytes);
       } catch (...) {
         // On allocation failure, return a zeroed hash vector.
         return std::vector<uint8_t>(16);
       }
 
-      // Serialize dimensions (host byte order is fine as long as both
-      // sides use the same representation).
-      memcpy(buf.data(), &width, sizeof(width));
-      memcpy(buf.data() + sizeof(width), &height, sizeof(height));
-
       // Convert the rectangle to the canonical pixel format into the
-      // tail of the buffer.
-      uint8_t* pixelDst = buf.data() + sizeof(width) + sizeof(height);
+      // buffer.
+      uint8_t* pixelDst = buf.data();
       try {
         // Destination stride is in pixels; use exact width so the
         // canonical representation is tightly packed.

@@ -796,17 +796,15 @@ Existing sections that describe separate ContentCache and PersistentCache engine
 
 ### 1. Stride Must Be in Bytes When Hashing
 
-**Problem:** If API returns stride in pixels, must multiply by `bytesPerPixel` before hashing.
+**Problem:** If API returns stride in pixels, you must convert to bytes before feeding any buffer into the hash helper. The hash domain is now the canonical 32-bpp RGB pixel stream only; missing bytes means different visual content can alias to the same hash.
 
-**Solution:**
-```cpp
-int stride;  // In pixels!
-const uint8_t* pixels = pb->getBuffer(r, &stride);
-int bytesPerPixel = pb->getPF().bpp / 8;
-size_t strideBytes = stride * bytesPerPixel;  // Convert!
-```
+**Solution:** Always compute byte lengths as:
+- `strideBytes = stridePixels * bytesPerPixel`
+- `totalBytes = height * strideBytes`
 
-**Reference:** Oct 7 2025 fix in ContentCache.
+and ensure that the canonicalization step that fills the hash buffer sees all `totalBytes` of pixel data.
+
+**Reference:** Oct 7 2025 fix in ContentCache and the subsequent move to a pixel-only hash domain.
 
 ### 2. Hash Collisions
 

@@ -361,13 +361,19 @@ class ScenarioRunner:
         self.log(f"Scenario stats: {stats}")
         return stats
 
-    def browser_scroll_bbc(self, duration_sec: float = 60.0) -> dict:
-        """Open a browser on bbc.com and continuously scroll the page.
+    def browser_scroll_bbc(self, duration_sec: float = 60.0, url: Optional[str] = None) -> dict:
+        """Open a browser on a long article page and continuously scroll.
 
-        This is intended as a more "real world" scenario for visual tests,
-        with a long, scrolling document and mixed text/image content.
+        Historically this targeted bbc.com; the URL can now be overridden so
+        that different real-world pages can be exercised while keeping the
+        same interaction pattern (startup + repeated Page_Down scrolling).
         """
-        self.log(f"Starting browser_scroll_bbc scenario (duration={duration_sec}s)")
+        if url is None:
+            url = "https://www.bbc.com"
+
+        self.log(
+            f"Starting browser_scroll_bbc scenario (duration={duration_sec}s, url={url})"
+        )
 
         stats = {"browser_found": False, "scroll_steps": 0}
 
@@ -396,7 +402,6 @@ class ScenarioRunner:
             # profile behaviour.
             pass
 
-        url = "https://www.bbc.com"
         cmd: list[str]
         if kind == "firefox":
             cmd = [
@@ -427,9 +432,6 @@ class ScenarioRunner:
             )
             self.pids.append(proc.pid)
         except Exception as exc:
-            self.log(f"Failed to launch browser: {exc}")
-            wait_idle(5.0)
-            return stats
             self.log(f"Failed to launch browser: {exc}")
             wait_idle(5.0)
             return stats

@@ -6,6 +6,14 @@ Uses the same tiled-logo static content scenario as the C++
 ContentCache and PersistentCache tests so that, in a cold-cache
 run, PersistentCache sees the same pattern of hits as ContentCache
 for identical content.
+
+The server and viewer both exercise the unified PersistentCache
+engine; "ContentCache" is now just a session-only policy layered on
+that engine. This test is expected to remain red when PersistentCache
+is not triggered (for example, when only lossless paths are cached or
+when the scenario fails to meet caching thresholds) so that it
+continues to act as a TDD guard for ensuring real PersistentCache
+activity in simple repeated-content scenarios.
 """
 
 import sys

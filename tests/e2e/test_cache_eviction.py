@@ -3,12 +3,25 @@
 Test ContentCache eviction notifications.
 
 This test specifically validates that:
-1. Client-side pixel cache evicts entries when full (ARC algorithm)
+1. The unified client-side cache engine (GlobalClientPersistentCache)
+   evicts entries when full (ARC algorithm) while running in the
+   session-only "ContentCache" policy mode.
 2. Eviction notifications are sent to the server
-3. Server updates its knownCacheIds_ tracking
-4. System continues to work correctly after evictions
+3. The server updates its known-cache ID tracking correctly
+4. The system continues to work correctly after evictions
 
 Strategy: Use a VERY SMALL cache size to force evictions quickly.
+
+Historical note / TDD role:
+- This test originally passed when the cache could store both lossless
+  and lossy (e.g. JPEG) rectangles. After hardening the protocol to
+  avoid caching lossy payloads (to eliminate corruption), the current
+  implementation often produces far fewer CachedRectInit messages and
+  eviction notifications than the thresholds below require.
+- We intentionally keep the strict thresholds so that this test
+  remains a red, test-driven driver for any future enhancement that
+  safely reintroduces lossy-rectangle caching in a corruption-free
+  way.
 """
 
 import sys

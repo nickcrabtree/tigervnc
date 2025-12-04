@@ -22,16 +22,21 @@ namespace {
 
 TEST(DecodeManagerGating, PersistentCacheDisabledLeavesPointerNull)
 {
-  // Arrange: disable PersistentCache, enable ContentCache
+  // Arrange: disable PersistentCache, enable ContentCache. In the unified
+  // design this must still construct the single GlobalClientPersistentCache
+  // engine, but mark it as memory-only (no disk persistence and no
+  // PersistentCache disk I/O) when PersistentCache is disabled.
   gPersistentCacheParam.setParam(false);
   gContentCacheParam.setParam(true);
 
   // Act: construct DecodeManager with null connection (safe for this test)
   DecodeManager dm(nullptr);
 
-  // Assert: unified cache engine should not be constructed when PersistentCache
-  // is disabled and ContentCache is enabled only for legacy reasons.
-  EXPECT_EQ(dm.getPersistentCacheForTest(), nullptr);
+  // Assert: the unified cache engine pointer must still be non-null whenever
+  // *either* of the cache options is enabled. Gating of protocol/disk usage is
+  // handled internally via configuration and negotiation rather than by
+  // constructing/destroying the engine itself.
+  EXPECT_NE(dm.getPersistentCacheForTest(), nullptr);
 }
 
 TEST(DecodeManagerGating, ContentCacheDisabledLeavesPointerNull)

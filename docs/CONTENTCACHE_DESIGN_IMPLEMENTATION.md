@@ -15,9 +15,13 @@
 
 ## Overview
 
-> Unified cache note (November 2025): The original implementation described in this document used a dedicated `rfb::ContentCache` engine alongside a separate PersistentCache engine. In the current experimental fork, these have been merged into a single cache engine keyed by `ContentKey(width, height, contentHash64)` and using 64-bit IDs on the wire. The legacy "ContentCache protocol" is now an **ephemeral policy** of that unified engine (memory-only, session-scoped), while PersistentCache uses the same engine with disk persistence enabled. All cache protocol messages now use the PersistentCache-style 64-bit ID wire format.
+> Unified cache note (November 2025, updated): The original implementation described in this document used a dedicated `rfb::ContentCache` engine alongside a separate PersistentCache engine. In the current experimental fork, these have been merged into a single cache engine keyed by `ContentKey(width, height, contentHash64)` and using 64-bit IDs on the wire.
 >
-> The detailed class and configuration descriptions below (for `ContentCache`, `EnableContentCache`, etc.) describe the **historical implementation** that has since been removed from the C++ code in this fork. They are retained for background and for understanding older logs and branches; the live implementation is the unified cache engine documented in `PERSISTENTCACHE_DESIGN.md` and `docs/remove_contentcache_implementation.md`.
+> The legacy "ContentCache" protocol is no longer implemented as a separate cache. It is now treated purely as an **alias** for the PersistentCache protocol, with the only behavioural difference being viewer policy:
+> - When negotiated via `pseudoEncodingContentCache`, the viewer uses the unified cache engine in **ephemeral mode** (memory-only, no disk I/O).
+> - When negotiated via `pseudoEncodingPersistentCache`, the same engine is used with **disk-backed persistence** enabled according to the PersistentCache configuration.
+>
+> All cache protocol messages (both `CachedRect*` and `PersistentCachedRect*`) therefore share the same 64-bit ID wire format and unified engine semantics. The detailed class and configuration descriptions below (for `ContentCache`, `EnableContentCache`, etc.) describe the **historical implementation** that has since been removed from the C++ code in this fork. They are retained for background and for understanding older logs and branches; the live implementation is the unified cache engine documented in `PERSISTENTCACHE_DESIGN.md` and `docs/remove_contentcache_implementation.md`.
 
 ### Problem Statement
 
@@ -69,7 +73,7 @@ Server Side                           Client Side
 -----------                           -----------
 1. Detect changed region
 2. Extract pixel data
-3. Compute content hash         
+3. Compute content hash over the canonical 32-bpp RGB pixel stream only
 4. Check ContentCache
    ├─ Hit: Send CachedRect ────────> Lookup cache ID
    │   (20 bytes)                     Blit pixels to framebuffer
@@ -185,10 +189,16 @@ Located in `common/rfb/ContentCache.h` and `ContentCache.cxx`.
 
 ```cpp
 // 12-byte composite cache key
+// The contentHash field is the low 64 bits of a 128-bit hash computed
+// over the canonical 32-bpp RGB pixel stream for the rectangle. Width
+// and height are not part of the hash input; instead, the composite
+// (width, height, contentHash) is used as the logical identity so that
+// rectangles of different size cannot alias even if their content hashes
+// collide at 64 bits.
 struct ContentKey {
     uint16_t width;       // Rectangle width (2 bytes)
     uint16_t height;      // Rectangle height (2 bytes)
-    uint64_t contentHash; // Content hash (8 bytes)
+    uint64_t contentHash; // 64-bit prefix of content hash (pixels only)
     
     ContentKey(uint16_t w, uint16_t h, uint64_t hash)
         : width(w), height(h), contentHash(hash) {}

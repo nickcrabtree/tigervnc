@@ -225,15 +225,6 @@ namespace rfb {
     // Guard to ensure we only trigger PersistentCache disk load once per connection
     bool persistentCacheLoadTriggered;
 
-    // When true, the viewer has detected a systemic mismatch between the
-    // server-provided PersistentCache IDs and the locally computed content
-    // hashes. In this mode we continue to request full updates from the
-    // server via PersistentCacheQuery but we no longer trust or mutate any
-    // client-side PersistentCache state. This guards against visual
-    // corruption by effectively degrading to a cache-off behaviour for the
-    // remainder of the session.
-    bool persistentCacheBroken_;
-
 #ifdef UNIT_TEST
   public:
     // Test-only helper to introspect the unified cache pointer from unit tests

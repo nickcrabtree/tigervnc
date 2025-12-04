@@ -22,7 +22,8 @@ With tiling enhancement (bounding-box approach):
 ## Current Implementation
 
 The bounding-box approach checks the entire damage region's bounding box
-against known cache entries. This works well when:
+against known cache entries in the unified PersistentCache engine while
+running under the session-only ContentCache policy. This works well when:
 - The content (e.g., PowerPoint slide) has consistent coordinates
 - The viewer produces stable damage regions
 

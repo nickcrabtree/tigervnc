@@ -9,6 +9,11 @@ Viewer B (under test): caches configured via --mode.
 
 Any pixel-level mismatch between the two viewer screenshots is treated
 as display corruption.
+
+Separate wrapper scripts can also invoke this runner in ``--mode none`` so
+that both viewers run with all caches disabled. Those "no-cache vs
+no-cache" runs provide a baseline for inherent scenario differences
+(e.g. dynamic browser content) independent of the cache protocol.
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ from framework import (
     preflight_check_cpp_only,
 )
 from scenarios import ScenarioRunner
+from scenarios_static import StaticScenarioRunner
 from screenshot_compare import compare_screenshots
 
 
@@ -440,16 +446,51 @@ def main() -> int:
     parser.add_argument(
         "--scenario",
         default="cache",
-        choices=["cache", "browser"],
+        choices=["cache", "browser", "image_toggle"],
         help=(
-            "Content scenario: cache (xterm cache_hits_minimal) or "
-            "browser (bbc.com scroll). Default: cache"
+            "Content scenario: cache (xterm cache_hits_minimal), "
+            "browser (long article scroll), or image_toggle (two-picture toggle). "
+            "Default: cache"
+        ),
+    )
+    parser.add_argument(
+        "--browser-url",
+        default=None,
+        help=(
+            "Override URL for the browser scenario (default: https://www.bbc.com). "
+            "Ignored for non-browser scenarios."
         ),
     )
     parser.add_argument(
         "--viewer-geometry",
         default="1600x1000",
-        help="Geometry for viewer window display (default: 1600x1000)",
+        help="Logical geometry used to arrange viewer windows side-by-side (default: 1600x1000)",
+    )
+    parser.add_argument(
+        "--viewer-display-geometry",
+        default=None,
+        help=(
+            "Geometry for the X server that hosts the viewer windows. "
+            "Defaults to --viewer-geometry but can be larger to allow window resizes."
+        ),
+    )
+    parser.add_argument(
+        "--viewer-resize-factor",
+        type=float,
+        default=1.0,
+        help=(
+            "Optional scale factor to grow viewer windows during the run "
+            "(e.g. 1.2 to increase width/height by 20%%). Values <= 1.0 disable resizing."
+        ),
+    )
+    parser.add_argument(
+        "--viewer-resize-at-checkpoint",
+        type=int,
+        default=0,
+        help=(
+            "Checkpoint index after which to resize viewer windows using the "
+            "given factor (0 means no timed resize)."
+        ),
     )
     parser.add_argument(
         "--lossless",
@@ -506,7 +547,7 @@ def main() -> int:
     server_mode = _select_server_mode()
     print(f"\nServer mode: {server_mode}")
 
-    # Parse viewer geometry (WIDTHxHEIGHT)
+    # Parse viewer geometry (WIDTHxHEIGHT) used for initial window layout.
     try:
         geom_parts = args.viewer_geometry.lower().split("x")
         viewer_width = int(geom_parts[0])
@@ -514,6 +555,19 @@ def main() -> int:
     except Exception as exc:  # pragma: no cover - defensive
         print(f"Invalid viewer geometry '{args.viewer_geometry}': {exc}")
         return 1
+
+    # Parse viewer display geometry, which may be larger to allow resizes.
+    if args.viewer_display_geometry is None:
+        viewer_display_width = viewer_width
+        viewer_display_height = viewer_height
+    else:
+        try:
+            disp_parts = args.viewer_display_geometry.lower().split("x")
+            viewer_display_width = int(disp_parts[0])
+            viewer_display_height = int(disp_parts[1])
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"Invalid viewer display geometry '{args.viewer_display_geometry}': {exc}")
+            return 1
 
     try:
         # 3. Start content server
@@ -536,7 +590,7 @@ def main() -> int:
             return 1
         print("✓ Content server ready")
 
-        # 4. Start viewer window server
+        # 4. Start viewer window server (can be larger than the initial layout)
         print(f"\n[4/8] Starting viewer window server (:{args.display_viewer})...")
         server_viewer = VNCServer(
             args.display_viewer,
@@ -544,7 +598,7 @@ def main() -> int:
             "bb_viewerwin",
             artifacts,
             tracker,
-            geometry=f"{viewer_width}x{viewer_height}",
+            geometry=f"{viewer_display_width}x{viewer_display_height}",
             log_level="*:stderr:30",
             server_choice=server_mode,
         )
@@ -633,16 +687,43 @@ def main() -> int:
 
         # 6. Start scenario on content server in background
         print("\n[6/8] Starting scenario on content server...")
-        runner = ScenarioRunner(args.display_content, verbose=args.verbose)
 
         def _scenario_thread_body():
             try:
                 if args.scenario == "browser":
-                    runner.browser_scroll_bbc(duration_sec=args.duration)
+                    runner = ScenarioRunner(args.display_content, verbose=args.verbose)
+                    try:
+                        runner.browser_scroll_bbc(
+                            duration_sec=args.duration,
+                            url=args.browser_url,
+                        )
+                    finally:
+                        runner.cleanup()
+                elif args.scenario == "image_toggle":
+                    static_runner = StaticScenarioRunner(
+                        args.display_content,
+                        verbose=args.verbose,
+                    )
+                    try:
+                        # Approximate number of toggles from duration (one toggle
+                        # roughly every 3 seconds including viewer work).
+                        est_toggles = max(6, int(args.duration / 3))
+                        static_runner.toggle_two_pictures_test(
+                            toggles=est_toggles,
+                            delay_between=2.0,
+                        )
+                    finally:
+                        static_runner.cleanup()
                 else:
-                    runner.cache_hits_minimal(duration_sec=args.duration)
-            finally:
-                runner.cleanup()
+                    runner = ScenarioRunner(args.display_content, verbose=args.verbose)
+                    try:
+                        runner.cache_hits_minimal(duration_sec=args.duration)
+                    finally:
+                        runner.cleanup()
+            except Exception:
+                # Any unexpected exception in the scenario thread should be
+                # visible in the main thread logs via traceback there.
+                raise
 
         scenario_thread = threading.Thread(target=_scenario_thread_body, daemon=True)
         scenario_thread.start()
@@ -660,6 +741,7 @@ def main() -> int:
         interval = max(min_interval, args.duration / float(checkpoints + 1)) if checkpoints else 0
 
         checkpoint_paths = []
+        resize_performed = False
         for i in range(1, checkpoints + 1):
             sleep_time = interval
             print(f"  Waiting {sleep_time:.1f}s before checkpoint {i}...")
@@ -683,6 +765,35 @@ def main() -> int:
 
             checkpoint_paths.append((gt_path, cache_path))
             print(f"  Captured checkpoint {i}")
+
+            # Optionally resize viewer windows after a given checkpoint to
+            # simulate a user enlarging the viewer (which in turn triggers a
+            # resize of the remote desktop on the content server).
+            if (
+                not resize_performed
+                and args.viewer_resize_factor > 1.0
+                and args.viewer_resize_at_checkpoint == i
+            ):
+                new_total_width = min(
+                    viewer_display_width,
+                    int(viewer_width * args.viewer_resize_factor),
+                )
+                new_total_height = min(
+                    viewer_display_height,
+                    int(viewer_height * args.viewer_resize_factor),
+                )
+                print(
+                    "  Resizing viewer windows layout to "
+                    f"{new_total_width}x{new_total_height} (factor {args.viewer_resize_factor})..."
+                )
+                _arrange_viewer_windows(
+                    args.display_viewer,
+                    win_ground,
+                    win_cache,
+                    new_total_width,
+                    new_total_height,
+                )
+                resize_performed = True
 
         # Wait for scenario to finish (with a bit of slack)
         scenario_thread.join(timeout=args.duration + 30.0)

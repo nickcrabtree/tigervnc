@@ -2,8 +2,15 @@
 """
 End-to-end test: C++ viewer ContentCache functionality.
 
-Validates that the C++ viewer (njcvncviewer) properly utilizes ContentCache
-when connected to the C++ server (Xnjcvnc).
+Validates that the C++ viewer (njcvncviewer) properly utilizes the
+session-only "ContentCache" policy when connected to the C++ server
+(Xnjcvnc).
+
+In the current design there is only a single cache engine on the
+client (GlobalClientPersistentCache). ContentCache is implemented as a
+policy on top of that engine (memory-only, no disk), while
+PersistentCache adds disk-backed persistence and HashList protocol
+support.
 
 Test validates:
 - Cache hits occur (> 20% hit rate confirms functionality)

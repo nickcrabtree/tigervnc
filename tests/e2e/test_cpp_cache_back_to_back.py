@@ -23,6 +23,16 @@ Assertions:
   - Both ContentCache and PersistentCache (cold) must see non-zero hits.
   - PersistentCache (cold) must have hits >= ContentCache hits.
   - PersistentCache (warm) must have hits >= PersistentCache (cold) hits.
+
+TDD role:
+- The checks later in this file deliberately assert that, for an
+  identical cold workload, the viewer-observed hit/miss profile for
+  PersistentCache must match that of ContentCache exactly, since both
+  are powered by the same unified engine. At present this test is
+  expected to fail while the implementation still behaves differently
+  across configurations; we keep the strict expectations so that this
+  test remains a red target for future work that makes cache statistics
+  configuration-agnostic.
 """
 
 import sys

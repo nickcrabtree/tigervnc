@@ -3,7 +3,9 @@
 End-to-end test: C++ viewer cache eviction.
 
 Validates that the C++ viewer handles cache eviction correctly when
-using a small cache size. Tests both ContentCache and PersistentCache.
+using a small cache size. Tests both the session-only ContentCache
+policy and full PersistentCache mode, both backed by the unified
+GlobalClientPersistentCache engine.
 
 Test validates:
 - Cache continues to function after evictions
@@ -162,12 +164,16 @@ def main():
         # 4. Start content server with selected cache only
         server_params = {}
         if args.cache_type == 'content':
-            # Disable the unified cache engine so that only the viewer-side
-            # ephemeral policy ("ContentCache") is exercised.
+            # ContentCache-only phase: the server-side switch simply
+            # disables the unified PersistentCache engine. The viewer still
+            # exercises its session-only "ContentCache" policy on top of a
+            # per-connection cache instance, but no disk-backed persistence
+            # or HashList protocol is available.
             server_params['EnablePersistentCache'] = '0'
         else:
-            # PersistentCache-only mode: leave the unified engine enabled.
-            # ContentCache-specific server flags have been removed.
+            # PersistentCache-only phase: enable the unified engine so that
+            # the viewer exercises the full PersistentCache protocol
+            # (HashList, on-disk v3 store) under eviction pressure.
             server_params['EnablePersistentCache'] = '1'
         
         print(f"\n[3/8] Starting content server (:{args.display_content})...")

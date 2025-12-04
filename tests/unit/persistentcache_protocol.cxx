@@ -256,6 +256,13 @@ TEST(PersistentCacheProtocol, EvictionBatchedSingle)
 // ============================================================================
 // Wire Format Validation
 // ============================================================================
+//
+// Note: On the wire, PersistentCache uses fixed 64-bit IDs derived from
+// a 128-bit hash of the canonical 32-bpp RGB pixel stream for each
+// rectangle. Width and height are carried only in the rectangle header
+// and are not duplicated inside the ID. The cache engine therefore
+// treats (width, height, id64) as the logical identity, while this test
+// focuses purely on verifying the byte-level encoding of the 64-bit IDs.
 
 TEST(PersistentCacheProtocol, WireFormatExact)
 {

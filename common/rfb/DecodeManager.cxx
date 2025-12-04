@@ -143,8 +143,7 @@ static void logFBHashDebug(const char* tag,
 
 DecodeManager::DecodeManager(CConnection *conn_) :
   conn(conn_), threadException(nullptr), persistentCache(nullptr),
-  persistentHashListSent(false), persistentCacheLoadTriggered(false),
-  persistentCacheBroken_(false)
+  persistentHashListSent(false), persistentCacheLoadTriggered(false)
 {
   size_t cpuCount;
 
@@ -894,24 +893,6 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
     return;
   }
 
-  // If we have already detected that PersistentCache is misconfigured or
-  // corrupted for this session, do not attempt to use any cached pixels.
-  // Instead, treat every reference as a miss and rely on the
-  // PersistentCacheQuery mechanism to trigger full refreshes from the
-  // server.
-  if (persistentCacheBroken_) {
-    CacheStatsView pcStats{persistentCacheStats.cache_hits,
-                           persistentCacheStats.cache_lookups,
-                           persistentCacheStats.cache_misses,
-                           persistentCacheStats.stores};
-    recordCacheMiss(pcStats);
-    pendingQueries.push_back(cacheId);
-    if (pendingQueries.size() >= 10)
-      flushPendingQueries();
-    vlog.debug("PersistentCache DISABLED for session: treating rect [%d,%d-%d,%d] cacheId=%llu as miss",
-               r.tl.x, r.tl.y, r.br.x, r.br.y, (unsigned long long)cacheId);
-    return;
-  }
   
   // Track bandwidth for this PersistentCachedRect reference (regardless of hit/miss)
   rfb::cache::trackPersistentCacheRef(persistentCacheBandwidthStats, r, conn->server.pf());
@@ -948,15 +929,38 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
     return;
   }
   
-  recordCacheHit(pcStats);
+  // Hit found: blit cached pixels into the framebuffer
+  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
   
+  // Validate the hit by recomputing the content hash from the updated framebuffer
+  std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
+  uint64_t hashId = 0;
+  if (!contentHash.empty()) {
+    size_t n = std::min(contentHash.size(), sizeof(uint64_t));
+    memcpy(&hashId, contentHash.data(), n);
+  }
+  
+  if (hashId != cacheId) {
+    // Hash mismatch: the cached entry has drifted from what the server thinks it should be.
+    // Invalidate this specific entry and treat as a miss.
+    vlog.info("PersistentCache HIT INVALIDATED: rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu - cached entry is stale",
+              r.tl.x, r.tl.y, r.br.x, r.br.y,
+              (unsigned long long)cacheId,
+              (unsigned long long)hashId);
+    persistentCache->invalidateByContentId(cacheId);
+    recordCacheMiss(pcStats);
+    pendingQueries.push_back(cacheId);
+    if (pendingQueries.size() >= 10)
+      flushPendingQueries();
+    return;
+  }
+  
+  // Hash matches: record hit and return
+  recordCacheHit(pcStats);
   vlog.debug("PersistentCache HIT: rect [%d,%d-%d,%d] cacheId=%llu cached=%dx%d strideStored=%d",
              r.tl.x, r.tl.y, r.br.x, r.br.y,
              (unsigned long long)cacheId,
              cached->width, cached->height, cached->stridePixels);
-  
-  // Blit cached pixels to framebuffer at target position
-  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
 }
 
 void DecodeManager::storePersistentCachedRect(const core::Rect& r,
@@ -980,14 +984,6 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   if (persistentCache == nullptr) {
     vlog.debug("storePersistentCachedRect: cache engine disabled; ignoring store for ID %llu",
                (unsigned long long)cacheId);
-    return;
-  }
-
-  // If we have already detected systemic hash mismatches for this session,
-  // do not mutate or consult the PersistentCache at all. The underlying
-  // framebuffer has already been updated by the normal decode path, so we
-  // can safely skip all cache bookkeeping here.
-  if (persistentCacheBroken_) {
     return;
   }
   
@@ -1038,21 +1034,9 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
               (unsigned long long)hashId,
               encoding);
 
-    // The existing cache entry (if any) for this cacheId must be treated as
-    // corrupt. Invalidate all entries associated with this 64-bit content
-    // ID so that subsequent PersistentCachedRect references cannot blit
-    // stale pixels into the framebuffer.
+    // Invalidate this specific entry so it won't be used in future hits.
     if (persistentCache != nullptr) {
       persistentCache->invalidateByContentId(cacheId);
-    }
-
-    // Mark PersistentCache as broken for the remainder of this session so
-    // that future cache operations degrade to a cache-off behaviour.
-    if (!persistentCacheBroken_) {
-      persistentCacheBroken_ = true;
-      vlog.info("PersistentCache: disabling client cache for this session due to hash mismatches");
-      if (conn)
-        conn->disablePersistentCacheForSession();
     }
 
     return;
@@ -1137,7 +1121,7 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
   // no longer match the server's canonical content (e.g. after hash
   // algorithm changes or partial updates).
 
-  if (persistentCache != nullptr && !persistentCacheBroken_) {
+  if (persistentCache != nullptr) {
     std::vector<uint8_t> contentHash =
       ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
     uint64_t hashId = 0;
@@ -1154,16 +1138,8 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
                 r.tl.x, r.tl.y, r.br.x, r.br.y,
                 (unsigned long long)cacheId,
                 (unsigned long long)hashId);
-      // Any existing entries for this ID are now suspect; invalidate them so
-      // future PersistentCachedRect references cannot blit stale pixels.
+      // Invalidate this specific entry so it won't be used in future hits.
       persistentCache->invalidateByContentId(cacheId);
-
-      if (!persistentCacheBroken_) {
-        persistentCacheBroken_ = true;
-        vlog.info("PersistentCache: disabling client cache for this session due to seed hash mismatches");
-        if (conn)
-          conn->disablePersistentCacheForSession();
-      }
       return;
     }
   }

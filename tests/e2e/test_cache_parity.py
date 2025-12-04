@@ -5,6 +5,12 @@ End-to-end test: Cache parity between ContentCache and PersistentCache.
 Runs identical workload twice and compares hit rates between ContentCache
 and PersistentCache (< 5 percentage point difference).
 
+The underlying implementation now uses a single unified
+GlobalClientPersistentCache engine for both policies; "ContentCache"
+means a session-only, memory-only policy layered on top of that
+engine, while "PersistentCache" additionally enables disk-backed
+persistence and HashList negotiation.
+
 Notes:
 - On this macOS machine, preflight may fail; run on Linux per README.
 - Viewer parameters attempt to steer protocol selection:
@@ -12,6 +18,13 @@ Notes:
   - PersistentCache run uses PersistentCache=1 (preferred by server code)
 - Even if both are advertised, the server prefers PersistentCache. This test
   still captures both CC and PC metrics from the logs and compares hit rates.
+
+TDD role:
+- If the PersistentCache path is not exercised (e.g. hit rate 0.0%) or
+  if hit statistics diverge significantly from the ContentCache run
+  despite sharing the same engine, the test fails. We keep this strict
+  behaviour so that it remains a red, test-driven target for achieving
+  protocol-agnostic cache statistics over time.
 """
 
 import sys
