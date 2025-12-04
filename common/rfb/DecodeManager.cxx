@@ -929,11 +929,18 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
     return;
   }
   
-  // Hit found: blit cached pixels into the framebuffer
-  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
+  // Hit found: validate the cached pixels BEFORE blitting to framebuffer.
+  // This prevents corrupting the display if the cached entry has drifted.
   
-  // Validate the hit by recomputing the content hash from the updated framebuffer
-  std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
+  // Create a temporary PixelBuffer from the cached pixels to compute the hash.
+  // We need to compute the hash over the cached pixels themselves, not from
+  // the framebuffer, to detect corruption before it affects the display.
+  
+  // Use ManagedPixelBuffer to wrap the cached pixel data
+  ManagedPixelBuffer tempPB(cached->format, cached->width, cached->height);
+  tempPB.imageRect(cached->format, tempPB.getRect(), cached->pixels.data(), cached->stridePixels);
+  
+  std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(&tempPB), tempPB.getRect());
   uint64_t hashId = 0;
   if (!contentHash.empty()) {
     size_t n = std::min(contentHash.size(), sizeof(uint64_t));
@@ -955,7 +962,9 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
     return;
   }
   
-  // Hash matches: record hit and return
+  // Hash matches: safe to blit cached pixels to framebuffer
+  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
+  
   recordCacheHit(pcStats);
   vlog.debug("PersistentCache HIT: rect [%d,%d-%d,%d] cacheId=%llu cached=%dx%d strideStored=%d",
              r.tl.x, r.tl.y, r.br.x, r.br.y,
