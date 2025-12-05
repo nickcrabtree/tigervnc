@@ -183,7 +183,7 @@ namespace rfb {
     void cacheLossyHash(uint64_t canonical, uint64_t lossy) {
       lossyHashCache_[canonical] = lossy;
     }
-    bool hasLossyHash(uint64_t canonical, uint64_t& lossy) const {
+    bool hasLossyHash(uint64_t canonical, uint64_t& lossy) const override {
       auto it = lossyHashCache_.find(canonical);
       if (it != lossyHashCache_.end()) {
         lossy = it->second;

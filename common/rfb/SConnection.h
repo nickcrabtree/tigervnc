@@ -160,6 +160,9 @@ namespace rfb {
     virtual void clearClientPersistentRequest(uint64_t) {}
     virtual bool knowsPersistentId(uint64_t) const { return false; }
     virtual void markPersistentIdKnown(uint64_t) {}
+    
+    // Lossy hash mapping (default no-op): maps canonical hash to lossy hash
+    virtual bool hasLossyHash(uint64_t /*canonical*/, uint64_t& /*lossy*/) const { return false; }
 
   protected:
 
