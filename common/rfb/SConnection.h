@@ -163,6 +163,7 @@ namespace rfb {
     
     // Lossy hash mapping (default no-op): maps canonical hash to lossy hash
     virtual bool hasLossyHash(uint64_t /*canonical*/, uint64_t& /*lossy*/) const { return false; }
+    virtual void cacheLossyHash(uint64_t /*canonical*/, uint64_t /*lossy*/) {}
 
   protected:
 

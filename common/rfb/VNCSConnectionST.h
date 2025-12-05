@@ -180,7 +180,7 @@ namespace rfb {
     }
     
     // Lossy hash cache management
-    void cacheLossyHash(uint64_t canonical, uint64_t lossy) {
+    void cacheLossyHash(uint64_t canonical, uint64_t lossy) override {
       lossyHashCache_[canonical] = lossy;
     }
     bool hasLossyHash(uint64_t canonical, uint64_t& lossy) const override {
