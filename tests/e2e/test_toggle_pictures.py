@@ -337,13 +337,9 @@ def main():
         failures = []
         warnings = []
 
-        # Check that PersistentCache is disabled
-        if parsed.persistent_init_events > 0:
-            success = False
-            failures.append(
-                f"PersistentCache initialization occurred despite PersistentCache=0 "
-                f"({parsed.persistent_init_events} init events)"
-            )
+        # NOTE: We no longer check for PersistentCache initialization since
+        # ContentCache now uses the unified GlobalClientPersistentCache engine
+        # with disk persistence disabled. Seeing PersistentCache init is expected.
 
         # KEY VALIDATION: hits per toggle should be ~1 after hydration
         if hits_per_toggle < min_hits_per_toggle:

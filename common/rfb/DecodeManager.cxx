@@ -1036,24 +1036,21 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   // Debug: log canonical bytes for this INIT rect at the viewer.
   logFBHashDebug("STORE_INIT", r, cacheId, static_cast<PixelBuffer*>(pb));
 
-  if (hashId != cacheId) {
-    vlog.info("PersistentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu (encoding=%d)",
+  // Hash comparison determines if data is lossless:
+  // - Hash match: bit-identical (lossless)
+  // - Hash mismatch: compression artifacts (lossy)
+  bool hashMatch = (hashId == cacheId);
+  bool isLossless = hashMatch;
+
+  if (!hashMatch) {
+    // Hash mismatch indicates lossy compression (e.g. JPEG artifacts).
+    // Store in memory but don't persist to disk.
+    vlog.info("PersistentCache STORE (lossy): hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu encoding=%d",
               r.tl.x, r.tl.y, r.br.x, r.br.y,
               (unsigned long long)cacheId,
               (unsigned long long)hashId,
               encoding);
-
-    // Invalidate this specific entry so it won't be used in future hits.
-    if (persistentCache != nullptr) {
-      persistentCache->invalidateByContentId(cacheId);
-    }
-
-    return;
   }
-
-  // At this point the client-side hash matches the server's cacheId exactly,
-  // so we know the decoded pixels are safe to cache and reuse.
-  bool isLossless = true;
 
   // Build a stable disk key from cacheId so the index can round-trip the
   // 64-bit on-wire ID. We encode cacheId in the first 8 bytes and pad to the

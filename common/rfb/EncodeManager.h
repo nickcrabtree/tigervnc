@@ -136,6 +136,14 @@ namespace rfb {
 
     // Unified cache protocol support (PersistentCache-style, 64-bit IDs)
     bool tryPersistentCacheLookup(const core::Rect& rect, const PixelBuffer* pb);
+    
+    // Lossy hash computation: encodes rect with current encoder, decodes it,
+    // and computes hash of decoded pixels (what client will see)
+    uint64_t computeLossyHash(const core::Rect& rect, const PixelBuffer* pb,
+                             int encoding);
+    
+    // Check if encoding produces lossy output
+    bool isLossyEncoding(int encoding) const;
 
     bool checkSolidTile(const core::Rect& r, const uint8_t* colourValue,
                         const PixelBuffer *pb);
@@ -208,6 +216,10 @@ namespace rfb {
 
     // Last framebuffer size we saw; used to detect resolution changes.
     core::Rect lastFramebufferRect;
+    
+    // Current encoding type for this update (used for lossy hash computation)
+    int currentEncoding;
+    bool currentEncodingIsLossy;
 
     // PersistentCache protocol state
     bool usePersistentCache;

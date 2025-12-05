@@ -843,6 +843,9 @@ void VNCSConnectionST::handleRequestCachedData(uint64_t cacheId)
 {
   vlog.debug("Client requested cached data for ID %llu",
              (unsigned long long)cacheId);
+  
+  // Client doesn't have this ID - remove from pending/confirmed sets
+  removePendingId(cacheId);
 
   // If we know the specific rectangle that referenced this cacheId last,
   // request a targeted refresh of exactly that region for this connection.
@@ -1191,6 +1194,10 @@ void VNCSConnectionST::writeDataUpdate()
   updates.subtract(req);
 
   requested.clear();
+  
+  // Frame update completed successfully - confirm any pending cache IDs
+  // (viewer didn't send RequestCachedData, so it has these IDs)
+  confirmPendingIds();
   
   // Periodic cache tracking logging (every 100 updates)
   updateCount_++;

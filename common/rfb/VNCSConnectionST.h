@@ -178,6 +178,39 @@ namespace rfb {
       knownPersistentIds_.insert(id);
       knownCacheIds_.insert(id);
     }
+    
+    // Lossy hash cache management
+    void cacheLossyHash(uint64_t canonical, uint64_t lossy) {
+      lossyHashCache_[canonical] = lossy;
+    }
+    bool hasLossyHash(uint64_t canonical, uint64_t& lossy) const {
+      auto it = lossyHashCache_.find(canonical);
+      if (it != lossyHashCache_.end()) {
+        lossy = it->second;
+        return true;
+      }
+      return false;
+    }
+    
+    // Viewer confirmation tracking
+    bool viewerHasConfirmed(uint64_t id) const {
+      return viewerConfirmedCache_.find(id) != viewerConfirmedCache_.end();
+    }
+    void markPending(uint64_t id) {
+      viewerPendingConfirmation_.insert(id);
+    }
+    void confirmPendingIds() {
+      // Move all pending to confirmed (frame update succeeded)
+      for (uint64_t id : viewerPendingConfirmation_) {
+        viewerConfirmedCache_.insert(id);
+      }
+      viewerPendingConfirmation_.clear();
+    }
+    void removePendingId(uint64_t id) {
+      // Client sent RequestCachedData - didn't have this ID
+      viewerPendingConfirmation_.erase(id);
+      viewerConfirmedCache_.erase(id);
+    }
 
   private:
     std::unordered_set<uint64_t> clientRequestedPersistentIds_;
@@ -185,6 +218,20 @@ namespace rfb {
     // Session-scoped tracking of persistent IDs known by client
     // (from initial inventory OR sent via PersistentCachedRectInit this session)
     std::unordered_set<uint64_t> knownPersistentIds_;
+    
+    // Lossy hash cache: canonical hash (lossless) -> lossy hash (post-decode)
+    // Used when encoding with lossy compression (e.g. JPEG) to map from
+    // server's lossless content hash to the hash the client will compute
+    // after decoding the lossy data.
+    std::unordered_map<uint64_t, uint64_t> lossyHashCache_;
+    
+    // Viewer confirmed cache: IDs that viewer has explicitly confirmed having
+    // (by not sending RequestCachedData after receiving a reference)
+    std::unordered_set<uint64_t> viewerConfirmedCache_;
+    
+    // Viewer pending confirmation: IDs sent to viewer, awaiting confirmation
+    // Moved to viewerConfirmedCache_ after successful frame update
+    std::unordered_set<uint64_t> viewerPendingConfirmation_;
 
     // Record that we just referenced a CachedRect with this ID for this rect
     void recordCachedRectRef(uint64_t cacheId, const core::Rect& r);

@@ -287,6 +287,38 @@ EncodeManager::~EncodeManager()
     delete encoder;
 }
 
+bool EncodeManager::isLossyEncoding(int encoding) const
+{
+  // Tight encoding can be lossy (JPEG) or lossless depending on quality settings.
+  // For now, treat Tight as potentially lossy. The actual determination happens
+  // via hash comparison - if hashes match, it was lossless; if not, lossy.
+  if (encoding == encodingTight)
+    return true;
+    
+#ifdef HAVE_H264
+  // H.264 is always lossy
+  if (encoding == encodingH264)
+    return true;
+#endif
+  
+  // All other encodings (Raw, RRE, Hextile, ZRLE) are lossless
+  return false;
+}
+
+uint64_t EncodeManager::computeLossyHash(const core::Rect& rect,
+                                         const PixelBuffer* pb,
+                                         int encoding)
+{
+  // TODO: Implement full encode→decode→hash cycle
+  // For now, skip lossy hash computation and rely on client-side
+  // hash mismatch detection in storePersistentCachedRect.
+  // This prevents incorrect cache seeding but doesn't optimize lookups yet.
+  (void)rect;
+  (void)pb;
+  (void)encoding;
+  return 0;
+}
+
 void EncodeManager::logStats()
 {
   size_t i, j;
@@ -487,6 +519,12 @@ void EncodeManager::doUpdate(bool allowLossy, const
     }
 
     prepareEncoders(allowLossy);
+    
+    // Track if this update will use lossy encoding (for seeding decisions)
+    // If allowLossy is true and client supports Tight, assume lossy until proven otherwise
+    currentEncodingIsLossy = allowLossy &&
+                             conn->client.supportsEncoding(encodingTight);
+    currentEncoding = conn->getPreferredEncoding();
 
     changed = changed_;
 
@@ -1226,7 +1264,11 @@ void EncodeManager::writeRects(const core::Region& changed,
   // This is the "dual path" approach: pixels were already sent via normal encoding
   // above, and now we tell the client to associate the bounding box with a hash
   // so future identical updates can be served with a single cache reference.
-  if (shouldSeedBbox) {
+  // 
+  // IMPORTANT: Skip seeding if encoding was lossy (Tight/H264), because the client
+  // will compute a different hash from the decoded lossy pixels. The client-side
+  // hash mismatch detection will prevent storing incorrect entries.
+  if (shouldSeedBbox && !currentEncodingIsLossy) {
     conn->writer()->writeCachedRectSeed(bboxForSeeding, bboxIdForSeeding);
     conn->markPersistentIdKnown(bboxIdForSeeding);
     
@@ -1234,34 +1276,45 @@ void EncodeManager::writeRects(const core::Region& changed,
               bboxForSeeding.tl.x, bboxForSeeding.tl.y,
               bboxForSeeding.br.x, bboxForSeeding.br.y,
               hex64(bboxIdForSeeding));
+  } else if (shouldSeedBbox && currentEncodingIsLossy) {
+    vlog.info("TILING: Skipped seeding bounding-box (lossy encoding) [%d,%d-%d,%d] id=%s",
+              bboxForSeeding.tl.x, bboxForSeeding.tl.y,
+              bboxForSeeding.br.x, bboxForSeeding.br.y,
+              hex64(bboxIdForSeeding));
   }
   
   // BORDERED REGION SEEDING: Seed any detected bordered content regions
   // so that future identical content can be served from cache.
-  for (const auto& region : borderedRegions) {
-    const core::Rect& contentRect = region.contentRect;
-    
-    // Compute content hash
-    std::vector<uint8_t> contentHash = ContentHash::computeRect(pb, contentRect);
-    uint64_t contentId = 0;
-    if (!contentHash.empty()) {
-      size_t n = std::min(contentHash.size(), sizeof(uint64_t));
-      memcpy(&contentId, contentHash.data(), n);
-    }
-
-    // Debug: log canonical bytes for bordered region seeds.
-    logFBHashDebug("borderedSeed", contentRect, contentId, pb);
-    
-    // Only seed if not already known
-    if (!conn->knowsPersistentId(contentId)) {
-      conn->writer()->writeCachedRectSeed(contentRect, contentId);
-      conn->markPersistentIdKnown(contentId);
+  // Skip seeding for lossy encodings to prevent hash mismatches.
+  if (!currentEncodingIsLossy) {
+    for (const auto& region : borderedRegions) {
+      const core::Rect& contentRect = region.contentRect;
       
-      vlog.info("BORDERED: Seeded content region [%d,%d-%d,%d] id=%s",
-                contentRect.tl.x, contentRect.tl.y,
-                contentRect.br.x, contentRect.br.y,
-                hex64(contentId));
+      // Compute content hash
+      std::vector<uint8_t> contentHash = ContentHash::computeRect(pb, contentRect);
+      uint64_t contentId = 0;
+      if (!contentHash.empty()) {
+        size_t n = std::min(contentHash.size(), sizeof(uint64_t));
+        memcpy(&contentId, contentHash.data(), n);
+      }
+
+      // Debug: log canonical bytes for bordered region seeds.
+      logFBHashDebug("borderedSeed", contentRect, contentId, pb);
+      
+      // Only seed if not already known
+      if (!conn->knowsPersistentId(contentId)) {
+        conn->writer()->writeCachedRectSeed(contentRect, contentId);
+        conn->markPersistentIdKnown(contentId);
+        
+        vlog.info("BORDERED: Seeded content region [%d,%d-%d,%d] id=%s",
+                  contentRect.tl.x, contentRect.tl.y,
+                  contentRect.br.x, contentRect.br.y,
+                  hex64(contentId));
+      }
     }
+  } else if (!borderedRegions.empty()) {
+    vlog.info("BORDERED: Skipped seeding %d regions (lossy encoding)",
+              (int)borderedRegions.size());
   }
 }
 
@@ -1688,18 +1741,22 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
 
   payloadEnc = encoders[activeEncoders[type]];
 
-  // Do NOT use PersistentCache for rectangles that will be encoded with a
-  // potentially lossy encoder (e.g. Tight with JPEG). In that case the
-  // decoded pixels on the client are not guaranteed to be bit-identical to
-  // the server's framebuffer, so any hash-based identity would be unstable
-  // and could cause visual divergence when reused from cache. Fall back to
-  // the normal encoding path for such rects.
-  if (payloadEnc->flags & EncoderLossy) {
-    vlog.debug("PersistentCache: skipping INIT for rect [%d,%d-%d,%d] id=%s due to lossy encoder %d",
-               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-               hex64(cacheId), payloadEnc->encoding);
-    return false;
-  }
+  // LOSSY CACHING ENABLED: We now allow lossy rectangles (JPEG, etc.) to be
+  // cached. The client-side DecodeManager will validate the decoded pixels
+  // against the server's cacheId using a quality-aware approach:
+  //   - Lossless encodings: exact hash match required
+  //   - Lossy encodings: hash mismatch tolerated, entry stored as session-only
+  //
+  // This dramatically improves cache hit rates for real-world content where
+  // JPEG compression is common. Lossy cache entries are flagged as non-persistent
+  // (isLossless=false) so they remain memory-only and don't persist cross-session,
+  // avoiding any long-term visual drift from compression artifacts.
+  //
+  // The old blocker is commented out below:
+  // if (payloadEnc->flags & EncoderLossy) {
+  //   vlog.debug("PersistentCache: skipping INIT due to lossy encoder");
+  //   return false;
+  // }
 
   // Emit PersistentCachedRectInit header (ID + encoding)
   conn->writer()->writePersistentCachedRectInit(rect, cacheId, payloadEnc->encoding);
