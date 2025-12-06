@@ -62,6 +62,7 @@ public:
   void handleCacheEviction(const std::vector<uint64_t>&) override {}
   void handlePersistentCacheQuery(const std::vector<uint64_t>&) override {}
   void handlePersistentHashList(uint32_t, uint16_t, uint16_t, const std::vector<uint64_t>&) override {}
+  void handlePersistentCacheHashReport(uint64_t, uint64_t) override {}
 };
 
 // ============================================================================

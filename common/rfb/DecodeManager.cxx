@@ -1062,28 +1062,28 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
     }
   }
 
-  // Build a stable disk key from cacheId so the index can round-trip the
-  // 64-bit on-wire ID. We encode cacheId in the first 8 bytes and pad to the
-  // 16-byte slot used by the v3 index format. The actual pixel content is
-  // stored separately in shard files; the disk key only serves as an index
-  // identifier.
+  // KEY FIX: Store under the ID that matches the actual pixel content.
+  // For lossless: hashId == cacheId (canonical), store under canonical ID.
+  // For lossy: hashId != cacheId, store under lossy ID so future lookups work.
+  // The server will use hasLossyHash() to map canonical→lossy and send the
+  // correct ID in PersistentCachedRect references.
+  uint64_t storageId = hashMatch ? cacheId : hashId;
+
+  // Build a stable disk key from storageId for index round-tripping
   std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
-  uint64_t id64 = cacheId;
+  uint64_t id64 = storageId;
   memcpy(diskKey.data(), &id64, sizeof(uint64_t));
-  // Ensure we have at least 16 bytes so saveToDisk/loadIndexFromDisk can
-  // safely read/write the fixed-size hash field.
   if (diskKey.size() < 16)
     diskKey.resize(16, 0);
 
-  // Store in persistent cache with explicit cacheId and disk key; the
-  // shared ContentKey (width,height,contentHash64) uses cacheId as the
-  // 64-bit ID, while diskKey is used solely for index/shard bookkeeping.
-  // The cache implementation may still decide whether to persist to disk
-  // based on encoding policy, but at this point the in-memory content is
-  // guaranteed to match the server's hash.
-  persistentCache->insert(cacheId, diskKey, pixels, pb->getPF(),
+  // Store in persistent cache under the ID that matches actual pixel content
+  persistentCache->insert(storageId, diskKey, pixels, pb->getPF(),
                           r.width(), r.height(), stridePixels,
                           isLossless);
+  
+  vlog.debug("PersistentCache STORE complete: stored under id=%llu%s",
+             (unsigned long long)storageId,
+             hashMatch ? " (canonical)" : " (lossy)");
 }
 
 void DecodeManager::storePersistentCachedRect(const core::Rect& r,
@@ -1131,11 +1131,10 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
     return;
   }
   
-  // PersistentCache path: store in persistent cache, but first verify that
-  // the locally computed content hash matches the server-provided cacheId.
-  // This prevents us from seeding or reusing entries whose on-disk pixels
-  // no longer match the server's canonical content (e.g. after hash
-  // algorithm changes or partial updates).
+  // PersistentCache path: Compute hash of framebuffer pixels and compare
+  // to server's canonical hash. If they match (lossless), store under
+  // canonical ID. If they don't match (lossy encoding), store under the
+  // computed lossy ID and report the mapping to the server.
 
   if (persistentCache != nullptr) {
     std::vector<uint8_t> contentHash =
@@ -1149,37 +1148,48 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
     // Debug: log canonical bytes for this SEED rect at the viewer.
     logFBHashDebug("SEED", r, cacheId, static_cast<PixelBuffer*>(pb));
 
-    if (hashId != cacheId) {
-      vlog.info("seedCachedRect skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu",
+    bool hashMatch = (hashId == cacheId);
+    bool isLossless = hashMatch;
+
+    if (!hashMatch) {
+      // Hash mismatch indicates lossy encoding was used. Store under the
+      // lossy ID (which matches actual pixels) and report the mapping so
+      // the server can use the lossy ID in future references.
+      vlog.info("seedCachedRect: lossy encoding detected for rect [%d,%d-%d,%d] canonical=%llu lossy=%llu",
                 r.tl.x, r.tl.y, r.br.x, r.br.y,
                 (unsigned long long)cacheId,
                 (unsigned long long)hashId);
-      // Invalidate this specific entry so it won't be used in future hits.
-      persistentCache->invalidateByContentId(cacheId);
-      return;
+      
+      // Report lossy hash to server (same as storePersistentCachedRect)
+      if (conn->writer() != nullptr) {
+        conn->writer()->writePersistentCacheHashReport(cacheId, hashId);
+        vlog.debug("seedCachedRect: reported lossy hash to server: canonical=%llu lossy=%llu",
+                   (unsigned long long)cacheId,
+                   (unsigned long long)hashId);
+      }
     }
-  }
 
-  // PersistentCache path: store in persistent cache
-  // Build disk key from cacheId (same as storePersistentCachedRect)
-  std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
-  uint64_t id64 = cacheId;
-  memcpy(diskKey.data(), &id64, sizeof(uint64_t));
-  if (diskKey.size() < 16)
-    diskKey.resize(16, 0);
-  
-  // Seeded rects are always considered lossless since we're storing
-  // the exact framebuffer pixels the user is seeing.
-  bool isLossless = true;
-  
-  persistentCache->insert(cacheId, diskKey, pixels, pb->getPF(),
-                          r.width(), r.height(), stridePixels,
-                          isLossless);
-  persistentCacheStats.stores++;
-  
-  vlog.info("seedCachedRect: stored in PersistentCache id=%llu [%d,%d-%d,%d]",
-            (unsigned long long)cacheId,
-            r.tl.x, r.tl.y, r.br.x, r.br.y);
+    // KEY FIX: Store under the ID that matches actual pixel content
+    uint64_t storageId = hashMatch ? cacheId : hashId;
+
+    // Build disk key from storageId
+    std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
+    uint64_t id64 = storageId;
+    memcpy(diskKey.data(), &id64, sizeof(uint64_t));
+    if (diskKey.size() < 16)
+      diskKey.resize(16, 0);
+
+    persistentCache->insert(storageId, diskKey, pixels, pb->getPF(),
+                            r.width(), r.height(), stridePixels,
+                            isLossless);
+    persistentCacheStats.stores++;
+
+    vlog.info("seedCachedRect: stored in PersistentCache id=%llu%s [%d,%d-%d,%d]",
+              (unsigned long long)storageId,
+              hashMatch ? " (canonical)" : " (lossy)",
+              r.tl.x, r.tl.y, r.br.x, r.br.y);
+    return;
+  }
 }
 
 void DecodeManager::flushPendingQueries()

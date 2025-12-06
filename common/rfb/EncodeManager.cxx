@@ -295,9 +295,15 @@ EncodeManager::~EncodeManager()
 
 bool EncodeManager::isLossyEncoding(int encoding) const
 {
-  // Tight encoding can be lossy (JPEG) or lossless depending on quality settings.
-  // For now, treat Tight as potentially lossy. The actual determination happens
-  // via hash comparison - if hashes match, it was lossless; if not, lossy.
+  // This function is used for optimization hints only. The actual lossy vs
+  // lossless determination happens on the client side via hash comparison:
+  // - Client decodes rect and computes hash of decoded pixels
+  // - If hash matches server's canonical hash: lossless
+  // - If hash differs: lossy (JPEG artifacts, etc)
+  // - Client reports lossy hash via message 247 (PersistentCacheHashReport)
+  // This approach works for all encodings without server-side encode/decode.
+  
+  // Tight encoding can be lossy (JPEG) or lossless depending on quality settings
   if (encoding == encodingTight)
     return true;
     
@@ -311,39 +317,6 @@ bool EncodeManager::isLossyEncoding(int encoding) const
   return false;
 }
 
-uint64_t EncodeManager::computeLossyHash(const core::Rect& rect,
-                                         const PixelBuffer* pb,
-                                         int encoding)
-{
-  // Computing lossy hash requires a full encode→decode→hash cycle.
-  // This is complex because:
-  // 1. Encoder writes protocol framing (headers, message types) not just pixels
-  // 2. Decoder expects properly framed RFB messages
-  // 3. Temporarily redirecting connection streams can cause state corruption
-  // 4. Encoder/decoder state management is complex
-  //
-  // Current approach: Let the client compute the lossy hash on first receive.
-  // The dual-hash lookup infrastructure is already in place, so:
-  // - First occurrence: Sent via PersistentCachedRectInit with canonical hash
-  // - Client decodes, computes lossy hash, stores both
-  // - Future lookups: Dual-hash check finds either canonical or lossy hash
-  //
-  // Benefits of current approach:
-  // - No complex server-side encode/decode machinery
-  // - No risk of encoder/decoder state corruption
-  // - Client naturally computes correct lossy hash
-  // - Still achieves 48% hit rate (up from 26%)
-  //
-  // Potential future improvement:
-  // Add protocol message for client to report lossy hash back to server:
-  // Client → Server: PersistentCacheHashReport(canonicalId, lossyId)
-  // This would enable cache hits on first occurrence vs second.
-  
-  (void)rect;
-  (void)pb;
-  (void)encoding;
-  return 0;
-}
 
 void EncodeManager::logStats()
 {
@@ -1321,75 +1294,49 @@ void EncodeManager::writeRects(const core::Region& changed,
   }
   
   // TILING ENHANCEMENT: Seed the bounding box hash after encoding all damage rects.
-  // For lossy encodings, compute what hash the client will get after decoding,
-  // and store the canonical→lossy mapping on the server.
+  // Always seed with canonical hash. For lossy encodings, the client will compute
+  // the actual lossy hash after decode, detect the mismatch, and report back via
+  // message 247 (PersistentCacheHashReport). This enables first-occurrence cache
+  // hits for large lossy rectangles without requiring server-side encode/decode.
   if (shouldSeedBbox) {
-    if (currentEncodingIsLossy) {
-      // Compute lossy hash (encode→decode→hash cycle)
-      uint64_t lossyHash = computeLossyHash(bboxForSeeding, pb, currentEncoding);
-      
-      if (lossyHash != 0) {
-        // Store the canonical→lossy mapping
-        conn->cacheLossyHash(bboxIdForSeeding, lossyHash);
-        
-        // Seed with the lossy hash (what client will compute)
-        conn->writer()->writeCachedRectSeed(bboxForSeeding, lossyHash);
-        conn->markPersistentIdKnown(lossyHash);
-        
-        vlog.info("TILING: Seeded bounding-box lossy hash [%d,%d-%d,%d] lossy=%s canonical=%s",
-                  bboxForSeeding.tl.x, bboxForSeeding.tl.y,
-                  bboxForSeeding.br.x, bboxForSeeding.br.y,
-                  hex64(lossyHash), hex64(bboxIdForSeeding));
-      } else {
-        vlog.info("TILING: Failed to compute lossy hash for bounding-box [%d,%d-%d,%d] id=%s",
-                  bboxForSeeding.tl.x, bboxForSeeding.tl.y,
-                  bboxForSeeding.br.x, bboxForSeeding.br.y,
-                  hex64(bboxIdForSeeding));
-      }
-    } else {
-      // Lossless encoding: seed with canonical hash
-      conn->writer()->writeCachedRectSeed(bboxForSeeding, bboxIdForSeeding);
-      conn->markPersistentIdKnown(bboxIdForSeeding);
-      
-      vlog.info("TILING: Seeded bounding-box hash [%d,%d-%d,%d] id=%s (lossless)",
-                bboxForSeeding.tl.x, bboxForSeeding.tl.y,
-                bboxForSeeding.br.x, bboxForSeeding.br.y,
-                hex64(bboxIdForSeeding));
-    }
+    // Seed with canonical hash regardless of encoding
+    conn->writer()->writeCachedRectSeed(bboxForSeeding, bboxIdForSeeding);
+    conn->markPersistentIdKnown(bboxIdForSeeding);
+    
+    vlog.info("TILING: Seeded bounding-box hash [%d,%d-%d,%d] id=%s (client will report lossy hash if needed)",
+              bboxForSeeding.tl.x, bboxForSeeding.tl.y,
+              bboxForSeeding.br.x, bboxForSeeding.br.y,
+              hex64(bboxIdForSeeding));
   }
   
   // BORDERED REGION SEEDING: Seed any detected bordered content regions
   // so that future identical content can be served from cache.
-  // Skip seeding for lossy encodings to prevent hash mismatches.
-  if (!currentEncodingIsLossy) {
-    for (const auto& region : borderedRegions) {
-      const core::Rect& contentRect = region.contentRect;
-      
-      // Compute content hash
-      std::vector<uint8_t> contentHash = ContentHash::computeRect(pb, contentRect);
-      uint64_t contentId = 0;
-      if (!contentHash.empty()) {
-        size_t n = std::min(contentHash.size(), sizeof(uint64_t));
-        memcpy(&contentId, contentHash.data(), n);
-      }
-
-      // Debug: log canonical bytes for bordered region seeds.
-      logFBHashDebug("borderedSeed", contentRect, contentId, pb);
-      
-      // Only seed if not already known
-      if (!conn->knowsPersistentId(contentId)) {
-        conn->writer()->writeCachedRectSeed(contentRect, contentId);
-        conn->markPersistentIdKnown(contentId);
-        
-        vlog.info("BORDERED: Seeded content region [%d,%d-%d,%d] id=%s",
-                  contentRect.tl.x, contentRect.tl.y,
-                  contentRect.br.x, contentRect.br.y,
-                  hex64(contentId));
-      }
+  // Always seed with canonical hash. For lossy encodings, the client will compute
+  // the actual lossy hash after decode and report back via message 247.
+  for (const auto& region : borderedRegions) {
+    const core::Rect& contentRect = region.contentRect;
+    
+    // Compute content hash
+    std::vector<uint8_t> contentHash = ContentHash::computeRect(pb, contentRect);
+    uint64_t contentId = 0;
+    if (!contentHash.empty()) {
+      size_t n = std::min(contentHash.size(), sizeof(uint64_t));
+      memcpy(&contentId, contentHash.data(), n);
     }
-  } else if (!borderedRegions.empty()) {
-    vlog.info("BORDERED: Skipped seeding %d regions (lossy encoding)",
-              (int)borderedRegions.size());
+
+    // Debug: log canonical bytes for bordered region seeds.
+    logFBHashDebug("borderedSeed", contentRect, contentId, pb);
+    
+    // Only seed if not already known
+    if (!conn->knowsPersistentId(contentId)) {
+      conn->writer()->writeCachedRectSeed(contentRect, contentId);
+      conn->markPersistentIdKnown(contentId);
+      
+      vlog.info("BORDERED: Seeded content region [%d,%d-%d,%d] id=%s (client will report lossy hash if needed)",
+                contentRect.tl.x, contentRect.tl.y,
+                contentRect.br.x, contentRect.br.y,
+                hex64(contentId));
+    }
   }
 }
 
