@@ -59,6 +59,11 @@ namespace rfb {
   // so server stops sending PersistentCachedRect references for evicted hashes.
   // Note: 251 is SetDesktopSize, 250 is ContentCache eviction.
   const int msgTypePersistentCacheEviction = 249;
+  
+  // PersistentCache hash report (client→server)
+  // Allows client to report lossy hash after decoding, enabling server to
+  // learn canonical→lossy hash mappings for future cache hits on first occurrence.
+  const int msgTypePersistentCacheHashReport = 247;
 
   const int msgTypeQEMUClientMessage = 255;
 }

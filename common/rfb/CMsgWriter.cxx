@@ -342,6 +342,21 @@ void CMsgWriter::writePersistentCacheEvictionBatched(const std::vector<uint64_t>
   }
 }
 
+void CMsgWriter::writePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId)
+{
+  startMsg(msgTypePersistentCacheHashReport);
+  
+  // Write canonicalId (64-bit, split into high/low 32-bit parts)
+  os->writeU32((uint32_t)(canonicalId >> 32));
+  os->writeU32((uint32_t)(canonicalId & 0xFFFFFFFF));
+  
+  // Write lossyId (64-bit, split into high/low 32-bit parts)
+  os->writeU32((uint32_t)(lossyId >> 32));
+  os->writeU32((uint32_t)(lossyId & 0xFFFFFFFF));
+  
+  endMsg();
+}
+
 void CMsgWriter::writeClipboardCaps(uint32_t caps,
                                     const uint32_t* lengths)
 {

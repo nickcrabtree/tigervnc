@@ -1050,6 +1050,16 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
               (unsigned long long)cacheId,
               (unsigned long long)hashId,
               encoding);
+    
+    // Report the lossy hash back to the server so it can learn the
+    // canonical->lossy mapping. This enables cache hits on first occurrence
+    // instead of second occurrence for lossy content.
+    if (conn->writer() != nullptr) {
+      conn->writer()->writePersistentCacheHashReport(cacheId, hashId);
+      vlog.debug("Reported lossy hash to server: canonical=%llu lossy=%llu",
+                 (unsigned long long)cacheId,
+                 (unsigned long long)hashId);
+    }
   }
 
   // Build a stable disk key from cacheId so the index can round-trip the

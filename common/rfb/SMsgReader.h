@@ -62,6 +62,7 @@ namespace rfb {
     bool readPersistentCacheQuery();
     bool readPersistentHashList();
     bool readPersistentCacheEviction();
+    bool readPersistentCacheHashReport();
 
     bool readQEMUMessage();
     bool readQEMUKeyEvent();

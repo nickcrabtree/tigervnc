@@ -78,6 +78,7 @@ namespace rfb {
                                           uint16_t chunkIndex,
                                           const std::vector<uint64_t>& cacheIds) = 0;
     virtual void handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds) = 0;
+    virtual void handlePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId) = 0;
 
     ClientParams client;
   };

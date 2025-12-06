@@ -962,6 +962,20 @@ void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<uint64_t>
   vlog.info("PersistentCache eviction: removed %zu IDs from unified tracking sets", removed);
 }
 
+void VNCSConnectionST::handlePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId)
+{
+  vlog.debug("Client reported lossy hash: canonical=%llu, lossy=%llu",
+             (unsigned long long)canonicalId,
+             (unsigned long long)lossyId);
+
+  // Store the canonical->lossy mapping for future lookups
+  cacheLossyHash(canonicalId, lossyId);
+
+  vlog.info("Stored lossy hash mapping: canonical=%llu -> lossy=%llu",
+            (unsigned long long)canonicalId,
+            (unsigned long long)lossyId);
+}
+
 bool VNCSConnectionST::isShiftPressed()
 {
     std::map<uint32_t, uint32_t>::const_iterator iter;

@@ -123,6 +123,9 @@ bool SMsgReader::readMsg()
   case msgTypePersistentCacheEviction:
     ret = readPersistentCacheEviction();
     break;
+  case msgTypePersistentCacheHashReport:
+    ret = readPersistentCacheHashReport();
+    break;
   case msgTypeQEMUClientMessage:
     ret = readQEMUMessage();
     break;
@@ -680,5 +683,27 @@ bool SMsgReader::readPersistentCacheEviction()
   vlog.debug("Client evicted %u persistent cache entries", count);
 
   handler->handlePersistentCacheEviction(cacheIds);
+  return true;
+}
+
+bool SMsgReader::readPersistentCacheHashReport()
+{
+  // Message contains two uint64_t values: canonicalId and lossyId
+  if (!is->hasData(16))
+    return false;
+
+  uint32_t canonicalHi = is->readU32();
+  uint32_t canonicalLo = is->readU32();
+  uint64_t canonicalId = ((uint64_t)canonicalHi << 32) | canonicalLo;
+
+  uint32_t lossyHi = is->readU32();
+  uint32_t lossyLo = is->readU32();
+  uint64_t lossyId = ((uint64_t)lossyHi << 32) | lossyLo;
+
+  vlog.debug("Client reported lossy hash: canonical=%llu, lossy=%llu",
+             (unsigned long long)canonicalId,
+             (unsigned long long)lossyId);
+
+  handler->handlePersistentCacheHashReport(canonicalId, lossyId);
   return true;
 }

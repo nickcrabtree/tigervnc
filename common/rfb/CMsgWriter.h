@@ -75,6 +75,7 @@ namespace rfb {
                                  const std::vector<uint64_t>& cacheIds);
     void writePersistentCacheEviction(const std::vector<uint64_t>& cacheIds);
     void writePersistentCacheEvictionBatched(const std::vector<uint64_t>& cacheIds);
+    void writePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId);
 
     void writeClipboardCaps(uint32_t caps, const uint32_t* lengths);
     void writeClipboardRequest(uint32_t flags);
