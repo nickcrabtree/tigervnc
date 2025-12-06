@@ -136,7 +136,7 @@ def main():
         print("\n[Run 1/2] ContentCache-focused run")
         viewer1 = run_viewer(
             binaries['cpp_viewer'], args.port_content, artifacts, tracker,
-            'parity_cc_viewer', params=['PersistentCache=0', 'ContentCacheSize=256'],
+            'parity_cc_viewer', params=['PersistentCache=0', 'ContentCacheSize=256', 'PreferredEncoding=ZRLE'],
             display_for_viewer=args.display_viewer,
         )
         runner = ScenarioRunner(args.display_content, verbose=args.verbose)
@@ -175,6 +175,7 @@ def main():
             'parity_pc_viewer', params=[
                 'PersistentCache=1',
                 'ContentCache=0',
+                'PreferredEncoding=ZRLE',
                 f'PersistentCachePath={pc_cache_path}',  # Fresh cache path
             ],
             display_for_viewer=args.display_viewer,
@@ -204,7 +205,15 @@ def main():
  
         # 6. Compare
         print("\n[Compare] Results")
-        cc_hit_rate = metrics_cc['cache_operations']['hit_rate']
+        # Compute CC hit rate from protocol messages, independent of policy label
+        cc_init_count = 0
+        with open(log_cc, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if "Received PersistentCachedRectInit" in line:
+                    cc_init_count += 1
+        cc_hits = parsed_cc.persistent_hits
+        cc_lookups = cc_hits + cc_init_count
+        cc_hit_rate = (100.0 * cc_hits / cc_lookups) if cc_lookups > 0 else 0.0
  
         print(f"  ContentCache hit rate:      {cc_hit_rate:.1f}%")
         print(f"  PersistentCache hit rate:   {pc_hit_rate:.1f}%")

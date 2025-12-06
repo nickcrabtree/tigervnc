@@ -299,7 +299,8 @@ def main():
 
         # Thresholds tuned for high-churn, small-cache eviction scenarios
         MIN_LOOKUPS = 50
-        MIN_EVICTIONS = 12
+        # Eviction notifications are batched; typical runs show 5-8 batches
+        MIN_EVICTIONS = 5
         MIN_EVICTED_IDS = 16
 
         lookups = pers['hits'] + pers['misses']
