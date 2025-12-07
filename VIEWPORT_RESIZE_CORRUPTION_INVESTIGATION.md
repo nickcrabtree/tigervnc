@@ -283,4 +283,54 @@ Significant progress made with 76% reduction in corruption. Three real bugs fixe
 2. ✅ Uninitialized Pixmap contents
 3. ✅ Missing XSync for non-SHM rendering
 
-Remaining 272 pixels likely due to server content mismatch or rendering timing issue. Investigation should focus on what the server is actually sending for those coordinates and whether both viewers are receiving identical updates.
+The original 272-pixel mismatch in the NetWeaver resize scenario turned out to be
+an artifact of screenshot timing and pointer handling rather than a core
+framebuffer bug. After improving the e2e harness to crop out window decorations
+and explicitly park all relevant pointers (content display, viewer display, and
+local desktop) in a tiny helper window above the viewers, a no-cache vs
+no-cache run of the NetWeaver browser scenario (`--mode none --lossless`) now
+produces *zero* mismatched pixels at all checkpoints.
+
+With the pointer distraction removed, the same scenario run with a persistent-
+cache viewer under test (`--mode persistent --lossless`) reveals a different
+class of corruption that matches real-world observations:
+
+- Phase 1 (sanity, both viewers with caches disabled) now passes cleanly, and
+  the dark-rectangle detector reports no exclusive dark rectangles.
+- Phase 2 (ground-truth viewer with caches disabled vs. test viewer with
+  PersistentCache enabled) shows repeatable dark horizontal bands near the top
+  of the window, including strips such as:
+  - `DarkRectangle(pos=(0,58), size=63×4)`
+  - `DarkRectangle(pos=(639,58), size=159×4)`
+- Direct sampling of the top band around y≈58 using `TIGERVNC_DEBUG_SAMPLE_REGION`
+  shows that at checkpoint time the ground-truth viewer’s offscreen Pixmap and
+  window pixels are bright (white/light grey) across the full width, while the
+  persistent-cache viewer shows dark grey only in the left and right segments.
+  The center of the band matches, and the sampled hashes for the band differ
+  between viewers.
+- Logs from `DecodeManager` and `GlobalClientPersistentCache` confirm that
+  many pre-existing disk entries for large top-of-screen rectangles are being
+  invalidated (`PersistentCache HIT INVALIDATED`) and then re-seeded via
+  `CachedRectSeed` for bounding boxes like `[0,0-800,85]`, `[0,0-800,115]` and
+  bordered content regions `[72,68-784,843]`. The caching machinery is doing
+  what it is supposed to do, but the persistent-cache viewer’s framebuffer is
+  already wrong at the band edges when these seeds occur.
+
+Current status:
+
+- The viewport resize pipeline and screenshot harness are now believed to be
+  correct: two lossless no-cache viewers produce identical screenshots, and the
+  pointer no longer introduces spurious differences.
+- The remaining corruption is specific to the PersistentCache path and manifests
+  as dark horizontal bands at the top of the window that do *not* appear in the
+  ground-truth viewer.
+- The TDD test `tests/e2e/test_dark_rect_corruption.py` has been extended into
+  two phases:
+  - Phase 1: sanity (no-cache vs no-cache, lossless) – must always pass.
+  - Phase 2: cache (no-cache vs persistent-cache, lossless) – currently fails
+    due to the dark bands described above.
+
+Investigation is now focused on the PersistentCache replay and seeding paths for
+large top-of-screen rectangles, particularly the interaction between
+bounding-box seeding, bordered-region seeding, and subsequent redraws of the
+left/right margins.
