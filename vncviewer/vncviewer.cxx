@@ -649,6 +649,11 @@ int main(int argc, char** argv)
 
   // Write about text to console, still using normal locale codeset
   fprintf(stderr,"\n%s\n", about_text());
+  // Also emit git commit and build count so logs have an explicit
+  // reference to the exact source revision used for this binary.
+#ifdef BUILD_GIT_HASH
+  fprintf(stderr, "Git commit: %s (build %s)\n", BUILD_GIT_HASH, BUILD_GIT_COUNT);
+#endif
 
   // Set gettext codeset to what our GUI toolkit uses. Since we are
   // passing strings from strerror/gai_strerror to the GUI, these must

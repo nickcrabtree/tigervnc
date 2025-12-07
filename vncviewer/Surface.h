@@ -51,6 +51,13 @@ public:
   void blend(Surface* dst, int src_x, int src_y, int dst_x, int dst_y,
              int dst_w, int dst_h, int a=255);
 
+  // Debug helper: sample a small rectangle from this surface and log
+  // representative pixel values. Only active on platforms where
+  // implemented and when TIGERVNC_DEBUG_SAMPLE_REGION is set in the
+  // environment.
+  void debugSampleRect(int src_x, int src_y, int w, int h,
+                       const char* tag);
+
 protected:
   void alloc();
   void dealloc();

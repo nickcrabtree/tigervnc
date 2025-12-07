@@ -361,12 +361,16 @@ class ScenarioRunner:
         self.log(f"Scenario stats: {stats}")
         return stats
 
-    def browser_scroll_bbc(self, duration_sec: float = 60.0, url: Optional[str] = None) -> dict:
+    def browser_scroll_bbc(self, duration_sec: float = 60.0, url: Optional[str] = None, pause_event=None) -> dict:
         """Open a browser on a long article page and continuously scroll.
 
         Historically this targeted bbc.com; the URL can now be overridden so
         that different real-world pages can be exercised while keeping the
         same interaction pattern (startup + repeated Page_Down scrolling).
+
+        If ``pause_event`` is provided (threading.Event), the scenario will
+        temporarily pause scrolling while the event is set. This allows the
+        screenshot harness to capture both viewer windows at a stable frame.
         """
         if url is None:
             url = "https://www.bbc.com"
@@ -441,6 +445,13 @@ class ScenarioRunner:
 
         start = time.time()
         while time.time() - start < duration_sec:
+            # If a pause barrier is set by the screenshot harness, wait here
+            # until it is cleared so captures see a stable frame on both viewers.
+            if pause_event is not None and getattr(pause_event, "is_set", None):
+                # Poll the pause flag with a short sleep to avoid busy-wait
+                while pause_event.is_set() and (time.time() - start < duration_sec):
+                    wait_idle(0.05)
+
             try:
                 # Send Page_Down with cleared modifiers so it works regardless
                 # of current modifier state.

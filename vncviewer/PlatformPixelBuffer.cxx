@@ -94,8 +94,16 @@ PlatformPixelBuffer::~PlatformPixelBuffer()
 void PlatformPixelBuffer::commitBufferRW(const core::Rect& r)
 {
   FullFramePixelBuffer::commitBufferRW(r);
+
   mutex.lock();
   damage.assign_union(r);
+
+  core::Rect accumulated = damage.get_bounding_rect();
+  vlog.info("PlatformPixelBuffer::commitBufferRW: new rect [%d,%d-%d,%d], accumulated damage [%d,%d-%d,%d]",
+            r.tl.x, r.tl.y, r.br.x, r.br.y,
+            accumulated.tl.x, accumulated.tl.y,
+            accumulated.br.x, accumulated.br.y);
+
   mutex.unlock();
 }
 
@@ -106,6 +114,12 @@ core::Rect PlatformPixelBuffer::getDamage(void)
   mutex.lock();
   r = damage.get_bounding_rect();
   damage.clear();
+
+  if (r.width() > 0 && r.height() > 0) {
+    vlog.info("PlatformPixelBuffer::getDamage: flushing damage [%d,%d-%d,%d]",
+              r.tl.x, r.tl.y, r.br.x, r.br.y);
+  }
+
   mutex.unlock();
 
 #if !defined(WIN32) && !defined(__APPLE__)
@@ -125,6 +139,8 @@ core::Rect PlatformPixelBuffer::getDamage(void)
   } else {
     XPutImage(fl_display, pixmap, gc, xim,
               r.tl.x, r.tl.y, r.tl.x, r.tl.y, r.width(), r.height());
+    // Ensure X11 commands complete before returning
+    XSync(fl_display, False);
   }
   XFreeGC(fl_display, gc);
 #endif

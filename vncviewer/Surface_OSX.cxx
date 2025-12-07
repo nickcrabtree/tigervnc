@@ -291,3 +291,9 @@ void Surface::update(const Fl_RGB_Image* image)
       in += image->ld() - image->w() * image->d();
   }
 }
+
+void Surface::debugSampleRect(int /*src_x*/, int /*src_y*/, int /*w*/, int /*h*/,
+                              const char* /*tag*/)
+{
+  // No-op debug helper on macOS
+}

@@ -119,6 +119,9 @@ static void
 vncPrintBanner(void)
 {
     ErrorF("\nXvnc %s - built %s\n%s", XVNCVERSION, buildtime, XVNCCOPYRIGHT);
+#ifdef XVNC_GIT_HASH
+    ErrorF("Git commit: %s (build %s)\n", XVNC_GIT_HASH, XVNC_GIT_COUNT);
+#endif
     ErrorF("Underlying X server release %d\n\n", VENDOR_RELEASE);
 }
 

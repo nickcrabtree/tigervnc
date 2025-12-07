@@ -88,6 +88,7 @@ DesktopWindow::DesktopWindow(int w, int h, CConn* cc_)
   : Fl_Window(w, h), cc(cc_), offscreen(nullptr),
     firstUpdate(true),
     delayedFullscreen(false), sentDesktopSize(false),
+    forceFullRedraw(false),
     pendingRemoteResize(false), lastResize({0, 0}),
     keyboardGrabbed(false), mouseGrabbed(false), regrabOnFocus(false),
     statsLastUpdates(0), statsLastPixels(0), statsLastPosition(0),
@@ -410,6 +411,11 @@ void DesktopWindow::resizeFramebuffer(int new_w, int new_h)
   viewport->size(new_w, new_h);
 
   repositionWidgets();
+
+  // After the framebuffer size changes, force a one-shot full redraw of
+  // the offscreen surface so that any stale pixels near the old
+  // boundaries are completely overwritten.
+  forceFullRedraw = true;
 }
 
 
@@ -480,6 +486,7 @@ void DesktopWindow::show()
 void DesktopWindow::draw()
 {
   bool redraw;
+  bool fullRedraw;
 
   int X, Y, W, H;
 
@@ -502,10 +509,11 @@ void DesktopWindow::draw()
 
   // Full redraw?
   redraw = (damage() & ~FL_DAMAGE_CHILD);
+  fullRedraw = redraw || forceFullRedraw;
 
   // Simplify the clip region to a simple rectangle in order to
   // properly draw all the layers even if they only partially overlap
-  if (redraw)
+  if (fullRedraw)
     X = Y = 0;
   else
     fl_clip_box(0, 0, W, H, X, Y, W, H);
@@ -513,7 +521,7 @@ void DesktopWindow::draw()
   fl_push_clip(X, Y, W, H);
 
   // Redraw background only on full redraws
-  if (redraw) {
+  if (fullRedraw) {
     if (offscreen)
       offscreen->clear(40, 40, 40);
     else
@@ -523,6 +531,63 @@ void DesktopWindow::draw()
   if (offscreen) {
     viewport->draw(offscreen);
     viewport->clear_damage();
+
+    // Optional debug sampling of the known corruption region. This is
+    // gated by TIGERVNC_DEBUG_SAMPLE_REGION and only logs a handful of
+    // representative pixels from the offscreen surface.
+    const char* dbg = getenv("TIGERVNC_DEBUG_SAMPLE_REGION");
+    if (dbg && dbg[0] != '\0' && dbg[0] != '0') {
+      // Optional override: if TIGERVNC_DEBUG_SAMPLE_REGION is of the form
+      // "x,y,w,h" then treat it as an explicit window/screenshot-space
+      // rectangle. Otherwise, fall back to the current corruption bbox
+      // reported by screenshot_compare.py after client-area cropping.
+      int sampleX = 796;
+      int sampleY = 837;
+      int sampleW = 16;
+      int sampleH = 23;
+
+      int sx, sy, sw, sh;
+      if (sscanf(dbg, "%d,%d,%d,%d", &sx, &sy, &sw, &sh) == 4) {
+        sampleX = sx;
+        sampleY = sy;
+        sampleW = sw;
+        sampleH = sh;
+      }
+
+      if (sampleX >= 0 && sampleY >= 0 &&
+          sampleW > 0 && sampleH > 0 &&
+          sampleX + sampleW <= offscreen->width() &&
+          sampleY + sampleH <= offscreen->height()) {
+        // Sample from the offscreen compositing surface
+        offscreen->debugSampleRect(sampleX, sampleY,
+                                   sampleW, sampleH,
+                                   "after_viewport_draw");
+
+#if !defined(WIN32) && !defined(__APPLE__)
+        // Also sample the actual window pixels that xwd/import will see.
+        XImage* img = XGetImage(fl_display, fl_xid(this),
+                                sampleX, sampleY,
+                                sampleW, sampleH,
+                                AllPlanes, ZPixmap);
+        if (img) {
+          int px = 0;
+          int py = 0;
+          unsigned long tl = XGetPixel(img, px, py);
+          px = sampleW / 2;
+          py = sampleH / 2;
+          unsigned long c = XGetPixel(img, px, py);
+          px = sampleW - 1;
+          py = sampleH - 1;
+          unsigned long br = XGetPixel(img, px, py);
+          vlog.info("windowSample[after_viewport_draw] tl (%d,%d): 0x%lx, c (%d,%d): 0x%lx, br (%d,%d): 0x%lx",
+                    sampleX, sampleY, tl,
+                    sampleX + sampleW/2, sampleY + sampleH/2, c,
+                    sampleX + sampleW-1, sampleY + sampleH-1, br);
+          XDestroyImage(img);
+        }
+#endif
+      }
+    }
   } else {
     if (redraw)
       draw_child(*viewport);
@@ -619,9 +684,12 @@ void DesktopWindow::draw()
   fl_pop_clip();
   fl_pop_clip();
 
+  // Reset one-shot full redraw flag now that we've repainted
+  forceFullRedraw = false;
+
   // Finally the scrollbars
 
-  if (redraw) {
+  if (fullRedraw) {
     draw_child(*hscroll);
     draw_child(*vscroll);
   } else {

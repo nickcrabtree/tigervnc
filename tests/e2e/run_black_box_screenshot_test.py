@@ -43,6 +43,7 @@ from framework import (
 from scenarios import ScenarioRunner
 from scenarios_static import StaticScenarioRunner
 from screenshot_compare import compare_screenshots
+from PIL import Image
 
 
 def _select_server_mode() -> str:
@@ -305,6 +306,102 @@ def _arrange_viewer_windows(
     time.sleep(1.0)
 
 
+def _frame_crop_geometry(display: int, win_id: str) -> tuple[dict, str]:
+    """Return frame extents and optional ImageMagick crop geometry.
+
+    For a managed top-level window, many EWMH-compliant window managers
+    (including openbox) expose _NET_FRAME_EXTENTS which describes the
+    decorations around the client area. We use this to derive a crop
+    rectangle that removes borders and title bars so that screenshots
+    correspond more closely to the actual client framebuffer.
+
+    Returns (extents, crop_geom) where:
+      - extents is a dict with keys left,right,top,bottom (ints)
+      - crop_geom is a convert-compatible geometry string or "" if
+        extents could not be determined.
+    """
+
+    import subprocess
+
+    env = {**os.environ, "DISPLAY": f":{display}"}
+
+    extents: dict[str, int] = {"left": 0, "right": 0, "top": 0, "bottom": 0}
+    crop_geom = ""
+
+    try:
+        # Query frame extents
+        result = subprocess.run(
+            ["xprop", "-id", win_id, "_NET_FRAME_EXTENTS"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+        if result.returncode != 0:
+            return extents, crop_geom
+
+        line = "".join(result.stdout.splitlines())
+        if "_NET_FRAME_EXTENTS" not in line or "=" not in line:
+            return extents, crop_geom
+
+        _, values = line.split("=", 1)
+        parts = [p.strip() for p in values.split(",")]
+        if len(parts) != 4:
+            return extents, crop_geom
+
+        left, right, top, bottom = (int(p) for p in parts)
+        extents.update({
+            "left": left,
+            "right": right,
+            "top": top,
+            "bottom": bottom,
+        })
+
+        # If there are no decorations, nothing to crop.
+        if left == 0 and right == 0 and top == 0 and bottom == 0:
+            return extents, crop_geom
+
+        # Query overall frame size so we can derive inner size.
+        result = subprocess.run(
+            ["xwininfo", "-id", win_id],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+        if result.returncode != 0:
+            return extents, crop_geom
+
+        width = height = None
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("Width:"):
+                try:
+                    width = int(line.split()[1])
+                except Exception:
+                    pass
+            elif line.startswith("Height:"):
+                try:
+                    height = int(line.split()[1])
+                except Exception:
+                    pass
+
+        if width is None or height is None:
+            return extents, crop_geom
+
+        inner_w = max(1, width - left - right)
+        inner_h = max(1, height - top - bottom)
+        if inner_w <= 0 or inner_h <= 0:
+            return extents, crop_geom
+
+        crop_geom = f"{inner_w}x{inner_h}+{left}+{top}"
+        return extents, crop_geom
+
+    except Exception:
+        # Best-effort only; fall back to uncropped screenshots on errors.
+        return extents, crop_geom
+
+
 def _capture_window(
     display: int,
     backend: str,
@@ -319,8 +416,18 @@ def _capture_window(
     outfile = outfile.with_suffix(".png")
     outfile.parent.mkdir(parents=True, exist_ok=True)
 
+    # Derive optional crop geometry that removes WM decorations so that the
+    # resulting PNG represents only the client area.
+    _, crop_geom = _frame_crop_geometry(display, win_id)
+
     if backend == "xwd+convert":
-        cmd = f"xwd -silent -id {win_id} | convert xwd:- png:{outfile}"
+        if crop_geom:
+            cmd = (
+                f"xwd -silent -id {win_id} | "
+                f"convert xwd:- -crop {crop_geom} +repage png:{outfile}"
+            )
+        else:
+            cmd = f"xwd -silent -id {win_id} | convert xwd:- png:{outfile}"
         result = subprocess.run(
             cmd,
             shell=True,
@@ -330,6 +437,8 @@ def _capture_window(
             timeout=60.0,
         )
     elif backend == "import":
+        # import has limited direct cropping support, so we capture first and
+        # then optionally post-process with convert if available.
         cmd = ["import", "-window", win_id, str(outfile)]
         result = subprocess.run(
             cmd,
@@ -338,6 +447,25 @@ def _capture_window(
             text=True,
             timeout=60.0,
         )
+        if result.returncode == 0 and crop_geom:
+            # Best-effort post-crop; ignore failures and keep original.
+            try:
+                subprocess.run(
+                    [
+                        "convert",
+                        str(outfile),
+                        "-crop",
+                        crop_geom,
+                        "+repage",
+                        str(outfile),
+                    ],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=30.0,
+                )
+            except Exception:
+                pass
     else:
         raise PreflightError(f"Unknown screenshot backend: {backend}")
 
@@ -389,6 +517,50 @@ def _defocus_and_hide_cursor(display: int, helper_win: str) -> None:
         )
 
     time.sleep(0.2)
+
+
+def _warp_pointer_to_display(display: int, x: int, y: int, what: str) -> None:
+    """Warp the mouse pointer on a given X display to a safe location.
+
+    Used to park the pointer in a deterministic corner (typically the
+    top-left) on both the content server display and the viewer display
+    so that it does not introduce non-deterministic pixels in the areas
+    compared by the screenshot tests.
+    """
+
+    import subprocess
+
+    env = {**os.environ, "DISPLAY": f":{display}"}
+
+    result = subprocess.run(
+        ["xdotool", "mousemove", str(x), str(y)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10.0,
+    )
+    if result.returncode != 0:
+        raise PreflightError(
+            f"Failed to warp pointer on display :{display} for {what}: {result.stderr.strip()}"
+        )
+
+    time.sleep(0.1)
+
+
+
+def _log_checkpoint_event(artifacts: ArtifactManager, checkpoint: int, phase: str) -> None:
+    """Log a timestamped marker for each checkpoint capture.
+
+    This writes to a dedicated checkpoints.log file under the artifacts logs
+    directory so that viewer/server logs can be correlated with the exact
+    times at which screenshots were taken.
+    """
+
+    ts = time.time()
+    log_path = artifacts.logs_dir / "checkpoints.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(f"{ts:.6f} checkpoint={checkpoint} phase={phase}\n")
 
 
 def main() -> int:
@@ -683,10 +855,25 @@ def main() -> int:
         )
         helper_win = _find_window_id_for_pid(args.display_viewer, helper_proc.pid)
         _defocus_and_hide_cursor(args.display_viewer, helper_win)
-        print("  Viewer focus and cursor normalised")
+
+        # Park the pointer on the content server display in the top-left
+        # corner of the desktop so that any remote cursor rendered by the
+        # viewers appears in a small, known region near (0,0). This region
+        # is already covered by the existing ignore_rects mask.
+        _warp_pointer_to_display(
+            args.display_content,
+            5,
+            5,
+            "content server pointer",
+        )
+
+        print("  Viewer focus and cursor normalised and pointers parked")
 
         # 6. Start scenario on content server in background
         print("\n[6/8] Starting scenario on content server...")
+
+        # Synchronisation barrier used to pause scenario motion during capture
+        pause_event = threading.Event()
 
         def _scenario_thread_body():
             try:
@@ -696,6 +883,7 @@ def main() -> int:
                         runner.browser_scroll_bbc(
                             duration_sec=args.duration,
                             url=args.browser_url,
+                            pause_event=pause_event,
                         )
                     finally:
                         runner.cleanup()
@@ -750,18 +938,49 @@ def main() -> int:
             gt_path = artifacts.screenshots_dir / f"checkpoint_{i}_ground_truth.png"
             cache_path = artifacts.screenshots_dir / f"checkpoint_{i}_cache.png"
 
+            # Pause scenario motion to capture a stable frame on both viewers
+            if args.scenario == "browser":
+                pause_event.set()
+                # Allow a short settling time so any in-flight damage completes
+                time.sleep(0.5)
+
+            # As an extra safety net, re-park the pointers on both displays
+            # immediately before each checkpoint capture. This ensures that any
+            # stray motion since startup does not place a cursor inside the
+            # comparison region.
+            _warp_pointer_to_display(
+                args.display_viewer,
+                5,
+                5,
+                "viewer display pointer",
+            )
+            _warp_pointer_to_display(
+                args.display_content,
+                5,
+                5,
+                "content server pointer",
+            )
+
+            # Emit explicit markers so we can correlate screenshot capture
+            # times with viewer/server logs when analysing failures.
+            _log_checkpoint_event(artifacts, i, "ground_truth_before_capture")
             gt_path = _capture_window(
                 args.display_viewer,
                 screenshot_backend,
                 win_ground,
                 gt_path,
             )
+
+            _log_checkpoint_event(artifacts, i, "cache_before_capture")
             cache_path = _capture_window(
                 args.display_viewer,
                 screenshot_backend,
                 win_cache,
                 cache_path,
             )
+
+            if args.scenario == "browser":
+                pause_event.clear()
 
             checkpoint_paths.append((gt_path, cache_path))
             print(f"  Captured checkpoint {i}")
@@ -794,6 +1013,8 @@ def main() -> int:
                     new_total_height,
                 )
                 resize_performed = True
+                # Give extra time for framebuffer updates to complete after resize
+                time.sleep(2.0)
 
         # Wait for scenario to finish (with a bit of slack)
         scenario_thread.join(timeout=args.duration + 30.0)
@@ -808,23 +1029,25 @@ def main() -> int:
             diff_png = artifacts.screenshots_dir / f"checkpoint_{idx}_diff.png"
             diff_json = artifacts.reports_dir / f"checkpoint_{idx}_diff.json"
 
+            # Determine actual image dimensions to build dynamic ignore regions
+            # that remain correct after window resize.
+            try:
+                with Image.open(gt_path) as _img:
+                    img_w, img_h = _img.size
+            except Exception:
+                # Fallback to original geometry if image cannot be opened here
+                img_w, img_h = viewer_width, viewer_height
+
             # Mask unstable regions inside the viewer window where we know
             # legitimate differences can occur even for "no-cache vs
             # no-cache" runs:
-            #
-            #  - A small box in the top-left where the remote cursor can be
-            #    visible in one viewer but not the other.
-            #  - A thin vertical strip along the right edge, which is often
-            #    occupied by window-manager border or rounding artefacts that
-            #    differ slightly between windows.
-            #
-            # Coordinates are in window space; screenshot_compare will clip
-            # them to the actual image dimensions.
+            #  - Small top-left box (possible cursor)
+            #  - Thin right-edge strip (WM border variations)
             ignore_rects = [
                 (0, 0, 79, 79),
-                (viewer_width - 4, 0, viewer_width - 1, viewer_height - 1),
+                (max(0, img_w - 4), 0, max(0, img_w - 1), max(0, img_h - 1)),
             ]
- 
+
             result = compare_screenshots(
                 gt_path,
                 cache_path,

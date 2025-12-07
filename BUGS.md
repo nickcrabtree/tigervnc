@@ -138,3 +138,43 @@ before any lookups happen.
 
 The parser now only falls back to counting CachedRectInit as "misses" when parsing server logs
 that don't have viewer-side stats.
+
+---
+
+## 6. Dark rectangle corruption after viewport resize
+
+**STATUS: PARTIALLY RESOLVED (2025-12-06)**  
+**Investigation document**: `VIEWPORT_RESIZE_CORRUPTION_INVESTIGATION.md`
+
+### Summary
+When VNC viewer windows are resized (e.g., from 800×860 to 1600×1760), dark rectangular artifacts appear at the bottom-right boundary near the old framebuffer dimensions. The corruption manifests as dark gray pixels (~27,27,27) instead of expected content.
+
+### Current Status
+**76% reduction in corruption achieved** (from 1132 to 272 pixels).
+
+Three critical bugs fixed:
+1. ✅ **Bottom strip width bug**: `CConnection::setFramebuffer()` used new width instead of old width when blacking out bottom strip, overwriting valid copied pixels
+2. ✅ **Uninitialized Pixmap**: New X11 Pixmaps contained garbage; now synced immediately after creation
+3. ✅ **Missing XSync**: Non-SHM `XPutImage()` calls were missing synchronization
+
+### Remaining Issue
+272 pixels (0.01%) still differ between two identical viewers after resize. Investigation suggests:
+- Server content size mismatch (server stays at 1600×900 while viewers resize to 1600×1760)
+- Race condition in damage handling or screenshot capture
+- Incomplete damage region coverage
+
+### Test
+```bash
+cd tests/e2e
+python3 test_dark_rect_corruption.py --mode none --lossless
+```
+
+### Next Steps
+1. **HIGH**: Investigate what content the VNC server actually has at corruption coordinates
+2. **MEDIUM**: Add forced rendering flush (`Fl::flush()`, `Fl::wait(0)`) after resize
+3. **MEDIUM**: Verify damage region coverage with comprehensive logging
+
+### Files Modified
+- `common/rfb/CConnection.cxx:171` - Fixed bottom strip width
+- `vncviewer/Viewport.cxx:428` - Sync new framebuffer Pixmap immediately
+- `vncviewer/PlatformPixelBuffer.cxx:129` - Added XSync for non-SHM case

@@ -411,16 +411,65 @@ void Viewport::draw()
 
 void Viewport::resize(int x, int y, int w, int h)
 {
+  vlog.info("Viewport::resize called: widget (%d,%d,%dx%d), framebuffer currently %dx%d",
+            x, y, w, h, frameBuffer->width(), frameBuffer->height());
   if ((w != frameBuffer->width()) || (h != frameBuffer->height())) {
-    vlog.debug("Resizing framebuffer from %dx%d to %dx%d",
-               frameBuffer->width(), frameBuffer->height(), w, h);
+    vlog.info("Resizing framebuffer from %dx%d to %dx%d",
+              frameBuffer->width(), frameBuffer->height(), w, h);
 
-    frameBuffer = new PlatformPixelBuffer(w, h);
-    assert(frameBuffer);
+    int old_w = frameBuffer->width();
+    int old_h = frameBuffer->height();
+
+    PlatformPixelBuffer* newFrameBuffer = new PlatformPixelBuffer(w, h);
+    assert(newFrameBuffer);
+    
+    // Sync the initial clear(0,0,0) from the constructor to the Pixmap
+    // immediately so the Pixmap doesn't contain uninitialized garbage.
+    newFrameBuffer->getDamage();
+
+    // setFramebuffer() handles copying overlapping content from old to new
+    // and deletes the old framebuffer
+    frameBuffer = newFrameBuffer;
     cc->setFramebuffer(frameBuffer);
+    
+    // Force sync of framebuffer to X11 Pixmap/display surface
+    // setFramebuffer() marks regions as damaged via commitBufferRW(), but
+    // those changes are only applied to the underlying XImage. We need to
+    // call getDamage() to copy the damaged regions to the actual display Pixmap,
+    // then trigger an FLTK redraw so the Pixmap is rendered to the window.
+    core::Rect syncedDamage = frameBuffer->getDamage();
+    vlog.info("Synced framebuffer damage after resize: [%d,%d-%d,%d]",
+              syncedDamage.tl.x, syncedDamage.tl.y, syncedDamage.br.x, syncedDamage.br.y);
+    if (!syncedDamage.is_empty()) {
+      damage(FL_DAMAGE_USER1, syncedDamage.tl.x + Fl_Widget::x(),
+             syncedDamage.tl.y + Fl_Widget::y(),
+             syncedDamage.width(), syncedDamage.height());
+    }
+    
+    // After a resize that increases the logical framebuffer size we want to
+    // guarantee that both viewers see a fully refreshed desktop, not just
+    // the newly exposed edge strips. Request a single non-incremental
+    // framebuffer update that covers the entire new area so any stale
+    // pixels near the old boundary are overwritten deterministically.
+    if ((w > old_w || h > old_h) && cc->writer() != nullptr) {
+      try {
+        vlog.info("Requesting full framebuffer refresh after resize [%d,%d-%d,%d]",
+                  0, 0, w, h);
+        cc->writer()->writeFramebufferUpdateRequest(core::Rect(0, 0, w, h), false);
+      } catch (std::exception& e) {
+        vlog.error("Failed to request framebuffer refresh after resize: %s", e.what());
+      }
+    } else {
+      vlog.info("Skipping update request: w_change=%d, h_change=%d, writer=%p",
+                w - old_w, h - old_h, cc->writer());
+    }
   }
 
   Fl_Widget::resize(x, y, w, h);
+  
+  vlog.info("After Fl_Widget::resize: widget=(%d,%d,%dx%d), framebuffer=%dx%d",
+            Fl_Widget::x(), Fl_Widget::y(), Fl_Widget::w(), Fl_Widget::h(),
+            frameBuffer->width(), frameBuffer->height());
 }
 
 

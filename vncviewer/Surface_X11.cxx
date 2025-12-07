@@ -28,7 +28,11 @@
 #include <FL/Fl_RGB_Image.H>
 #include <FL/x.H>
 
+#include <core/LogWriter.h>
+
 #include "Surface.h"
+
+static core::LogWriter vlog("SurfaceDebug");
 
 void Surface::clear(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
 {
@@ -232,6 +236,78 @@ void Surface::update(const Fl_RGB_Image* image)
   XPutImage(fl_display, pixmap, gc, img,
             0, 0, 0, 0, img->width, img->height);
   XFreeGC(fl_display, gc);
+
+  XDestroyImage(img);
+}
+
+void Surface::debugSampleRect(int src_x, int src_y, int width, int height,
+                              const char* tag)
+{
+  const char* env = getenv("TIGERVNC_DEBUG_SAMPLE_REGION");
+  if (!env || env[0] == '\0' || env[0] == '0')
+    return;
+
+  if (width <= 0 || height <= 0)
+    return;
+
+  // Clamp to surface bounds to avoid XGetImage failures
+  if (src_x < 0 || src_y < 0 ||
+      src_x + width > this->width() || src_y + height > this->height())
+    return;
+
+  XImage* img = XGetImage(fl_display, pixmap,
+                          src_x, src_y, width, height,
+                          AllPlanes, ZPixmap);
+  if (!img) {
+    vlog.error("debugSampleRect[%s]: XGetImage failed at (%d,%d %dx%d)",
+               tag, src_x, src_y, width, height);
+    return;
+  }
+
+  // Compute a simple hash over the entire rectangle so we can
+  // conclusively compare regions between viewers.
+  unsigned long long hash = 1469598103934665603ULL; // FNV offset basis
+  const unsigned long long fnv_prime = 1099511628211ULL;
+
+  for (int y = 0; y < img->height; y++) {
+    const unsigned char* row =
+      (const unsigned char*)img->data + y * img->bytes_per_line;
+    for (int x = 0; x < img->width; x++) {
+      const unsigned char* p = row + x * 4; // BGRA
+      hash ^= (unsigned long long)p[0];
+      hash *= fnv_prime;
+      hash ^= (unsigned long long)p[1];
+      hash *= fnv_prime;
+      hash ^= (unsigned long long)p[2];
+      hash *= fnv_prime;
+      hash ^= (unsigned long long)p[3];
+      hash *= fnv_prime;
+    }
+  }
+
+  // Log a small number of sample pixels: top-left, center, bottom-right
+  struct SamplePos { int x; int y; const char* label; };
+  SamplePos samples[] = {
+    {0, 0, "tl"},
+    {width / 2, height / 2, "c"},
+    {width - 1, height - 1, "br"},
+  };
+
+  for (const auto& s : samples) {
+    int x = s.x;
+    int y = s.y;
+    if (x < 0 || y < 0 || x >= img->width || y >= img->height)
+      continue;
+
+    // Assume 32bpp BGRA as configured in alloc()
+    const unsigned char* p =
+      (const unsigned char*)img->data + y * img->bytes_per_line + x * 4;
+    vlog.info("debugSampleRect[%s] %s (%d,%d): [%u %u %u %u] hash=0x%016llx",
+              tag, s.label, src_x + x, src_y + y,
+              (unsigned)p[0], (unsigned)p[1],
+              (unsigned)p[2], (unsigned)p[3],
+              hash);
+  }
 
   XDestroyImage(img);
 }

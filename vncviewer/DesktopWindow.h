@@ -139,6 +139,11 @@ private:
   bool delayedFullscreen;
   bool sentDesktopSize;
 
+  // Force a full redraw of the offscreen surface on the next draw()
+  // call. Used after framebuffer resizes to avoid any stale regions
+  // near old boundaries when the viewport changes size.
+  bool forceFullRedraw;
+
   bool pendingRemoteResize;
   struct timeval lastResize;
 
