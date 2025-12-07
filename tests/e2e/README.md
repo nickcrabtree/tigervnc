@@ -185,6 +185,59 @@ ctest --test-dir build -R e2e_contentcache -V
 ctest --test-dir build -L e2e --output-on-failure
 ```
 
+## WAN / slow-link emulation
+
+The e2e harness includes an optional WAN emulation helper built on Linux
+`tc netem` and `tbf` (see `wanem.py`). This allows you to run the same
+scenarios over a synthetic slow link with latency, jitter, loss, and
+bandwidth caps applied to the local test ports.
+
+Key points:
+- Shaping is applied only to the loopback interface (default: `lo`).
+- Only the specific TCP ports used by the tests (default: 6898/6899) are
+  affected; other localhost traffic is untouched.
+- `tc` and CAP_NET_ADMIN privileges are required. Individual harnesses
+  decide whether to fail fast or skip shaping when WAN emulation cannot
+  be applied.
+
+### WAN profiles
+
+Named profiles are defined in `wanem.py`:
+- `none`: no shaping (also clears any existing shaping created by the helper)
+- `wifi_good`: mild latency/jitter, low loss, ~20 Mbit/s
+- `wifi_bad`: higher latency/jitter, ~1% loss, ~5 Mbit/s
+- `4g`: typical LTE-like link
+- `3g`: older 3G-class link (higher latency, lower bandwidth)
+- `satellite`: very high latency, modest loss, ~1.5 Mbit/s
+
+### Using WAN emulation with run_contentcache_test.py
+
+You can enable a WAN profile for the ContentCache orchestrator via:
+
+```bash
+sudo python3 tests/e2e/run_contentcache_test.py \
+  --wan-profile 3g \
+  --wan-dev lo \
+  --duration 120
+```
+
+The `--wan-profile` flag accepts any profile name from `wanem.py`. The
+`--wan-dev` flag controls which interface is shaped (default: `lo`).
+
+### Black-box PersistentCache under WAN
+
+A dedicated wrapper test, `test_black_box_screenshot_cache_wan.py`,
+shapes the default e2e ports with a high-latency, low-bandwidth profile
+(`satellite`) and then invokes `run_black_box_screenshot_test.py` in
+`--mode persistent`. This test is picked up automatically by
+`run_tests.sh` via the `tests/e2e/test_*.py` pattern and is intended to
+exercise the PersistentCache visual corruption checks under WAN-like
+conditions.
+
+If WAN emulation cannot be applied (for example, `tc` is missing or the
+runner lacks sufficient privileges), this wrapper test fails fast
+instead of silently falling back to an unshaped link.
+
 ## Test Flow
 
 1. **Preflight**: Check dependencies (Xtigervnc, xterm, wmctrl, viewers, etc.)

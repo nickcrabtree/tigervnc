@@ -24,6 +24,7 @@ from log_parser import (
     parse_cpp_log, parse_rust_log, compute_metrics, format_metrics_summary
 )
 from comparator import compare_metrics, Tolerances, format_comparison_result
+from wanem import WAN_PROFILES, apply_wan_profile, clear_wan_shaping
 
 
 def run_external_viewer(viewer_path, port, artifacts, tracker, name, display_for_viewer=None):
@@ -115,6 +116,13 @@ def main():
                        help='Skip Rust viewer run (baseline only)')
     parser.add_argument('--server-modes', default='auto',
                        help='Comma-separated list of server modes to test: system,local,auto (default: auto)')
+    parser.add_argument('--wan-profile', default=None,
+                       help=(
+                           'Optional WAN profile name to apply via tc/netem on localhost ports. '
+                           f"Available: {', '.join(sorted(WAN_PROFILES.keys()))}"
+                       ))
+    parser.add_argument('--wan-dev', default='lo',
+                       help='Network interface to shape when using --wan-profile (default: lo)')
     
     args = parser.parse_args()
     
@@ -155,6 +163,20 @@ def main():
     
     # 3. Initialize process tracker
     tracker = ProcessTracker()
+
+    # Optional WAN emulation using tc/netem on localhost ports
+    shaping_active = False
+    shaped_ports = [args.port_content, args.port_viewer]
+    if args.wan_profile:
+        shaping_active = apply_wan_profile(
+            args.wan_profile,
+            shaped_ports,
+            dev=args.wan_dev,
+            verbose=args.verbose,
+        )
+        if not shaping_active:
+            print("\n⚠ WAN profile requested but could not be applied (see warnings above)."
+                  " Continuing without WAN emulation.")
 
     # Determine server modes to run
     local_server_symlink = BUILD_DIR / 'unix' / 'vncserver' / 'Xnjcvnc'
@@ -487,6 +509,8 @@ def main():
         # 19. Always clean up
         print("\nCleaning up...")
         tracker.cleanup_all()
+        if 'shaping_active' in locals() and shaping_active:
+            clear_wan_shaping(dev=args.wan_dev, verbose=args.verbose)
         print("✓ Cleanup complete")
 
 
