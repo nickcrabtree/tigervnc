@@ -224,6 +224,18 @@ sudo python3 tests/e2e/run_contentcache_test.py \
 The `--wan-profile` flag accepts any profile name from `wanem.py`. The
 `--wan-dev` flag controls which interface is shaped (default: `lo`).
 
+To avoid running the main test harness with sudo, you can delegate the
+privileged tc/netem operations to an external helper by setting the
+`TIGERVNC_WAN_HELPER` environment variable. The helper must understand
+commands of the form:
+
+- `TIGERVNC_WAN_HELPER apply <profile> <dev> <port1> [<port2> ...]`
+- `TIGERVNC_WAN_HELPER clear <dev>`
+
+A reference implementation, `wanem_helper.py`, is provided alongside
+`wanem.py` and can be run with CAP_NET_ADMIN via a systemd unit or other
+trusted mechanism.
+
 ### Black-box PersistentCache under WAN
 
 A dedicated wrapper test, `test_black_box_screenshot_cache_wan.py`,

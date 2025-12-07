@@ -44,6 +44,8 @@ Typical usage from a test harness
 
 from __future__ import annotations
 
+import os
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -51,6 +53,13 @@ from typing import Dict, Iterable, List, Optional
 
 
 TC_BIN = shutil.which("tc") or "tc"
+# Optional external helper command that can perform privileged WAN
+# shaping on our behalf. When set, apply_wan_profile() and
+# clear_wan_shaping() delegate to this helper instead of talking to tc
+# directly. The helper is expected to accept a simple CLI of the form:
+#   $TIGERVNC_WAN_HELPER apply <profile> <dev> <port1> <port2> ...
+#   $TIGERVNC_WAN_HELPER clear <dev>
+WAN_HELPER = os.environ.get("TIGERVNC_WAN_HELPER")
 
 
 @dataclass(frozen=True)
@@ -152,11 +161,19 @@ def _ensure_root_qdisc(dev: str, verbose: bool = False) -> bool:
             continue
         if "root" not in line:
             continue
+        # Reuse an existing prio 1: root if present.
         if "prio" in line and "1:" in line:
-            # Compatible existing root qdisc; reuse.
             if verbose:
                 print(f"[wanem] Reusing existing root prio qdisc on {dev} (handle 1:)")
             return True
+        # On many systems the loopback device uses a "noqueue" root. It is
+        # safe for our test harness to replace this with a prio qdisc under
+        # sudo on a development machine.
+        if " noqueue " in line and " root " in line and dev == "lo":
+            if verbose:
+                print(f"[wanem] Replacing existing noqueue root qdisc on {dev} with prio 1:")
+            return _run_tc(["qdisc", "replace", "dev", dev, "root", "handle", "1:", "prio"],
+                           verbose=verbose)
         # If we find some other root qdisc that isn't ours, bail out.
         if "1:" in line and "prio" not in line:
             print(
@@ -310,6 +327,53 @@ def _configure_netem_and_filters(
     return ok
 
 
+def _run_helper(
+    subcommand: str,
+    profile_name: str | None,
+    dev: str,
+    ports: Iterable[int] | None,
+    verbose: bool = False,
+) -> bool:
+    """Invoke external WAN helper if configured.
+
+    The helper is specified via $TIGERVNC_WAN_HELPER and must understand:
+      - "apply <profile> <dev> <port1> <port2> ..."
+      - "clear <dev>"
+    """
+
+    if not WAN_HELPER:
+        return False
+
+    base = shlex.split(WAN_HELPER)
+    args: list[str] = []
+    if subcommand == "apply" and profile_name and ports is not None:
+        args = ["apply", profile_name, dev] + [str(p) for p in sorted(set(ports))]
+    elif subcommand == "clear":
+        args = ["clear", dev]
+    else:
+        print("[wanem] ERROR: invalid helper invocation parameters")
+        return False
+
+    cmd = base + args
+    if verbose:
+        print(f"[wanem] helper: {' '.join(cmd)}")
+
+    try:
+        subprocess.run(
+            cmd,
+            check=True,
+            timeout=30.0,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except subprocess.TimeoutExpired:
+        print("[wanem] ERROR: WAN helper timed out while running:", " ".join(cmd))
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"[wanem] ERROR: WAN helper failed: {exc}")
+    return False
+
+
 def apply_wan_profile(
     profile_name: str,
     ports: Iterable[int],
@@ -333,6 +397,12 @@ def apply_wan_profile(
         clear_wan_shaping(dev, verbose=verbose)
         return False
 
+    # Prefer external helper when configured. This allows the main test
+    # harness to run unprivileged while delegating CAP_NET_ADMIN work to a
+    # separate process (for example, via systemd or a small setcap helper).
+    if _run_helper("apply", profile_name, dev, ports, verbose=verbose):
+        return True
+
     if shutil.which(TC_BIN) is None and TC_BIN == "tc":
         print("[wanem] ERROR: 'tc' binary not found; install iproute2 to use WAN emulation.")
         return False
@@ -355,6 +425,10 @@ def clear_wan_shaping(dev: str = "lo", verbose: bool = False) -> None:
     handle 1: **only** if it appears to be one we created. If a different
     qdisc configuration is present, this function leaves it untouched.
     """
+
+    # If an external helper is configured, delegate clearing to it first.
+    if _run_helper("clear", None, dev, None, verbose=verbose):
+        return
 
     # Remove child qdiscs first.
     _run_tc(["qdisc", "del", "dev", dev, "parent", "1:3", "handle", "30:", "netem"],

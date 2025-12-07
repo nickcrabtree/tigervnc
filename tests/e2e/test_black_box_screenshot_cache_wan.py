@@ -32,6 +32,19 @@ from wanem import apply_wan_profile, clear_wan_shaping
 
 
 def main() -> int:
+    # If we are not running as root, re-exec this script via sudo -n so that
+    # tc/netem operations can succeed without requiring the entire test suite
+    # to be invoked under sudo. A sudoers drop-in should grant NOPASSWD for
+    # this exact command.
+    if os.geteuid() != 0:
+        script = Path(__file__).resolve()
+        argv = ["sudo", "-n", sys.executable, str(script)] + sys.argv[1:]
+        os.execvp("sudo", argv)
+
+    # Ensure we do not go through the external helper path when running as
+    # root; we want to talk to tc directly from this elevated invocation.
+    os.environ.pop("TIGERVNC_WAN_HELPER", None)
+
     here = Path(__file__).resolve().parent
     runner = here / "run_black_box_screenshot_test.py"
     if not runner.is_file():
