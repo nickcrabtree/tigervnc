@@ -57,7 +57,7 @@ FdOutStream::FdOutStream(int fd_)
 #else
   : BufferedOutStream(true),
 #endif
-  fd(fd_)
+  fd(fd_), bytesWritten_(0)
 {
   gettimeofday(&lastWrite, nullptr);
 }
@@ -137,6 +137,9 @@ size_t FdOutStream::writeFd(const uint8_t* data, size_t length)
     throw core::socket_error("write", errorNumber);
 
   gettimeofday(&lastWrite, nullptr);
+
+  if (n > 0)
+    bytesWritten_ += (uint64_t)n;
 
   return n;
 }

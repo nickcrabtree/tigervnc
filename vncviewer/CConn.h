@@ -115,6 +115,9 @@ private:
   rfb::PixelFormat fullColourPF;
 
   int lastServerEncoding;
+ 
+  // Per-session timing for aggregate bandwidth statistics
+  struct timeval sessionStartTime;
 
   struct timeval updateStartTime;
   size_t updateStartPos;

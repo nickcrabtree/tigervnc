@@ -25,6 +25,7 @@
 #define __RDR_FDOUTSTREAM_H__
 
 #include <sys/time.h>
+#include <stdint.h>
 
 #include <rdr/BufferedOutStream.h>
 
@@ -43,11 +44,17 @@ namespace rdr {
 
     void cork(bool enable) override;
 
+    // Total number of bytes successfully written on this stream since
+    // construction. This is used for coarse-grained per-connection
+    // bandwidth statistics in the viewer and server.
+    uint64_t bytesWritten() const { return bytesWritten_; }
+
   private:
     bool flushBuffer() override;
     size_t writeFd(const uint8_t* data, size_t length);
     int fd;
     struct timeval lastWrite;
+    uint64_t bytesWritten_;
   };
 
 }

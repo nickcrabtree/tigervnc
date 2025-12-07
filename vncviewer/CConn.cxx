@@ -111,6 +111,8 @@ CConn::CConn()
     bpsEstimate(20000000),
     verificationInProgress_(false), savedFBWidth_(0), savedFBHeight_(0)
 {
+  // Record session start time for aggregate bandwidth statistics
+  gettimeofday(&sessionStartTime, nullptr);
   setShared(::shared);
  
   supportsLocalCursor = true;
@@ -156,6 +158,35 @@ CConn::~CConn()
   // EncodeManager statistics on connection teardown.
   vlog.info("Framebuffer statistics:");
   logFramebufferStats();
+
+  // Aggregate network statistics for this viewer session. We use the
+  // underlying socket streams to estimate total bytes transferred and
+  // average throughput.
+  if (sock) {
+    struct timeval now;
+    gettimeofday(&now, nullptr);
+
+    unsigned long long elapsedUsec =
+      (unsigned long long)(now.tv_sec - sessionStartTime.tv_sec) * 1000000ULL +
+      (unsigned long long)(now.tv_usec - sessionStartTime.tv_usec);
+    if (elapsedUsec == 0)
+      elapsedUsec = 1;
+
+    double seconds = (double)elapsedUsec / 1e6;
+    uint64_t rxBytes = sock->inStream().pos();
+    uint64_t txBytes = sock->outStream().bytesWritten();
+
+    double rxBitsPerSec = (double)rxBytes * 8.0 / seconds;
+    double txBitsPerSec = (double)txBytes * 8.0 / seconds;
+
+    vlog.info("Network summary: duration=%.1fs, rx=%s, tx=%s",
+              seconds,
+              core::iecPrefix(rxBytes, "B").c_str(),
+              core::iecPrefix(txBytes, "B").c_str());
+    vlog.info("Network throughput: rx≈%d kbit/s, tx≈%d kbit/s",
+              (int)(rxBitsPerSec / 1000.0),
+              (int)(txBitsPerSec / 1000.0));
+  }
 
   // Clear global pointer so the atexit handler won't try to access a
   // destroyed connection object.

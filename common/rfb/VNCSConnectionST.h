@@ -312,6 +312,9 @@ namespace rfb {
     core::Point pointerEventPos;
     bool clientHasCursor;
 
+    // Session timing for aggregate per-client bandwidth statistics
+    struct timeval sessionStartTime_;
+
     std::string closeReason;
   };
 }

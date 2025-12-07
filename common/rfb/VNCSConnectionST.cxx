@@ -68,6 +68,9 @@ VNCSConnectionST::VNCSConnectionST(VNCServerST* server_, network::Socket *s,
     continuousUpdates(false), encodeManager(this), updateCount_(0),
     idleTimer(this), pointerEventTime(0), clientHasCursor(false)
 {
+  // Record session start for aggregate per-client bandwidth statistics
+  gettimeofday(&sessionStartTime_, nullptr);
+
   setStreams(&sock->inStream(), &sock->outStream());
   peerEndpoint = sock->getPeerEndpoint();
 
@@ -88,6 +91,35 @@ VNCSConnectionST::~VNCSConnectionST()
   if (!closeReason.empty())
     vlog.info("Closing %s: %s", peerEndpoint.c_str(),
               closeReason.c_str());
+
+  // Aggregate network statistics for this client session.
+  if (sock) {
+    struct timeval now;
+    gettimeofday(&now, nullptr);
+
+    unsigned long long elapsedUsec =
+      (unsigned long long)(now.tv_sec - sessionStartTime_.tv_sec) * 1000000ULL +
+      (unsigned long long)(now.tv_usec - sessionStartTime_.tv_usec);
+    if (elapsedUsec == 0)
+      elapsedUsec = 1;
+    double seconds = (double)elapsedUsec / 1e6;
+
+    uint64_t rxBytes = sock->inStream().pos();
+    uint64_t txBytes = sock->outStream().bytesWritten();
+
+    double rxBitsPerSec = (double)rxBytes * 8.0 / seconds;
+    double txBitsPerSec = (double)txBytes * 8.0 / seconds;
+
+    vlog.info("%s: network summary: duration=%.1fs, rx=%s, tx=%s",
+              peerEndpoint.c_str(),
+              seconds,
+              core::iecPrefix(rxBytes, "B").c_str(),
+              core::iecPrefix(txBytes, "B").c_str());
+    vlog.info("%s: network throughput: rx≈%d kbit/s, tx≈%d kbit/s",
+              peerEndpoint.c_str(),
+              (int)(rxBitsPerSec / 1000.0),
+              (int)(txBitsPerSec / 1000.0));
+  }
 
   // Log cache cleanup
   if (!knownCacheIds_.empty() || !lastCachedRectRef_.empty()) {
