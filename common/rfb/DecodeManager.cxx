@@ -907,12 +907,11 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   
   // Track bandwidth for this PersistentCachedRect reference (regardless of hit/miss)
   rfb::cache::trackPersistentCacheRef(persistentCacheBandwidthStats, r, conn->server.pf());
-
+ 
   CacheStatsView pcStats{persistentCacheStats.cache_hits,
                          persistentCacheStats.cache_lookups,
                          persistentCacheStats.cache_misses,
                          persistentCacheStats.stores};
-
   // Treat every PersistentCachedRect reference as a cache lookup. The
   // outcome (hit vs miss) is determined below once we consult the
   // GlobalClientPersistentCache.
