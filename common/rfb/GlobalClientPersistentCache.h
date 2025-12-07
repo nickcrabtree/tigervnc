@@ -218,6 +218,12 @@ namespace rfb {
     // Configuration
     void setMaxSize(size_t maxSizeMB);
     void clear();
+
+    // Expose cache location for logging and diagnostics. These helpers are
+    // intentionally narrow so callers do not need to know about the on-disk
+    // layout details.
+    const std::string& getCacheDirectory() const { return cacheDir_; }
+    std::string getIndexFilePath() const { return getIndexPath(); }
     
   private:
     
