@@ -480,13 +480,20 @@ void DecodeManager::triggerPersistentCacheLoad()
 
   persistentCacheLoadTriggered = true;
 
-  vlog.info("PersistentCache: protocol negotiated, loading index from disk...");
+  // Log the concrete cache directory and index file path so users and
+  // tests can see exactly where PersistentCache state will be read from.
+  const std::string& cacheDir = persistentCache->getCacheDirectory();
+  std::string indexPath = persistentCache->getIndexFilePath();
+  vlog.info("PersistentCache: protocol negotiated, loading index from %s (directory %s)",
+            indexPath.c_str(), cacheDir.c_str());
   
-  // Use v2 lazy loading: only load index, hydrate payloads on-demand or proactively
+  // Use v3 lazy loading: only load index, hydrate payloads on-demand or proactively
   if (persistentCache->loadIndexFromDisk()) {
-    vlog.info("PersistentCache index loaded (entries will hydrate on-demand/background)");
+    vlog.info("PersistentCache index loaded from %s (entries will hydrate on-demand/background)",
+              indexPath.c_str());
   } else {
-    vlog.debug("PersistentCache starting fresh (no cache file or load failed)");
+    vlog.debug("PersistentCache starting fresh (no index at %s or load failed)",
+               indexPath.c_str());
   }
 
   // After loading index, advertise our hashes to the server
@@ -674,10 +681,14 @@ void DecodeManager::logStats()
   // persist entries to disk.
   if (persistentCache != nullptr && conn && conn->isPersistentCacheNegotiated() &&
       persistentCacheDiskEnabled_) {
+    const std::string& cacheDir = persistentCache->getCacheDirectory();
+    std::string indexPath = persistentCache->getIndexFilePath();
     if (persistentCache->saveToDisk()) {
-      vlog.info("PersistentCache saved to disk");
+      vlog.info("PersistentCache saved index to %s (directory %s)",
+                indexPath.c_str(), cacheDir.c_str());
     } else {
-      vlog.error("Failed to save PersistentCache to disk");
+      vlog.error("Failed to save PersistentCache to disk at %s (directory %s)",
+                 indexPath.c_str(), cacheDir.c_str());
     }
   }
 }

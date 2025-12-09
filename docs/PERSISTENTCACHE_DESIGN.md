@@ -770,6 +770,15 @@ In the unified implementation, both ContentCache and PersistentCache are policie
 
 Existing sections that describe separate ContentCache and PersistentCache engines should be read in this fork as describing two *policies* on top of the single unified engine.
 
+### Runtime logging of cache location
+
+The C++ viewer logs the actual PersistentCache directory and index file path so tests and users can see exactly where state is being read from and written to:
+
+- When the server first negotiates the PersistentCache protocol for a connection, the DecodeManager logs a message showing the cache directory and the index file it is about to load.
+- When the connection shuts down and final statistics are logged, the DecodeManager logs whether the index save succeeded, including the full path to the index file and the directory.
+
+These log lines are emitted through the DecodeManager logger and appear alongside the existing cache statistics and bandwidth summaries in the viewer log.
+
 ## Backward Compatibility
 
 ### Old Client + New Server
