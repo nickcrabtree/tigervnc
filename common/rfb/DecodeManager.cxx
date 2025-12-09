@@ -909,6 +909,14 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   // geometry. This keeps the client-side keying consistent with the
   // server-side ContentHash/CacheKey mapping.
   CacheKey key((uint16_t)r.width(), (uint16_t)r.height(), (uint64_t)cacheId);
+
+  const bool pcdbgTopBand = (r.tl.y < 100 && r.br.y > 20);
+  if (pcdbgTopBand) {
+    vlog.info("PCDBG HIT_LOOKUP: rect [%d,%d-%d,%d] cacheId=%llu",
+              r.tl.x, r.tl.y, r.br.x, r.br.y,
+              (unsigned long long)cacheId);
+  }
+
   const GlobalClientPersistentCache::CachedPixels* cached = persistentCache->getByKey(key);
   
   if (cached == nullptr) {
@@ -949,6 +957,12 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   if (hashId != cacheId) {
     // Hash mismatch: the cached entry has drifted from what the server thinks it should be.
     // Invalidate this specific entry and treat as a miss.
+    if (pcdbgTopBand) {
+      vlog.info("PCDBG HIT_INVALIDATED: rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu",
+                r.tl.x, r.tl.y, r.br.x, r.br.y,
+                (unsigned long long)cacheId,
+                (unsigned long long)hashId);
+    }
     vlog.info("PersistentCache HIT INVALIDATED: rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu - cached entry is stale",
               r.tl.x, r.tl.y, r.br.x, r.br.y,
               (unsigned long long)cacheId,
@@ -962,6 +976,43 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   }
   
   // Hash matches: safe to blit cached pixels to framebuffer
+  if (pcdbgTopBand) {
+    vlog.info("PCDBG HIT_OK: rect [%d,%d-%d,%d] cacheId=%llu",
+              r.tl.x, r.tl.y, r.br.x, r.br.y,
+              (unsigned long long)cacheId);
+
+    // Extra debug: log a few raw pixel samples from the cached entry that we
+    // are about to blit into the framebuffer so we can compare against the
+    // seeding path.
+    if (cached && !cached->pixels.empty() && cached->stridePixels > 0) {
+      size_t bppBytes = (size_t)cached->format.bpp / 8;
+      if (bppBytes > 0 && cached->width > 0) {
+        uint32_t pxTL = 0;
+        uint32_t pxC = 0;
+        uint32_t pxBR = 0;
+        size_t copyLen = bppBytes < sizeof(uint32_t) ? bppBytes : sizeof(uint32_t);
+        int w = cached->width;
+        int xC = w / 2;
+        int xBR = w - 1;
+
+        const uint8_t* row0 = cached->pixels.data();
+        memcpy(&pxTL, row0, copyLen);
+        if (xC > 0)
+          memcpy(&pxC, row0 + (size_t)xC * bppBytes, copyLen);
+        else
+          pxC = pxTL;
+        if (xBR > 0)
+          memcpy(&pxBR, row0 + (size_t)xBR * bppBytes, copyLen);
+        else
+          pxBR = pxTL;
+
+        vlog.info("PCDBG HIT_SAMPLES: rect [%d,%d-%d,%d] cacheId=%llu tlPix=0x%08x cPix=0x%08x brPix=0x%08x",
+                  r.tl.x, r.tl.y, r.br.x, r.br.y,
+                  (unsigned long long)cacheId,
+                  (unsigned int)pxTL, (unsigned int)pxC, (unsigned int)pxBR);
+      }
+    }
+  }
   pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
   
   recordCacheHit(pcStats);
@@ -1006,6 +1057,14 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   vlog.debug("PersistentCache STORE: rect [%d,%d-%d,%d] cacheId=%llu encoding=%d",
              r.tl.x, r.tl.y, r.br.x, r.br.y,
              (unsigned long long)cacheId, encoding);
+
+  const bool pcdbgTopBand = (r.tl.y < 100 && r.br.y > 20);
+  if (pcdbgTopBand) {
+    vlog.info("PCDBG STORE_INIT: rect [%d,%d-%d,%d] cacheId=%llu enc=%d",
+              r.tl.x, r.tl.y, r.br.x, r.br.y,
+              (unsigned long long)cacheId,
+              encoding);
+  }
   
   // Get pixel data from framebuffer
   // CRITICAL: stride from getBuffer() is in pixels, not bytes
@@ -1016,6 +1075,34 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   size_t pixelBytes = (size_t)r.height() * stridePixels * bppBytes;
   vlog.debug("PersistentCache STORE details: bpp=%d stridePx=%d pixelBytes=%zu",
              pb->getPF().bpp, stridePixels, pixelBytes);
+
+  // Extra debug sampling for the problematic top-of-screen band. Log a few
+  // raw pixel values from the first row of the rect so we can compare what
+  // the cache is seeded with vs. what later hits replay.
+  if (pcdbgTopBand && pixels && bppBytes > 0 && r.width() > 0) {
+    uint32_t pxTL = 0;
+    uint32_t pxC = 0;
+    uint32_t pxBR = 0;
+    size_t copyLen = bppBytes < sizeof(uint32_t) ? bppBytes : sizeof(uint32_t);
+    int w = r.width();
+    int xC = w / 2;
+    int xBR = w - 1;
+
+    const uint8_t* row0 = pixels;
+    memcpy(&pxTL, row0, copyLen);
+    if (xC > 0)
+      memcpy(&pxC, row0 + (size_t)xC * bppBytes, copyLen);
+    else
+      pxC = pxTL;
+    if (xBR > 0)
+      memcpy(&pxBR, row0 + (size_t)xBR * bppBytes, copyLen);
+    else
+      pxBR = pxTL;
+
+    vlog.info("PCDBG STORE_INIT_SAMPLES: rect [%d,%d-%d,%d] tlPix=0x%08x cPix=0x%08x brPix=0x%08x",
+              r.tl.x, r.tl.y, r.br.x, r.br.y,
+              (unsigned int)pxTL, (unsigned int)pxC, (unsigned int)pxBR);
+  }
   
   // Track bandwidth for this PersistentCachedRectInit (ID + encoded data)
   rfb::cache::trackPersistentCacheInit(persistentCacheBandwidthStats, lastDecodedRectBytes);
@@ -1044,6 +1131,13 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   if (!hashMatch) {
     // Hash mismatch indicates lossy compression (e.g. JPEG artifacts).
     // Store in memory but don't persist to disk.
+    if (pcdbgTopBand) {
+      vlog.info("PCDBG STORE_INIT_LOSSY: rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu enc=%d",
+                r.tl.x, r.tl.y, r.br.x, r.br.y,
+                (unsigned long long)cacheId,
+                (unsigned long long)hashId,
+                encoding);
+    }
     vlog.info("PersistentCache STORE (lossy): hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu encoding=%d",
               r.tl.x, r.tl.y, r.br.x, r.br.y,
               (unsigned long long)cacheId,
@@ -1136,12 +1230,49 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
   // computed lossy ID and report the mapping to the server.
 
   if (persistentCache != nullptr) {
+    const bool pcdbgTopBand = (r.tl.y < 100 && r.br.y > 20);
+    if (pcdbgTopBand) {
+      vlog.info("PCDBG SEED: rect [%d,%d-%d,%d] cacheId=%llu",
+                r.tl.x, r.tl.y, r.br.x, r.br.y,
+                (unsigned long long)cacheId);
+    }
+
     std::vector<uint8_t> contentHash =
       ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
     uint64_t hashId = 0;
     if (!contentHash.empty()) {
       size_t n = std::min(contentHash.size(), sizeof(uint64_t));
       memcpy(&hashId, contentHash.data(), n);
+    }
+
+    // Extra debug: for top-band seeds, log a few raw pixel values from the
+    // first row of the framebuffer region we are seeding from.
+    if (pcdbgTopBand && pixels && stridePixels > 0) {
+      size_t bppBytes = (size_t)pb->getPF().bpp / 8;
+      if (bppBytes > 0 && r.width() > 0) {
+        uint32_t pxTL = 0;
+        uint32_t pxC = 0;
+        uint32_t pxBR = 0;
+        size_t copyLen = bppBytes < sizeof(uint32_t) ? bppBytes : sizeof(uint32_t);
+        int w = r.width();
+        int xC = w / 2;
+        int xBR = w - 1;
+
+        const uint8_t* row0 = pixels;
+        memcpy(&pxTL, row0, copyLen);
+        if (xC > 0)
+          memcpy(&pxC, row0 + (size_t)xC * bppBytes, copyLen);
+        else
+          pxC = pxTL;
+        if (xBR > 0)
+          memcpy(&pxBR, row0 + (size_t)xBR * bppBytes, copyLen);
+        else
+          pxBR = pxTL;
+
+        vlog.info("PCDBG SEED_SAMPLES: rect [%d,%d-%d,%d] tlPix=0x%08x cPix=0x%08x brPix=0x%08x",
+                  r.tl.x, r.tl.y, r.br.x, r.br.y,
+                  (unsigned int)pxTL, (unsigned int)pxC, (unsigned int)pxBR);
+      }
     }
 
     // Debug: log canonical bytes for this SEED rect at the viewer.
@@ -1154,6 +1285,12 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
       // Hash mismatch indicates lossy encoding was used. Store under the
       // lossy ID (which matches actual pixels) and report the mapping so
       // the server can use the lossy ID in future references.
+      if (pcdbgTopBand) {
+        vlog.info("PCDBG SEED_LOSSY: rect [%d,%d-%d,%d] canonical=%llu lossy=%llu",
+                  r.tl.x, r.tl.y, r.br.x, r.br.y,
+                  (unsigned long long)cacheId,
+                  (unsigned long long)hashId);
+      }
       vlog.info("seedCachedRect: lossy encoding detected for rect [%d,%d-%d,%d] canonical=%llu lossy=%llu",
                 r.tl.x, r.tl.y, r.br.x, r.br.y,
                 (unsigned long long)cacheId,
@@ -1182,6 +1319,13 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
                             r.width(), r.height(), stridePixels,
                             isLossless);
     persistentCacheStats.stores++;
+
+    if (pcdbgTopBand) {
+      vlog.info("PCDBG SEED_STORE: rect [%d,%d-%d,%d] id=%llu%s",
+                r.tl.x, r.tl.y, r.br.x, r.br.y,
+                (unsigned long long)storageId,
+                hashMatch ? " (canonical)" : " (lossy)");
+    }
 
     vlog.info("seedCachedRect: stored in PersistentCache id=%llu%s [%d,%d-%d,%d]",
               (unsigned long long)storageId,

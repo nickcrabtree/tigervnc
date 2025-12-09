@@ -1003,6 +1003,12 @@ void VNCSConnectionST::handlePersistentCacheHashReport(uint64_t canonicalId, uin
   // Store the canonical->lossy mapping for future lookups
   cacheLossyHash(canonicalId, lossyId);
 
+  // The viewer has confirmed that it holds pixels under |lossyId| for this
+  // canonical content. Mark the lossy ID as known so that subsequent
+  // tryPersistentCacheLookup() calls are free to reference it directly when
+  // constructing PersistentCachedRect messages.
+  markPersistentIdKnown(lossyId);
+
   vlog.info("Stored lossy hash mapping: canonical=%llu -> lossy=%llu",
             (unsigned long long)canonicalId,
             (unsigned long long)lossyId);

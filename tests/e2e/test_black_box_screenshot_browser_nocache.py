@@ -29,6 +29,7 @@ def main() -> int:
         "browser",
         "--mode",
         "none",  # both viewers: ContentCache=0, PersistentCache=0
+        "--lossless",  # force deterministic, lossless encoding for strict pixel equality
         *sys.argv[1:],
     ]
     os.execv(sys.executable, argv)

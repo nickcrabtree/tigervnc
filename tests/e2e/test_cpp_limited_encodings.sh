@@ -12,16 +12,28 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Check if local server exists
+# Always rebuild the C++ viewer and local Xnjcvnc server before running this
+# test so that it exercises the latest sources (including uncommitted edits).
+(
+  cd "$PROJECT_ROOT" && \
+  make viewer && \
+  make server
+)
+
+# Verify local server exists after rebuild.
 if [ ! -f "$PROJECT_ROOT/build/unix/xserver/hw/vnc/Xnjcvnc" ]; then
-    echo "Error: Local Xnjcvnc server not found"
-    echo "Please build the server first"
+    echo "Error: Local Xnjcvnc server not found after 'make server'"
     exit 1
 fi
 
 # Choose viewer binary: allow override via TIGERVNC_VIEWER_BIN, falling back
 # to the default C++ viewer under the build tree.
 VIEWER_BIN="${TIGERVNC_VIEWER_BIN:-"$PROJECT_ROOT/build/vncviewer/njcvncviewer"}"
+
+if [ ! -x "$VIEWER_BIN" ]; then
+    echo "Error: C++ viewer not found after 'make viewer' at $VIEWER_BIN"
+    exit 1
+fi
 
 # Start VNC server on display :998
 DISPLAY_NUM=998

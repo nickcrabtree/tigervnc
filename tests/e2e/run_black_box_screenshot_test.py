@@ -90,6 +90,7 @@ def _run_cpp_viewer(
     persistent_cache: int,
     persistent_cache_size_mb: int,
     lossless: bool = False,
+    persistent_cache_path: str | None = None,
 ):
     """Launch the C++ viewer with specified cache configuration.
 
@@ -110,6 +111,8 @@ def _run_cpp_viewer(
 
     if persistent_cache:
         cmd.append(f"PersistentCacheSize={persistent_cache_size_mb}")
+        if persistent_cache_path:
+            cmd.append(f"PersistentCachePath={persistent_cache_path}")
 
     # Optional lossless mode: configure viewer via its own parameters
     # to prefer a lossless encoding path (ZRLE, no JPEG, full colour).
@@ -690,6 +693,12 @@ def main() -> int:
     artifacts = ArtifactManager()
     artifacts.create()
 
+    # For tests that enable PersistentCache via --mode, keep all on-disk
+    # cache state under the per-run artifacts directory so that each
+    # invocation starts from a clean disk cache and does not reuse the
+    # user's global ~/.cache/tigervnc/persistentcache directory.
+    pcache_path = artifacts.base_dir / "persistentcache"
+
     print("\n[2/8] Running preflight checks (C++ viewer only)...")
     try:
         binaries = preflight_check_cpp_only(verbose=args.verbose)
@@ -827,6 +836,7 @@ def main() -> int:
             persistent_cache=v_b_persistent,
             persistent_cache_size_mb=256,
             lossless=args.lossless,
+            persistent_cache_path=str(pcache_path) if v_b_persistent else None,
         )
         if viewer_cache.poll() is not None:
             print("\n✗ FAIL: Cache-on viewer exited prematurely")
@@ -1047,6 +1057,39 @@ def main() -> int:
                 (0, 0, 79, 79),
                 (max(0, img_w - 4), 0, max(0, img_w - 1), max(0, img_h - 1)),
             ]
+
+            # Browser scenario: Firefox occasionally shows transient teaching
+            # tooltips in the tab strip area (e.g. "View recent browsing
+            # across windows and devices") that can appear between the two
+            # sequential captures, producing small but real mismatches that are
+            # unrelated to the cache protocol. These popups are confined to a
+            # narrow band near the top of the window; mask that band so the
+            # dark-rectangle tests remain focused on PersistentCache behaviour
+            # rather than UI hints.
+            if args.scenario == "browser":
+                overlay_left = 80
+                overlay_top = 0
+                overlay_right = min(img_w - 1, 343)
+                overlay_bottom = min(img_h - 1, 60)
+                ignore_rects.append(
+                    (overlay_left, overlay_top, overlay_right, overlay_bottom)
+                )
+
+                # Many real-world news sites (including the default BBC target)
+                # display dynamic cookie/consent banners anchored to the bottom
+                # of the viewport. These can animate, fade, or update contents
+                # independently of our scripted scrolling and will legitimately
+                # differ between the two sequential screenshots we take for a
+                # checkpoint, even when both viewers are running with caches
+                # disabled. To keep this black-box test focused on differences
+                # introduced by the VNC pipeline rather than third-party UI
+                # overlays, mask a conservative band at the bottom of the
+                # window where such banners live.
+                footer_top = max(0, img_h - 220)
+                footer_bottom = max(0, img_h - 1)
+                ignore_rects.append(
+                    (0, footer_top, max(0, img_w - 1), footer_bottom)
+                )
 
             result = compare_screenshots(
                 gt_path,

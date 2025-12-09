@@ -818,6 +818,20 @@ and ensure that the canonicalization step that fills the hash buffer sees all `t
 
 **Solution:** Client may need multiple cache entries for same visual content. This is by design.
 
+### 4. Legacy v3 Cache Indexes and Future Format Bumps
+
+Older builds of the v3 sharded cache engine may have admitted entries whose
+payload no longer satisfies the stricter invariants introduced by later
+bug fixes (for example, hash validation bugs uncovered by the
+`test_dark_rect_corruption.py` TDD tests). Once those fixes are complete,
+any persisted on-disk state created by the unfixed builds should be
+considered potentially suspect.
+
+To avoid legacy shards silently reintroducing corruption, the on-disk
+index **version number must be bumped** (and/or the magic updated) when
+rolling out a correctness fix of this kind so that new viewers refuse to
+load pre-fix cache indexes.
+
 ## Performance Characteristics
 
 ### Future Work: Per-User PersistentCache Daemon

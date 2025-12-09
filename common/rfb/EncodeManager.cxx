@@ -643,84 +643,97 @@ void EncodeManager::prepareEncoders(bool allowLossy)
   solid = bitmap = bitmapRLE = encoderRaw;
   indexed = indexedRLE = fullColour = encoderRaw;
 
-  allowJPEG = conn->client.pf().bpp >= 16;
+  // Strict lossless path: used for idle "lossless refresh" updates when
+  // allowLossy == false. In this mode we never use JPEG at all and prefer
+  // ZRLE for all rectangle types when the client supports it. This ensures
+  // that previously JPEG-encoded regions converge to a bit-perfect copy of
+  // the server framebuffer when we have spare bandwidth.
   if (!allowLossy) {
-    if (encoders[encoderTightJPEG]->losslessQuality == -1)
-      allowJPEG = false;
-  }
+    if (encoders[encoderZRLE]->isSupported()) {
+      solid = bitmap = bitmapRLE = indexed = indexedRLE = fullColour = encoderZRLE;
+    } else if (encoders[encoderTight]->isSupported()) {
+      solid = bitmap = bitmapRLE = indexed = indexedRLE = fullColour = encoderTight;
+    } else if (encoders[encoderHextile]->isSupported()) {
+      solid = bitmap = bitmapRLE = indexed = indexedRLE = fullColour = encoderHextile;
+    } else {
+      solid = bitmap = bitmapRLE = indexed = indexedRLE = fullColour = encoderRaw;
+    }
+  } else {
+    allowJPEG = conn->client.pf().bpp >= 16;
 
-  // Try to respect the client's wishes
-  preferred = conn->getPreferredEncoding();
-  switch (preferred) {
-  case encodingRRE:
-    // Horrible for anything high frequency and/or lots of colours
-    bitmapRLE = indexedRLE = encoderRRE;
-    break;
-  case encodingHextile:
-    // Slightly less horrible
-    bitmapRLE = indexedRLE = fullColour = encoderHextile;
-    break;
-  case encodingTight:
-    if (encoders[encoderTightJPEG]->isSupported() && allowJPEG)
-      fullColour = encoderTightJPEG;
-    else
-      fullColour = encoderTight;
-    indexed = indexedRLE = encoderTight;
-    bitmap = bitmapRLE = encoderTight;
-    break;
-  case encodingZRLE:
-    fullColour = encoderZRLE;
-    bitmapRLE = indexedRLE = encoderZRLE;
-    bitmap = indexed = encoderZRLE;
-    break;
-  }
-
-  // Any encoders still unassigned?
-
-  if (fullColour == encoderRaw) {
-    if (encoders[encoderTightJPEG]->isSupported() && allowJPEG)
-      fullColour = encoderTightJPEG;
-    else if (encoders[encoderZRLE]->isSupported())
+    // Try to respect the client's wishes
+    preferred = conn->getPreferredEncoding();
+    switch (preferred) {
+    case encodingRRE:
+      // Horrible for anything high frequency and/or lots of colours
+      bitmapRLE = indexedRLE = encoderRRE;
+      break;
+    case encodingHextile:
+      // Slightly less horrible
+      bitmapRLE = indexedRLE = fullColour = encoderHextile;
+      break;
+    case encodingTight:
+      if (encoders[encoderTightJPEG]->isSupported() && allowJPEG)
+        fullColour = encoderTightJPEG;
+      else
+        fullColour = encoderTight;
+      indexed = indexedRLE = encoderTight;
+      bitmap = bitmapRLE = encoderTight;
+      break;
+    case encodingZRLE:
       fullColour = encoderZRLE;
-    else if (encoders[encoderTight]->isSupported())
-      fullColour = encoderTight;
-    else if (encoders[encoderHextile]->isSupported())
-      fullColour = encoderHextile;
-  }
+      bitmapRLE = indexedRLE = encoderZRLE;
+      bitmap = indexed = encoderZRLE;
+      break;
+    }
 
-  if (indexed == encoderRaw) {
-    if (encoders[encoderZRLE]->isSupported())
-      indexed = encoderZRLE;
-    else if (encoders[encoderTight]->isSupported())
-      indexed = encoderTight;
-    else if (encoders[encoderHextile]->isSupported())
-      indexed = encoderHextile;
-  }
+    // Any encoders still unassigned?
 
-  if (indexedRLE == encoderRaw)
-    indexedRLE = indexed;
+    if (fullColour == encoderRaw) {
+      if (encoders[encoderTightJPEG]->isSupported() && allowJPEG)
+        fullColour = encoderTightJPEG;
+      else if (encoders[encoderZRLE]->isSupported())
+        fullColour = encoderZRLE;
+      else if (encoders[encoderTight]->isSupported())
+        fullColour = encoderTight;
+      else if (encoders[encoderHextile]->isSupported())
+        fullColour = encoderHextile;
+    }
 
-  if (bitmap == encoderRaw)
-    bitmap = indexed;
-  if (bitmapRLE == encoderRaw)
-    bitmapRLE = bitmap;
+    if (indexed == encoderRaw) {
+      if (encoders[encoderZRLE]->isSupported())
+        indexed = encoderZRLE;
+      else if (encoders[encoderTight]->isSupported())
+        indexed = encoderTight;
+      else if (encoders[encoderHextile]->isSupported())
+        indexed = encoderHextile;
+    }
 
-  if (solid == encoderRaw) {
-    if (encoders[encoderTight]->isSupported())
-      solid = encoderTight;
-    else if (encoders[encoderRRE]->isSupported())
-      solid = encoderRRE;
-    else if (encoders[encoderZRLE]->isSupported())
-      solid = encoderZRLE;
-    else if (encoders[encoderHextile]->isSupported())
-      solid = encoderHextile;
-  }
+    if (indexedRLE == encoderRaw)
+      indexedRLE = indexed;
 
-  // JPEG is the only encoder that can reduce things to grayscale
-  if ((conn->client.subsampling == subsampleGray) &&
-      encoders[encoderTightJPEG]->isSupported() && allowLossy) {
-    solid = bitmap = bitmapRLE = encoderTightJPEG;
-    indexed = indexedRLE = fullColour = encoderTightJPEG;
+    if (bitmap == encoderRaw)
+      bitmap = indexed;
+    if (bitmapRLE == encoderRaw)
+      bitmapRLE = bitmap;
+
+    if (solid == encoderRaw) {
+      if (encoders[encoderTight]->isSupported())
+        solid = encoderTight;
+      else if (encoders[encoderRRE]->isSupported())
+        solid = encoderRRE;
+      else if (encoders[encoderZRLE]->isSupported())
+        solid = encoderZRLE;
+      else if (encoders[encoderHextile]->isSupported())
+        solid = encoderHextile;
+    }
+
+    // JPEG is the only encoder that can reduce things to grayscale
+    if ((conn->client.subsampling == subsampleGray) &&
+        encoders[encoderTightJPEG]->isSupported()) {
+      solid = bitmap = bitmapRLE = encoderTightJPEG;
+      indexed = indexedRLE = fullColour = encoderTightJPEG;
+    }
   }
 
   activeEncoders[encoderSolid] = solid;
@@ -742,7 +755,11 @@ void EncodeManager::prepareEncoders(bool allowLossy)
       encoder->setFineQualityLevel(conn->client.fineQualityLevel,
                                    conn->client.subsampling);
     } else {
-      if (conn->client.qualityLevel < encoder->losslessQuality)
+      // Lossless refresh path: ensure any encoder that supports a
+      // "losslessQuality" level uses it, and disable fine-quality
+      // overrides such as subsampling.
+      if (encoder->losslessQuality != -1 &&
+          conn->client.qualityLevel < encoder->losslessQuality)
         encoder->setQualityLevel(encoder->losslessQuality);
       else
         encoder->setQualityLevel(conn->client.qualityLevel);
@@ -1047,6 +1064,20 @@ void EncodeManager::writeRects(const core::Region& changed,
   bool clientSupportsCache =
     conn->client.supportsEncoding(pseudoEncodingPersistentCache);
 
+  // Extra diagnostics for the problematic top-of-screen band. When the
+  // damage bounding box intersects y in ~[20,100), log a concise summary
+  // of this update, including whether the client supports cache.
+  core::Rect damageBbox = changed.get_bounding_rect();
+  bool topBandUpdate = !damageBbox.is_empty() &&
+                       damageBbox.tl.y < 100 && damageBbox.br.y > 20;
+  if (topBandUpdate) {
+    vlog.info("PCSRV TOPBAND_UPDATE: conn=%p supportsCache=%s bbox=[%d,%d-%d,%d]", 
+              (void*)conn,
+              yesNo(clientSupportsCache),
+              damageBbox.tl.x, damageBbox.tl.y,
+              damageBbox.br.x, damageBbox.br.y);
+  }
+
   // TILING ENHANCEMENT: Before processing individual damage rects, detect
   // bordered content regions in the framebuffer. These are rectangular areas
   // surrounded by solid-colored borders, which typically represent:
@@ -1068,7 +1099,7 @@ void EncodeManager::writeRects(const core::Region& changed,
   
   if (shouldDetectBorderedRegions) {
     vlog.info("BORDERED: Attempting detection on %dx%d framebuffer (damage bbox area=%d)",
-              pb->width(), pb->height(), changed.get_bounding_rect().area());
+              pb->width(), pb->height(), damageBbox.area());
     
     // Detect bordered regions in the full framebuffer
     borderedRegions = ContentHash::detectBorderedRegions(pb, 5, 50000);
@@ -1166,6 +1197,8 @@ void EncodeManager::writeRects(const core::Region& changed,
   if (clientSupportsCache && !changed.is_empty()) {
     core::Rect bbox = changed.get_bounding_rect();
     int bboxArea = bbox.area();
+
+    bool bboxTopBand = (bbox.tl.y < 100 && bbox.br.y > 20);
     
     if (bboxArea >= WholeRectCacheMinArea) {
       // Compute content hash for the entire bounding box
@@ -1202,6 +1235,13 @@ void EncodeManager::writeRects(const core::Region& changed,
       if (hasHit) {
         // CACHE HIT on bounding box!
         persistentCacheStats.cacheHits++;
+
+        if (bboxTopBand) {
+          vlog.info("PCSRV TOPBAND_BBOX_HIT: conn=%p bbox=[%d,%d-%d,%d] id=%s",
+                    (void*)conn,
+                    bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
+                    hex64(matchedBboxId));
+        }
         persistentCacheStats.cacheLookups++;
         int equiv = 12 + bboxArea * (conn->client.pf().bpp / 8);
         persistentCacheStats.bytesSaved += equiv - 20;
@@ -1249,6 +1289,15 @@ void EncodeManager::writeRects(const core::Region& changed,
 
         // Debug: log canonical bytes for the seeding domain.
         logFBHashDebug("bboxSeed", bboxForSeeding, bboxIdForSeeding, pb);
+
+        if (!bboxForSeeding.is_empty() &&
+            bboxForSeeding.tl.y < 100 && bboxForSeeding.br.y > 20) {
+          vlog.info("PCSRV TOPBAND_BBOX_SEED: conn=%p bbox=[%d,%d-%d,%d] id=%s",
+                    (void*)conn,
+                    bboxForSeeding.tl.x, bboxForSeeding.tl.y,
+                    bboxForSeeding.br.x, bboxForSeeding.br.y,
+                    hex64(bboxIdForSeeding));
+        }
       }
     }
   }
@@ -1361,6 +1410,14 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
     // Use unified cache protocol whenever the client has negotiated the
     // PersistentCache encoding.
     vlog.debug("CC attempt unified cache lookup for rect (%s)", strRect(rect));
+
+    bool topBandRect = (rect.tl.y < 100 && rect.br.y > 20);
+    if (topBandRect) {
+      vlog.info("PCSRV TOPBAND_SUBRECT_LOOKUP: conn=%p rect=[%d,%d-%d,%d]",
+                (void*)conn,
+                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
+    }
+
     if (tryPersistentCacheLookup(rect, pb))
       return;
   }
@@ -1375,6 +1432,10 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
 
   // Normal rectangle path
   encoder = startRect(rect, type);
+
+  if (isCCDebugEnabled()) {
+    vlog.info("CCDBG ENCODER: rect=%s enc=%d", strRect(rect), encoder->encoding);
+  }
 
   if (encoder->flags & EncoderUseNativePF)
     ppb = preparePixelBuffer(rect, pb, false);
@@ -1698,8 +1759,11 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   // engine, pseudoEncodingContentCache and pseudoEncodingPersistentCache
   // are handled by the same 64-bit ID path; the difference is purely
   // policy (ephemeral vs persistent) on the viewer side.
-  if (!conn->client.supportsEncoding(pseudoEncodingPersistentCache) &&
-      !conn->client.supportsEncoding(pseudoEncodingContentCache))
+  bool clientSupportsPersistent =
+    conn->client.supportsEncoding(pseudoEncodingPersistentCache);
+  bool clientSupportsContentCache =
+    conn->client.supportsEncoding(pseudoEncodingContentCache);
+  if (!clientSupportsPersistent && !clientSupportsContentCache)
     return false;
 
   persistentCacheStats.cacheLookups++;
@@ -1718,28 +1782,42 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   logFBHashDebug("tryLookup", rect, cacheId, pb);
 
   
-  // Check if client knows this content via the 64-bit ID (canonical or lossy hash)
-  // track identity as the ContentKey above so ContentCache and
-  // PersistentCache share the same notion of "what" is being cached.
+  // Check if the client knows this content via either the canonical ID or a
+  // lossy ID that it reported back via PersistentCacheHashReport. For purely
+  // lossless content we only ever have the canonical ID; for lossy content the
+  // viewer stores pixels under the lossy ID and the server must use that ID in
+  // subsequent PersistentCachedRect references.
   bool hasCanonicalMatch = conn->knowsPersistentId(cacheId);
-  bool hasLossyMatch = false;
   uint64_t lossyId = 0;
+  bool hasLossyMatch = false;
   uint64_t matchedId = cacheId;
-  
-  if (!hasCanonicalMatch) {
-    // Check if we have a lossy hash for this canonical hash
-    if (conn->hasLossyHash(cacheId, lossyId) && 
-        conn->knowsPersistentId(lossyId)) {
-      hasLossyMatch = true;
-      matchedId = lossyId;
-      vlog.debug("tryLookup: Using lossy hash match id=%s (canonical=%s)",
-                 hex64(lossyId), hex64(cacheId));
-    }
+
+  // Prefer the lossy ID when the client has explicitly reported a lossy hash
+  // for this canonical content and we know that ID is present in the client's
+  // cache. This covers the "only lossy copy exists" case without assuming any
+  // additional signalling for later lossless upgrades.
+  if (conn->hasLossyHash(cacheId, lossyId) &&
+      conn->knowsPersistentId(lossyId)) {
+    hasLossyMatch = true;
+    matchedId = lossyId;
+    vlog.debug("tryLookup: Using lossy hash match id=%s (canonical=%s)",
+               hex64(lossyId), hex64(cacheId));
+  } else if (hasCanonicalMatch) {
+    matchedId = cacheId;
   }
-  
+
   if (hasCanonicalMatch || hasLossyMatch) {
     // Cache hit! Client has this content, send reference
     persistentCacheStats.cacheHits++;
+
+    bool topBandRect = (rect.tl.y < 100 && rect.br.y > 20);
+    if (topBandRect) {
+      vlog.info("PCSRV TOPBAND_CACHE_HIT: conn=%p rect=[%d,%d-%d,%d] id=%s%s",
+                (void*)conn,
+                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
+                hex64(matchedId),
+                hasLossyMatch ? " (lossy)" : "");
+    }
     int equiv = 12 + rect.area() * (conn->client.pf().bpp/8);
     // PersistentCachedRect overhead now matches CachedRect: 20 bytes
     persistentCacheStats.bytesSaved += equiv - 20;
@@ -1769,6 +1847,14 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   // Client doesn't know this ID - send PersistentCachedRectInit.
   // This allows future identical rects to be references.
   persistentCacheStats.cacheMisses++;
+
+  bool topBandRect = (rect.tl.y < 100 && rect.br.y > 20);
+  if (topBandRect) {
+    vlog.info("PCSRV TOPBAND_CACHE_INIT: conn=%p rect=[%d,%d-%d,%d] id=%s",
+              (void*)conn,
+              rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
+              hex64(cacheId));
+  }
   
   // Choose payload encoder using the shared selection logic
   PixelBuffer *ppb;

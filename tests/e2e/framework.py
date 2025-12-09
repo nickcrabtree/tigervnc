@@ -485,7 +485,7 @@ def _run_build_target(target: str, description: str, timeout: float = 600.0, ver
 
 
 def _ensure_cpp_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
-    """Ensure the C++ viewer binary exists, building it on demand if needed.
+    """Ensure the C++ viewer binary exists and is freshly rebuilt.
 
     If the environment variable ``TIGERVNC_VIEWER_BIN`` is set, it takes
     precedence and is used as the viewer under test. This allows the same
@@ -499,9 +499,11 @@ def _ensure_cpp_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
             print(f"✓ C++ viewer (overridden by $TIGERVNC_VIEWER_BIN): {override}")
         return
 
+    # Always rebuild the C++ viewer before running tests so that changes to
+    # the codebase (including uncommitted edits) are reflected in the binary.
+    _run_build_target("viewer", "C++ viewer", verbose=verbose)
+
     cpp_viewer = BUILD_DIR / "vncviewer" / "njcvncviewer"
-    if not cpp_viewer.exists():
-        _run_build_target("viewer", "C++ viewer", verbose=verbose)
     if not cpp_viewer.exists():
         raise PreflightError(
             f"C++ viewer not found after attempting to build it: {cpp_viewer}\n"
@@ -513,7 +515,7 @@ def _ensure_cpp_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
 
 
 def _ensure_rust_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
-    """Ensure the Rust viewer binary exists, building it on demand if needed.
+    """Ensure the Rust viewer binary exists and is freshly rebuilt.
 
     If the environment variable ``TIGERVNC_RUST_VIEWER_BIN`` is set, it
     overrides the automatically detected/build output path. This mirrors the
@@ -527,6 +529,10 @@ def _ensure_rust_viewer(binaries: Dict[str, str], verbose: bool = False) -> None
             print(f"✓ Rust viewer (overridden by $TIGERVNC_RUST_VIEWER_BIN): {override}")
         return
 
+    # Always rebuild the Rust viewer before running tests so that any recent
+    # changes in the Rust code or FFI are compiled into the binary.
+    _run_build_target("rust_viewer", "Rust viewer", verbose=verbose)
+
     rust_viewer_symlink = BUILD_DIR / "vncviewer" / "njcvncviewer-rs"
     rust_viewer_direct = (
         PROJECT_ROOT / "rust-vnc-viewer" / "target" / "release" / "njcvncviewer-rs"
@@ -537,12 +543,6 @@ def _ensure_rust_viewer(binaries: Dict[str, str], verbose: bool = False) -> None
         rust_viewer = rust_viewer_symlink
     elif rust_viewer_direct.exists():
         rust_viewer = rust_viewer_direct
-    else:
-        _run_build_target("rust_viewer", "Rust viewer", verbose=verbose)
-        if rust_viewer_symlink.exists():
-            rust_viewer = rust_viewer_symlink
-        elif rust_viewer_direct.exists():
-            rust_viewer = rust_viewer_direct
 
     if rust_viewer is None:
         raise PreflightError(
@@ -586,32 +586,19 @@ def _get_latest_git_commit_timestamp() -> Optional[float]:
 
 
 def _maybe_rebuild_local_server(server_path: Path, verbose: bool = False) -> None:
-    """Rebuild local Xnjcvnc server if it is older than the latest git commit.
+    """Rebuild local Xnjcvnc server before tests when it exists.
 
     This is a best-effort helper. If rebuilding fails, the caller will simply
     proceed with whatever server binary is available (local or system).
     """
     if not server_path.exists():
-        # Nothing to compare; respect the fact that the user may not have
-        # set up the Xnjcvnc build environment at all.
+        # Respect the fact that the user may not have set up the Xnjcvnc
+        # build environment at all.
         return
 
-    head_ts = _get_latest_git_commit_timestamp()
-    if head_ts is None:
-        return
-
-    try:
-        mtime = server_path.stat().st_mtime
-    except OSError:
-        # If we can't stat the file, don't attempt cleverness here.
-        return
-
-    if mtime >= head_ts:
-        # Server is at least as new as the latest commit; nothing to do.
-        return
-
-    # At this point the server binary appears stale relative to the repo.
-    # Try to rebuild it via the top-level Makefile.
+    # Always invoke the server build for existing local binaries so that
+    # uncommitted changes are picked up before tests run. Incremental builds
+    # are cheap when nothing has changed.
     try:
         _run_build_target("server", "Xnjcvnc server", timeout=1200.0, verbose=verbose)
     except PreflightError as exc:
