@@ -1123,8 +1123,39 @@ void EncodeManager::writeRects(const core::Region& changed,
       const core::Rect& contentRect = region.contentRect;
       
       // Only process if the damage region intersects this content area
-      if (changed.intersect(contentRect).is_empty()) {
+      core::Region damageInContent = changed.intersect(contentRect);
+      if (damageInContent.is_empty()) {
         continue;
+      }
+
+      // For large bordered regions (e.g. slide canvases or document panes),
+      // avoid taking an optimistic cache hit when only a tiny fraction of the
+      // region has changed. In highly dynamic UIs this can otherwise cause the
+      // viewer to display a cached full-screen rect even though a non-trivial
+      // sub-rect has new content.
+      //
+      // We keep this as a geometry *heuristic* for when it's worth attempting a
+      // bordered-region hit. Correctness is still enforced by the content
+      // hash check below.
+      const int contentArea = contentRect.area();
+      if (contentArea > WholeRectCacheMinArea) {
+        const core::Rect damageBboxInContent = damageInContent.get_bounding_rect();
+        const int damageAreaInContent = damageBboxInContent.area();
+        // Require that a reasonable fraction of the bordered region is
+        // actually involved in this update before we consider a cache hit.
+        // This still allows the slide-editing use case (most of the slide
+        // changes when paging) while avoiding over-eager hits when only small
+        // patches inside the region are updating.
+        const double coverage = static_cast<double>(damageAreaInContent) /
+                                static_cast<double>(contentArea);
+        if (coverage < 0.5) {
+          if (isCCDebugEnabled()) {
+            vlog.info("BORDERED: Skipping cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)",
+                      contentRect.tl.x, contentRect.tl.y,
+                      contentRect.br.x, contentRect.br.y, coverage);
+          }
+          continue;
+        }
       }
       
       // Compute content hash for this bordered region
@@ -1201,6 +1232,32 @@ void EncodeManager::writeRects(const core::Region& changed,
     bool bboxTopBand = (bbox.tl.y < 100 && bbox.br.y > 20);
     
     if (bboxArea >= WholeRectCacheMinArea) {
+      // For very large bounding boxes, avoid taking a cache hit when only a
+      // small fraction of the bbox is damaged. This is particularly important
+      // in mixed-content UIs where unrelated widgets (clocks, thumbnails, etc.)
+      // can extend the damage region beyond the "true" content area.
+      //
+      // We still rely on the content hash comparison for correctness, but this
+      // heuristic prevents us from constantly attempting full-bbox hits in
+      // cases where the majority of the content is evolving frame-to-frame.
+      // Estimate how much of the bbox is actually involved in this update
+      // using the area of the damage bounding box.
+      const core::Rect damageBboxForCoverage = changed.get_bounding_rect();
+      const int damageArea = damageBboxForCoverage.area();
+      if (damageArea > 0) {
+        const double bboxCoverage = static_cast<double>(damageArea) /
+                                    static_cast<double>(bboxArea);
+        if (bboxCoverage < 0.5) {
+          if (isCCDebugEnabled()) {
+            vlog.info("TILING: Skipping bbox cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)",
+                      bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y, bboxCoverage);
+          }
+          // Do not attempt a bbox cache HIT on this frame; we may still seed
+          // a bbox below once all tiles are encoded.
+          return; // Skip bbox hit path entirely for this update
+        }
+      }
+
       // Compute content hash for the entire bounding box
       std::vector<uint8_t> bboxHash = ContentHash::computeRect(pb, bbox);
       uint64_t bboxId = 0;
@@ -1273,7 +1330,7 @@ void EncodeManager::writeRects(const core::Region& changed,
   }
   
   // Track bounding box for seeding after encoding individual rects
-  core::Rect bboxForSeeding;
+core::Rect bboxForSeeding;
   uint64_t bboxIdForSeeding = 0;
   bool shouldSeedBbox = false;
   

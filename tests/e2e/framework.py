@@ -464,7 +464,8 @@ def _run_build_target(target: str, description: str, timeout: float = 600.0, ver
     just because the viewer binaries have not been built yet.
     """
     cmd = ["make", target]
-    if verbose:
+    quiet = os.environ.get("TIGERVNC_TEST_QUIET", "0") not in ("", "0")
+    if verbose and not quiet:
         print(f"Attempting to build {description} via: {' '.join(cmd)}")
     try:
         subprocess.run(
@@ -472,6 +473,8 @@ def _run_build_target(target: str, description: str, timeout: float = 600.0, ver
             cwd=str(PROJECT_ROOT),
             check=True,
             timeout=timeout,
+            stdout=(subprocess.DEVNULL if quiet and not verbose else None),
+            stderr=(subprocess.STDOUT if quiet and not verbose else None),
         )
     except subprocess.TimeoutExpired:
         raise PreflightError(

@@ -51,6 +51,7 @@ EOF
 BUILD_DIR_DEFAULT="${BUILD_DIR:-build}"
 BUILD_DIR="${BUILD_DIR_DEFAULT}"
 
+QUIET=0
 CTEST_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -58,6 +59,10 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       print_help
       exit 0
+      ;;
+    -q|--quiet)
+      QUIET=1
+      shift
       ;;
     --build-dir)
       shift
@@ -106,6 +111,13 @@ fi
 
 GLOBAL_STATUS=0
 
+# Propagate quiet mode to sub-tools
+if [[ ${QUIET} -eq 1 ]]; then
+  export TIGERVNC_TEST_QUIET=1
+else
+  unset TIGERVNC_TEST_QUIET 2>/dev/null || true
+fi
+
 run_rust_tests() {
   if [[ ! -d "rust-vnc-viewer" ]]; then
     return
@@ -115,7 +127,9 @@ run_rust_tests() {
     return
   fi
 
-  echo "==> Running Rust tests (cargo test) in rust-vnc-viewer" >&2
+  if [[ ${QUIET} -eq 0 ]]; then
+    echo "==> Running Rust tests (cargo test) in rust-vnc-viewer" >&2
+  fi
 
   set +e
   (
@@ -133,7 +147,9 @@ run_rust_tests() {
 }
 
 run_ctest_all() {
-  echo "==> Running CTest in '${BUILD_DIR}' with -j${JOBS} (all tests, including e2e)" >&2
+  if [[ ${QUIET} -eq 0 ]]; then
+    echo "==> Running CTest in '${BUILD_DIR}' with -j${JOBS} (all tests, including e2e)" >&2
+  fi
 
   # Ensure all unit-test gtest targets are built so that gtest_discover_tests
   # has registered them with CTest. This avoids accidentally skipping unit
@@ -184,7 +200,9 @@ run_python_e2e_tests() {
     return
   fi
 
-  echo "==> Running standalone e2e scripts in ${e2e_dir} (test_*.py, test_*.sh)" >&2
+  if [[ ${QUIET} -eq 0 ]]; then
+    echo "==> Running standalone e2e scripts in ${e2e_dir} (test_*.py, test_*.sh)" >&2
+  fi
 
   if ! command -v python3 >/dev/null 2>&1; then
     echo "    Skipping Python e2e tests (python3 not found)" >&2
@@ -214,12 +232,16 @@ PY
     fi
     case "${script}" in
       *.py)
-        echo "    -> python3 ${script}" >&2
+        if [[ ${QUIET} -eq 0 ]]; then
+          echo "    -> python3 ${script}" >&2
+        fi
         python3 "${script}"
         local status=$?
         ;;
       *.sh)
-        echo "    -> bash ${script}" >&2
+        if [[ ${QUIET} -eq 0 ]]; then
+          echo "    -> bash ${script}" >&2
+        fi
         bash "${script}"
         local status=$?
         ;;
