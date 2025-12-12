@@ -211,9 +211,17 @@ class StaticScenarioRunner:
             wait_idle(interval_sec)
         return stats
     
-    def image_burst(self, count: int = 24, size: int = 320, cols: int = 4, rows: int = 6, interval_ms: int = 100) -> dict:
+    def image_burst(self, count: int = 24, size: int = 320, cols: int = 4, rows: int = 6, interval_ms: int = 100, delay: float = None) -> dict:
         """Open a burst of large images to force rapid cache evictions.
         Opens up to `count` windows quickly (interval_ms between opens).
+        
+        Args:
+            count: Number of windows to open
+            size: Window size in pixels
+            cols: Number of columns in the grid
+            rows: Number of rows in the grid
+            interval_ms: Milliseconds between window opens
+            delay: Deprecated parameter for backward compatibility
         """
         images = self.discover_system_images(max_count=count * 3 or 60)
         stats = {'images_found': len(images), 'windows_opened': 0}

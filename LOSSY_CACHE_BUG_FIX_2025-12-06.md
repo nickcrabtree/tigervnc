@@ -146,7 +146,7 @@ if (!hashMatch) {
 **Pros**: Single copy in memory, clean design  
 **Cons**: Requires alias tracking infrastructure
 
-### Option C: Store Under Lossy ID Only (SIMPLEST) ✅ IMPLEMENT THIS
+### Option C: Store Under Lossy ID Only (SIMPLEST) ✅ IMPLEMENTED
 The server already tracks canonical→lossy mappings and sends the correct ID. Just store under the ID that matches the actual pixels:
 
 ```cpp
@@ -161,7 +161,23 @@ if (!hashMatch) {
 }
 ```
 
-**Validation**: Accept if cached pixels match the lookup ID (already computed).
+**Critical Server-Side Fix**: When the server receives a lossy hash report, it must **remove the canonical ID from the known set** because the client stores lossy content under the lossy ID only. This ensures the server uses the correct ID in future references.
+
+```cpp
+void handlePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId) {
+    // Remove canonical ID - client can't look it up!
+    knownPersistentIds_.erase(canonicalId);
+    // Add lossy ID - client can look this up
+    markPersistentIdKnown(lossyId);
+    // Store mapping for fallback
+    cacheLossyHash(canonicalId, lossyId);
+}
+```
+
+**Quality Preference**: Lookups prefer canonical (lossless) over lossy:
+1. Check canonical ID first (lossless, best quality)
+2. Fall back to lossy ID only if canonical not available
+3. This enables quality upgrades: if lossless version arrives later, it replaces lossy in lookups
 
 ## Implementation Plan
 

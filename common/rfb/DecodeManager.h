@@ -217,6 +217,10 @@ namespace rfb {
     // Batching for PersistentCache queries (vector of 64-bit content IDs)
     std::vector<uint64_t> pendingQueries;
     void flushPendingQueries();
+    
+    // Forward pending cache evictions to the server. Called during flush() and
+    // after each rectangle decode to ensure timely eviction notification.
+    void flushPendingEvictions();
 
     // One-shot guard to avoid sending the PersistentCache HashList more than
     // once per connection.

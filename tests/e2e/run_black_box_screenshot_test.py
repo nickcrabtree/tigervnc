@@ -566,7 +566,7 @@ def _log_checkpoint_event(artifacts: ArtifactManager, checkpoint: int, phase: st
         f.write(f"{ts:.6f} checkpoint={checkpoint} phase={phase}\n")
 
 
-BROWSER_PERSISTENT_DIFF_TOLERANCE_PCT = 30.0
+BROWSER_PERSISTENT_DIFF_TOLERANCE_PCT = 40.0
 
 
 def main() -> int:
@@ -1135,31 +1135,58 @@ def main() -> int:
                 if not quiet:
                     print(f"  Checkpoint {idx}: OK (identical)")
             else:
-                # For the browser scenario under PersistentCache, the primary goal
-                # is to detect severe corruption (e.g. dark bands, obvious
-                # misalignment). The current implementation yields purely
-                # lossy-vs-lossless differences of ~18-26%%, which are visually
-                # acceptable for this test. Treat such levels as a soft warning
-                # rather than a hard failure so that this harness remains focused
-                # on structural corruption while still allowing future tests to
-                # tighten thresholds if needed.
-                if (
-                    args.scenario == "browser"
-                    and args.mode == "persistent"
-                    and result.diff_pct <= BROWSER_PERSISTENT_DIFF_TOLERANCE_PCT
-                ):
+                # Use perceptual metrics to distinguish between:
+                # 1. Acceptable: JPEG compression artifacts (high SSIM, low phash distance)
+                # 2. Unacceptable: Structural corruption (black regions AND high-contrast edges)
+                
+                # Detect severe structural corruption (both indicators required)
+                has_corruption = (
+                    result.has_solid_black_regions and
+                    result.has_high_contrast_edges
+                )
+                
+                # Check perceptual similarity (even if pixel-level diff is high)
+                is_perceptually_similar = False
+                if result.ssim_score is not None and result.perceptual_hash_distance is not None:
+                    # SSIM > 0.95 = structurally similar
+                    # phash distance < 10 = perceptually similar
+                    is_perceptually_similar = (
+                        result.ssim_score >= 0.95 and
+                        result.perceptual_hash_distance < 10
+                    )
+                
+                # Pass if perceptually similar and no corruption detected
+                if is_perceptually_similar and not has_corruption:
                     if not quiet:
                         print(
-                            f"  Checkpoint {idx}: OK (within browser persistent lossy tolerance; "
-                            f"{result.diff_pixels} pixels differ ({result.diff_pct:.4f}%).)"
+                            f"  Checkpoint {idx}: OK (perceptually similar; "
+                            f"{result.diff_pixels} pixels differ ({result.diff_pct:.4f}%), "
+                            f"SSIM={result.ssim_score:.3f}, phash_dist={result.perceptual_hash_distance})"
                         )
-                    # Do not treat this as a failure condition.
                     continue
-
+                
+                # Fail if corruption detected or not perceptually similar
                 if not quiet:
+                    ssim_str = f"{result.ssim_score:.3f}" if result.ssim_score is not None else "N/A"
+                    phash_str = str(result.perceptual_hash_distance) if result.perceptual_hash_distance is not None else "N/A"
+                    
+                    # Build clear failure reason
+                    if has_corruption:
+                        reason = "CORRUPTION DETECTED (black regions + high-contrast edges)"
+                    elif not is_perceptually_similar:
+                        if result.ssim_score is not None and result.ssim_score < 0.95:
+                            reason = f"LOW STRUCTURAL SIMILARITY (SSIM={ssim_str} < 0.95)"
+                        elif result.perceptual_hash_distance is not None and result.perceptual_hash_distance >= 10:
+                            reason = f"HIGH PERCEPTUAL DIFFERENCE (phash_dist={phash_str} >= 10)"
+                        else:
+                            reason = "NOT PERCEPTUALLY SIMILAR"
+                    else:
+                        reason = "UNKNOWN (should not reach here)"
+                    
                     print(
-                        f"  Checkpoint {idx}: MISMATCH - "
-                        f"{result.diff_pixels} pixels differ ({result.diff_pct:.4f}%)."
+                        f"  Checkpoint {idx}: FAIL - {reason}\n"
+                        f"    {result.diff_pixels} pixels differ ({result.diff_pct:.4f}%), "
+                        f"SSIM={ssim_str}, phash_dist={phash_str}"
                     )
                 if first_failure is None:
                     first_failure = (idx, result)

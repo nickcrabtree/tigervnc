@@ -439,19 +439,7 @@ void DecodeManager::flush()
 
   // Forward any evictions from the unified cache engine to the server using
   // the protocol negotiated for this connection.
-  if (persistentCache != nullptr && persistentCache->hasPendingEvictions() &&
-      conn && conn->writer()) {
-    auto evictions = persistentCache->getPendingEvictions();
-    if (!evictions.empty()) {
-      if (conn->isPersistentCacheNegotiated()) {
-        vlog.debug("Sending %zu PersistentCache eviction notifications", evictions.size());
-        conn->writer()->writePersistentCacheEvictionBatched(evictions);
-      } else if (conn->isContentCacheNegotiated()) {
-        vlog.debug("Sending %zu ContentCache eviction notifications", evictions.size());
-        conn->writer()->writeCacheEviction(evictions);
-      }
-    }
-  }
+  flushPendingEvictions();
   
   // Proactive background hydration: while idle, load remaining PersistentCache entries
   // This ensures the full cache eventually gets into memory without blocking user interaction
@@ -1123,7 +1111,14 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   // server's canonical content (e.g. truncated transfer, corruption, or
   // mismatched hashing configuration). In that case we MUST NOT cache it,
   // otherwise a single bad rect would poison the cache for all future hits.
-  std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
+  
+  // IMPORTANT: Create a temporary buffer with just these pixels to ensure
+  // hash validation later works on the same data layout. This prevents
+  // hash mismatches caused by stride differences between storage and retrieval.
+  ManagedPixelBuffer tempPB(pb->getPF(), r.width(), r.height());
+  tempPB.imageRect(pb->getPF(), tempPB.getRect(), pixels, stridePixels);
+  
+  std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(&tempPB), tempPB.getRect());
   uint64_t hashId = 0;
   if (!contentHash.empty()) {
     size_t n = std::min(contentHash.size(), sizeof(uint64_t));
@@ -1180,14 +1175,21 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   if (diskKey.size() < 16)
     diskKey.resize(16, 0);
 
-  // Store in persistent cache under the ID that matches actual pixel content
-  persistentCache->insert(storageId, diskKey, pixels, pb->getPF(),
+  // Store in persistent cache under the ID that matches actual pixel content.
+  // Use the pixel data from our temporary buffer to ensure the same layout
+  // that we computed the hash on, preventing validation failures.
+  const uint8_t* storedPixels = tempPB.getBuffer(tempPB.getRect(), &stridePixels);
+  
+  persistentCache->insert(storageId, diskKey, storedPixels, tempPB.getPF(),
                           r.width(), r.height(), stridePixels,
                           isLossless);
   
   vlog.debug("PersistentCache STORE complete: stored under id=%llu%s",
              (unsigned long long)storageId,
              hashMatch ? " (canonical)" : " (lossy)");
+  
+  // Proactively send any eviction notifications triggered by this insert
+  flushPendingEvictions();
 }
 
 void DecodeManager::storePersistentCachedRect(const core::Rect& r,
@@ -1342,6 +1344,9 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
               (unsigned long long)storageId,
               hashMatch ? " (canonical)" : " (lossy)",
               r.tl.x, r.tl.y, r.br.x, r.br.y);
+    
+    // Proactively send any eviction notifications triggered by this insert
+    flushPendingEvictions();
     return;
   }
 }
@@ -1361,6 +1366,25 @@ void DecodeManager::flushPendingQueries()
   
   // Clear pending queries
   pendingQueries.clear();
+}
+
+void DecodeManager::flushPendingEvictions()
+{
+  // Forward any evictions from the unified cache engine to the server using
+  // the protocol negotiated for this connection.
+  if (persistentCache != nullptr && persistentCache->hasPendingEvictions() &&
+      conn && conn->writer()) {
+    auto evictions = persistentCache->getPendingEvictions();
+    if (!evictions.empty()) {
+      if (conn->isPersistentCacheNegotiated()) {
+        vlog.debug("Sending %zu PersistentCache eviction notifications", evictions.size());
+        conn->writer()->writePersistentCacheEvictionBatched(evictions);
+      } else if (conn->isContentCacheNegotiated()) {
+        vlog.debug("Sending %zu ContentCache eviction notifications", evictions.size());
+        conn->writer()->writeCacheEviction(evictions);
+      }
+    }
+  }
 }
 
 // Session-only ContentCache helpers
@@ -1511,6 +1535,12 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   vlog.info("ContentCache storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
             r.tl.x, r.tl.y, r.br.x, r.br.y,
             (unsigned long long)cacheId);
+  
+  // Proactively send any eviction notifications triggered by this insert.
+  // This ensures timely notification to the server instead of waiting for
+  // the next flush() which may not occur until the end of the framebuffer
+  // update or session close.
+  flushPendingEvictions();
 }
 
 // (obsolete) trackCachedRectBandwidth/trackCachedRectInitBandwidth removed with

@@ -1169,22 +1169,22 @@ void EncodeManager::writeRects(const core::Region& changed,
       // Debug: record the canonical bytes used for this content region.
       logFBHashDebug("bordered", contentRect, contentId, pb);
       
-      // Check if this content is already cached (canonical or lossy hash)
+      // Check if this content is already cached (prefer lossless over lossy)
       bool hasMatch = false;
       uint64_t matchedId = contentId;
       
-      // First check canonical hash
+      // Prefer canonical (lossless) content first
       if (conn->knowsPersistentId(contentId)) {
         hasMatch = true;
         matchedId = contentId;
       } else {
-        // Check if we have a lossy hash for this canonical hash
+        // Fall back to lossy hash only if lossless not available
         uint64_t lossyId = 0;
         if (conn->hasLossyHash(contentId, lossyId) && 
             conn->knowsPersistentId(lossyId)) {
           hasMatch = true;
           matchedId = lossyId;
-          vlog.info("BORDERED: Using lossy hash match id=%s (canonical=%s)",
+          vlog.info("BORDERED: Using lossy hash match id=%s (canonical=%s not available)",
                     hex64(lossyId), hex64(contentId));
         }
       }
@@ -1269,22 +1269,22 @@ void EncodeManager::writeRects(const core::Region& changed,
       // Debug: log canonical bytes for the bounding box domain.
       logFBHashDebug("bbox", bbox, bboxId, pb);
       
-      // Check if bounding box matches cached content (canonical or lossy hash)
+      // Check if bounding box matches cached content (prefer lossless over lossy)
       bool hasHit = false;
       uint64_t matchedBboxId = bboxId;
       
-      // First check canonical hash
+      // Prefer canonical (lossless) content first
       if (conn->knowsPersistentId(bboxId)) {
         hasHit = true;
         matchedBboxId = bboxId;
       } else {
-        // Check if we have a lossy hash for this canonical hash
+        // Fall back to lossy hash only if lossless not available
         uint64_t lossyId = 0;
         if (conn->hasLossyHash(bboxId, lossyId) && 
             conn->knowsPersistentId(lossyId)) {
           hasHit = true;
           matchedBboxId = lossyId;
-          vlog.info("TILING: Bounding-box using lossy hash match id=%s (canonical=%s)",
+          vlog.info("TILING: Bounding-box using lossy hash match id=%s (canonical=%s not available)",
                     hex64(lossyId), hex64(bboxId));
         }
       }
@@ -1840,27 +1840,30 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
 
   
   // Check if the client knows this content via either the canonical ID or a
-  // lossy ID that it reported back via PersistentCacheHashReport. For purely
-  // lossless content we only ever have the canonical ID; for lossy content the
-  // viewer stores pixels under the lossy ID and the server must use that ID in
-  // subsequent PersistentCachedRect references.
+  // lossy ID that it reported back via PersistentCacheHashReport.
+  //
+  // PREFERENCE ORDERING:
+  // 1. Canonical ID (lossless, best quality) - check first
+  // 2. Lossy ID (degraded quality) - fallback only
+  //
+  // This ensures we always prefer lossless content when available. The lossy
+  // mapping is only used when the canonical content is NOT available.
   bool hasCanonicalMatch = conn->knowsPersistentId(cacheId);
   uint64_t lossyId = 0;
   bool hasLossyMatch = false;
   uint64_t matchedId = cacheId;
 
-  // Prefer the lossy ID when the client has explicitly reported a lossy hash
-  // for this canonical content and we know that ID is present in the client's
-  // cache. This covers the "only lossy copy exists" case without assuming any
-  // additional signalling for later lossless upgrades.
-  if (conn->hasLossyHash(cacheId, lossyId) &&
-      conn->knowsPersistentId(lossyId)) {
+  if (hasCanonicalMatch) {
+    // Prefer canonical (lossless) content when available
+    matchedId = cacheId;
+    vlog.debug("tryLookup: Using canonical (lossless) ID %s", hex64(cacheId));
+  } else if (conn->hasLossyHash(cacheId, lossyId) &&
+             conn->knowsPersistentId(lossyId)) {
+    // Fall back to lossy content only when lossless not available
     hasLossyMatch = true;
     matchedId = lossyId;
-    vlog.debug("tryLookup: Using lossy hash match id=%s (canonical=%s)",
+    vlog.debug("tryLookup: Using lossy hash match id=%s (canonical=%s not available)",
                hex64(lossyId), hex64(cacheId));
-  } else if (hasCanonicalMatch) {
-    matchedId = cacheId;
   }
 
   if (hasCanonicalMatch || hasLossyMatch) {

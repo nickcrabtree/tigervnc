@@ -1003,13 +1003,23 @@ void VNCSConnectionST::handlePersistentCacheHashReport(uint64_t canonicalId, uin
   // Store the canonical->lossy mapping for future lookups
   cacheLossyHash(canonicalId, lossyId);
 
-  // The viewer has confirmed that it holds pixels under |lossyId| for this
-  // canonical content. Mark the lossy ID as known so that subsequent
-  // tryPersistentCacheLookup() calls are free to reference it directly when
-  // constructing PersistentCachedRect messages.
+  // CRITICAL FIX: The viewer stores lossy content under the lossy ID, NOT the
+  // canonical ID. We must remove the canonical ID from our "known" tracking
+  // because the client cannot look it up by that ID. Otherwise we'd send
+  // PersistentCachedRect references with the canonical ID and the client
+  // would miss every time.
+  //
+  // This also ensures that if we later send lossless content (canonical ID),
+  // we'll store it as a NEW entry and prefer it (since canonical check comes
+  // first in lookups).
+  knownPersistentIds_.erase(canonicalId);
+  knownCacheIds_.erase(canonicalId);
+  encodeManager.removeClientKnownHash(canonicalId);
+  
+  // Mark the lossy ID as known so subsequent lookups can reference it
   markPersistentIdKnown(lossyId);
 
-  vlog.info("Stored lossy hash mapping: canonical=%llu -> lossy=%llu",
+  vlog.info("Lossy hash mapping: canonical=%llu -> lossy=%llu (removed canonical from known set)",
             (unsigned long long)canonicalId,
             (unsigned long long)lossyId);
 }

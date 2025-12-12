@@ -297,6 +297,7 @@ def main():
         
         cache_ops = metrics['cache_operations']
         proto = metrics['protocol_messages']
+        persistent = metrics['persistent']
         
         print(f"\nCache Operations:")
         print(f"  Hits: {cache_ops['total_hits']}")
@@ -308,6 +309,8 @@ def main():
         print(f"  CachedRectInit: {proto['CachedRectInit']}")
         print(f"  CacheEviction: {proto['CacheEviction']}")
         print(f"  Evicted IDs: {proto['EvictedIDs']}")
+        print(f"  PersistentCache Evictions: {persistent['eviction_count']}")
+        print(f"  PersistentCache Evicted IDs: {persistent['evicted_ids']}")
         
         # Success criteria (HARSH)
         success = True
@@ -337,18 +340,23 @@ def main():
             print(f"✓ Cache received content ({proto['CachedRectInit']} CachedRectInit >= {MIN_INITS})")
         
         # 2. Evictions MUST occur in quantity
-        if proto['CacheEviction'] < MIN_EVICTIONS:
+        # Accept evictions from either ContentCache or PersistentCache protocol
+        # since they share the same unified cache implementation.
+        total_evictions = proto['CacheEviction'] + persistent['eviction_count']
+        total_evicted_ids = proto['EvictedIDs'] + persistent['evicted_ids']
+        
+        if total_evictions < MIN_EVICTIONS:
             success = False
-            failures.append(f"Too few eviction notifications ({proto['CacheEviction']} < {MIN_EVICTIONS})")
+            failures.append(f"Too few eviction notifications ({total_evictions} < {MIN_EVICTIONS})")
         else:
-            print(f"✓ Evictions occurred ({proto['CacheEviction']} notifications >= {MIN_EVICTIONS})")
+            print(f"✓ Evictions occurred ({total_evictions} notifications >= {MIN_EVICTIONS})")
         
         # 3. Evicted ID count must be healthy
-        if proto['EvictedIDs'] < MIN_EVICTED_IDS:
+        if total_evicted_ids < MIN_EVICTED_IDS:
             success = False
-            failures.append(f"Too few evicted IDs ({proto['EvictedIDs']} < {MIN_EVICTED_IDS})")
+            failures.append(f"Too few evicted IDs ({total_evicted_ids} < {MIN_EVICTED_IDS})")
         else:
-            print(f"✓ Cache IDs evicted ({proto['EvictedIDs']} >= {MIN_EVICTED_IDS})")
+            print(f"✓ Cache IDs evicted ({total_evicted_ids} >= {MIN_EVICTED_IDS})")
         
         # 4. Check for errors
         if metrics['errors'] > 0:
@@ -368,10 +376,8 @@ def main():
             print("=" * 70)
             print("\nEviction behaviour is working correctly:")
             print("  • Client evicted entries when cache filled (as evidenced by hits + content churn)")
-            if proto['CacheEviction'] > 0:
-                print("  • Eviction notifications sent to server")
-            else:
-                print("  • No explicit eviction notifications observed (viewer may evict silently)")
+            if total_evictions > 0:
+                print(f"  • Eviction notifications sent to server ({total_evictions} notifications, {total_evicted_ids} IDs)")
             print("  • Cache continued to work after evictions")
             return 0
         else:
