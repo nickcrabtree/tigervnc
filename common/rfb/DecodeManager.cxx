@@ -1050,7 +1050,6 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   // - Hash match: bit-identical (lossless)
   // - Hash mismatch: compression artifacts (lossy)
   bool hashMatch = (hashId == cacheId);
-  bool isLossless = hashMatch;
 
   if (!hashMatch) {
     // Hash mismatch indicates lossy compression (e.g. JPEG artifacts).
@@ -1072,32 +1071,33 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
     }
   }
 
-  // KEY FIX: Store under the ID that matches the actual pixel content.
-  // For lossless: hashId == cacheId (canonical), store under canonical ID.
-  // For lossy: hashId != cacheId, store under lossy ID so future lookups work.
-  // The server will use hasLossyHash() to map canonical→lossy and send the
-  // correct ID in PersistentCachedRect references.
-  uint64_t storageId = hashMatch ? cacheId : hashId;
+  // NEW DESIGN: Store with BOTH canonical and actual hash.
+  // canonicalHash = cacheId (server's lossless hash)
+  // actualHash = hashId (client's computed hash, may differ if lossy)
+  // Always persist (isPersistable=true), even for lossy entries.
+  uint64_t canonicalHash = cacheId;
+  uint64_t actualHash = hashId;
 
-  // Build a stable disk key from storageId for index round-tripping
+  // Build a stable disk key from actualHash (used for indexing)
   std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
-  uint64_t id64 = storageId;
+  uint64_t id64 = actualHash;
   memcpy(diskKey.data(), &id64, sizeof(uint64_t));
   if (diskKey.size() < 16)
     diskKey.resize(16, 0);
 
-  // Store in persistent cache under the ID that matches actual pixel content.
+  // Store in persistent cache with both hashes.
   // Use the pixel data from our temporary buffer to ensure the same layout
   // that we computed the hash on, preventing validation failures.
   const uint8_t* storedPixels = tempPB.getBuffer(tempPB.getRect(), &stridePixels);
   
-  persistentCache->insert(storageId, diskKey, storedPixels, tempPB.getPF(),
+  persistentCache->insert(canonicalHash, actualHash, diskKey, storedPixels, tempPB.getPF(),
                           r.width(), r.height(), stridePixels,
-                          isLossless);
+                          /*isPersistable=*/true);  // NEW: Always persist
   
-  vlog.debug("PersistentCache STORE complete: stored under id=%llu%s",
-             (unsigned long long)storageId,
-             hashMatch ? " (canonical)" : " (lossy)");
+  vlog.debug("PersistentCache STORE complete: canonical=%llu actual=%llu%s",
+             (unsigned long long)canonicalHash,
+             (unsigned long long)actualHash,
+             hashMatch ? " (lossless)" : " (lossy)");
   
   // Proactively send any eviction notifications triggered by this insert
   flushPendingEvictions();
@@ -1166,7 +1166,6 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
     logFBHashDebug("SEED", r, cacheId, static_cast<PixelBuffer*>(pb));
 
     bool hashMatch = (hashId == cacheId);
-    bool isLossless = hashMatch;
 
     if (!hashMatch) {
       // Hash mismatch indicates lossy encoding was used. Store under the
@@ -1186,26 +1185,27 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
       }
     }
 
-    // KEY FIX: Store under the ID that matches actual pixel content
-    uint64_t storageId = hashMatch ? cacheId : hashId;
+    // NEW DESIGN: Store with BOTH canonical and actual hash
+    uint64_t canonicalHash = cacheId;
+    uint64_t actualHash = hashId;
 
-    // Build disk key from storageId
+    // Build disk key from actualHash (used for indexing)
     std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
-    uint64_t id64 = storageId;
+    uint64_t id64 = actualHash;
     memcpy(diskKey.data(), &id64, sizeof(uint64_t));
     if (diskKey.size() < 16)
       diskKey.resize(16, 0);
 
-    persistentCache->insert(storageId, diskKey, pixels, pb->getPF(),
+    persistentCache->insert(canonicalHash, actualHash, diskKey, pixels, pb->getPF(),
                             r.width(), r.height(), stridePixels,
-                            isLossless);
+                            /*isPersistable=*/true);  // NEW: Always persist
     persistentCacheStats.stores++;
     
-    // Log the CacheKey used for storage
-    CacheKey storeKey((uint16_t)r.width(), (uint16_t)r.height(), storageId);
-    vlog.debug("seedCachedRect: stored CacheKey(w=%u, h=%u, id=%llu)%s for rect [%d,%d-%d,%d]",
-               storeKey.width, storeKey.height, (unsigned long long)storeKey.contentHash,
-               hashMatch ? " (canonical)" : " (lossy)",
+    // Log the storage details with dual-hash design
+    vlog.debug("seedCachedRect: stored canonical=%llu actual=%llu%s for rect [%d,%d-%d,%d]",
+               (unsigned long long)canonicalHash,
+               (unsigned long long)actualHash,
+               hashMatch ? " (lossless)" : " (lossy)",
                r.tl.x, r.tl.y, r.br.x, r.br.y);
     
     // Proactively send any eviction notifications triggered by this insert
@@ -1384,16 +1384,18 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   }
 
   // Build a stable disk key from cacheId identical to the PersistentCache
-  // path, but mark the insert as non-persistent so it never hits disk.
+  // path. For ContentCache (session-only), both canonical and actual are the
+  // same (lossless), but we mark as non-persistent so it never hits disk.
   std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
   uint64_t id64 = cacheId;
   memcpy(diskKey.data(), &id64, sizeof(uint64_t));
   if (diskKey.size() < 16)
     diskKey.resize(16, 0);
 
-  persistentCache->insert(cacheId, diskKey, entry.pixels.data(), entry.format,
+  // NEW: Both canonical and actual are cacheId (lossless for ContentCache)
+  persistentCache->insert(cacheId, cacheId, diskKey, entry.pixels.data(), entry.format,
                           entry.width, entry.height, entry.stridePixels,
-                          /*isLossless=*/false);
+                          /*isPersistable=*/false);  // Session-only
 
   vlog.info("ContentCache storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
             r.tl.x, r.tl.y, r.br.x, r.br.y,

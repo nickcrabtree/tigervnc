@@ -230,26 +230,79 @@ GlobalClientPersistentCache::getByKey(const CacheKey& key)
   return get(it->second);
 }
 
-void GlobalClientPersistentCache::insert(uint64_t cacheId,
+const GlobalClientPersistentCache::CachedPixels*
+GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash)
+{
+  // NEW: Lookup by canonical hash (for viewer-managed lossy mapping).
+  // Search through all entries to find one with matching canonicalHash.
+  // This handles both lossless (actual == canonical) and lossy (actual != canonical) hits.
+  
+  if (!arcCache_) return nullptr;
+  
+  // Scan all entries in the ARC cache to find matching canonical hash
+  for (const auto& kv : cache_) {
+    const CachedPixels& entry = kv.second;
+    if (entry.canonicalHash == canonicalHash) {
+      // Found entry with matching canonical hash
+      // Update access statistics
+      const CachedPixels* e = arcCache_->get(kv.first);
+      if (e != nullptr) {
+        stats_.cacheHits++;
+        return e;
+      }
+    }
+  }
+  
+  // Check if in index but not in memory (cold entry)
+  for (const auto& idxKv : indexMap_) {
+    const std::vector<uint8_t>& hash = idxKv.first;
+    
+    // Check if this index entry might have matching canonical hash
+    // We don't have canonicalHash in IndexEntry yet, so we need to hydrate
+    // to check. For now, we'll hydrate any cold entries as a fallback.
+    // TODO: Add canonicalHash to IndexEntry for more efficient lookup
+    if (coldEntries_.find(hash) != coldEntries_.end()) {
+      if (hydrateEntry(hash)) {
+        // Check if hydrated entry has matching canonical hash
+        auto itKey = hashToKey_.find(hash);
+        if (itKey != hashToKey_.end()) {
+          auto itCache = cache_.find(itKey->second);
+          if (itCache != cache_.end() && itCache->second.canonicalHash == canonicalHash) {
+            const CachedPixels* e = arcCache_->get(itKey->second);
+            if (e != nullptr) {
+              stats_.cacheHits++;
+              coldEntries_.erase(hash);
+              return e;
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  // Not found
+  stats_.cacheMisses++;
+  return nullptr;
+}
+
+void GlobalClientPersistentCache::insert(uint64_t canonicalHash,
+                                         uint64_t actualHash,
                                          const std::vector<uint8_t>& hash,
                                          const uint8_t* pixels,
                                          const PixelFormat& pf,
                                          uint16_t width, uint16_t height,
                                          uint16_t stridePixels,
-                                         bool isLossless)
+                                         bool isPersistable)
 {
   if (!arcCache_ || pixels == nullptr || width == 0 || height == 0)
     return;
 
-  // Construct the shared ContentKey using the explicit cacheId for
-  // contentHash rather than deriving it from the hash bytes. This keeps
-  // the on-wire 64-bit ID and the in-memory key perfectly aligned while
-  // allowing the full hash vector to remain a pure ContentHash of the
-  // decoded pixels.
+  // NEW DESIGN: Index by actualHash (client's computed hash) for fast direct
+  // lookup, but store canonicalHash so we can also lookup by canonical.
   CacheKey key;
   key.width = width;
   key.height = height;
-  key.contentHash = cacheId;
+  key.contentHash = actualHash;  // Index by actual hash
 
   // Update ARC statistics: treat new inserts as misses and
   // re-initialisations of existing entries as hits.
@@ -264,11 +317,12 @@ void GlobalClientPersistentCache::insert(uint64_t cacheId,
   entry.format = pf;
   entry.width = width;
   entry.height = height;
-  // Store pixels contiguously in our cache to simplify later blits
-  // NOTE: stridePixels in this struct is in PIXELS for the stored buffer.
-  // Since we copy rows tightly, the stored stride is exactly the width.
-  entry.stridePixels = width;
+  entry.stridePixels = width;  // Stored contiguously
   entry.lastAccessTime = getCurrentTime();
+  
+  // NEW: Store both hashes
+  entry.canonicalHash = canonicalHash;
+  entry.actualHash = actualHash;
  
   const size_t bppBytes = pf.bpp / 8;
   const size_t rowBytes = (size_t)width * bppBytes;
@@ -282,9 +336,7 @@ void GlobalClientPersistentCache::insert(uint64_t cacheId,
     dst += rowBytes;
   }
 
-  // Keep persistence map in sync (used for save/load); note this duplicates
-  // memory temporarily. cache_ is keyed by CacheKey, while index/disk are
-  // keyed by the full hash.
+  // Keep persistence map in sync
   cache_[key] = entry;
   arcCache_->insert(key, entry);
 
@@ -292,11 +344,10 @@ void GlobalClientPersistentCache::insert(uint64_t cacheId,
   keyToHash_[key] = hash;
   hashToKey_[hash] = key;
   
-  // Mark as dirty for incremental save (only new entries, not re-hydrated
-  // ones) if this payload is suitable for disk persistence. Lossy entries
-  // remain memory-only: they participate in the ARC cache but are never
-  // written out to shards/index.
-  if (isLossless)
+  // NEW DESIGN: Both lossy and lossless entries persist to disk.
+  // The isPersistable flag should always be true now, but we keep it for
+  // compatibility during transition.
+  if (isPersistable)
     dirtyEntries_.insert(hash);
 }
 

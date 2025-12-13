@@ -104,7 +104,12 @@ namespace rfb {
       uint16_t stridePixels;            // Stride in pixels (NOT bytes)
       uint32_t lastAccessTime;          // For LRU/ARC eviction
       
-      CachedPixels() : width(0), height(0), stridePixels(0), lastAccessTime(0) {}
+      // NEW: Dual-hash design for viewer-managed lossy mapping
+      uint64_t canonicalHash;           // Server's canonical hash (lossless)
+      uint64_t actualHash;              // Client's computed hash (may differ if lossy)
+      
+      CachedPixels() : width(0), height(0), stridePixels(0), lastAccessTime(0),
+                       canonicalHash(0), actualHash(0) {}
       
       size_t byteSize() const {
         return pixels.size();
@@ -112,6 +117,10 @@ namespace rfb {
       
       bool isHydrated() const {
         return !pixels.empty();
+      }
+      
+      bool isLossless() const {
+        return canonicalHash == actualHash;
       }
     };
     
@@ -147,20 +156,32 @@ namespace rfb {
     // Convenience lookup by CacheKey used by the unified cache engine
     const CachedPixels* getByKey(const CacheKey& key);
     
-    // Insert/update a cache entry. The cacheId is the 64-bit identifier used
-    // on the wire (and in HashList/eviction notifications). The full hash
-    // vector is the canonical ContentHash for this rect and is used for
-    // disk/index bookkeeping. The isLossless flag indicates whether this
-    // payload is suitable for on-disk persistence. Lossy entries are still
-    // stored in the in-memory ARC cache but are not marked dirty for disk
-    // flush, so they remain session-only.
-    void insert(uint64_t cacheId,
+    // NEW: Lookup by canonical hash (for viewer-managed lossy mapping)
+    const CachedPixels* getByCanonicalHash(uint64_t canonicalHash);
+    
+    // Insert/update a cache entry with dual-hash design.
+    // 
+    // NEW DESIGN (2025-12-13): Both lossy and lossless entries are persisted.
+    // Each entry stores BOTH the canonical hash (server's lossless) and the
+    // actual hash (client's computed, may differ if lossy).
+    //
+    // Parameters:
+    //   canonicalHash - Server's canonical hash (from PersistentCachedRectInit)
+    //   actualHash - Client's computed hash after decoding (may differ if lossy)
+    //   hash - Full protocol hash vector (for disk/index bookkeeping)
+    //   pixels - Decoded pixel data
+    //   pf - Pixel format
+    //   width, height - Rectangle dimensions
+    //   stridePixels - Stride in pixels (not bytes)
+    //   isPersistable - Always true now (both lossy and lossless persist)
+    void insert(uint64_t canonicalHash,
+               uint64_t actualHash,
                const std::vector<uint8_t>& hash,
                const uint8_t* pixels,
                const PixelFormat& pf,
                uint16_t width, uint16_t height,
                uint16_t stridePixels,
-               bool isLossless = true);
+               bool isPersistable = true);
     
     // Optional: Get all known hashes/IDs for HashList message
     std::vector<std::vector<uint8_t>> getAllHashes() const;
