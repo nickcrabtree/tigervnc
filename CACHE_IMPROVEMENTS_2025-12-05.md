@@ -25,10 +25,12 @@ Cache hit rates were extremely low (0-5.6%) due to hash mismatches when lossy en
 - Added `computeLossyHash()`: Placeholder for future encode→decode→hash implementation
 - Track `currentEncodingIsLossy` in `doUpdate()`
 
-### 4. Seed Mechanism Fix
-- **Skip seeding for lossy encodings** (bounding box + bordered regions)
-- Prevents cache pollution with incorrect hashes
-- Client-side hash mismatch detection in `storePersistentCachedRect()` already prevents storing mismatched entries
+### 4. Seed Mechanism and Lossy Hash Reporting
+- **Seeds are ALWAYS sent** (both lossy and lossless encodings) with canonical hash
+- For lossless: Client hash matches canonical hash exactly, no reports needed
+- For lossy: Client detects hash mismatch, stores under lossy hash, reports back via message 247
+- Server learns canonical→lossy mapping for future dual-hash lookups
+- This enables first-occurrence caching for lossy content (faster user experience)
 
 ## Test Results
 
@@ -63,10 +65,12 @@ The remaining TODO items would push hit rates even higher:
 
 ## Log Evidence
 
-Server logs confirm seeding is being skipped:
+Server logs show seeds being sent and hash reports received:
 ```
-EncodeManager: TILING: Skipped seeding bounding-box (lossy encoding)
-EncodeManager: BORDERED: Skipped seeding 1 regions (lossy encoding)
+EncodeManager: TILING: Seeded bounding-box hash [x,y-w,h] id=... (client will report lossy hash if needed)
+DecodeManager: PersistentCache STORE (lossy): hash mismatch for rect [...]
+DecodeManager: Reported lossy hash to server: canonical=... lossy=...
+VNCSConnST: Stored lossy hash mapping: canonical=... -> lossy=...
 ```
 
 ## Files Modified

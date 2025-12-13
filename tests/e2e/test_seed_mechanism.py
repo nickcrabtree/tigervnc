@@ -2,20 +2,20 @@
 """
 Regression test: Cache seed mechanism validation.
 
-Validates that the seed mechanism correctly respects encoding lossyness:
-- Lossless encodings (ZRLE): Seeds are sent, cache works
-- Lossy encodings (Tight): Seeds are SKIPPED, cache still works via INITs
+Validates that the seed mechanism correctly handles lossy vs lossless encodings:
+- Lossless encodings (ZRLE): Seeds sent with canonical hash, no hash reports
+- Lossy encodings (Tight): Seeds sent with canonical hash, client reports lossy hash
 
-This test catches regressions in:
-- Seed skip logic for lossy encodings
-- isLossyEncoding() returning wrong value
-- Cache seeding mechanism
-- Seed message generation
+This test validates the lossy hash reporting protocol (message 247):
+- Seeds are ALWAYS sent (both lossy and lossless encodings)
+- Client detects hash mismatch for lossy content
+- Client reports lossy hash back to server via message 247
+- Server learns canonical→lossy mapping for future cache hits
 
 Test validates:
-- Lossless: writeCachedRectSeed messages present, no seed skips
-- Lossy: "Skipped seeding (lossy encoding)" messages present
-- Both: Cache still functions (hit rate > threshold)
+- Lossless: Seeds sent, NO hash mismatch reports (hash matches)
+- Lossy: Seeds sent, hash mismatch reports present (message 247)
+- Both: Cache functions correctly (hit rate > threshold)
 """
 
 import sys
@@ -74,21 +74,21 @@ def run_viewer(viewer_path, port, artifacts, tracker, name, encoding,
     return proc
 
 
-def count_seed_messages(server_log):
-    """Count seed-related messages in server log."""
+def count_seed_and_hash_report_messages(server_log):
+    """Count seed and hash report messages in server log."""
     seed_sent_count = 0
-    seed_skip_count = 0
+    hash_report_count = 0
     
     with open(server_log, 'r', encoding='utf-8', errors='ignore') as f:
         for line in f:
             # Count seed messages sent
-            if 'writeCachedRectSeed' in line:
+            if 'writeCachedRectSeed' in line or 'Seeded' in line:
                 seed_sent_count += 1
-            # Count seed skips (lossy detected)
-            if 'Skipped seeding' in line and 'lossy encoding' in line:
-                seed_skip_count += 1
+            # Count hash reports received from client (message 247)
+            if 'reported lossy hash' in line.lower() or 'PersistentCacheHashReport' in line:
+                hash_report_count += 1
     
-    return seed_sent_count, seed_skip_count
+    return seed_sent_count, hash_report_count
 
 
 def main():
@@ -248,9 +248,9 @@ def main():
         lossless_parsed = parse_cpp_log(lossless_viewer_log)
         lossy_parsed = parse_cpp_log(lossy_viewer_log)
 
-        # Count seed messages
-        lossless_sent, lossless_skipped = count_seed_messages(lossless_server_log)
-        lossy_sent, lossy_skipped = count_seed_messages(lossy_server_log)
+        # Count seed messages and hash reports
+        lossless_sent, lossless_reports = count_seed_and_hash_report_messages(lossless_server_log)
+        lossy_sent, lossy_reports = count_seed_and_hash_report_messages(lossy_server_log)
 
         # Compute hit rates
         def compute_hit_rate(viewer_log, parsed):
@@ -273,31 +273,31 @@ def main():
         print("\nLossless (ZRLE) Run:")
         print(f"  Hit rate: {lossless_hit_rate:.1f}%")
         print(f"  Seeds sent: {lossless_sent}")
-        print(f"  Seeds skipped: {lossless_skipped}")
+        print(f"  Hash reports: {lossless_reports}")
 
         print("\nLossy (Tight) Run:")
         print(f"  Hit rate: {lossy_hit_rate:.1f}%")
         print(f"  Seeds sent: {lossy_sent}")
-        print(f"  Seeds skipped: {lossy_skipped}")
+        print(f"  Hash reports: {lossy_reports}")
 
         # Validation
         success = True
         failures = []
 
-        # CRITICAL: Lossless should have NO seed skips
-        if lossless_skipped > 0:
+        # CRITICAL: Lossless should have NO hash reports (hash matches exactly)
+        if lossless_reports > 0:
             success = False
             failures.append(
-                f"Lossless encoding skipped {lossless_skipped} seeds "
-                "(expected 0 - ZRLE wrongly detected as lossy)"
+                f"Lossless encoding sent {lossless_reports} hash reports "
+                "(expected 0 - lossless should have exact hash match)"
             )
 
-        # CRITICAL: Lossy MUST have seed skips (mechanism working)
-        if lossy_skipped == 0:
+        # CRITICAL: Lossy MUST have hash reports (client reports lossy hash via message 247)
+        if lossy_reports == 0:
             success = False
             failures.append(
-                "Lossy encoding did not skip any seeds "
-                "(expected >0 - seed prevention mechanism not working)"
+                "Lossy encoding did not send any hash reports "
+                "(expected >0 - lossy hash reporting protocol not working)"
             )
 
         # Both should achieve reasonable hit rates
@@ -327,8 +327,8 @@ def main():
             print("✓ TEST PASSED")
             print("=" * 70)
             print("\nSeed mechanism validated:")
-            print(f"  • Lossless seeds skipped: {lossless_skipped} (expected 0)")
-            print(f"  • Lossy seeds skipped: {lossy_skipped} (expected >0)")
+            print(f"  • Lossless hash reports: {lossless_reports} (expected 0 - exact match)")
+            print(f"  • Lossy hash reports: {lossy_reports} (expected >0 - client reported lossy hash)")
             print(f"  • Both hit rates above threshold")
             return 0
         else:

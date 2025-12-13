@@ -3,14 +3,14 @@
 Regression test: Lossy vs Lossless encoding parity.
 
 Validates that the cache system behaves correctly with both encoding types:
-- Lossless (ZRLE): No hash mismatches, no hash reports needed
-- Lossy (Tight/JPEG): Hash mismatches expected, hash reports sent
+- Lossless (ZRLE): Hash matches exactly, no hash reports
+- Lossy (Tight/JPEG): Hash mismatch detected, hash reports sent via message 247
 
-This test catches regressions in:
-- isLossyEncoding() detection logic
-- Hash report protocol (message type 247)
-- Dual-hash lookup infrastructure
-- Seed mechanism (skip seeding for lossy)
+This test validates the lossy hash reporting protocol:
+- Seeds are ALWAYS sent (both lossy and lossless)
+- Lossless: Client stores under canonical hash, no reports needed
+- Lossy: Client stores under lossy hash, reports canonical→lossy mapping
+- Server learns mapping for future dual-hash lookups
 
 Test validates:
 - Lossless: canonical hash == client hash (no PersistentCacheHashReport messages)
@@ -86,14 +86,6 @@ def count_hash_reports(log_path):
     return count
 
 
-def count_seed_skips(log_path):
-    """Count seed skip messages (lossy encoding detected)."""
-    count = 0
-    with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-        for line in f:
-            if 'Skipped seeding' in line and 'lossy encoding' in line:
-                count += 1
-    return count
 
 
 def main():
@@ -255,11 +247,9 @@ def main():
         lossy_parsed = parse_cpp_log(lossy_viewer_log)
         lossy_server_parsed = parse_server_log(lossy_server_log, verbose=args.verbose)
 
-        # Count hash reports and seed skips
+        # Count hash reports (message 247)
         lossless_hash_reports = count_hash_reports(lossless_viewer_log)
         lossy_hash_reports = count_hash_reports(lossy_viewer_log)
-        lossless_seed_skips = count_seed_skips(lossless_server_log)
-        lossy_seed_skips = count_seed_skips(lossy_server_log)
 
         # Compute hit rates (protocol-agnostic)
         def compute_hit_rate(viewer_log, parsed):
@@ -282,12 +272,10 @@ def main():
         print("\nLossless (ZRLE) Run:")
         print(f"  Hit rate: {lossless_hit_rate:.1f}%")
         print(f"  Hash reports: {lossless_hash_reports}")
-        print(f"  Seed skips (lossy detected): {lossless_seed_skips}")
 
         print("\nLossy (Tight) Run:")
         print(f"  Hit rate: {lossy_hit_rate:.1f}%")
         print(f"  Hash reports: {lossy_hash_reports}")
-        print(f"  Seed skips (lossy detected): {lossy_seed_skips}")
 
         hit_rate_diff = abs(lossless_hit_rate - lossy_hit_rate)
         print(f"\nHit rate difference: {hit_rate_diff:.1f} pp")
@@ -296,12 +284,12 @@ def main():
         success = True
         failures = []
 
-        # CRITICAL: Lossless should have NO hash reports
+        # CRITICAL: Lossless should have NO hash reports (hash matches exactly)
         if lossless_hash_reports > 0:
             success = False
             failures.append(
                 f"Lossless encoding sent {lossless_hash_reports} hash reports "
-                "(expected 0 - lossless should not have hash mismatches)"
+                "(expected 0 - lossless should have exact hash match)"
             )
 
         # CRITICAL: Lossy MUST have hash reports (protocol working)
@@ -310,22 +298,6 @@ def main():
             failures.append(
                 "Lossy encoding sent 0 hash reports "
                 "(expected >0 - lossy hash reporting protocol not working)"
-            )
-
-        # CRITICAL: Lossless should have NO seed skips
-        if lossless_seed_skips > 0:
-            success = False
-            failures.append(
-                f"Lossless encoding skipped {lossless_seed_skips} seeds "
-                "(expected 0 - ZRLE wrongly detected as lossy)"
-            )
-
-        # CRITICAL: Lossy MUST have seed skips (mechanism working)
-        if lossy_seed_skips == 0:
-            success = False
-            failures.append(
-                "Lossy encoding did not skip any seeds "
-                "(expected >0 - seed prevention mechanism not working)"
             )
 
         # Hit rates should be similar (cache working for both)

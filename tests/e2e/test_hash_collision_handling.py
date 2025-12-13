@@ -252,9 +252,9 @@ def main():
                 f"Hit rate {hit_rate:.1f}% unexpectedly low - cache may not be working"
             )
 
-        # Check for signs of corruption in logs
+        # Check for signs of ACTUAL corruption in logs
+        # Note: "hash mismatch" is EXPECTED for lossy encodings and is NOT corruption
         corruption_indicators = [
-            "hash mismatch",
             "corruption detected", 
             "unexpected pixel",
             "verification failed"
