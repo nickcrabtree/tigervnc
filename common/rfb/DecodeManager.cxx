@@ -904,16 +904,14 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   // outcome (hit vs miss) is determined below once we consult the
   // GlobalClientPersistentCache.
   
-  // Derive the shared CacheKey from the on-wire cacheId and the rectangle
-  // geometry. This keeps the client-side keying consistent with the
-  // server-side ContentHash/CacheKey mapping.
-  CacheKey key((uint16_t)r.width(), (uint16_t)r.height(), (uint64_t)cacheId);
-  
-  vlog.debug("PersistentCache lookup: CacheKey(w=%u, h=%u, id=%llu) for rect [%d,%d-%d,%d]",
-             key.width, key.height, (unsigned long long)key.contentHash,
+  // NEW DESIGN: cacheId is the canonical hash from the server.
+  // Look up by canonical hash to find entries with matching canonical,
+  // regardless of whether we have lossless or lossy version.
+  vlog.debug("PersistentCache lookup: canonical=%llu for rect [%d,%d-%d,%d]",
+             (unsigned long long)cacheId,
              r.tl.x, r.tl.y, r.br.x, r.br.y);
 
-  const GlobalClientPersistentCache::CachedPixels* cached = persistentCache->getByKey(key);
+  const GlobalClientPersistentCache::CachedPixels* cached = persistentCache->getByCanonicalHash(cacheId);
   
   if (cached == nullptr) {
     // Cache miss - queue request for later batching
@@ -932,47 +930,27 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
     return;
   }
   
-  // Hit found: validate the cached pixels BEFORE blitting to framebuffer.
-  // This prevents corrupting the display if the cached entry has drifted.
+  // Hit found: We have an entry with matching canonical hash.
+  // It could be lossless (actual == canonical) or lossy (actual != canonical).
+  // Both are valid - just use the pixels we have.
   
-  // Create a temporary PixelBuffer from the cached pixels to compute the hash.
-  // We need to compute the hash over the cached pixels themselves, not from
-  // the framebuffer, to detect corruption before it affects the display.
-  
-  // Use ManagedPixelBuffer to wrap the cached pixel data
-  ManagedPixelBuffer tempPB(cached->format, cached->width, cached->height);
-  tempPB.imageRect(cached->format, tempPB.getRect(), cached->pixels.data(), cached->stridePixels);
-  
-  std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(&tempPB), tempPB.getRect());
-  uint64_t hashId = 0;
-  if (!contentHash.empty()) {
-    size_t n = std::min(contentHash.size(), sizeof(uint64_t));
-    memcpy(&hashId, contentHash.data(), n);
-  }
-  
-  if (hashId != cacheId) {
-    // Hash mismatch: the cached entry has drifted from what the server thinks it should be.
-    // Invalidate this specific entry and treat as a miss.
-    vlog.info("PersistentCache HIT INVALIDATED: rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu - cached entry is stale",
-              r.tl.x, r.tl.y, r.br.x, r.br.y,
-              (unsigned long long)cacheId,
-              (unsigned long long)hashId);
-    persistentCache->invalidateByContentId(cacheId);
-    recordCacheMiss(pcStats);
-    pendingQueries.push_back(cacheId);
-    if (pendingQueries.size() >= 10)
-      flushPendingQueries();
-    return;
-  }
-  
-  // Hash matches: safe to blit cached pixels to framebuffer
-  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
+  bool isLossless = cached->isLossless();
   
   recordCacheHit(pcStats);
-  vlog.debug("PersistentCache HIT: rect [%d,%d-%d,%d] cacheId=%llu cached=%dx%d strideStored=%d",
-             r.tl.x, r.tl.y, r.br.x, r.br.y,
-             (unsigned long long)cacheId,
-             cached->width, cached->height, cached->stridePixels);
+  
+  if (isLossless) {
+    vlog.debug("PersistentCache LOSSLESS HIT: rect [%d,%d-%d,%d] canonical=%llu",
+               r.tl.x, r.tl.y, r.br.x, r.br.y,
+               (unsigned long long)cacheId);
+  } else {
+    vlog.debug("PersistentCache LOSSY HIT: rect [%d,%d-%d,%d] canonical=%llu actual=%llu",
+               r.tl.x, r.tl.y, r.br.x, r.br.y,
+               (unsigned long long)cached->canonicalHash,
+               (unsigned long long)cached->actualHash);
+  }
+  
+  // Blit cached pixels to framebuffer
+  pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
 }
 
 void DecodeManager::storePersistentCachedRect(const core::Rect& r,

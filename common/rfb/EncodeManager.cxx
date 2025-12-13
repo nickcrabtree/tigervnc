@@ -1169,37 +1169,19 @@ void EncodeManager::writeRects(const core::Region& changed,
       // Debug: record the canonical bytes used for this content region.
       logFBHashDebug("bordered", contentRect, contentId, pb);
       
-      // Check if this content is already cached (prefer lossless over lossy)
+      // NEW DESIGN: Always check canonical hash only.
+      // Viewer manages lossy mapping - it can find lossy entries by canonical.
       bool hasMatch = false;
-      uint64_t matchedId = contentId;
+      uint64_t matchedId = contentId;  // Always use canonical
       
-      // Prefer canonical (lossless) content first
       if (conn->knowsPersistentId(contentId)) {
         hasMatch = true;
         matchedId = contentId;
-        vlog.info("BORDERED: Canonical hash KNOWN by client: id=%s",
+        vlog.info("BORDERED: Canonical hash KNOWN by client (any quality): id=%s",
                   hex64(contentId));
       } else {
-        vlog.info("BORDERED: Canonical hash NOT known by client: id=%s, checking lossy mapping",
+        vlog.info("BORDERED: Canonical hash NOT known by client: id=%s",
                   hex64(contentId));
-        // Fall back to lossy hash only if lossless not available
-        uint64_t lossyId = 0;
-        if (conn->hasLossyHash(contentId, lossyId)) {
-          vlog.info("BORDERED: Found lossy mapping: canonical=%s -> lossy=%s",
-                    hex64(contentId), hex64(lossyId));
-          if (conn->knowsPersistentId(lossyId)) {
-            hasMatch = true;
-            matchedId = lossyId;
-            vlog.info("BORDERED: Lossy hash KNOWN by client, using lossy id=%s",
-                      hex64(lossyId));
-          } else {
-            vlog.info("BORDERED: Lossy hash NOT known by client: id=%s",
-                      hex64(lossyId));
-          }
-        } else {
-          vlog.info("BORDERED: No lossy mapping found for canonical=%s",
-                    hex64(contentId));
-        }
       }
       
       if (hasMatch) {
@@ -1282,24 +1264,16 @@ void EncodeManager::writeRects(const core::Region& changed,
       // Debug: log canonical bytes for the bounding box domain.
       logFBHashDebug("bbox", bbox, bboxId, pb);
       
-      // Check if bounding box matches cached content (prefer lossless over lossy)
+      // NEW DESIGN: Always check canonical hash only.
+      // Viewer manages lossy mapping - it can find lossy entries by canonical.
       bool hasHit = false;
-      uint64_t matchedBboxId = bboxId;
+      uint64_t matchedBboxId = bboxId;  // Always use canonical
       
-      // Prefer canonical (lossless) content first
       if (conn->knowsPersistentId(bboxId)) {
         hasHit = true;
         matchedBboxId = bboxId;
-      } else {
-        // Fall back to lossy hash only if lossless not available
-        uint64_t lossyId = 0;
-        if (conn->hasLossyHash(bboxId, lossyId) && 
-            conn->knowsPersistentId(lossyId)) {
-          hasHit = true;
-          matchedBboxId = lossyId;
-          vlog.info("TILING: Bounding-box using lossy hash match id=%s (canonical=%s not available)",
-                    hex64(lossyId), hex64(bboxId));
-        }
+        vlog.info("TILING: Bounding-box canonical hash KNOWN by client (any quality): id=%s",
+                  hex64(bboxId));
       }
       
       if (hasHit) {
