@@ -73,3 +73,11 @@ gtest_discover_tests(emulatemb)
 add_executable(tiling_analysis tiling_analysis.cxx)
 target_link_libraries(tiling_analysis rfb core GTest::gtest_main)
 gtest_discover_tests(tiling_analysis)
+
+# Standalone test for lossy cache hash behavior (not using GTest)
+add_executable(test_lossy_cache test_lossy_cache.cxx)
+target_link_libraries(test_lossy_cache rfb core rdr)
+
+# Standalone test for server-viewer lossy hash mapping flow (not using GTest)
+add_executable(test_lossy_mapping test_lossy_mapping.cxx)
+target_link_libraries(test_lossy_mapping rfb core rdr)
