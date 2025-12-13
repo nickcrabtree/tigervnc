@@ -1177,15 +1177,28 @@ void EncodeManager::writeRects(const core::Region& changed,
       if (conn->knowsPersistentId(contentId)) {
         hasMatch = true;
         matchedId = contentId;
+        vlog.info("BORDERED: Canonical hash KNOWN by client: id=%s",
+                  hex64(contentId));
       } else {
+        vlog.info("BORDERED: Canonical hash NOT known by client: id=%s, checking lossy mapping",
+                  hex64(contentId));
         // Fall back to lossy hash only if lossless not available
         uint64_t lossyId = 0;
-        if (conn->hasLossyHash(contentId, lossyId) && 
-            conn->knowsPersistentId(lossyId)) {
-          hasMatch = true;
-          matchedId = lossyId;
-          vlog.info("BORDERED: Using lossy hash match id=%s (canonical=%s not available)",
-                    hex64(lossyId), hex64(contentId));
+        if (conn->hasLossyHash(contentId, lossyId)) {
+          vlog.info("BORDERED: Found lossy mapping: canonical=%s -> lossy=%s",
+                    hex64(contentId), hex64(lossyId));
+          if (conn->knowsPersistentId(lossyId)) {
+            hasMatch = true;
+            matchedId = lossyId;
+            vlog.info("BORDERED: Lossy hash KNOWN by client, using lossy id=%s",
+                      hex64(lossyId));
+          } else {
+            vlog.info("BORDERED: Lossy hash NOT known by client: id=%s",
+                      hex64(lossyId));
+          }
+        } else {
+          vlog.info("BORDERED: No lossy mapping found for canonical=%s",
+                    hex64(contentId));
         }
       }
       
