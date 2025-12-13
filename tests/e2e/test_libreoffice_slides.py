@@ -30,6 +30,26 @@ The bounding-box cache should:
 Cache hits per slide transition after hydration:
 - With tiling enhancement: few hits per transition (ideally 1 for slide area)
 - Without enhancement: many small tile hits per transition
+
+## NEW: Dual-Hash Design (2025-12-13)
+
+With the new viewer-managed dual-hash design:
+- Lossy entries (JPEG-encoded) persist to disk with BOTH canonical and actual hash
+- Server always sends canonical hash in PersistentCachedRect references
+- Viewer looks up by canonical hash and finds lossy entries
+- Cross-session lossy cache hits now work (previously failed)
+
+Expected behavior:
+- First session: Store lossy entries during slide navigation
+- Return to slides: Cache hits (intra-session) via canonical hash lookup
+- After viewer restart: Cache hits still work (cross-session) via canonical hash lookup
+- Target: hits per transition >= 1.0 (currently 0.33, failing due to memory-only lossy entries)
+
+This test will PASS after implementing:
+1. GlobalClientPersistentCache stores both canonicalHash and actualHash
+2. Lossy entries set isPersistable=true (currently false)
+3. Lookup by canonical hash finds entries where actualHash differs
+4. Hash type reporting protocol (LOSSLESS/LOSSY/NONE)
 """
 
 import sys
@@ -302,8 +322,8 @@ def main():
                         help='Port for viewer window server (default: 6899)')
     parser.add_argument('--slides', type=int, default=5,
                         help='Number of slides to navigate (default: 5)')
-    parser.add_argument('--cycles', type=int, default=3,
-                        help='Number of forward/backward navigation cycles (default: 3)')
+    parser.add_argument('--cycles', type=int, default=10,
+                        help='Number of forward/backward navigation cycles (default: 10)')
     parser.add_argument('--delay', type=float, default=2.0,
                         help='Delay between slide transitions in seconds (default: 2.0)')
     parser.add_argument('--startup-wait', type=float, default=60.0,
@@ -314,10 +334,10 @@ def main():
                         help='Window manager (default: openbox)')
     parser.add_argument('--verbose', action='store_true',
                         help='Verbose output')
-    parser.add_argument('--expected-hits-per-transition', type=float, default=2.0,
-                        help='Expected cache hits per slide transition (default: 2.0)')
-    parser.add_argument('--hits-tolerance', type=float, default=1.0,
-                        help='Tolerance for hits per transition (default: 1.0)')
+    parser.add_argument('--expected-hits-per-transition', type=float, default=1.5,
+                        help='Expected cache hits per slide transition (default: 1.5)')
+    parser.add_argument('--hits-tolerance', type=float, default=0.5,
+                        help='Tolerance for hits per transition (default: 0.5)')
     parser.add_argument('--hydration-cycles', type=int, default=1,
                         help='Number of initial cycles to ignore for hydration (default: 1)')
 
@@ -549,9 +569,9 @@ def main():
         hydration_transitions = args.hydration_cycles * transitions_per_cycle
         post_hydration_transitions = total_transitions - hydration_transitions
 
-        # Calculate hits per transition
-        if total_transitions > 0:
-            hits_per_transition = total_hits / total_transitions
+        # Calculate hits per transition (post-hydration only)
+        if post_hydration_transitions > 0:
+            hits_per_transition = total_hits / post_hydration_transitions
         else:
             hits_per_transition = 0
 
