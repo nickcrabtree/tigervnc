@@ -447,6 +447,7 @@ class ArtifactManager:
         self.logs_dir = self.base_dir / "logs"
         self.screenshots_dir = self.base_dir / "screenshots"
         self.reports_dir = self.base_dir / "reports"
+        self.cache_dir = None  # Lazy-initialized
     
     def create(self):
         """Create artifact directory structure."""
@@ -455,6 +456,21 @@ class ArtifactManager:
         self.screenshots_dir.mkdir(exist_ok=True)
         self.reports_dir.mkdir(exist_ok=True)
         print(f"Artifacts will be saved to: {self.base_dir}")
+    
+    def get_sandboxed_cache_dir(self):
+        """Get sandboxed persistent cache directory for this test.
+        
+        CRITICAL: This ensures tests do NOT use the user's production
+        persistent cache (~/.cache/tigervnc/persistentcache), which would
+        corrupt it with test data.
+        
+        Returns:
+            Path: Sandboxed cache directory path
+        """
+        if self.cache_dir is None:
+            self.cache_dir = self.base_dir / 'persistent_cache'
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+        return self.cache_dir
 
 
 def _run_build_target(target: str, description: str, timeout: float = 600.0, verbose: bool = False) -> None:

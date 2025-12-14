@@ -145,28 +145,33 @@ if (!entry) {
    - Server sends `PersistentCachedRectInit(canonical=100)` with JPEG encoding
    - Client decodes → computes `actualHash=200`, stores entry with `{canonical=100, actual=200, pixels}`
    - Entry is indexed by `actualHash=200` but searchable by `canonicalHash=100`
-   - Client sends `HashTypeReport(canonical=100, type=LOSSY)`
-   - Server marks canonical ID 100 as "known (lossy quality)"
+   - Client does NOT send hash report yet (only on cache hits, not stores)
+   - Server does not mark anything as known yet
 
-2. **Second occurrence (still lossy)**:
-   - Server checks: `knowsPersistentId(100)` → TRUE (viewer has it, quality=lossy)
-   - Server sends `PersistentCachedRect(100)` with canonical ID
+2. **Second occurrence (cache hit with lossy)**:
+   - Server tries to encode, looks up canonical ID 100, NOT in known set
+   - Server sends `PersistentCachedRectInit(100)` again (or possibly sends reference if hash list was received)
+   - Client receives reference `PersistentCachedRect(100)` with canonical ID
    - Client searches by `canonicalHash=100` → finds entry with `actual=200`
    - Client recognizes lossy hit (actual ≠ canonical), blits pixels → **HIT** ✅
-   - Client sends `HashTypeReport(canonical=100, type=LOSSY)` (confirming still lossy)
+   - Client sends `writePersistentCacheHashReport(canonical=100, actual=200)`
+   - Server receives report, compares hashes (100 != 200), recognizes lossy
+   - Server marks canonical ID 100 as "known"
 
 3. **Later occurrence (lossless encoding available)**:
    - Server sends `PersistentCachedRectInit(canonical=100)` with lossless encoding
    - Client decodes → computes `actualHash=100` (perfect match!)
    - Client stores NEW entry: `{canonical=100, actual=100, pixels}`
    - Both entries now exist (lossy version + lossless version)
-   - Client sends `HashTypeReport(canonical=100, type=LOSSLESS)`
-   - Server marks canonical ID 100 as "known (lossless quality)"
+   - Client does NOT send hash report yet (only on cache hits)
 
 4. **Future occurrences**:
+   - Server checks `knowsPersistentId(100)` → TRUE
    - Server sends `PersistentCachedRect(100)` with canonical ID
    - Client searches by `canonicalHash=100` → finds entry with `actual=100` (exact match!)
    - Client uses lossless version → **HIT with better quality!** ✅
+   - Client sends `writePersistentCacheHashReport(canonical=100, actual=100)`
+   - Server receives report, compares hashes (100 == 100), recognizes lossless
    - Old lossy version remains in cache (evicted later by LRU)
 
 **Result**: Cache automatically upgrades to lossless, both versions coexist temporarily.
@@ -224,55 +229,73 @@ We do NOT use server-side lossy hash tracking because:
 
 **Problem**: After viewer restart, server needs to know whether viewer has lossless or lossy version of content.
 
-**Solution**: New client→server message reports hash quality:
+**Solution**: New client→server message reports both hashes:
 
 ```cpp
-// Message type (add to encodings.h)
-const int msgTypePersistentCacheHashType = 253;
-
-// Hash type enum
-enum PersistentCacheHashType {
-    HASH_TYPE_NONE = 0,      // Don't have this content
-    HASH_TYPE_LOSSY = 1,     // Have lossy version (actualHash != canonicalHash)
-    HASH_TYPE_LOSSLESS = 2   // Have lossless version (actualHash == canonicalHash)
-};
+// Message type (msgTypes.h)
+const int msgTypePersistentCacheHashReport = 247;
 
 // Message format:
-// 1 byte:  message type (253)
-// 1 byte:  hash type (0=NONE, 1=LOSSY, 2=LOSSLESS)
-// 8 bytes: canonical hash ID
+// 1 byte:  message type (247)
+// 8 bytes: canonical hash (64-bit, server's lossless hash)
+// 8 bytes: actual hash (64-bit, client's computed hash)
+//
+// Total: 17 bytes
+//
+// Quality determination:
+// - LOSSLESS: canonical == actual
+// - LOSSY: canonical != actual
+// - NONE: viewer doesn't send report (sends PersistentCacheQuery instead)
 ```
 
 **When Sent**:
-1. After viewer receives `PersistentCachedRect(canonicalId)`
+1. After viewer receives `PersistentCachedRect(canonicalId)` AND finds cache hit
 2. Viewer performs lookup by canonical hash
-3. Viewer sends hash type report to server
-4. Server updates tracking (knows if viewer has content and quality level)
+3. If found: Viewer sends both hashes (canonical from entry, actual from entry)
+4. If not found: Viewer sends `PersistentCacheQuery` (no hash report)
+5. Server compares hashes to determine quality level
 
 **Usage Example**:
 
 ```cpp
 // Viewer receives reference
-void handlePersistentCachedRect(canonicalId) {
-    entry = cache.findByCanonicalHash(canonicalId);
+void handlePersistentCachedRect(uint64_t canonicalId) {
+    CachedPixels* entry = cache.getByCanonicalHash(canonicalId);
     
     if (!entry) {
-        sendHashTypeReport(canonicalId, HASH_TYPE_NONE);
-        sendQuery(canonicalId);  // Request full data
-    } else if (entry->actualHash == canonicalId) {
-        sendHashTypeReport(canonicalId, HASH_TYPE_LOSSLESS);
-        blitPixels(entry->pixels);
+        // Miss - request full data (NO hash report sent)
+        sendPersistentCacheQuery(canonicalId);
     } else {
-        sendHashTypeReport(canonicalId, HASH_TYPE_LOSSY);
+        // Hit - report both hashes to server
+        writer()->writePersistentCacheHashReport(
+            entry->canonicalHash,  // From server originally
+            entry->actualHash      // Client's computed hash
+        );
         blitPixels(entry->pixels);
     }
 }
 ```
 
+**Server Interpretation**:
+
+```cpp
+void handlePersistentCacheHashReport(uint64_t canonical, uint64_t actual) {
+    bool isLossless = (canonical == actual);
+    
+    // Mark canonical ID as known (viewer looks up by canonical)
+    markPersistentIdKnown(canonical);
+    
+    if (!isLossless) {
+        // Store mapping for diagnostics (optional)
+        cacheLossyHash(canonical, actual);
+    }
+}
+```
+
 **Server Use**:
-- Server tracks quality level of viewer's cache
-- Can decide whether to upgrade lossy→lossless (future enhancement)
-- Prevents sending references when viewer has NONE
+- Server marks canonical ID as "known" (regardless of quality)
+- Server can track quality level via hash comparison
+- Future enhancement: lazy lossless upgrade if viewer has lossy
 - Currently: server accepts any quality level (lossy or lossless)
 
 ## Testing Requirements (UPDATED)

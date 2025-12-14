@@ -949,6 +949,15 @@ void VNCSConnectionST::handlePersistentCacheQuery(const std::vector<uint64_t>& c
   // Track requested IDs so the encoder can choose to send inits
   for (uint64_t id : cacheIds) {
     clientRequestedPersistentIds_.insert(id);
+    
+    // Trigger targeted refresh if we know where this ID was used.
+    // This ensures the encoder revisits the region and sends an INIT.
+    auto it = lastCachedRectRef_.find(id);
+    if (it != lastCachedRectRef_.end()) {
+      add_changed(core::Region(it->second));
+      vlog.debug("Triggering refresh for queried ID %llu at %dx%d", 
+                 (unsigned long long)id, it->second.tl.x, it->second.tl.y);
+    }
   }
 }
 
@@ -994,34 +1003,38 @@ void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<uint64_t>
   vlog.info("PersistentCache eviction: removed %zu IDs from unified tracking sets", removed);
 }
 
-void VNCSConnectionST::handlePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId)
+void VNCSConnectionST::handlePersistentCacheHashReport(uint64_t canonicalId, uint64_t actualId)
 {
-  vlog.debug("Client reported lossy hash: canonical=%llu, lossy=%llu",
-             (unsigned long long)canonicalId,
-             (unsigned long long)lossyId);
-
-  // Store the canonical->lossy mapping for future lookups
-  cacheLossyHash(canonicalId, lossyId);
-
-  // CRITICAL FIX: The viewer stores lossy content under the lossy ID, NOT the
-  // canonical ID. We must remove the canonical ID from our "known" tracking
-  // because the client cannot look it up by that ID. Otherwise we'd send
-  // PersistentCachedRect references with the canonical ID and the client
-  // would miss every time.
+  // NEW DESIGN: The viewer reports hash type for ALL cache interactions:
+  // - Lossless: canonical == actual (viewer has lossless pixels)
+  // - Lossy: canonical != actual (viewer has lossy pixels)
+  // - Miss: no report sent
   //
-  // This also ensures that if we later send lossless content (canonical ID),
-  // we'll store it as a NEW entry and prefer it (since canonical check comes
-  // first in lookups).
-  knownPersistentIds_.erase(canonicalId);
-  knownCacheIds_.erase(canonicalId);
-  encodeManager.removeClientKnownHash(canonicalId);
+  // The viewer always looks up by canonical hash and stores both hashes.
+  // Server must track the canonical ID as known, not the actual ID.
   
-  // Mark the lossy ID as known so subsequent lookups can reference it
-  markPersistentIdKnown(lossyId);
+  bool isLossless = (canonicalId == actualId);
+  
+  if (isLossless) {
+    vlog.debug("Client confirmed LOSSLESS cache entry: canonical=%llu",
+               (unsigned long long)canonicalId);
+  } else {
+    vlog.debug("Client confirmed LOSSY cache entry: canonical=%llu actual=%llu",
+               (unsigned long long)canonicalId,
+               (unsigned long long)actualId);
+    
+    // Store the canonical->lossy mapping for future reference
+    // (may be useful for diagnostics or lazy lossless refresh)
+    cacheLossyHash(canonicalId, actualId);
+  }
 
-  vlog.info("Lossy hash mapping: canonical=%llu -> lossy=%llu (removed canonical from known set)",
+  // Mark the canonical ID as known since the viewer looks up by canonical
+  markPersistentIdKnown(canonicalId);
+  
+  vlog.info("Hash type report: canonical=%llu actual=%llu%s (marked canonical as known)",
             (unsigned long long)canonicalId,
-            (unsigned long long)lossyId);
+            (unsigned long long)actualId,
+            isLossless ? " LOSSLESS" : " LOSSY");
 }
 
 bool VNCSConnectionST::isShiftPressed()

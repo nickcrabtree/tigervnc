@@ -3,9 +3,10 @@
  * This test simulates the new dual-hash design:
  * 1. Server computes canonical hash and sends JPEG-encoded data
  * 2. Viewer decodes, computes lossy hash, stores entry with BOTH hashes
- * 3. Viewer reports hash type (LOSSY) to server
- * 4. Server re-encounters same content, sends reference with CANONICAL hash
- * 5. Viewer looks up by CANONICAL hash and should HIT (finds lossy entry)
+ * 3. Viewer reports BOTH hashes (canonical, actual) to server
+ * 4. Server compares hashes to determine quality (lossy if canonical != actual)
+ * 5. Server re-encounters same content, sends reference with CANONICAL hash
+ * 6. Viewer looks up by CANONICAL hash and should HIT (finds lossy entry)
  */
 
 #include <rfb/ContentHash.h>
@@ -22,28 +23,27 @@
 
 using namespace rfb;
 
-// Hash type enum (matches protocol)
-enum HashType {
-  HASH_TYPE_NONE = 0,
-  HASH_TYPE_LOSSY = 1,
-  HASH_TYPE_LOSSLESS = 2
-};
-
-// Simulated server state (NEW: no lossy mapping, just tracks what viewer has)
+// Simulated server state (NEW: tracks canonical IDs and quality via hash comparison)
 struct SimulatedServer {
-  std::unordered_map<uint64_t, HashType> viewerCache; // canonical → quality
+  std::unordered_map<uint64_t, uint64_t> knownCanonical; // canonical → actual
   
-  void receiveHashTypeReport(uint64_t canonical, HashType type) {
-    printf("   [Server] Received hash type report: canonical=0x%016llx, type=%s\n",
+  void receiveHashReport(uint64_t canonical, uint64_t actual) {
+    bool isLossless = (canonical == actual);
+    printf("   [Server] Received hash report: canonical=0x%016llx, actual=0x%016llx\n",
            (unsigned long long)canonical,
-           type == HASH_TYPE_LOSSLESS ? "LOSSLESS" :
-           type == HASH_TYPE_LOSSY ? "LOSSY" : "NONE");
-    viewerCache[canonical] = type;
+           (unsigned long long)actual);
+    printf("           Quality: %s\n", isLossless ? "LOSSLESS" : "LOSSY");
+    knownCanonical[canonical] = actual;
   }
   
   bool viewerHasContent(uint64_t canonical) {
-    auto it = viewerCache.find(canonical);
-    return (it != viewerCache.end() && it->second != HASH_TYPE_NONE);
+    return knownCanonical.find(canonical) != knownCanonical.end();
+  }
+  
+  bool isLossless(uint64_t canonical) {
+    auto it = knownCanonical.find(canonical);
+    if (it == knownCanonical.end()) return false;
+    return it->first == it->second;
   }
 };
 
@@ -73,7 +73,8 @@ struct SimulatedCache {
   }
   
   // NEW: Lookup by canonical hash (server sends this)
-  HashType lookupByCanonical(uint16_t width, uint16_t height, uint64_t canonical) {
+  // Returns pointer to entry if found, nullptr if not found
+  const CacheEntry* lookupByCanonical(uint16_t width, uint16_t height, uint64_t canonical) {
     printf("   [Viewer] Looking up by canonical: 0x%016llx\n", (unsigned long long)canonical);
     
     // Search all entries for matching canonical hash
@@ -86,16 +87,15 @@ struct SimulatedCache {
         
         if (entry.actualHash == canonical) {
           printf("           → LOSSLESS HIT\n");
-          return HASH_TYPE_LOSSLESS;
         } else {
           printf("           → LOSSY HIT\n");
-          return HASH_TYPE_LOSSY;
         }
+        return &entry;
       }
     }
     
     printf("           → MISS\n");
-    return HASH_TYPE_NONE;
+    return nullptr;
   }
 };
 
@@ -178,9 +178,8 @@ int main() {
   printf("\n4. [Viewer] Storing decoded pixels with BOTH canonical and actual hash...\n");
   viewerCache.store(width, height, canonicalHash, lossyHash, decodedPixels.data(), decodedPixels.size());
   
-  // Step 6: Viewer reports hash type to server
-  printf("\n5. [Viewer] Reporting hash type (LOSSY) to server...\n");
-  server.receiveHashTypeReport(canonicalHash, HASH_TYPE_LOSSY);
+  // Step 6: Viewer does NOT report yet (only on cache hits, not stores)
+  printf("\n5. [Viewer] Stored with both hashes (no report sent yet)\n");
   
   printf("\n=== SECOND OCCURRENCE (should be cache hit) ===\n\n");
   
@@ -195,23 +194,23 @@ int main() {
   }
   printf("   ✓ Canonical hash matches (content is identical)\n");
   
-  // Step 8: Server checks if viewer has content
+  // Step 8: Server doesn't know yet (viewer hasn't reported)
   printf("\n7. [Server] Checking if viewer has content...\n");
-  if (!server.viewerHasContent(canonicalHash2)) {
-    printf("   ✗ ERROR: Server doesn't know viewer has content (but viewer reported it!)\n");
+  if (server.viewerHasContent(canonicalHash2)) {
+    printf("   ✗ ERROR: Server shouldn't know yet (viewer hasn't sent hash report)\n");
     return 1;
   }
-  printf("   ✓ Server knows viewer has this content (quality: LOSSY)\n");
+  printf("   ✓ Server doesn't know yet (no hash report received)\n");
   
-  // Step 9: Server sends reference with CANONICAL hash (NEW: not lossy hash!)
-  printf("\n8. [Server] Sending PersistentCachedRect reference with CANONICAL hash...\n");
+  // Step 9: Server sends reference with CANONICAL hash (optimistic)
+  printf("\n8. [Server] Sending PersistentCachedRect reference with CANONICAL hash (optimistic)...\n");
   printf("   Reference ID: 0x%016llx (canonical)\n", (unsigned long long)canonicalHash2);
   
   // Step 10: Viewer looks up by CANONICAL hash
   printf("\n9. [Viewer] Looking up by canonical hash (NEW: finds lossy entry!)...\n");
-  HashType result = viewerCache.lookupByCanonical(width, height, canonicalHash2);
+  const CacheEntry* entry = viewerCache.lookupByCanonical(width, height, canonicalHash2);
   
-  if (result == HASH_TYPE_NONE) {
+  if (entry == nullptr) {
     printf("\n   ✗✗✗ CACHE MISS! This is the bug! ✗✗✗\n");
     printf("\n   The viewer stored entry with canonical=0x%016llx, actual=0x%016llx\n",
            (unsigned long long)canonicalHash, (unsigned long long)lossyHash);
@@ -225,14 +224,33 @@ int main() {
     return 1;
   }
   
-  if (result != HASH_TYPE_LOSSY) {
-    printf("\n   ✗ ERROR: Expected LOSSY hit but got %s\n",
-           result == HASH_TYPE_LOSSLESS ? "LOSSLESS" : "NONE");
+  bool isLossless = (entry->actualHash == entry->canonicalHash);
+  if (isLossless) {
+    printf("\n   ✗ ERROR: Expected LOSSY hit but got LOSSLESS\n");
     return 1;
   }
   
+  // Step 11: Viewer reports both hashes to server
+  printf("\n10. [Viewer] Reporting both hashes to server...\n");
+  server.receiveHashReport(entry->canonicalHash, entry->actualHash);
+  
+  // Step 12: Server now knows viewer has this content (and it's lossy)
+  printf("\n11. [Server] Checking if viewer has content after report...\n");
+  if (!server.viewerHasContent(canonicalHash2)) {
+    printf("   ✗ ERROR: Server should know after hash report!\n");
+    return 1;
+  }
+  printf("   ✓ Server now knows viewer has this content\n");
+  
+  if (server.isLossless(canonicalHash2)) {
+    printf("   ✗ ERROR: Server should recognize content is lossy!\n");
+    return 1;
+  }
+  printf("   ✓ Server correctly identified quality as LOSSY\n");
+  
   printf("\n   ✓✓✓ LOSSY CACHE HIT! The dual-hash flow works correctly! ✓✓✓\n");
   printf("   Server sent canonical hash, viewer found lossy entry!\n");
+  printf("   Viewer reported both hashes, server identified lossy quality!\n");
   
   printf("\n===================\n");
   printf("All tests passed!\n");

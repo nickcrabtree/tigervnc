@@ -1169,20 +1169,16 @@ void EncodeManager::writeRects(const core::Region& changed,
       // Debug: record the canonical bytes used for this content region.
       logFBHashDebug("bordered", contentRect, contentId, pb);
       
-      // NEW DESIGN: Always check canonical hash only.
-      // Viewer manages lossy mapping - it can find lossy entries by canonical.
-      bool hasMatch = false;
-      uint64_t matchedId = contentId;  // Always use canonical
+      // NEW DESIGN: Always send canonical hash reference.
+      // Viewer will respond with hash type (LOSSLESS/LOSSY/NONE).
+      // If NONE, viewer will query for full data.
+      // EXCEPTION: If client explicitly requested this ID (e.g. miss), send miss/init.
+      bool clientRequested = conn->clientRequestedPersistent(contentId);
+      bool hasMatch = !clientRequested;  // Always send reference unless requested
+      uint64_t matchedId = contentId;  // Always canonical
       
-      if (conn->knowsPersistentId(contentId)) {
-        hasMatch = true;
-        matchedId = contentId;
-        vlog.info("BORDERED: Canonical hash KNOWN by client (any quality): id=%s",
-                  hex64(contentId));
-      } else {
-        vlog.info("BORDERED: Canonical hash NOT known by client: id=%s",
-                  hex64(contentId));
-      }
+      vlog.info("BORDERED: Sending canonical hash reference (viewer will report availability): id=%s",
+                hex64(contentId));
       
       if (hasMatch) {
         // CACHE HIT on bordered content region!
@@ -1264,17 +1260,16 @@ void EncodeManager::writeRects(const core::Region& changed,
       // Debug: log canonical bytes for the bounding box domain.
       logFBHashDebug("bbox", bbox, bboxId, pb);
       
-      // NEW DESIGN: Always check canonical hash only.
-      // Viewer manages lossy mapping - it can find lossy entries by canonical.
-      bool hasHit = false;
-      uint64_t matchedBboxId = bboxId;  // Always use canonical
+      // NEW DESIGN: Always send canonical hash reference.
+      // Viewer will respond with hash type (LOSSLESS/LOSSY/NONE).
+      // If NONE, viewer will query for full data.
+      // EXCEPTION: If client explicitly requested this ID (e.g. miss), send miss/init.
+      bool clientRequested = conn->clientRequestedPersistent(bboxId);
+      bool hasHit = !clientRequested;  // Always send reference unless requested
+      uint64_t matchedBboxId = bboxId;  // Always canonical
       
-      if (conn->knowsPersistentId(bboxId)) {
-        hasHit = true;
-        matchedBboxId = bboxId;
-        vlog.info("TILING: Bounding-box canonical hash KNOWN by client (any quality): id=%s",
-                  hex64(bboxId));
-      }
+      vlog.info("TILING: Sending bounding-box canonical hash reference (viewer will report availability): id=%s",
+                hex64(bboxId));
       
       if (hasHit) {
         // CACHE HIT on bounding box!
@@ -1835,7 +1830,12 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   //
   // This ensures we always prefer lossless content when available. The lossy
   // mapping is only used when the canonical content is NOT available.
-  bool hasCanonicalMatch = conn->knowsPersistentId(cacheId);
+  
+  // If the client explicitly requested this ID (e.g. after a cache miss),
+  // force a "miss" here so we send the full INIT again.
+  bool clientRequested = conn->clientRequestedPersistent(cacheId);
+  
+  bool hasCanonicalMatch = conn->knowsPersistentId(cacheId) && !clientRequested;
   uint64_t lossyId = 0;
   bool hasLossyMatch = false;
   uint64_t matchedId = cacheId;
@@ -1845,7 +1845,8 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     matchedId = cacheId;
     vlog.debug("tryLookup: Using canonical (lossless) ID %s", hex64(cacheId));
   } else if (conn->hasLossyHash(cacheId, lossyId) &&
-             conn->knowsPersistentId(lossyId)) {
+             conn->knowsPersistentId(lossyId) &&
+             !clientRequested) {
     // Fall back to lossy content only when lossless not available
     hasLossyMatch = true;
     matchedId = lossyId;

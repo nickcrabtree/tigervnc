@@ -169,7 +169,8 @@ def main():
         # 5. PersistentCache run (use fresh cache directory for cold start)
         # v3 uses a directory with index.dat + shard files instead of a single file
         print("\n[Run 2/2] PersistentCache-focused run (cold cache)")
-        pc_cache_path = artifacts.logs_dir / 'pc_test_cache'
+        # SANDBOXED: Use test-specific cache (not production cache)
+        pc_cache_path = artifacts.get_sandboxed_cache_dir()
         viewer2 = run_viewer(
             binaries['cpp_viewer'], args.port_content, artifacts, tracker,
             'parity_pc_viewer', params=[

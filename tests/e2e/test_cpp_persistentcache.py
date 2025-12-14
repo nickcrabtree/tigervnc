@@ -35,7 +35,7 @@ from log_parser import parse_cpp_log, parse_server_log, compute_metrics
 
 
 def run_cpp_viewer(viewer_path, port, artifacts, tracker, name, 
-                   cache_size_mb=256, display_for_viewer=None):
+                   cache_size_mb=256, display_for_viewer=None, cache_dir=None):
     """Run C++ viewer with PersistentCache enabled (ContentCache disabled)."""
     cmd = [
         viewer_path,
@@ -46,6 +46,10 @@ def run_cpp_viewer(viewer_path, port, artifacts, tracker, name,
         'PersistentCache=1',
         f'PersistentCacheSize={cache_size_mb}',
     ]
+    
+    # Use sandboxed cache directory if provided
+    if cache_dir:
+        cmd.append(f'PersistentCachePath={cache_dir}')
 
     log_path = artifacts.logs_dir / f'{name}.log'
     env = os.environ.copy()
@@ -192,12 +196,17 @@ def main():
             return 1
         print("✓ Viewer window server ready")
 
-        # 6. Launch C++ viewer with PersistentCache
+        # 6. Launch C++ viewer with PersistentCache in sandboxed directory
         print(f"\n[5/8] Launching C++ viewer with PersistentCache={args.cache_size}MB...")
+        
+        # Get sandboxed cache directory (does NOT use production cache)
+        cache_dir = artifacts.get_sandboxed_cache_dir()
+        print(f"  Using sandboxed cache: {cache_dir}")
+        
         test_proc = run_cpp_viewer(
             binaries['cpp_viewer'], args.port_content, artifacts, tracker,
             'cpp_pc_test_viewer', cache_size_mb=args.cache_size,
-            display_for_viewer=args.display_viewer
+            display_for_viewer=args.display_viewer, cache_dir=str(cache_dir)
         )
         if test_proc.poll() is not None:
             print("\n✗ FAIL: Test viewer exited prematurely")

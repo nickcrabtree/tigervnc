@@ -949,6 +949,20 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
                (unsigned long long)cached->actualHash);
   }
   
+  // Report the hash type to the server so it knows what pixel quality we have.
+  // This allows the server to decide whether to send lossless data lazily.
+  // For lossless hits: report canonical==actual (both the same ID)
+  // For lossy hits: report canonical!=actual (different IDs)
+  if (conn->writer() != nullptr) {
+    uint64_t reportedCanonical = cached->canonicalHash;
+    uint64_t reportedActual = cached->actualHash;
+    conn->writer()->writePersistentCacheHashReport(reportedCanonical, reportedActual);
+    vlog.debug("Reported hash type to server: canonical=%llu actual=%llu%s",
+               (unsigned long long)reportedCanonical,
+               (unsigned long long)reportedActual,
+               isLossless ? " (lossless)" : " (lossy)");
+  }
+  
   // Blit cached pixels to framebuffer
   pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
 }
@@ -1268,6 +1282,15 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
     vlog.info("ContentCache cache miss for ID %llu rect=[%d,%d-%d,%d]",
               (unsigned long long)cacheId,
               r.tl.x, r.tl.y, r.br.x, r.br.y);
+
+    // Request missing data from server so we can populate the cache.
+    // Without this, the client stays out of sync and simply displays nothing/garbage.
+    if (conn && conn->writer()) {
+      conn->writer()->writeRequestCachedData(cacheId);
+      vlog.debug("Sent RequestCachedData for ID %llu", (unsigned long long)cacheId);
+    } else {
+      vlog.error("Cannot send RequestCachedData: conn=%p writer=%p", conn, conn ? conn->writer() : nullptr);
+    }
     return;
   }
  

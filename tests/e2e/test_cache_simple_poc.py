@@ -112,10 +112,14 @@ def main():
         env = os.environ.copy()
         env['DISPLAY'] = f':{display_viewer}'
         
+        # SANDBOXED: Use test-specific cache (not production cache)
+        cache_dir = artifacts.get_sandboxed_cache_dir()
+        
         with open(viewer_log, 'w') as log_file:
             viewer_proc = subprocess.Popen(
                 [binaries['cpp_viewer'], f'127.0.0.1::{port_content}',
-                 'Shared=1', 'Log=*:stderr:100', 'PersistentCache=1'],
+                 'Shared=1', 'Log=*:stderr:100', 'PersistentCache=1',
+                 f'PersistentCachePath={cache_dir}'],
                 stdout=log_file, stderr=subprocess.STDOUT,
                 preexec_fn=os.setpgrp, env=env
             )
