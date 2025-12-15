@@ -412,7 +412,8 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
         # Stop viewer to trigger server stats output
         print("[5/6] Stopping viewer and servers...")
         tracker.cleanup('viewer')
-        time.sleep(1)  # Let server write final statistics
+        # Wait longer for viewer logs to flush and server to update stats
+        time.sleep(3)
         
         # Stop servers (which writes final statistics to logs)
         if viewer_server.proc:

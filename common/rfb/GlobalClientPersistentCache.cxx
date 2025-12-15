@@ -231,10 +231,10 @@ GlobalClientPersistentCache::getByKey(const CacheKey& key)
 }
 
 const GlobalClientPersistentCache::CachedPixels*
-GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash)
+GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t width, uint16_t height)
 {
   // NEW: Lookup by canonical hash (for viewer-managed lossy mapping).
-  // Search through all entries to find one with matching canonicalHash.
+  // Search through all entries to find one with matching canonicalHash AND dimensions.
   // This handles both lossless (actual == canonical) and lossy (actual != canonical) hits.
   
   if (!arcCache_) return nullptr;
@@ -242,8 +242,10 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash)
   // Scan all entries in the ARC cache to find matching canonical hash
   for (const auto& kv : cache_) {
     const CachedPixels& entry = kv.second;
-    if (entry.canonicalHash == canonicalHash) {
-      // Found entry with matching canonical hash
+    if (entry.canonicalHash == canonicalHash && 
+        entry.width == width && 
+        entry.height == height) {
+      // Found entry with matching canonical hash and dimensions
       // Update access statistics
       const CachedPixels* e = arcCache_->get(kv.first);
       if (e != nullptr) {
@@ -257,6 +259,11 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash)
   for (const auto& idxKv : indexMap_) {
     const std::vector<uint8_t>& hash = idxKv.first;
     
+    // Check dimensions in index before hydrating
+    const IndexEntry& idx = idxKv.second;
+    if (idx.width != width || idx.height != height)
+      continue;
+
     // Check if this index entry might have matching canonical hash
     // We don't have canonicalHash in IndexEntry yet, so we need to hydrate
     // to check. For now, we'll hydrate any cold entries as a fallback.
@@ -267,7 +274,10 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash)
         auto itKey = hashToKey_.find(hash);
         if (itKey != hashToKey_.end()) {
           auto itCache = cache_.find(itKey->second);
-          if (itCache != cache_.end() && itCache->second.canonicalHash == canonicalHash) {
+          if (itCache != cache_.end() && 
+              itCache->second.canonicalHash == canonicalHash &&
+              itCache->second.width == width &&
+              itCache->second.height == height) {
             const CachedPixels* e = arcCache_->get(itKey->second);
             if (e != nullptr) {
               stats_.cacheHits++;

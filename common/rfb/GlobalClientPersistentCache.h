@@ -157,7 +157,8 @@ namespace rfb {
     const CachedPixels* getByKey(const CacheKey& key);
     
     // NEW: Lookup by canonical hash (for viewer-managed lossy mapping)
-    const CachedPixels* getByCanonicalHash(uint64_t canonicalHash);
+    // Must match dimensions to avoid hash collisions between different shapes
+    const CachedPixels* getByCanonicalHash(uint64_t canonicalHash, uint16_t width, uint16_t height);
     
     // Insert/update a cache entry with dual-hash design.
     // 

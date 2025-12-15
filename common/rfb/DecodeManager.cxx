@@ -911,7 +911,10 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
              (unsigned long long)cacheId,
              r.tl.x, r.tl.y, r.br.x, r.br.y);
 
-  const GlobalClientPersistentCache::CachedPixels* cached = persistentCache->getByCanonicalHash(cacheId);
+  // Cast dimensions to match CacheKey type (uint16_t)
+  uint16_t w = (uint16_t)r.width();
+  uint16_t h = (uint16_t)r.height();
+  const GlobalClientPersistentCache::CachedPixels* cached = persistentCache->getByCanonicalHash(cacheId, w, h);
   
   if (cached == nullptr) {
     // Cache miss - queue request for later batching
