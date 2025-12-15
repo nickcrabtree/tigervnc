@@ -627,6 +627,7 @@ bool GlobalClientPersistentCache::writeEntryToShard(const std::vector<uint8_t>& 
   idx.stridePixels = entry.stridePixels;
   idx.format = entry.format;
   idx.isCold = false;
+  idx.canonicalHash = entry.canonicalHash;
   
   indexMap_[hash] = idx;
   
@@ -706,15 +707,16 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
     return false;
   }
   
-  if (header.version != 3) {
-    vlog.info("PersistentCache: unsupported index version %u, starting fresh", header.version);
+  // v4 introduces canonicalHash field
+  if (header.version != 4) {
+    vlog.info("PersistentCache: unsupported index version %u (expected 4), starting fresh", header.version);
     fclose(f);
     remove(indexPath.c_str());
     hydrationState_ = HydrationState::FullyHydrated;
     return false;
   }
   
-  vlog.info("PersistentCache: loading v3 index (%llu entries, %u shards)",
+  vlog.info("PersistentCache: loading v4 index (%llu entries, %u shards)",
             (unsigned long long)header.entryCount, header.maxShardId + 1);
   
   indexMap_.clear();
@@ -723,24 +725,27 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
   keyToHash_.clear();
   hashToKey_.clear();
   
-  // Read index entries
-  // Format: hash(16) + shardId(2) + offset(4) + size(4) + width(2) + height(2) + stride(2) + PixelFormat(24) + flags(1)
-  for (uint64_t i = 0; i < header.entryCount; i++) {
-    std::vector<uint8_t> hash(16);
-    if (fread(hash.data(), 1, 16, f) != 16) break;
-    
-    IndexEntry entry;
-    if (fread(&entry.shardId, sizeof(entry.shardId), 1, f) != 1) break;
-    if (fread(&entry.payloadOffset, sizeof(entry.payloadOffset), 1, f) != 1) break;
-    if (fread(&entry.payloadSize, sizeof(entry.payloadSize), 1, f) != 1) break;
-    if (fread(&entry.width, sizeof(entry.width), 1, f) != 1) break;
-    if (fread(&entry.height, sizeof(entry.height), 1, f) != 1) break;
-    if (fread(&entry.stridePixels, sizeof(entry.stridePixels), 1, f) != 1) break;
-    if (fread(&entry.format, 24, 1, f) != 1) break;
-    
-    uint8_t flags;
-    if (fread(&flags, 1, 1, f) != 1) break;
-    entry.isCold = (flags & 0x01) != 0;
+    // Read index entries
+    // Format: hash(16) + shardId(2) + offset(4) + size(4) + width(2) + height(2) + stride(2) + PixelFormat(24) + flags(1) + canonicalHash(8)
+    for (uint64_t i = 0; i < header.entryCount; i++) {
+      std::vector<uint8_t> hash(16);
+      if (fread(hash.data(), 1, 16, f) != 16) break;
+      
+      IndexEntry entry;
+      if (fread(&entry.shardId, sizeof(entry.shardId), 1, f) != 1) break;
+      if (fread(&entry.payloadOffset, sizeof(entry.payloadOffset), 1, f) != 1) break;
+      if (fread(&entry.payloadSize, sizeof(entry.payloadSize), 1, f) != 1) break;
+      if (fread(&entry.width, sizeof(entry.width), 1, f) != 1) break;
+      if (fread(&entry.height, sizeof(entry.height), 1, f) != 1) break;
+      if (fread(&entry.stridePixels, sizeof(entry.stridePixels), 1, f) != 1) break;
+      if (fread(&entry.format, 24, 1, f) != 1) break;
+      
+      uint8_t flags;
+      if (fread(&flags, 1, 1, f) != 1) break;
+      entry.isCold = (flags & 0x01) != 0;
+
+      // New in v4
+      if (fread(&entry.canonicalHash, sizeof(entry.canonicalHash), 1, f) != 1) break;
 
     entry.key.width = entry.width;
     entry.key.height = entry.height;
@@ -832,6 +837,10 @@ bool GlobalClientPersistentCache::hydrateEntry(const std::vector<uint8_t>& hash)
   entry.stridePixels = idx.stridePixels;
   entry.lastAccessTime = getCurrentTime();
   entry.pixels = std::move(pixelData);
+  
+  // Restore hashes
+  entry.canonicalHash = idx.canonicalHash;
+  entry.actualHash = idx.key.contentHash;
   
   // Use the key stored in the index so CacheKey/ContentHash mapping stays
   // consistent across disk and memory.
@@ -1001,8 +1010,8 @@ bool GlobalClientPersistentCache::saveToDisk()
   } header;
   
   memset(&header, 0, sizeof(header));
-  header.magic = 0x50435633;  // "PCV3"
-  header.version = 3;
+  header.magic = 0x50435633;  // "PCV3" (magic stays same, version bumped)
+  header.version = 4;
   header.entryCount = indexMap_.size();
   header.created = time(nullptr);
   header.lastAccess = time(nullptr);
@@ -1035,11 +1044,14 @@ bool GlobalClientPersistentCache::saveToDisk()
     
     uint8_t flags = idx.isCold ? 0x01 : 0x00;
     fwrite(&flags, 1, 1, f);
+    
+    // New in v4
+    fwrite(&idx.canonicalHash, sizeof(idx.canonicalHash), 1, f);
   }
   
   fclose(f);
   
-  vlog.info("PersistentCache: saved v3 index with %zu entries", indexMap_.size());
+  vlog.info("PersistentCache: saved v4 index with %zu entries", indexMap_.size());
   return true;
 }
 

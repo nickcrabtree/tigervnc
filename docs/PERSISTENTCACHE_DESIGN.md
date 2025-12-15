@@ -643,19 +643,19 @@ IntParameter persistentCacheMinRectSize("PersistentCacheMinRectSize",
 
 ## File Format (Cache Persistence)
 
-### Cache File: `~/.cache/tigervnc/persistentcache.dat`
+### Cache File: `~/.cache/tigervnc/persistentcache/index.dat` (v4 sharded)
 
 ```
 ┌────────────────────────────────────────┐
 │ Header (64 bytes)                      │
 ├────────────────────────────────────────┤
-│ magic:       uint32 = 0x50435643       │  "PCVC" (PersistentCache VNC)
-│ version:     uint32 = 1                │
+│ magic:       uint32 = 0x50435633       │  "PCV3" (PersistentCache V3+)
+│ version:     uint32 = 4                │  v4 adds canonicalHash
 │ totalEntries: uint64                   │
-│ totalBytes:  uint64                    │
 │ created:     uint64 (unix timestamp)   │
 │ lastAccess:  uint64 (unix timestamp)   │
-│ reserved:    uint8[24]                 │
+│ maxShardId:  uint16                    │
+│ reserved:    uint8[30]                 │
 └────────────────────────────────────────┘
                   ↓
 ┌────────────────────────────────────────┐
@@ -664,20 +664,21 @@ IntParameter persistentCacheMinRectSize("PersistentCacheMinRectSize",
 │ For each entry:                        │
 │                                        │
 │ ┌────────────────────────────────────┐ │
-│ │ hashLen:      uint8                │ │
-│ │ hash:         uint8[hashLen]       │ │
+│ │ hash:         uint8[16]            │ │
+│ │ shardId:      uint16               │ │
+│ │ payloadOffset:uint32               │ │
+│ │ payloadSize:  uint32               │ │
 │ │ width:        uint16               │ │
 │ │ height:       uint16               │ │
 │ │ stridePixels: uint16               │ │
 │ │ pixelFormat:  (24 bytes)           │ │
-│ │ lastAccess:   uint32               │ │
-│ │ pixelDataLen: uint32               │ │
-│ │ pixelData:    uint8[pixelDataLen]  │ │
+│ │ flags:        uint8 (bit 0=isCold) │ │
+│ │ canonicalHash:uint64 (NEW v4)      │ │
 │ └────────────────────────────────────┘ │
 └────────────────────────────────────────┘
-                  ↓
-┌────────────────────────────────────────┐
-│ Checksum (32 bytes)                    │
+```
+
+The payload data itself is stored in separate shard files (`shard_0000.dat`, etc.) to keep the index compact and fast to load.
 ├────────────────────────────────────────┤
 │ SHA-256 of all above data              │
 └────────────────────────────────────────┘

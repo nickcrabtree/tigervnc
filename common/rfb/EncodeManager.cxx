@@ -1216,7 +1216,7 @@ void EncodeManager::writeRects(const core::Region& changed,
   // TILING ENHANCEMENT: Also check if the BOUNDING BOX of the changed region
   // matches a known cached rectangle.
   
-  if (clientSupportsCache && !changed.is_empty()) {
+  if (clientSupportsCache && rfb::Server::enableBBoxCache && !changed.is_empty()) {
     core::Rect bbox = changed.get_bounding_rect();
     int bboxArea = bbox.area();
 

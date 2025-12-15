@@ -51,6 +51,9 @@ namespace rfb {
     // PersistentCache parameters (cross-session, content hashes)
     static core::BoolParameter enablePersistentCache;
     static core::IntParameter persistentCacheMinRectSize;
+    
+    // Tiling optimization (EnableBBoxCache)
+    static core::BoolParameter enableBBoxCache;
 
   };
 

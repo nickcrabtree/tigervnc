@@ -173,10 +173,10 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 or 'persistentcache loaded from disk' in lower
                 or 'persistentcache starting fresh' in lower
                 or 'persistentcache debug log:' in lower
-                # v3 sharded format messages
-                or 'persistentcache v3' in lower
-                or 'persistentcache: loading v3 index' in lower
-                or 'persistentcache: saved v3 index' in lower
+                # v3/v4 sharded format messages
+                or 'persistentcache v' in lower
+                or 'persistentcache: loading v' in lower
+                or 'persistentcache: saved v' in lower
             ):
                 parsed.persistent_init_events += 1
                 if len(parsed.persistent_init_messages) < 10:
@@ -290,9 +290,9 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
             # as misses because they represent initial population, not lookups.
             # The viewer only counts "lookups" when it receives a
             # PersistentCachedRect reference and checks its local cache.
-            elif 'persistentcache hit' in lower:
+            elif 'persistentcache' in lower and 'hit' in lower:
                 parsed.persistent_hits += 1
-            elif 'persistentcache miss' in lower:
+            elif 'persistentcache' in lower and 'miss' in lower:
                 parsed.persistent_misses += 1
             # PersistentCache STORE is initial population - track separately
             # but don't add to misses (it's not a cache lookup).
@@ -308,7 +308,7 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 )
             
             # ARC statistics (end of session)
-            if 'client-side contentcache statistics' in lower:
+            if 'client-side contentcache statistics' in lower or 'client-side persistentcache statistics' in lower:
                 # Start of stats block, parse following lines
                 pass
             

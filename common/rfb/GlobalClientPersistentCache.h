@@ -289,6 +289,7 @@ namespace rfb {
       uint16_t stridePixels;
       PixelFormat format;
       bool isCold;              // True if evicted from memory but still on disk
+      uint64_t canonicalHash;   // NEW: Server's canonical hash (persisted in v4)
       CacheKey key;             // Corresponding in-memory key
     };
     std::unordered_map<std::vector<uint8_t>, IndexEntry, HashVectorHasher> indexMap_;

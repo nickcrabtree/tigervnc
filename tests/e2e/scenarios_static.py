@@ -323,78 +323,79 @@ class StaticScenarioRunner:
             except FileNotFoundError:
                 pass
     
-    def repeated_static_content(self, cycles: int = 10, 
-                                duration_sec: Optional[float] = None) -> dict:
+    def root_pattern_cycle(self, cycles: int = 5, duration_sec: float = None, 
+                          delay_between: float = 1.0) -> dict:
         """
-        Generate cache hits by setting root window background repeatedly.
+        Toggle root window between a complex bitmap pattern and solid color.
+        Uses xsetroot -bitmap for pattern (guaranteed cacheable, non-solid).
+        Uses xsetroot -solid for clearing (bypasses cache).
         
-        Strategy:
-        1. Create a static bitmap pattern
-        2. Set root window background to pattern
-        3. Clear (set to black)
-        4. Set SAME pattern again
-        5. Repeat -> guaranteed identical pixel content = cache hit
-        
-        This uses xsetroot -bitmap which directly modifies the root window,
-        avoiding issues with window management and process termination.
-        
-        Args:
-            cycles: Number of display/close cycles
-            duration_sec: If set, run for approximate duration instead
-        
-        Returns:
-            dict with statistics
+        This ensures:
+        1. Identical pixel content for the pattern phase (deterministic).
+        2. No window management noise (drawing on root).
+        3. Complex content that cannot be encoded as SolidRect.
         """
-        self.log(f"Starting repeated_static_content scenario (cycles={cycles})")
+        self.log(f"Starting root_pattern_cycle scenario (cycles={cycles})")
         
-        stats = {
-            'pattern_changes': 0,
-        }
+        import tempfile
+        # Create a random 64x64 bitmap XBM
+        # We use a fixed seed to ensure the pattern is identical across runs
+        import random
+        rng = random.Random(42)
         
-        # Define a set of solid colors that create large uniform regions
-        # Use contrasting colors to ensure different hash values
-        colors = [
-            '#3366CC',  # Blue
-            '#DC3912',  # Red  
-            '#109618',  # Green
-            '#FF9900',  # Orange
-        ]
+        # XBM format: array of bytes
+        # Use full HD resolution to avoid tiling artifacts from the X server
+        width, height = 1920, 1080
+        n_bytes = (width * height) // 8
+        # Generate random bytes (fixed seed)
+        data = [rng.randint(0, 255) for _ in range(n_bytes)]
         
+        xbm_content = f"#define test_width {width}\n#define test_height {height}\nstatic unsigned char test_bits[] = {{\n"
+        xbm_content += ", ".join(f"0x{b:02x}" for b in data)
+        xbm_content += "};\n"
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xbm', delete=False) as f:
+            f.write(xbm_content)
+            xbm_path = f.name
+        self.temp_files.append(xbm_path)
+        
+        stats = {'pattern_changes': 0}
         env = {**os.environ, 'DISPLAY': f':{self.display}'}
         
         start_time = time.time()
         cycle = 0
         
-        while True:
-            if duration_sec:
-                if time.time() - start_time >= duration_sec:
-                    break
-            else:
-                if cycle >= cycles:
-                    break
-            
-            cycle += 1
-            self.log(f"Cycle {cycle}/{cycles if not duration_sec else '~'}")
-            
-            # Cycle through each color
-            for color in colors:
-                self.log(f"  Setting background to {color}")
+        try:
+            while True:
+                if duration_sec:
+                    if time.time() - start_time >= duration_sec:
+                        break
+                else:
+                    if cycle >= cycles:
+                        break
                 
-                # Set root window background color
-                cmd = ['xsetroot', '-solid', color]
+                cycle += 1
+                self.log(f"Cycle {cycle}/{cycles if not duration_sec else '~'}")
+                
+                # 1. Set complex pattern (Cacheable)
+                # Use xsetroot -mod for a deterministic, native X11 pattern (grid)
+                # This avoids external bitmap file I/O and potential tiling inconsistencies
+                cmd = ['xsetroot', '-mod', '16', '16', '-fg', '#FF0000', '-bg', '#0000FF']
                 subprocess.run(cmd, env=env, check=False)
                 stats['pattern_changes'] += 1
+                wait_idle(delay_between)
                 
-                # Allow time for VNC encoding/transmission
-                wait_idle(2.0)
-        
-        # Final quiet period for pipeline flush
-        self.log("Scenario complete, waiting for pipeline flush...")
-        wait_idle(3.0)
-        
-        # Cleanup
-        self.cleanup()
-        
+                # 2. Set solid black (Bypass Cache - resets state)
+                cmd = ['xsetroot', '-solid', 'black']
+                subprocess.run(cmd, env=env, check=False)
+                # Don't increment pattern_changes for reset
+                wait_idle(delay_between)
+                
+        finally:
+            self.log("Scenario complete, waiting for pipeline flush...")
+            wait_idle(2.0)
+            self.cleanup()
+            
         self.log(f"Scenario stats: {stats}")
         return stats
     

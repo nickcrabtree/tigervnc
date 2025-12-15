@@ -108,3 +108,7 @@ core::IntParameter rfb::Server::persistentCacheMinRectSize
 ("PersistentCacheMinRectSize",
  "Minimum rectangle size (pixels) to consider for persistent caching",
  2048, 0, INT_MAX);
+core::BoolParameter rfb::Server::enableBBoxCache
+("EnableBBoxCache",
+ "Enable Bounding Box cache optimization (coalesce updates into single cacheable rect)",
+ true);
