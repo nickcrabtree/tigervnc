@@ -11,8 +11,19 @@ BUILD_DIR := build
 XSERVER_BUILD_DIR := $(BUILD_DIR)/unix/xserver
 XSERVER_DEPMAP := $(XSERVER_BUILD_DIR)/.tigervnc_depmap.json
 
+UNAME_S := $(shell uname -s)
+
 # Default parallelism for cmake --build (all cores if detectable)
 NUM_JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
+
+# macOS: ensure CMake uses an installed SDK and the /usr/bin clang wrappers (which inject SDK include paths)
+CMAKE_VIEWER_ARGS := -DBUILD_VIEWER=ON
+ifeq ($(UNAME_S),Darwin)
+MACOS_SDK_PATH := $(shell xcrun --sdk macosx --show-sdk-path 2>/dev/null)
+ifneq ($(strip $(MACOS_SDK_PATH)),)
+CMAKE_VIEWER_ARGS += -DCMAKE_OSX_SYSROOT="$(MACOS_SDK_PATH)" -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++
+endif
+endif
 
 # Default: build viewer, server, and Rust viewer
 all: viewer server rustviewer
@@ -20,10 +31,9 @@ all: viewer server rustviewer
 # Viewer (CMake will (re)configure as needed and rebuild its dependencies)
 viewer:
 	@echo "[viewer] Configuring CMake with BUILD_VIEWER=ON using $${HOME}/bin/cmake if available..."
-	@env MAKEFLAGS= CMAKE_BUILD_PARALLEL_LEVEL=$(NUM_JOBS) PATH="$${HOME}/bin:$${PATH}" cmake -S . -B $(BUILD_DIR) -DBUILD_VIEWER=ON
+	@env MAKEFLAGS= CMAKE_BUILD_PARALLEL_LEVEL=$(NUM_JOBS) PATH="$${HOME}/bin:$${PATH}" cmake -S . -B $(BUILD_DIR) $(CMAKE_VIEWER_ARGS)
 	@echo "[viewer] Building C++ viewer (njcvncviewer) via CMake..."
 	@env MAKEFLAGS= CMAKE_BUILD_PARALLEL_LEVEL=$(NUM_JOBS) PATH="$${HOME}/bin:$${PATH}" cmake --build $(BUILD_DIR) --target njcvncviewer
-
 
 # Server: build CMake library deps first, then the Xorg-based Xnjcvnc.
 #
