@@ -36,6 +36,7 @@
 #include <rfb/Exception.h>
 #include <rfb/PixelBuffer.h>
 #include <rfb/ContentHash.h>
+#include <rfb/encodings.h>
 
 #include <rdr/MemOutStream.h>
 
@@ -952,22 +953,15 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
                (unsigned long long)cached->actualHash);
   }
   
-  // Report the hash type to the server so it knows what pixel quality we have.
-  // This allows the server to decide whether to send lossless data lazily.
-  // For lossless hits: report canonical==actual (both the same ID)
-  // For lossy hits: report canonical!=actual (different IDs)
-  if (conn->writer() != nullptr) {
-    uint64_t reportedCanonical = cached->canonicalHash;
-    uint64_t reportedActual = cached->actualHash;
-    conn->writer()->writePersistentCacheHashReport(reportedCanonical, reportedActual);
-    vlog.debug("Reported hash type to server: canonical=%llu actual=%llu%s",
-               (unsigned long long)reportedCanonical,
-               (unsigned long long)reportedActual,
-               isLossless ? " (lossless)" : " (lossy)");
-  }
-  
+  // IMPORTANT: We do NOT send PersistentCacheHashReport on every cache hit.
+  // Hash reports are only needed when the viewer detects a canonical!=actual
+  // mismatch while storing or seeding a rect (i.e. lossy decode). Emitting a
+  // report for every hit adds protocol noise and breaks tests that expect
+  // lossless runs to have zero hash-mismatch reports.
+
   // Blit cached pixels to framebuffer
   pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
+
 }
 
 void DecodeManager::storePersistentCachedRect(const core::Rect& r,
@@ -1047,6 +1041,22 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   bool hashMatch = (hashId == cacheId);
 
   if (!hashMatch) {
+    // For strictly lossless encodings (ZRLE, Hextile, RRE, Raw), a hash mismatch
+    // indicates corruption (decoding error, stride issue, etc). We must NOT
+    // cache this result, otherwise we will persist and replay the corruption.
+    // Tight encoding is the only standard one that can be lossy (JPEG).
+    bool encodingCanBeLossy = (encoding == encodingTight);
+#ifdef HAVE_H264
+    encodingCanBeLossy |= (encoding == encodingH264);
+#endif
+
+    if (!encodingCanBeLossy) {
+      vlog.error("PersistentCache STORE: hash mismatch for LOSSLESS encoding %d! Dropping corrupt entry for cacheId=%llu",
+                 encoding, (unsigned long long)cacheId);
+      // Do not insert into cache. This forces a miss on next reference, triggering self-healing.
+      return;
+    }
+
     // Hash mismatch indicates lossy compression (e.g. JPEG artifacts).
     // Store in memory but don't persist to disk.
     vlog.debug("PersistentCache STORE (lossy): hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu encoding=%d",
@@ -1151,11 +1161,16 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
   if (persistentCache != nullptr) {
     std::vector<uint8_t> contentHash =
       ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
-    uint64_t hashId = 0;
-    if (!contentHash.empty()) {
-      size_t n = std::min(contentHash.size(), sizeof(uint64_t));
-      memcpy(&hashId, contentHash.data(), n);
+    if (contentHash.empty()) {
+      vlog.error("seedCachedRect: failed to compute hash for rect [%d,%d-%d,%d] canonical=%llu",
+                 r.tl.x, r.tl.y, r.br.x, r.br.y,
+                 (unsigned long long)cacheId);
+      return;
     }
+
+    uint64_t hashId = 0;
+    size_t n = std::min(contentHash.size(), sizeof(uint64_t));
+    memcpy(&hashId, contentHash.data(), n);
 
     // Debug: log canonical bytes for this SEED rect at the viewer.
     logFBHashDebug("SEED", r, cacheId, static_cast<PixelBuffer*>(pb));
@@ -1163,18 +1178,14 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
     bool hashMatch = (hashId == cacheId);
 
     if (!hashMatch) {
-      // Hash mismatch indicates lossy encoding was used. Store under the
-      // lossy ID (which matches actual pixels) and report the mapping so
-      // the server can use the lossy ID in future references.
-      vlog.debug("seedCachedRect: lossy encoding detected for rect [%d,%d-%d,%d] canonical=%llu lossy=%llu",
-                 r.tl.x, r.tl.y, r.br.x, r.br.y,
-                 (unsigned long long)cacheId,
-                 (unsigned long long)hashId);
-      
-      // Report lossy hash to server (same as storePersistentCachedRect)
-      if (conn->writer() != nullptr) {
+      // NEW DESIGN: Seed messages are always sent with the server's canonical
+      // hash, but the framebuffer pixels we read here may be the result of a
+      // lossy decode (e.g. Tight/JPEG). In that case a mismatch is expected.
+      // Store using the *actual* hash and report the mapping to the server so
+      // future references can still use the canonical ID.
+      if (conn && conn->writer() != nullptr) {
         conn->writer()->writePersistentCacheHashReport(cacheId, hashId);
-        vlog.debug("seedCachedRect: reported lossy hash to server: canonical=%llu lossy=%llu",
+        vlog.debug("seedCachedRect: reported canonical->actual mapping to server: canonical=%llu actual=%llu",
                    (unsigned long long)cacheId,
                    (unsigned long long)hashId);
       }
