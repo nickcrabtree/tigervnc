@@ -101,11 +101,20 @@ WAN_PROFILES: Dict[str, WanProfile] = {
 }
 
 
-def _run_tc(args: List[str], timeout: float = 5.0, verbose: bool = False) -> bool:
-    """Run a `tc` command, returning True on success.
+def _run_tc(
+    args: List[str],
+    timeout: float = 5.0,
+    verbose: bool = False,
+    *,
+    ignore_failure: bool = False,
+) -> bool:
+    """Run a `tc` command.
 
-    This helper centralises timeout handling and error reporting so that
-    callers can fail gracefully without raising exceptions.
+    Returns True on success.
+
+    Some cleanup operations (e.g. `tc qdisc del ...`) legitimately fail when the
+    target object does not exist. For those callers, `ignore_failure=True`
+    suppresses error output and returns False.
     """
 
     cmd = [TC_BIN] + args
@@ -122,9 +131,11 @@ def _run_tc(args: List[str], timeout: float = 5.0, verbose: bool = False) -> boo
         )
         return True
     except subprocess.TimeoutExpired:
-        print(f"[wanem] ERROR: 'tc {' '.join(args)}' timed out after {timeout}s")
+        if not ignore_failure:
+            print(f"[wanem] ERROR: 'tc {' '.join(args)}' timed out after {timeout}s")
     except (OSError, subprocess.CalledProcessError) as exc:
-        print(f"[wanem] ERROR: 'tc {' '.join(args)}' failed: {exc}")
+        if not ignore_failure:
+            print(f"[wanem] ERROR: 'tc {' '.join(args)}' failed: {exc}")
     return False
 
 
@@ -206,11 +217,18 @@ def _configure_netem_and_filters(
     if not _ensure_root_qdisc(dev, verbose=verbose):
         return False
 
-    # First remove any previous 1:3 qdisc so we can reconfigure cleanly.
-    _run_tc(["qdisc", "del", "dev", dev, "parent", "1:3", "handle", "30:", "netem"],
-            verbose=verbose)
-    _run_tc(["qdisc", "del", "dev", dev, "parent", "30:", "handle", "40:", "tbf"],
-            verbose=verbose)
+    # First remove any previous shaping qdiscs so we can reconfigure cleanly.
+    # Delete the child (tbf) before its parent (netem) to avoid noisy failures.
+    _run_tc(
+        ["qdisc", "del", "dev", dev, "parent", "30:", "handle", "40:", "tbf"],
+        verbose=verbose,
+        ignore_failure=True,
+    )
+    _run_tc(
+        ["qdisc", "del", "dev", dev, "parent", "1:3", "handle", "30:", "netem"],
+        verbose=verbose,
+        ignore_failure=True,
+    )
 
     # Build netem arguments.
     netem_args: List[str] = [
@@ -266,8 +284,11 @@ def _configure_netem_and_filters(
             return False
 
     # Clear existing filters that may target 1:3; best‑effort only.
-    _run_tc(["filter", "del", "dev", dev, "parent", "1:", "prio", "3"],
-            verbose=verbose)
+    _run_tc(
+        ["filter", "del", "dev", dev, "parent", "1:", "prio", "3"],
+        verbose=verbose,
+        ignore_failure=True,
+    )
 
     ok = True
     for port in ports:
@@ -431,10 +452,16 @@ def clear_wan_shaping(dev: str = "lo", verbose: bool = False) -> None:
         return
 
     # Remove child qdiscs first.
-    _run_tc(["qdisc", "del", "dev", dev, "parent", "1:3", "handle", "30:", "netem"],
-            verbose=verbose)
-    _run_tc(["qdisc", "del", "dev", dev, "parent", "30:", "handle", "40:", "tbf"],
-            verbose=verbose)
+    _run_tc(
+        ["qdisc", "del", "dev", dev, "parent", "30:", "handle", "40:", "tbf"],
+        verbose=verbose,
+        ignore_failure=True,
+    )
+    _run_tc(
+        ["qdisc", "del", "dev", dev, "parent", "1:3", "handle", "30:", "netem"],
+        verbose=verbose,
+        ignore_failure=True,
+    )
 
     # Only delete the root if it is the simple prio 1: we expect.
     try:

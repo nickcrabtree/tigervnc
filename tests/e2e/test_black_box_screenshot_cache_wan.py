@@ -48,9 +48,11 @@ def main() -> int:
         completed = subprocess.run(argv)
         return completed.returncode
 
-    # If we are not running as root, attempt passwordless sudo for WAN shaping.
-    # If that is not available, fall back to running the screenshot test
-    # without WAN emulation (do not fail the whole suite for missing sudoers).
+    # WAN shaping requires CAP_NET_ADMIN (typically root). Prefer to run the
+    # test unprivileged and delegate shaping to the privileged helper via sudo.
+    #
+    # Unlike other e2e tests, this one is *specifically* intended to validate
+    # behaviour on a slow link, so if WAN shaping is unavailable we fail fast.
     if os.geteuid() != 0:
         can_sudo = (
             subprocess.run(
@@ -60,21 +62,21 @@ def main() -> int:
             ).returncode
             == 0
         )
-        if can_sudo:
-            script = Path(__file__).resolve()
-            argv = ["sudo", "-n", sys.executable, str(script)] + sys.argv[1:]
-            completed = subprocess.run(argv)
-            return completed.returncode
+        if not can_sudo:
+            print(
+                "ERROR: Passwordless sudo not available; cannot enable WAN shaping for this test.",
+                file=sys.stderr,
+            )
+            return 1
 
-        print(
-            "WARNING: Passwordless sudo not available; running WAN screenshot test without WAN shaping.",
-            file=sys.stderr,
-        )
-        return run_without_wan()
+        if "TIGERVNC_WAN_HELPER" not in os.environ:
+            helper = (Path(__file__).resolve().parent / "wanem_helper.py").resolve()
+            os.environ["TIGERVNC_WAN_HELPER"] = f"sudo -n {sys.executable} {helper}"
 
-    # Ensure we do not go through the external helper path when running as
-    # root; we want to talk to tc directly from this elevated invocation.
-    os.environ.pop("TIGERVNC_WAN_HELPER", None)
+    # Ensure we do not go through the external helper path when running as root;
+    # we want to talk to tc directly from this elevated invocation.
+    if os.geteuid() == 0:
+        os.environ.pop("TIGERVNC_WAN_HELPER", None)
 
 
     # High-latency, low-bandwidth profile suitable for WAN-style testing.
@@ -95,10 +97,10 @@ def main() -> int:
         )
         if not shaping_active:
             print(
-                "WARNING: Failed to apply WAN profile 'satellite'; running without WAN shaping.",
+                "ERROR: Failed to apply WAN profile 'satellite' (WAN shaping is required for this test).",
                 file=sys.stderr,
             )
-            return run_without_wan()
+            return 1
 
         # Always force persistent-cache mode so this test is explicitly
         # about PersistentCache behaviour under WAN conditions.
