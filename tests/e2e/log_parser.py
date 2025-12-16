@@ -189,52 +189,58 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 parsed.negotiated_persistentcache = True
             
             # ContentCache operations
-            if 'cache hit' in lower:
+            # IMPORTANT: Be strict here — avoid matching PersistentCache lines
+            # ("PersistentCache HIT") or summary/statistics lines ("Cache hits:").
+            if 'contentcache' in lower and 'hit' in lower:
                 cache_id = parse_cache_id(message)
                 rect = parse_rect_coords(message)
                 parsed.cache_operations.append(
                     CacheOperation('hit', cache_id=cache_id, rect=rect, details=message)
                 )
                 parsed.total_hits += 1
-            
-            elif 'cache miss' in lower:
+
+            elif 'contentcache' in lower and 'miss' in lower:
                 cache_id = parse_cache_id(message)
                 parsed.cache_operations.append(
                     CacheOperation('miss', cache_id=cache_id, details=message)
                 )
                 parsed.total_misses += 1
-            
-            elif 'storing decoded rect' in lower or 'store' in lower and 'cache' in lower:
+
+            elif ('storing decoded rect' in lower and 'contentcache' in lower) or (
+                'store' in lower and 'contentcache' in lower
+            ):
                 cache_id = parse_cache_id(message)
                 rect = parse_rect_coords(message)
                 parsed.cache_operations.append(
                     CacheOperation('store', cache_id=cache_id, rect=rect, details=message)
                 )
                 parsed.total_stores += 1
-            
-            # Protocol messages
-            if 'cachedrectinit' in lower:
-                cache_id = parse_cache_id(message)
-                rect = parse_rect_coords(message)
-                parsed.protocol_messages.append(
-                    ProtocolMessage('CachedRectInit', cache_id=cache_id, rect=rect)
-                )
-                parsed.cached_rect_init_count += 1
-            
-            elif 'cachedrect' in lower and 'init' not in lower:
-                cache_id = parse_cache_id(message)
-                rect = parse_rect_coords(message)
-                parsed.protocol_messages.append(
-                    ProtocolMessage('CachedRect', cache_id=cache_id, rect=rect)
-                )
-                parsed.cached_rect_count += 1
-            
-            elif 'requestcacheddata' in lower or 'requesting from server' in lower:
-                cache_id = parse_cache_id(message)
-                parsed.protocol_messages.append(
-                    ProtocolMessage('RequestCachedData', cache_id=cache_id)
-                )
-                parsed.request_cached_data_count += 1
+
+            # Protocol messages (ContentCache only)
+            # Avoid counting PersistentCachedRect* as CachedRect*.
+            if 'persistentcachedrect' not in lower:
+                if 'cachedrectinit' in lower:
+                    cache_id = parse_cache_id(message)
+                    rect = parse_rect_coords(message)
+                    parsed.protocol_messages.append(
+                        ProtocolMessage('CachedRectInit', cache_id=cache_id, rect=rect)
+                    )
+                    parsed.cached_rect_init_count += 1
+
+                elif 'cachedrect' in lower and 'init' not in lower:
+                    cache_id = parse_cache_id(message)
+                    rect = parse_rect_coords(message)
+                    parsed.protocol_messages.append(
+                        ProtocolMessage('CachedRect', cache_id=cache_id, rect=rect)
+                    )
+                    parsed.cached_rect_count += 1
+
+                elif 'requestcacheddata' in lower or 'requesting from server' in lower:
+                    cache_id = parse_cache_id(message)
+                    parsed.protocol_messages.append(
+                        ProtocolMessage('RequestCachedData', cache_id=cache_id)
+                    )
+                    parsed.request_cached_data_count += 1
             
             # Eviction notifications (PersistentCache)
             if 'sending' in lower and 'persistentcache' in lower and 'eviction' in lower:
@@ -319,7 +325,10 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 parsed.total_lookups = int(lookups)
                 parsed.total_hits = int(hits)
             
-            match = re.search(r'misses:\s*(\d+)', message, re.IGNORECASE)
+            # Only accept protocol-miss counters from the "Protocol operations"
+            # line ("Misses: N, Queries sent: ...") and avoid ARC/internal
+            # counters like "Cache misses: N".
+            match = re.search(r'misses:\s*(\d+)\s*,\s*queries\s+sent', message, re.IGNORECASE)
             if match:
                 parsed.total_misses = int(match.group(1))
             

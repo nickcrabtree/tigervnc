@@ -38,16 +38,23 @@ from log_parser import parse_cpp_log, parse_server_log, compute_metrics
 
 
 def run_viewer(viewer_path, port, artifacts, tracker, name,
-               cache_size_mb=256, display_for_viewer=None):
-    """Run viewer with PersistentCache enabled."""
+               cache_size_mb=256, display_for_viewer=None, cache_path=None):
+    """Run viewer with PersistentCache enabled (lossless + sandboxed cache)."""
+    if cache_path is None:
+        cache_path = artifacts.get_sandboxed_cache_dir() / 'large_rect_strategy'
+        cache_path.mkdir(parents=True, exist_ok=True)
+
     cmd = [
         viewer_path,
         f'127.0.0.1::{port}',
         'Shared=1',
         'Log=*:stderr:100',
+        'AutoSelect=0',
         'PreferredEncoding=ZRLE',
+        'NoJPEG=1',
         'PersistentCache=1',
         f'PersistentCacheSize={cache_size_mb}',
+        f'PersistentCachePath={cache_path}',
     ]
 
     log_path = artifacts.logs_dir / f'{name}.log'
@@ -192,22 +199,14 @@ def main():
         print(f"\n[4/6] Running large-content scenarios...")
         runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
         
-        # Phase 1: Large image burst (640x640 images to trigger large rect logic)
-        print("  Phase 1: Large image burst (640x640)...")
-        stats1 = runner.image_burst(count=8, size=640, cols=2, rows=4, interval_ms=200)
-        print(f"  Burst completed: {stats1}")
-        time.sleep(2.0)
-        
-        # Phase 2: Repeat same images to generate cache hits
-        print("  Phase 2: Repeating images for cache hits...")
-        stats2 = runner.image_burst(count=8, size=640, cols=2, rows=4, interval_ms=200)
-        print(f"  Repeat completed: {stats2}")
-        time.sleep(2.0)
-        
-        # Phase 3: Fullscreen colors to test bounding box
-        print("  Phase 3: Fullscreen colors (bounding box test)...")
-        stats3 = runner.random_fullscreen_colors(duration_sec=max(10, int(args.duration * 0.5)), interval_sec=0.5)
-        print(f"  Fullscreen completed: {stats3}")
+        # Deterministic large-rect workload using repo-provided images.
+        # Toggle between two large pictures fullscreen; after initial hydration
+        # we should see persistent cache hits on repeats.
+        toggles = max(8, min(20, int(args.duration / 2)))
+        delay_between = 1.0
+        print(f"  Running toggle_two_pictures_test (toggles={toggles}, delay={delay_between}s)...")
+        stats = runner.toggle_two_pictures_test(toggles=toggles, delay_between=delay_between)
+        print(f"  Toggle completed: {stats}")
         time.sleep(3.0)
 
         tracker.cleanup('large_rect_viewer')

@@ -117,9 +117,20 @@ def main():
     try:
         # 3. Start content + viewer display servers
         print(f"\n[Servers] Starting content server :{args.display_content}...")
-        server_content = VNCServer(args.display_content, args.port_content, 'pc_parity_content',
-                                   artifacts, tracker, geometry='1920x1080',
-                                   log_level='*:stderr:30', server_choice=server_mode)
+        server_content = VNCServer(
+            args.display_content,
+            args.port_content,
+            'pc_parity_content',
+            artifacts,
+            tracker,
+            geometry='1920x1080',
+            log_level='*:stderr:30',
+            server_choice=server_mode,
+            server_params={
+                # Make CC/PC runs comparable by avoiding bbox cache reuse.
+                'EnableBBoxCache': '0',
+            },
+        )
         if not server_content.start() or not server_content.start_session(wm=args.wm):
             print("\n✗ FAIL: Could not start content server")
             return 1
@@ -134,11 +145,26 @@ def main():
 
         # 4. ContentCache run (best effort to disable PersistentCache)
         print("\n[Run 1/2] ContentCache-focused run")
+        cc_cache_path = artifacts.get_sandboxed_cache_dir() / 'parity_cc'
+        cc_cache_path.mkdir(parents=True, exist_ok=True)
         viewer1 = run_viewer(
-            binaries['cpp_viewer'], args.port_content, artifacts, tracker,
-            'parity_cc_viewer', params=['PersistentCache=0', 'ContentCacheSize=256', 'PreferredEncoding=ZRLE'],
+            binaries['cpp_viewer'],
+            args.port_content,
+            artifacts,
+            tracker,
+            'parity_cc_viewer',
+            params=[
+                'AutoSelect=0',
+                'PreferredEncoding=ZRLE',
+                'NoJPEG=1',
+                'ContentCache=1',
+                'ContentCacheSize=256',
+                'PersistentCache=0',
+                f'PersistentCachePath={cc_cache_path}',
+            ],
             display_for_viewer=args.display_viewer,
         )
+        time.sleep(3.0)
         runner = ScenarioRunner(args.display_content, verbose=args.verbose)
         runner.cache_hits_minimal(duration_sec=args.duration)
         time.sleep(3.0)
@@ -153,9 +179,19 @@ def main():
 
         # Restart servers for PersistentCache phase
         print(f"\n[Servers] Restarting for PersistentCache phase :{args.display_content} and :{args.display_viewer}...")
-        server_content = VNCServer(args.display_content, args.port_content, 'pc_parity_content2',
-                                   artifacts, tracker, geometry='1920x1080',
-                                   log_level='*:stderr:30', server_choice=server_mode)
+        server_content = VNCServer(
+            args.display_content,
+            args.port_content,
+            'pc_parity_content2',
+            artifacts,
+            tracker,
+            geometry='1920x1080',
+            log_level='*:stderr:30',
+            server_choice=server_mode,
+            server_params={
+                'EnableBBoxCache': '0',
+            },
+        )
         if not server_content.start() or not server_content.start_session(wm=args.wm):
             print("\n✗ FAIL: Could not restart content server")
             return 1
@@ -170,17 +206,27 @@ def main():
         # v3 uses a directory with index.dat + shard files instead of a single file
         print("\n[Run 2/2] PersistentCache-focused run (cold cache)")
         # SANDBOXED: Use test-specific cache (not production cache)
-        pc_cache_path = artifacts.get_sandboxed_cache_dir()
+        pc_cache_path = artifacts.get_sandboxed_cache_dir() / 'parity_pc'
+        pc_cache_path.mkdir(parents=True, exist_ok=True)
         viewer2 = run_viewer(
-            binaries['cpp_viewer'], args.port_content, artifacts, tracker,
-            'parity_pc_viewer', params=[
+            binaries['cpp_viewer'],
+            args.port_content,
+            artifacts,
+            tracker,
+            'parity_pc_viewer',
+            params=[
+                'AutoSelect=0',
+                'PreferredEncoding=ZRLE',
+                'NoJPEG=1',
                 'PersistentCache=1',
                 'ContentCache=0',
-                'PreferredEncoding=ZRLE',
-                f'PersistentCachePath={pc_cache_path}',  # Fresh cache path
+                'PersistentCacheSize=256',
+                f'PersistentCachePath={pc_cache_path}',
             ],
             display_for_viewer=args.display_viewer,
         )
+        # Give the viewer time to connect and negotiate the protocol before the workload.
+        time.sleep(3.0)
         runner.cache_hits_minimal(duration_sec=args.duration)
         time.sleep(3.0)
         tracker.cleanup('parity_pc_viewer')

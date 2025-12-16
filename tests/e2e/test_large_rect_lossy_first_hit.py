@@ -39,18 +39,25 @@ from log_parser import parse_cpp_log
 
 
 def run_viewer(viewer_path, port, artifacts, tracker, name,
-               cache_size_mb=256, display_for_viewer=None):
-    """Run viewer with Tight (lossy) encoding."""
+               cache_size_mb=256, display_for_viewer=None, cache_path=None):
+    """Run viewer with Tight+JPEG (lossy) encoding."""
     cmd = [
         viewer_path,
         f'127.0.0.1::{port}',
         'Shared=1',
         'Log=*:stderr:100',
-        'PreferredEncoding=Tight',  # Lossy encoding
-        'CompressLevel=0',          # Force JPEG
+        # Force the requested encoding and quality settings (do not auto-select).
+        'AutoSelect=0',
+        'PreferredEncoding=Tight',
+        'FullColor=1',
+        'NoJPEG=0',
+        'QualityLevel=6',
         'PersistentCache=1',
         f'PersistentCacheSize={cache_size_mb}',
     ]
+
+    if cache_path:
+        cmd.append(f'PersistentCachePath={cache_path}')
 
     log_path = artifacts.logs_dir / f'{name}.log'
     env = os.environ.copy()
@@ -108,11 +115,15 @@ def count_bbox_hits(server_log):
 
 
 def count_lossy_mappings(server_log):
-    """Count lossy hash mappings stored by server."""
+    """Count lossy hash mappings stored by server.
+
+    We count confirmations emitted by the server when it processes a
+    PersistentCacheHashReport for a lossy entry.
+    """
     count = 0
     with open(server_log, 'r', encoding='utf-8', errors='ignore') as f:
         for line in f:
-            if 'Lossy hash mapping:' in line:
+            if 'Client confirmed LOSSY cache entry' in line:
                 count += 1
     return count
 
@@ -205,11 +216,16 @@ def main():
         print("\n[3/5] Running large image burst scenario (lossy encoding)...")
         print("  Generating large images to trigger bounding box caching")
         
+        # Use a sandboxed PersistentCachePath so this test is deterministic and
+        # does not touch the user's real cache.
+        cache_dir = artifacts.get_sandboxed_cache_dir()
+
         viewer = run_viewer(
             binaries['cpp_viewer'], args.port_content, artifacts, tracker,
             'largerect_viewer',
             cache_size_mb=args.cache_size,
-            display_for_viewer=args.display_viewer
+            display_for_viewer=args.display_viewer,
+            cache_path=str(cache_dir),
         )
 
         runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)

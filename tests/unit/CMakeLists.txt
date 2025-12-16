@@ -48,6 +48,10 @@ add_executable(persistentcache_protocol persistentcache_protocol.cxx)
 target_link_libraries(persistentcache_protocol rfb core rdr network GTest::gtest_main)
 gtest_discover_tests(persistentcache_protocol)
 
+add_executable(global_client_persistent_cache_gc global_client_persistent_cache_gc.cxx)
+target_link_libraries(global_client_persistent_cache_gc rfb core GTest::gtest_main)
+gtest_discover_tests(global_client_persistent_cache_gc)
+
 add_executable(test_hash_report_protocol test_hash_report_protocol.cxx)
 target_link_libraries(test_hash_report_protocol rfb core rdr network GTest::gtest_main)
 gtest_discover_tests(test_hash_report_protocol)

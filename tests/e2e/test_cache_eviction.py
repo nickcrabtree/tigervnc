@@ -65,14 +65,22 @@ def run_viewer_with_small_cache(viewer_path, port, artifacts, tracker, name,
     Returns:
         Process object
     """
+    # SANDBOXED: never allow this test to touch the user's real persistent cache.
+    sandbox_cache = artifacts.get_sandboxed_cache_dir() / 'cache_eviction'
+    sandbox_cache.mkdir(parents=True, exist_ok=True)
+
     cmd = [
         viewer_path,
         f'127.0.0.1::{port}',
         'Shared=1',
         'Log=*:stderr:100',
+        'AutoSelect=0',
         'PreferredEncoding=ZRLE',
+        'NoJPEG=1',
+        'ContentCache=1',
         f'ContentCacheSize={cache_size_mb}',
-        'PersistentCache=0',  # Disable PersistentCache to force ContentCache usage
+        'PersistentCache=0',
+        f'PersistentCachePath={sandbox_cache}',
     ]
     
     log_path = artifacts.logs_dir / f'{name}.log'
@@ -296,19 +304,26 @@ def main():
         print("=" * 70)
         
         cache_ops = metrics['cache_operations']
-        proto = metrics['protocol_messages']
         persistent = metrics['persistent']
-        
-        print(f"\nCache Operations:")
+
+        # Unified protocol traffic accounting (avoid legacy CachedRect* names).
+        pc_inits = 0
+        pc_refs = 0
+        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if "Received PersistentCachedRectInit" in line:
+                    pc_inits += 1
+                elif "Received PersistentCachedRect:" in line:
+                    pc_refs += 1
+
+        print(f"\nCache Operations (viewer summary):")
         print(f"  Hits: {cache_ops['total_hits']}")
         print(f"  Misses: {cache_ops['total_misses']}")
         print(f"  Hit Rate: {cache_ops['hit_rate']:.1f}%")
-        
-        print(f"\nProtocol Messages:")
-        print(f"  CachedRect: {proto['CachedRect']}")
-        print(f"  CachedRectInit: {proto['CachedRectInit']}")
-        print(f"  CacheEviction: {proto['CacheEviction']}")
-        print(f"  Evicted IDs: {proto['EvictedIDs']}")
+
+        print(f"\nPersistentCache Protocol Messages (unified):")
+        print(f"  PersistentCachedRect: {pc_refs}")
+        print(f"  PersistentCachedRectInit: {pc_inits}")
         print(f"  PersistentCache Evictions: {persistent['eviction_count']}")
         print(f"  PersistentCache Evicted IDs: {persistent['evicted_ids']}")
         
@@ -316,34 +331,29 @@ def main():
         success = True
         failures = []
 
-        MIN_CACHE_ACTIVITY = 100  # Total cache protocol messages (CachedRect + CachedRectInit)
+        MIN_CACHE_ACTIVITY = 100  # Total cache protocol messages (ref + init)
         MIN_INITS = 48
         MIN_EVICTIONS = 8
         MIN_EVICTED_IDS = 12
 
         # 0. Ensure enough cache activity happened.
-        # We measure cache activity as CachedRect (references) + CachedRectInit (initial sends).
-        # This is different from viewer's "Lookups" stat which only counts CachedRect.
-        # For eviction testing, we need to know the total cache protocol traffic.
-        cache_activity = proto['CachedRect'] + proto['CachedRectInit']
+        cache_activity = pc_refs + pc_inits
         if cache_activity < MIN_CACHE_ACTIVITY:
             success = False
             failures.append(f"Too few cache protocol messages ({cache_activity} < {MIN_CACHE_ACTIVITY}); insufficient churn")
         else:
             print(f"\n✓ Sufficient cache activity: {cache_activity} messages (>= {MIN_CACHE_ACTIVITY})")
-        
-        # 1. Cache must have received substantial content
-        if proto['CachedRectInit'] < MIN_INITS:
+
+        # 1. Cache must have received substantial content (INITs)
+        if pc_inits < MIN_INITS:
             success = False
-            failures.append(f"Too few CachedRectInit messages ({proto['CachedRectInit']} < {MIN_INITS})")
+            failures.append(f"Too few PersistentCachedRectInit messages ({pc_inits} < {MIN_INITS})")
         else:
-            print(f"✓ Cache received content ({proto['CachedRectInit']} CachedRectInit >= {MIN_INITS})")
-        
+            print(f"✓ Cache received content ({pc_inits} PersistentCachedRectInit >= {MIN_INITS})")
+
         # 2. Evictions MUST occur in quantity
-        # Accept evictions from either ContentCache or PersistentCache protocol
-        # since they share the same unified cache implementation.
-        total_evictions = proto['CacheEviction'] + persistent['eviction_count']
-        total_evicted_ids = proto['EvictedIDs'] + persistent['evicted_ids']
+        total_evictions = persistent['eviction_count']
+        total_evicted_ids = persistent['evicted_ids']
         
         if total_evictions < MIN_EVICTIONS:
             success = False

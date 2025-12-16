@@ -182,7 +182,11 @@ def main():
             geometry="1920x1080",
             log_level="*:stderr:100",
             server_choice=server_mode,
-            server_params={"EnablePersistentCache": "0"},
+            server_params={
+                "EnablePersistentCache": "0",
+                # Keep Phase 1 comparable with the PersistentCache phases.
+                "EnableBBoxCache": "0",
+            },
         )
 
         if not server_content_cc.start():
@@ -215,6 +219,12 @@ def main():
         # Launch ContentCache viewer
         print("\n[5/9] Running root_pattern_cycle scenario with ContentCache only...")
         cc_params = [
+            # Match the PersistentCache cold phase encoding/selection as closely
+            # as possible so hit/miss profiles are comparable.
+            "AutoSelect=0",
+            "PreferredEncoding=ZRLE",
+            "NoJPEG=1",
+            "ContentCache=1",
             f"ContentCacheSize={args.cache_size}",
             "PersistentCache=0",
         ]

@@ -37,17 +37,27 @@ from log_parser import parse_cpp_log, parse_server_log
 
 
 def run_viewer(viewer_path, port, artifacts, tracker, name, encoding,
-               cache_size_mb=256, display_for_viewer=None):
+               cache_size_mb=256, display_for_viewer=None, cache_path=None,
+               extra_args=None):
     """Run viewer with specified encoding."""
     cmd = [
         viewer_path,
         f'127.0.0.1::{port}',
         'Shared=1',
         'Log=*:stderr:100',
+        # CRITICAL: Without this, the viewer will ignore PreferredEncoding and
+        # auto-select Tight based on bandwidth.
+        'AutoSelect=0',
         f'PreferredEncoding={encoding}',
         'PersistentCache=1',
         f'PersistentCacheSize={cache_size_mb}',
     ]
+
+    if cache_path:
+        cmd.append(f'PersistentCachePath={cache_path}')
+
+    if extra_args:
+        cmd.extend(extra_args)
 
     log_path = artifacts.logs_dir / f'{name}.log'
     env = os.environ.copy()
@@ -176,12 +186,23 @@ def main():
             print("\n✗ FAIL: Could not start viewer window server")
             return 1
 
+        # Use isolated cache paths for each run so the seed behavior is
+        # deterministic and we don't corrupt the user's real cache.
+        cache_root = artifacts.get_sandboxed_cache_dir()
+        cache_dir_lossless = cache_root / "lossless"
+        cache_dir_lossy = cache_root / "lossy"
+        cache_dir_lossless.mkdir(parents=True, exist_ok=True)
+        cache_dir_lossy.mkdir(parents=True, exist_ok=True)
+
         print("\n[3/6] Run 1/2: Lossless encoding (ZRLE)")
         viewer1 = run_viewer(
             binaries['cpp_viewer'], args.port_content, artifacts, tracker,
             'seed_lossless_viewer', 'ZRLE',
             cache_size_mb=args.cache_size,
-            display_for_viewer=args.display_viewer
+            display_for_viewer=args.display_viewer,
+            cache_path=str(cache_dir_lossless),
+            # Ensure Tight cannot become lossy if the server selects it for any rect.
+            extra_args=['NoJPEG=1'],
         )
 
         runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
@@ -226,7 +247,10 @@ def main():
             binaries['cpp_viewer'], args.port_content, artifacts, tracker,
             'seed_lossy_viewer', 'Tight',
             cache_size_mb=args.cache_size,
-            display_for_viewer=args.display_viewer
+            display_for_viewer=args.display_viewer,
+            cache_path=str(cache_dir_lossy),
+            # Force Tight+JPEG to be genuinely lossy so hash reports are expected.
+            extra_args=['FullColor=1', 'NoJPEG=0', 'QualityLevel=6'],
         )
 
         stats2 = runner.tiled_logos_test(tiles=12, duration=args.duration, delay_between=2.5)

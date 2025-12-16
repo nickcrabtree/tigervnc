@@ -33,16 +33,23 @@ from log_parser import parse_cpp_log
 
 
 def run_viewer(viewer_path, port, artifacts, tracker, name,
-               cache_size_mb=256, display_for_viewer=None):
-    """Run viewer with default settings."""
+               cache_size_mb=256, display_for_viewer=None, cache_path=None):
+    """Run viewer with PersistentCache enabled (lossless + deterministic)."""
+    if cache_path is None:
+        cache_path = artifacts.get_sandboxed_cache_dir() / 'collision'
+        cache_path.mkdir(parents=True, exist_ok=True)
+
     cmd = [
         viewer_path,
         f'127.0.0.1::{port}',
         'Shared=1',
         'Log=*:stderr:100',
+        'AutoSelect=0',
         'PreferredEncoding=ZRLE',  # Lossless for deterministic hashes
+        'NoJPEG=1',
         'PersistentCache=1',
         f'PersistentCacheSize={cache_size_mb}',
+        f'PersistentCachePath={cache_path}',
     ]
 
     log_path = artifacts.logs_dir / f'{name}.log'
@@ -160,7 +167,11 @@ def main():
             geometry='1920x1080',
             log_level='*:stderr:100',
             server_choice=server_mode,
-            server_params={'EnablePersistentCache': '1'}
+            server_params={
+                'EnablePersistentCache': '1',
+                # Keep protocol-level cache ops high (avoid bbox reuse).
+                'EnableBBoxCache': '0',
+            }
         )
         if not server_content.start() or not server_content.start_session(wm=args.wm):
             print("\n✗ FAIL: Could not start content server")
@@ -184,13 +195,22 @@ def main():
             binaries['cpp_viewer'], args.port_content, artifacts, tracker,
             'collision_viewer',
             cache_size_mb=args.cache_size,
-            display_for_viewer=args.display_viewer
+            display_for_viewer=args.display_viewer,
         )
 
         runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
         
-        # Run tiled logos test with many tiles to generate diverse content
-        stats = runner.tiled_logos_test(tiles=16, duration=args.duration, delay_between=2.5)
+        # Run tiled logos test with enough tiles to generate a meaningful number
+        # of PersistentCache operations. Keep delay small so the test doesn't
+        # take excessively long.
+        delay_between = 0.25
+        # Roughly: one cache operation per logo window after the first.
+        tiles = max(100, min(140, int(args.duration / delay_between)))
+        stats = runner.tiled_logos_test(
+            tiles=tiles,
+            duration=2.0,  # final dwell just to flush the pipeline
+            delay_between=delay_between,
+        )
         print(f"  Scenario completed: {stats}")
         time.sleep(3.0)
 

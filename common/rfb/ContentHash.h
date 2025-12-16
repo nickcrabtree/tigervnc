@@ -110,17 +110,26 @@ namespace rfb {
       const size_t rowBytes = static_cast<size_t>(width) * bytesPerPixel;
 
       // Allocate buffer for a tightly packed canonical pixel stream.
+      // Include dimensions in the hash to prevent collisions between
+      // rectangles with identical content but different shapes.
+      // Header: 4 bytes (2 bytes width, 2 bytes height)
       std::vector<uint8_t> buf;
       try {
-        buf.resize(static_cast<size_t>(height) * rowBytes);
+        buf.resize(4 + static_cast<size_t>(height) * rowBytes);
       } catch (...) {
         // On allocation failure, return a zeroed hash vector.
         return std::vector<uint8_t>(16);
       }
 
+      // Write dimensions to header (Little Endian)
+      buf[0] = width & 0xff;
+      buf[1] = (width >> 8) & 0xff;
+      buf[2] = height & 0xff;
+      buf[3] = (height >> 8) & 0xff;
+
       // Convert the rectangle to the canonical pixel format into the
-      // buffer.
-      uint8_t* pixelDst = buf.data();
+      // buffer (after header).
+      uint8_t* pixelDst = buf.data() + 4;
       try {
         // Destination stride is in pixels; use exact width so the
         // canonical representation is tightly packed.

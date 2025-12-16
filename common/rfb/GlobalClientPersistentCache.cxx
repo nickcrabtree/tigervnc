@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <iostream>
 #include <iomanip>
+#include <dirent.h>
 
 #ifdef HAVE_GNUTLS
 #include <gnutls/gnutls.h>
@@ -86,6 +87,15 @@ void PersistentCacheDebugLogger::log(const std::string& message) {
              << "] " << message << std::endl;
     logFile_.flush();
   }
+}
+
+static bool isSolidBlack(const uint8_t* pixels, size_t length)
+{
+  for (size_t i = 0; i < length; i++) {
+    if (pixels[i] != 0)
+      return false;
+  }
+  return true;
 }
 
 // ============================================================================
@@ -233,64 +243,116 @@ GlobalClientPersistentCache::getByKey(const CacheKey& key)
 const GlobalClientPersistentCache::CachedPixels*
 GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t width, uint16_t height)
 {
-  // NEW: Lookup by canonical hash (for viewer-managed lossy mapping).
-  // Search through all entries to find one with matching canonicalHash AND dimensions.
-  // This handles both lossless (actual == canonical) and lossy (actual != canonical) hits.
-  
-  if (!arcCache_) return nullptr;
-  
-  // Scan all entries in the ARC cache to find matching canonical hash
+  // Lookup by canonical hash (server's lossless ID) and dimensions.
+  // PREFERENCE ORDER:
+  // 1) Lossless entry (actual == canonical)
+  // 2) Lossy entry (actual != canonical)
+  //
+  // This ensures we prefer best-quality pixels when both variants exist.
+
+  if (!arcCache_)
+    return nullptr;
+
+  const CachedPixels* lossyCandidate = nullptr;
+
+  // 1) Scan hydrated entries in memory.
   for (const auto& kv : cache_) {
     const CachedPixels& entry = kv.second;
-    if (entry.canonicalHash == canonicalHash && 
-        entry.width == width && 
-        entry.height == height) {
-      // Found entry with matching canonical hash and dimensions
-      // Update access statistics
-      const CachedPixels* e = arcCache_->get(kv.first);
-      if (e != nullptr) {
-        stats_.cacheHits++;
-        return e;
-      }
-    }
-  }
-  
-  // Check if in index but not in memory (cold entry)
-  for (const auto& idxKv : indexMap_) {
-    const std::vector<uint8_t>& hash = idxKv.first;
-    
-    // Check dimensions in index before hydrating
-    const IndexEntry& idx = idxKv.second;
-    if (idx.width != width || idx.height != height)
+    if (entry.canonicalHash != canonicalHash ||
+        entry.width != width ||
+        entry.height != height)
       continue;
 
-    // Check if this index entry might have matching canonical hash
-    // We don't have canonicalHash in IndexEntry yet, so we need to hydrate
-    // to check. For now, we'll hydrate any cold entries as a fallback.
-    // TODO: Add canonicalHash to IndexEntry for more efficient lookup
-    if (coldEntries_.find(hash) != coldEntries_.end()) {
-      if (hydrateEntry(hash)) {
-        // Check if hydrated entry has matching canonical hash
-        auto itKey = hashToKey_.find(hash);
-        if (itKey != hashToKey_.end()) {
-          auto itCache = cache_.find(itKey->second);
-          if (itCache != cache_.end() && 
-              itCache->second.canonicalHash == canonicalHash &&
-              itCache->second.width == width &&
-              itCache->second.height == height) {
-            const CachedPixels* e = arcCache_->get(itKey->second);
-            if (e != nullptr) {
-              stats_.cacheHits++;
-              coldEntries_.erase(hash);
-              return e;
-            }
-          }
-        }
+    const CachedPixels* e = arcCache_->get(kv.first);
+    if (!e)
+      continue;
+
+    // Prefer lossless immediately.
+    if (e->isLossless()) {
+      stats_.cacheHits++;
+      if (e->width * e->height > 1024 && isSolidBlack(e->pixels.data(), e->pixels.size())) {
+        vlog.info("PersistentCache WARNING: Retrieved solid black entry (Hit)! canonical=%llu size=%dx%d",
+                  (unsigned long long)canonicalHash, e->width, e->height);
       }
+      return e;
     }
+
+    if (!lossyCandidate)
+      lossyCandidate = e;
   }
-  
-  // Not found
+
+  // 2) If no lossless entry is hydrated, try to find a lossless entry on disk.
+  // Index v5 persists canonicalHash for each entry, so we can filter without
+  // hydrating unrelated payloads.
+  for (const auto& idxKv : indexMap_) {
+    const std::vector<uint8_t>& hash = idxKv.first;
+    const IndexEntry& idx = idxKv.second;
+
+    if (idx.width != width || idx.height != height)
+      continue;
+    if (idx.canonicalHash != canonicalHash)
+      continue;
+
+    // Prefer lossless-on-disk entries (actual == canonical).
+    if (idx.key.contentHash != idx.canonicalHash)
+      continue;
+
+    if (!hydrateEntry(hash))
+      continue;
+
+    auto itKey = hashToKey_.find(hash);
+    if (itKey == hashToKey_.end())
+      continue;
+
+    const CachedPixels* e = arcCache_->get(itKey->second);
+    if (!e)
+      continue;
+
+    stats_.cacheHits++;
+    coldEntries_.erase(hash);
+    if (e->width * e->height > 1024 && isSolidBlack(e->pixels.data(), e->pixels.size())) {
+      vlog.info("PersistentCache WARNING: Retrieved solid black entry (Hit/Hydrated)! canonical=%llu size=%dx%d",
+                (unsigned long long)canonicalHash, e->width, e->height);
+    }
+    return e;
+  }
+
+  // 3) If we already have a lossy candidate in memory, use it.
+  if (lossyCandidate) {
+    stats_.cacheHits++;
+    return lossyCandidate;
+  }
+
+  // 4) Otherwise, try to hydrate a lossy entry from disk.
+  for (const auto& idxKv : indexMap_) {
+    const std::vector<uint8_t>& hash = idxKv.first;
+    const IndexEntry& idx = idxKv.second;
+
+    if (idx.width != width || idx.height != height)
+      continue;
+    if (idx.canonicalHash != canonicalHash)
+      continue;
+
+    if (!hydrateEntry(hash))
+      continue;
+
+    auto itKey = hashToKey_.find(hash);
+    if (itKey == hashToKey_.end())
+      continue;
+
+    const CachedPixels* e = arcCache_->get(itKey->second);
+    if (!e)
+      continue;
+
+    stats_.cacheHits++;
+    coldEntries_.erase(hash);
+    if (e->width * e->height > 1024 && isSolidBlack(e->pixels.data(), e->pixels.size())) {
+      vlog.info("PersistentCache WARNING: Retrieved solid black entry (Hit/Hydrated)! canonical=%llu size=%dx%d",
+                (unsigned long long)canonicalHash, e->width, e->height);
+    }
+    return e;
+  }
+
   stats_.cacheMisses++;
   return nullptr;
 }
@@ -350,6 +412,11 @@ void GlobalClientPersistentCache::insert(uint64_t canonicalHash,
   cache_[key] = entry;
   arcCache_->insert(key, entry);
 
+  if (width * height > 1024 && isSolidBlack(entry.pixels.data(), entry.pixels.size())) {
+     vlog.info("PersistentCache WARNING: Inserting solid black entry! canonical=%llu actual=%llu size=%dx%d",
+               (unsigned long long)canonicalHash, (unsigned long long)actualHash, width, height);
+  }
+
   // Maintain bidirectional mapping between key and full hash
   keyToHash_[key] = hash;
   hashToKey_[hash] = key;
@@ -386,13 +453,31 @@ GlobalClientPersistentCache::getAllHashes() const
 std::vector<uint64_t>
 GlobalClientPersistentCache::getAllContentIds() const
 {
-  // Derive the 64-bit contentHash IDs from the CacheKey mapping. Multiple
-  // full hashes may share the same 64-bit prefix; de-duplicate via a set.
+  // HashList inventory should advertise *canonical* content IDs (server-side
+  // lossless hashes). The viewer can satisfy these IDs even when only a lossy
+  // variant is stored locally (dual-hash design), because lookups are by
+  // canonicalHash.
   std::unordered_set<uint64_t> ids;
-  ids.reserve(keyToHash_.size());
-  for (const auto& kv : keyToHash_) {
-    ids.insert(kv.first.contentHash);
+  ids.reserve(cache_.size() + indexMap_.size());
+
+  // Hydrated entries
+  for (const auto& kv : cache_) {
+    const CachedPixels& entry = kv.second;
+    if (entry.canonicalHash != 0)
+      ids.insert(entry.canonicalHash);
+    else
+      ids.insert(kv.first.contentHash);
   }
+
+  // Index-only entries (not yet hydrated)
+  for (const auto& kv : indexMap_) {
+    const IndexEntry& idx = kv.second;
+    if (idx.canonicalHash != 0)
+      ids.insert(idx.canonicalHash);
+    else
+      ids.insert(idx.key.contentHash);
+  }
+
   return std::vector<uint64_t>(ids.begin(), ids.end());
 }
 
@@ -653,6 +738,77 @@ size_t GlobalClientPersistentCache::getDiskUsage() const
   return total;
 }
 
+size_t GlobalClientPersistentCache::cleanupOrphanShardsOnDisk()
+{
+  // Build referenced shard set from the current index.
+  std::unordered_set<uint16_t> referenced;
+  referenced.reserve(indexMap_.size());
+  for (const auto& kv : indexMap_) {
+    referenced.insert(kv.second.shardId);
+  }
+
+  DIR* dirp = opendir(cacheDir_.c_str());
+  if (!dirp)
+    return 0;
+
+  size_t reclaimed = 0;
+
+  struct dirent* de;
+  while ((de = readdir(dirp)) != nullptr) {
+    const char* name = de->d_name;
+
+    // shard_0000.dat
+    unsigned shardIdTmp = 0;
+    if (sscanf(name, "shard_%4u.dat", &shardIdTmp) != 1)
+      continue;
+    if (shardIdTmp > 0xFFFF)
+      continue;
+
+    uint16_t shardId = static_cast<uint16_t>(shardIdTmp);
+    std::string path = getShardPath(shardId);
+
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0)
+      continue;
+    if (!S_ISREG(st.st_mode))
+      continue;
+
+    if (referenced.find(shardId) == referenced.end()) {
+      // Not referenced by index -> safe to delete.
+      reclaimed += static_cast<size_t>(st.st_size);
+      remove(path.c_str());
+    } else {
+      // Keep shardSizes_ aligned with actual file size.
+      shardSizes_[shardId] = static_cast<size_t>(st.st_size);
+    }
+  }
+
+  closedir(dirp);
+
+  // Drop any shardSizes_ entries for shards that are no longer referenced.
+  for (auto it = shardSizes_.begin(); it != shardSizes_.end();) {
+    if (referenced.find(it->first) == referenced.end()) {
+      it = shardSizes_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  // Choose an append shard based on what's actually referenced.
+  uint16_t maxId = 0;
+  bool haveAny = false;
+  for (const auto& kv : shardSizes_) {
+    if (!haveAny || kv.first > maxId) {
+      maxId = kv.first;
+      haveAny = true;
+    }
+  }
+  currentShardId_ = haveAny ? maxId : 0;
+  currentShardSize_ = haveAny ? shardSizes_[currentShardId_] : 0;
+
+  return reclaimed;
+}
+
 // ============================================================================
 // Disk I/O Methods - v3 Sharded Format
 // ============================================================================
@@ -718,15 +874,16 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
   }
   
   // v4 introduces canonicalHash field
-  if (header.version != 4) {
-    vlog.info("PersistentCache: unsupported index version %u (expected 4), starting fresh", header.version);
+  // v5 changes ContentHash to include dimensions
+  if (header.version != 5) {
+    vlog.info("PersistentCache: unsupported index version %u (expected 5), starting fresh", header.version);
     fclose(f);
     remove(indexPath.c_str());
     hydrationState_ = HydrationState::FullyHydrated;
     return false;
   }
   
-  vlog.info("PersistentCache: loading v4 index (%llu entries, %u shards)",
+  vlog.info("PersistentCache: loading v5 index (%llu entries, %u shards)",
             (unsigned long long)header.entryCount, header.maxShardId + 1);
   
   indexMap_.clear();
@@ -784,11 +941,16 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
   
   fclose(f);
   
-  // Set current shard to continue appending
-  currentShardId_ = header.maxShardId;
-  auto it = shardSizes_.find(currentShardId_);
-  currentShardSize_ = (it != shardSizes_.end()) ? it->second : 0;
-  
+  // Delete any shard files that are no longer referenced by the index.
+  // Without this, restarts can leak disk usage because shardSizes_ is rebuilt
+  // solely from indexMap_ and would ignore orphan shard files left behind by
+  // earlier GC/index rewrites.
+  size_t orphanReclaimed = cleanupOrphanShardsOnDisk();
+  if (orphanReclaimed > 0) {
+    vlog.info("PersistentCache: removed %zuMB of orphan shard files during load",
+              orphanReclaimed / (1024*1024));
+  }
+
   hydrationState_ = HydrationState::IndexLoaded;
   
   vlog.info("PersistentCache: index loaded, %zu entries pending hydration",
@@ -969,21 +1131,30 @@ size_t GlobalClientPersistentCache::garbageCollect()
       toRemove.push_back(hash);
     }
   }
-  
-  // Remove from index
+  // Remove from index and related maps.
   for (const auto& hash : toRemove) {
+    auto itKey = hashToKey_.find(hash);
+    if (itKey != hashToKey_.end()) {
+      keyToHash_.erase(itKey->second);
+      hashToKey_.erase(itKey);
+    }
     indexMap_.erase(hash);
     coldEntries_.erase(hash);
+    hydrationQueue_.remove(hash);
   }
-  
+
+  // Delete any shard files that became unreferenced as a result of trimming.
+  // This is the key step that actually reclaims disk space.
+  size_t orphanReclaimed = cleanupOrphanShardsOnDisk();
+  reclaimed += orphanReclaimed;
+
   if (reclaimed > 0) {
-    vlog.debug("PersistentCache: GC reclaimed %zuKB from %zu cold entries",
-               reclaimed / 1024, toRemove.size());
-    // Note: actual shard files are not compacted here; that would require
-    // rewriting shards which is expensive. We just mark entries as removed
-    // in the index. Shards can be compacted on next full save.
+    vlog.debug("PersistentCache: GC reclaimed %zuKB (%zu entries, %zuKB orphan shards)",
+               reclaimed / 1024,
+               toRemove.size(),
+               orphanReclaimed / 1024);
   }
-  
+
   return reclaimed;
 }
 
@@ -1021,7 +1192,7 @@ bool GlobalClientPersistentCache::saveToDisk()
   
   memset(&header, 0, sizeof(header));
   header.magic = 0x50435633;  // "PCV3" (magic stays same, version bumped)
-  header.version = 4;
+  header.version = 5;
   header.entryCount = indexMap_.size();
   header.created = time(nullptr);
   header.lastAccess = time(nullptr);
@@ -1061,7 +1232,7 @@ bool GlobalClientPersistentCache::saveToDisk()
   
   fclose(f);
   
-  vlog.info("PersistentCache: saved v4 index with %zu entries", indexMap_.size());
+  vlog.info("PersistentCache: saved v5 index with %zu entries", indexMap_.size());
   return true;
 }
 

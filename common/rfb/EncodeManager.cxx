@@ -1059,10 +1059,17 @@ void EncodeManager::writeRects(const core::Region& changed,
     vlog.info("CCDBG writeRects: region has %d rects", changed.numRects());
   }
 
-  // Check if client supports the PersistentCache protocol. ContentCache is
-  // now a viewer-side alias and does not have its own pseudo-encoding.
+  // Unified cache protocol: we may see either the PersistentCache pseudo-encoding
+  // (-321) or the legacy ContentCache pseudo-encoding (-320). In this fork they
+  // both map to the same 64-bit ID wire format; the difference is viewer policy.
   bool clientSupportsCache =
-    conn->client.supportsEncoding(pseudoEncodingPersistentCache);
+    conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
+    conn->client.supportsEncoding(pseudoEncodingContentCache);
+
+  // Work on a mutable copy of the damage so cache hits can remove regions that
+  // are fully satisfied by references while still allowing other dirty areas in
+  // the same update to be encoded normally.
+  core::Region work = changed;
 
   // Extra diagnostics for the problematic top-of-screen band. When the
   // damage bounding box intersects y in ~[20,100), log a concise summary
@@ -1122,8 +1129,8 @@ void EncodeManager::writeRects(const core::Region& changed,
     for (const auto& region : borderedRegions) {
       const core::Rect& contentRect = region.contentRect;
       
-      // Only process if the damage region intersects this content area
-      core::Region damageInContent = changed.intersect(contentRect);
+      // Only process if the remaining damage intersects this content area
+      core::Region damageInContent = work.intersect(contentRect);
       if (damageInContent.is_empty()) {
         continue;
       }
@@ -1169,21 +1176,18 @@ void EncodeManager::writeRects(const core::Region& changed,
       // Debug: record the canonical bytes used for this content region.
       logFBHashDebug("bordered", contentRect, contentId, pb);
       
-      // NEW DESIGN: Always send canonical hash reference.
-      // Viewer will respond with hash type (LOSSLESS/LOSSY/NONE).
-      // If NONE, viewer will query for full data.
-      // EXCEPTION: If client explicitly requested this ID (e.g. miss), send miss/init.
+      // Decide if we can safely send a reference. We only do so when the
+      // connection believes the viewer can satisfy this canonical ID.
       bool clientRequested = conn->clientRequestedPersistent(contentId);
-      bool hasMatch = !clientRequested;  // Always send reference unless requested
+      bool hasMatch = conn->knowsPersistentId(contentId) && !clientRequested;
       uint64_t matchedId = contentId;  // Always canonical
-      
-      vlog.info("BORDERED: Sending canonical hash reference (viewer will report availability): id=%s",
-                hex64(contentId));
-      
+
+      // Count this bordered-region attempt as a cache lookup.
+      persistentCacheStats.cacheLookups++;
+
       if (hasMatch) {
         // CACHE HIT on bordered content region!
         persistentCacheStats.cacheHits++;
-        persistentCacheStats.cacheLookups++;
         int equiv = 12 + contentRect.area() * (conn->client.pf().bpp / 8);
         persistentCacheStats.bytesSaved += equiv - 20;
         copyStats.rects++;
@@ -1192,36 +1196,39 @@ void EncodeManager::writeRects(const core::Region& changed,
         beforeLength = conn->getOutStream()->length();
         conn->writer()->writePersistentCachedRect(contentRect, matchedId);
         copyStats.bytes += conn->getOutStream()->length() - beforeLength;
-        
+
         vlog.info("BORDERED: Cache HIT for content region [%d,%d-%d,%d] id=%s",
                   contentRect.tl.x, contentRect.tl.y,
                   contentRect.br.x, contentRect.br.y, hex64(matchedId));
-        
+
         conn->onCachedRectRef(matchedId, contentRect);
         lossyRegion.assign_subtract(contentRect);
         pendingRefreshRegion.assign_subtract(contentRect);
-        return;  // Entire update handled by content region cache hit
-      } else {
-        // Miss - will seed after encoding
-        vlog.info("BORDERED: Content region [%d,%d-%d,%d] id=%s - will seed",
-                  contentRect.tl.x, contentRect.tl.y,
-                  contentRect.br.x, contentRect.br.y,
-                  hex64(contentId));
-        persistentCacheStats.cacheMisses++;
-        persistentCacheStats.cacheLookups++;
+
+        // This reference satisfies the entire bordered region, but we might still
+        // have other dirty areas outside it in this same update.
+        work.assign_subtract(core::Region(contentRect));
+        continue;
       }
+
+      // Miss - will seed after encoding
+      vlog.info("BORDERED: Content region [%d,%d-%d,%d] id=%s - will seed",
+                contentRect.tl.x, contentRect.tl.y,
+                contentRect.br.x, contentRect.br.y,
+                hex64(contentId));
+      persistentCacheStats.cacheMisses++;
     }
   }
   
   // TILING ENHANCEMENT: Also check if the BOUNDING BOX of the changed region
   // matches a known cached rectangle.
   
-  if (clientSupportsCache && rfb::Server::enableBBoxCache && !changed.is_empty()) {
-    core::Rect bbox = changed.get_bounding_rect();
+  if (clientSupportsCache && rfb::Server::enableBBoxCache && !work.is_empty()) {
+    core::Rect bbox = work.get_bounding_rect();
     int bboxArea = bbox.area();
 
     bool bboxTopBand = (bbox.tl.y < 100 && bbox.br.y > 20);
-    
+
     if (bboxArea >= WholeRectCacheMinArea) {
       // For very large bounding boxes, avoid taking a cache hit when only a
       // small fraction of the bbox is damaged. This is particularly important
@@ -1233,86 +1240,83 @@ void EncodeManager::writeRects(const core::Region& changed,
       // cases where the majority of the content is evolving frame-to-frame.
       // Estimate how much of the bbox is actually involved in this update
       // using the area of the damage bounding box.
+      bool attemptBboxHit = true;
       const core::Rect damageBboxForCoverage = changed.get_bounding_rect();
       const int damageArea = damageBboxForCoverage.area();
       if (damageArea > 0) {
         const double bboxCoverage = static_cast<double>(damageArea) /
                                     static_cast<double>(bboxArea);
         if (bboxCoverage < 0.5) {
+          attemptBboxHit = false;
           if (isCCDebugEnabled()) {
             vlog.info("TILING: Skipping bbox cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)",
                       bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y, bboxCoverage);
           }
-          // Do not attempt a bbox cache HIT on this frame; we may still seed
-          // a bbox below once all tiles are encoded.
-          return; // Skip bbox hit path entirely for this update
         }
       }
 
-      // Compute content hash for the entire bounding box
-      std::vector<uint8_t> bboxHash = ContentHash::computeRect(pb, bbox);
-      uint64_t bboxId = 0;
-      if (!bboxHash.empty()) {
-        size_t n = std::min(bboxHash.size(), sizeof(uint64_t));
-        memcpy(&bboxId, bboxHash.data(), n);
-      }
-
-      // Debug: log canonical bytes for the bounding box domain.
-      logFBHashDebug("bbox", bbox, bboxId, pb);
-      
-      // NEW DESIGN: Always send canonical hash reference.
-      // Viewer will respond with hash type (LOSSLESS/LOSSY/NONE).
-      // If NONE, viewer will query for full data.
-      // EXCEPTION: If client explicitly requested this ID (e.g. miss), send miss/init.
-      bool clientRequested = conn->clientRequestedPersistent(bboxId);
-      bool hasHit = !clientRequested;  // Always send reference unless requested
-      uint64_t matchedBboxId = bboxId;  // Always canonical
-      
-      vlog.info("TILING: Sending bounding-box canonical hash reference (viewer will report availability): id=%s",
-                hex64(bboxId));
-      
-      if (hasHit) {
-        // CACHE HIT on bounding box!
-        persistentCacheStats.cacheHits++;
-
-        if (bboxTopBand) {
-          vlog.info("PCSRV TOPBAND_BBOX_HIT: conn=%p bbox=[%d,%d-%d,%d] id=%s",
-                    (void*)conn,
-                    bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
-                    hex64(matchedBboxId));
+      if (attemptBboxHit) {
+        // Compute content hash for the entire bounding box
+        std::vector<uint8_t> bboxHash = ContentHash::computeRect(pb, bbox);
+        uint64_t bboxId = 0;
+        if (!bboxHash.empty()) {
+          size_t n = std::min(bboxHash.size(), sizeof(uint64_t));
+          memcpy(&bboxId, bboxHash.data(), n);
         }
+
+        // Debug: log canonical bytes for the bounding box domain.
+        logFBHashDebug("bbox", bbox, bboxId, pb);
+
+        // Decide if we can safely send a reference for this bounding box.
+        bool clientRequested = conn->clientRequestedPersistent(bboxId);
+        bool hasHit = conn->knowsPersistentId(bboxId) && !clientRequested;
+        uint64_t matchedBboxId = bboxId;  // Always canonical
+
+        // Count this bbox attempt as a cache lookup.
         persistentCacheStats.cacheLookups++;
-        int equiv = 12 + bboxArea * (conn->client.pf().bpp / 8);
-        persistentCacheStats.bytesSaved += equiv - 20;
-        copyStats.rects++;
-        copyStats.pixels += bboxArea;
-        copyStats.equivalent += equiv;
-        beforeLength = conn->getOutStream()->length();
-        conn->writer()->writePersistentCachedRect(bbox, matchedBboxId);
-        copyStats.bytes += conn->getOutStream()->length() - beforeLength;
-        
-        vlog.info("TILING: Bounding-box cache HIT [%d,%d-%d,%d] id=%s (saved %d bytes, %d damage rects coalesced)",
-                  bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
-                  hex64(matchedBboxId), equiv - 20, changed.numRects());
-        
-        conn->onCachedRectRef(matchedBboxId, bbox);
-        lossyRegion.assign_subtract(bbox);
-        pendingRefreshRegion.assign_subtract(bbox);
-        return;  // Entire region handled by one cache hit!
-      } else {
+
+        if (hasHit) {
+          // CACHE HIT on bounding box!
+          persistentCacheStats.cacheHits++;
+
+          if (bboxTopBand) {
+            vlog.info("PCSRV TOPBAND_BBOX_HIT: conn=%p bbox=[%d,%d-%d,%d] id=%s",
+                      (void*)conn,
+                      bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
+                      hex64(matchedBboxId));
+          }
+
+          int equiv = 12 + bboxArea * (conn->client.pf().bpp / 8);
+          persistentCacheStats.bytesSaved += equiv - 20;
+          copyStats.rects++;
+          copyStats.pixels += bboxArea;
+          copyStats.equivalent += equiv;
+          beforeLength = conn->getOutStream()->length();
+          conn->writer()->writePersistentCachedRect(bbox, matchedBboxId);
+          copyStats.bytes += conn->getOutStream()->length() - beforeLength;
+
+          vlog.info("TILING: Bounding-box cache HIT [%d,%d-%d,%d] id=%s (saved %d bytes, %d damage rects coalesced)",
+                    bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
+                    hex64(matchedBboxId), equiv - 20, changed.numRects());
+
+          conn->onCachedRectRef(matchedBboxId, bbox);
+          lossyRegion.assign_subtract(bbox);
+          pendingRefreshRegion.assign_subtract(bbox);
+          return;  // Entire region handled by one cache hit!
+        }
+
         // Bounding box not in cache - we'll seed it after encoding
         vlog.info("TILING: Bounding-box cache MISS [%d,%d-%d,%d] id=%s - will seed after encoding %d rects",
                   bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
                   hex64(bboxId), changed.numRects());
-        
+
         persistentCacheStats.cacheMisses++;
-        persistentCacheStats.cacheLookups++;
       }
     }
   }
   
   // Track bounding box for seeding after encoding individual rects
-core::Rect bboxForSeeding;
+  core::Rect bboxForSeeding;
   uint64_t bboxIdForSeeding = 0;
   bool shouldSeedBbox = false;
   
@@ -1341,7 +1345,7 @@ core::Rect bboxForSeeding;
     }
   }
 
-  changed.get_rects(&rects);
+  work.get_rects(&rects);
   for (rect = rects.begin(); rect != rects.end(); ++rect) {
     int w, h, sw, sh;
     core::Rect sr;

@@ -319,6 +319,12 @@ namespace rfb {
     void closeCurrentShard();
     bool writeEntryToShard(const std::vector<uint8_t>& hash, const CachedPixels& entry);
 
+    // Remove shard_*.dat files that are no longer referenced by indexMap_. This
+    // is critical for enforcing maxDiskSize_ across restarts because shardSizes_
+    // is reconstructed from the index (and would otherwise ignore orphaned
+    // shard files left behind by earlier GC/index rewrites).
+    size_t cleanupOrphanShardsOnDisk();
+
     // Helper to get current timestamp
     uint32_t getCurrentTime() const;
     
