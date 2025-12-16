@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <iostream>
 #include <iomanip>
+#include <limits>
 #include <dirent.h>
 
 #ifdef HAVE_GNUTLS
@@ -98,6 +99,25 @@ static bool isSolidBlack(const uint8_t* pixels, size_t length)
   return true;
 }
 
+static size_t mbToBytesClamped(size_t mb)
+{
+  const unsigned long long mul = 1024ULL * 1024ULL;
+  const unsigned long long max =
+    static_cast<unsigned long long>(std::numeric_limits<size_t>::max());
+
+  if (static_cast<unsigned long long>(mb) > (max / mul))
+    return std::numeric_limits<size_t>::max();
+
+  return static_cast<size_t>(static_cast<unsigned long long>(mb) * mul);
+}
+
+static size_t mbDoubleClamped(size_t mb)
+{
+  if (mb > (std::numeric_limits<size_t>::max() / 2))
+    return std::numeric_limits<size_t>::max();
+  return mb * 2;
+}
+
 // ============================================================================
 // GlobalClientPersistentCache Implementation - ARC Algorithm with Sharded Storage
 // ============================================================================
@@ -106,10 +126,11 @@ GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxMemorySizeMB,
                                                            size_t maxDiskSizeMB,
                                                            size_t shardSizeMB,
                                                            const std::string& cacheDirOverride)
-  : maxMemorySize_(maxMemorySizeMB * 1024 * 1024),
-    maxDiskSize_(maxDiskSizeMB == 0 ? maxMemorySizeMB * 2 * 1024 * 1024 : maxDiskSizeMB * 1024 * 1024),
-    shardSize_(shardSizeMB * 1024 * 1024),
+  : maxMemorySize_(mbToBytesClamped(maxMemorySizeMB)),
+    maxDiskSize_(mbToBytesClamped(maxDiskSizeMB == 0 ? mbDoubleClamped(maxMemorySizeMB) : maxDiskSizeMB)),
+    shardSize_(mbToBytesClamped(shardSizeMB)),
     hydrationState_(HydrationState::Uninitialized),
+    indexDirty_(false),
     currentShardId_(0),
     currentShardHandle_(nullptr),
     currentShardSize_(0)
@@ -150,6 +171,7 @@ GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxMemorySizeMB,
           if (it != indexMap_.end()) {
             it->second.isCold = true;
             coldEntries_.insert(fullHash);
+            indexDirty_ = true;
           }
           // Remove from dirty set (already written to shard)
           dirtyEntries_.erase(fullHash);
@@ -488,6 +510,7 @@ void GlobalClientPersistentCache::clear()
   indexMap_.clear();
   coldEntries_.clear();
   dirtyEntries_.clear();
+  indexDirty_ = false;
   hydrationQueue_.clear();
   pendingEvictions_.clear();
   keyToHash_.clear();
@@ -702,12 +725,20 @@ bool GlobalClientPersistentCache::writeEntryToShard(const std::vector<uint8_t>& 
   uint32_t offset = currentShardSize_;
   
   // Write pixel data to shard
+  errno = 0;
   size_t written = fwrite(entry.pixels.data(), 1, entry.pixels.size(), currentShardHandle_);
   if (written != entry.pixels.size()) {
-    vlog.error("PersistentCache: failed to write to shard");
+    int err = errno;
+    vlog.error("PersistentCache: failed to write to shard %u (%zu/%zu bytes written): %s",
+               currentShardId_, written, entry.pixels.size(), strerror(err));
     return false;
   }
-  fflush(currentShardHandle_);
+  if (fflush(currentShardHandle_) != 0) {
+    int err = errno;
+    vlog.error("PersistentCache: failed to flush shard %u: %s",
+               currentShardId_, strerror(err));
+    return false;
+  }
   
   currentShardSize_ += written;
   shardSizes_[currentShardId_] = currentShardSize_;
@@ -725,6 +756,7 @@ bool GlobalClientPersistentCache::writeEntryToShard(const std::vector<uint8_t>& 
   idx.canonicalHash = entry.canonicalHash;
   
   indexMap_[hash] = idx;
+  indexDirty_ = true;
   
   return true;
 }
@@ -889,6 +921,8 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
   indexMap_.clear();
   hydrationQueue_.clear();
   coldEntries_.clear();
+  dirtyEntries_.clear();
+  indexDirty_ = false;
   keyToHash_.clear();
   hashToKey_.clear();
   
@@ -1024,6 +1058,7 @@ bool GlobalClientPersistentCache::hydrateEntry(const std::vector<uint8_t>& hash)
   // Mark as hot (no longer cold)
   it->second.isCold = false;
   coldEntries_.erase(hash);
+  indexDirty_ = true;
   
   // Remove from hydration queue
   hydrationQueue_.remove(hash);
@@ -1067,41 +1102,77 @@ size_t GlobalClientPersistentCache::hydrateNextBatch(size_t maxEntries)
 
 size_t GlobalClientPersistentCache::flushDirtyEntries()
 {
-  if (dirtyEntries_.empty())
-    return 0;
-  
   size_t flushed = 0;
-  
-  // Write each dirty entry to the current shard
-  for (const auto& hash : dirtyEntries_) {
-    auto keyIt = hashToKey_.find(hash);
-    if (keyIt == hashToKey_.end())
-      continue;
-    auto cacheIt = cache_.find(keyIt->second);
-    if (cacheIt == cache_.end())
-      continue;  // Entry was evicted
-    
-    if (writeEntryToShard(hash, cacheIt->second)) {
-      flushed++;
+
+  // Write dirty payloads to shard files. If disk is full, try to reclaim
+  // space by evicting cold entries and deleting orphan shards, then retry.
+  if (!dirtyEntries_.empty()) {
+    std::vector<std::vector<uint8_t>> toWrite;
+    toWrite.reserve(dirtyEntries_.size());
+    for (const auto& h : dirtyEntries_)
+      toWrite.push_back(h);
+
+    for (const auto& hash : toWrite) {
+      auto keyIt = hashToKey_.find(hash);
+      if (keyIt == hashToKey_.end()) {
+        dirtyEntries_.erase(hash);
+        continue;
+      }
+
+      auto cacheIt = cache_.find(keyIt->second);
+      if (cacheIt == cache_.end()) {
+        // Entry was evicted from RAM before we could persist it.
+        dirtyEntries_.erase(hash);
+        continue;
+      }
+
+      bool ok = writeEntryToShard(hash, cacheIt->second);
+      if (!ok) {
+        // Best-effort recovery: trim cold entries and orphan shards to
+        // free disk, then retry once.
+        garbageCollect();
+        cleanupOrphanShardsOnDisk();
+        ok = writeEntryToShard(hash, cacheIt->second);
+      }
+
+      if (ok) {
+        flushed++;
+        dirtyEntries_.erase(hash);
+        indexDirty_ = true;
+      }
     }
   }
-  
-  dirtyEntries_.clear();
-  
-  // Save index after flushing
-  if (flushed > 0) {
-    saveToDisk();
-    vlog.debug("PersistentCache: flushed %zu entries to shard %u", flushed, currentShardId_);
+
+  // Save the index (atomically) if anything changed. If this fails due to
+  // lack of disk space, keep indexDirty_=true so we can retry later without
+  // corrupting the existing index.
+  if (indexDirty_) {
+    if (saveToDisk()) {
+      indexDirty_ = false;
+      vlog.debug("PersistentCache: index saved (%zu entries)", indexMap_.size());
+    } else {
+      // Try once more after reclaiming space.
+      garbageCollect();
+      cleanupOrphanShardsOnDisk();
+      if (saveToDisk()) {
+        indexDirty_ = false;
+        vlog.debug("PersistentCache: index saved after GC (%zu entries)", indexMap_.size());
+      }
+    }
   }
-  
-  // Check disk usage and trigger GC if needed
+
+  // Enforce maxDiskSize_ as best-effort. This is primarily a safety valve;
+  // if the user requested a very large disk cache then maxDiskSize_ may be
+  // larger than the available disk.
   size_t diskUsage = getDiskUsage();
   if (diskUsage > maxDiskSize_) {
     vlog.debug("PersistentCache: disk usage %zuMB exceeds limit %zuMB, triggering GC",
                diskUsage / (1024*1024), maxDiskSize_ / (1024*1024));
-    garbageCollect();
+    size_t reclaimed = garbageCollect();
+    if (reclaimed > 0)
+      saveToDisk();
   }
-  
+
   return flushed;
 }
 
@@ -1142,6 +1213,8 @@ size_t GlobalClientPersistentCache::garbageCollect()
     coldEntries_.erase(hash);
     hydrationQueue_.remove(hash);
   }
+  if (!toRemove.empty())
+    indexDirty_ = true;
 
   // Delete any shard files that became unreferenced as a result of trimming.
   // This is the key step that actually reclaims disk space.
@@ -1161,25 +1234,39 @@ size_t GlobalClientPersistentCache::garbageCollect()
 bool GlobalClientPersistentCache::saveToDisk()
 {
   closeCurrentShard();
-  
+
   if (!ensureCacheDir())
     return false;
-  
+
+  // Best-effort cleanup of orphan shards so we don't waste disk space.
+  cleanupOrphanShardsOnDisk();
+
   std::string indexPath = getIndexPath();
-  FILE* f = fopen(indexPath.c_str(), "wb");
+  std::string tmpPath = indexPath + ".tmp";
+
+  FILE* f = fopen(tmpPath.c_str(), "wb");
   if (!f) {
-    vlog.error("PersistentCache: failed to open index for writing: %s", strerror(errno));
+    vlog.error("PersistentCache: failed to open temporary index for writing: %s", strerror(errno));
     return false;
   }
-  
+
+  auto writeOrFail = [&](const void* ptr, size_t sz, size_t n, const char* what) -> bool {
+    if (fwrite(ptr, sz, n, f) != n) {
+      int err = errno;
+      vlog.error("PersistentCache: failed writing %s to %s: %s", what, tmpPath.c_str(), strerror(err));
+      return false;
+    }
+    return true;
+  };
+
   // Find max shard ID
   uint16_t maxShardId = 0;
   for (const auto& entry : indexMap_) {
     if (entry.second.shardId > maxShardId)
       maxShardId = entry.second.shardId;
   }
-  
-  // Write v3 index header
+
+  // Write v5 index header
   struct IndexHeader {
     uint32_t magic;
     uint32_t version;
@@ -1189,7 +1276,7 @@ bool GlobalClientPersistentCache::saveToDisk()
     uint16_t maxShardId;
     uint8_t reserved[30];
   } header;
-  
+
   memset(&header, 0, sizeof(header));
   header.magic = 0x50435633;  // "PCV3" (magic stays same, version bumped)
   header.version = 5;
@@ -1197,41 +1284,65 @@ bool GlobalClientPersistentCache::saveToDisk()
   header.created = time(nullptr);
   header.lastAccess = time(nullptr);
   header.maxShardId = maxShardId;
-  
-  if (fwrite(&header, sizeof(header), 1, f) != 1) {
-    vlog.error("PersistentCache: failed to write index header");
+
+  if (!writeOrFail(&header, sizeof(header), 1, "index header")) {
     fclose(f);
+    remove(tmpPath.c_str());
     return false;
   }
-  
+
   // Write index entries
   for (const auto& entry : indexMap_) {
     const std::vector<uint8_t>& hash = entry.first;
     const IndexEntry& idx = entry.second;
-    
+
     // Pad/truncate hash to 16 bytes
     uint8_t hashBuf[16] = {0};
     size_t copyLen = std::min(hash.size(), (size_t)16);
     memcpy(hashBuf, hash.data(), copyLen);
-    fwrite(hashBuf, 1, 16, f);
-    
-    fwrite(&idx.shardId, sizeof(idx.shardId), 1, f);
-    fwrite(&idx.payloadOffset, sizeof(idx.payloadOffset), 1, f);
-    fwrite(&idx.payloadSize, sizeof(idx.payloadSize), 1, f);
-    fwrite(&idx.width, sizeof(idx.width), 1, f);
-    fwrite(&idx.height, sizeof(idx.height), 1, f);
-    fwrite(&idx.stridePixels, sizeof(idx.stridePixels), 1, f);
-    fwrite(&idx.format, 24, 1, f);
-    
+    if (!writeOrFail(hashBuf, 1, 16, "hash")) {
+      fclose(f);
+      remove(tmpPath.c_str());
+      return false;
+    }
+
+    if (!writeOrFail(&idx.shardId, sizeof(idx.shardId), 1, "shardId") ||
+        !writeOrFail(&idx.payloadOffset, sizeof(idx.payloadOffset), 1, "payloadOffset") ||
+        !writeOrFail(&idx.payloadSize, sizeof(idx.payloadSize), 1, "payloadSize") ||
+        !writeOrFail(&idx.width, sizeof(idx.width), 1, "width") ||
+        !writeOrFail(&idx.height, sizeof(idx.height), 1, "height") ||
+        !writeOrFail(&idx.stridePixels, sizeof(idx.stridePixels), 1, "stridePixels") ||
+        !writeOrFail(&idx.format, 24, 1, "PixelFormat") ) {
+      fclose(f);
+      remove(tmpPath.c_str());
+      return false;
+    }
+
     uint8_t flags = idx.isCold ? 0x01 : 0x00;
-    fwrite(&flags, 1, 1, f);
-    
-    // New in v4
-    fwrite(&idx.canonicalHash, sizeof(idx.canonicalHash), 1, f);
+    if (!writeOrFail(&flags, 1, 1, "flags") ||
+        !writeOrFail(&idx.canonicalHash, sizeof(idx.canonicalHash), 1, "canonicalHash")) {
+      fclose(f);
+      remove(tmpPath.c_str());
+      return false;
+    }
   }
-  
-  fclose(f);
-  
+
+  if (fclose(f) != 0) {
+    int err = errno;
+    vlog.error("PersistentCache: failed to close %s: %s", tmpPath.c_str(), strerror(err));
+    remove(tmpPath.c_str());
+    return false;
+  }
+
+  // Atomically replace the old index. If rename fails, keep the old index.
+  if (rename(tmpPath.c_str(), indexPath.c_str()) != 0) {
+    int err = errno;
+    vlog.error("PersistentCache: failed to rename %s to %s: %s",
+               tmpPath.c_str(), indexPath.c_str(), strerror(err));
+    remove(tmpPath.c_str());
+    return false;
+  }
+
   vlog.info("PersistentCache: saved v5 index with %zu entries", indexMap_.size());
   return true;
 }

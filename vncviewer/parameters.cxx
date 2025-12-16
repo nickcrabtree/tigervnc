@@ -267,7 +267,7 @@ core::IntParameter
 core::IntParameter
   persistentCacheDiskSize("PersistentCacheDiskSize",
                           "Maximum size of persistent cache on disk (MB, 0=auto 2x memory)",
-                          0, 0, 16384);
+                          0, 0, INT_MAX);
 core::IntParameter
   persistentCacheShardSize("PersistentCacheShardSize",
                            "Size of each cache shard file (MB)",

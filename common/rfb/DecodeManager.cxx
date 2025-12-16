@@ -22,6 +22,13 @@
 
 #include <assert.h>
 #include <string.h>
+#include <stdint.h>
+
+#include <sys/stat.h>
+#if !defined(WIN32)
+#include <dirent.h>
+#include <sys/statvfs.h>
+#endif
 
 #include <core/LogWriter.h>
 #include <core/Region.h>
@@ -72,6 +79,64 @@ namespace {
     stats.lookups++;
     stats.misses++;
   }
+
+  static uint64_t bytesFromMBClamped(uint64_t mb)
+  {
+    const uint64_t mul = 1024ULL * 1024ULL;
+    if (mb > (UINT64_MAX / mul))
+      return UINT64_MAX;
+    return mb * mul;
+  }
+
+#if !defined(WIN32)
+  static bool getFilesystemFreeBytes(const std::string& path, uint64_t* freeBytes)
+  {
+    if (!freeBytes)
+      return false;
+
+    struct statvfs vfs;
+    if (statvfs(path.c_str(), &vfs) != 0)
+      return false;
+
+    *freeBytes = static_cast<uint64_t>(vfs.f_bavail) *
+                 static_cast<uint64_t>(vfs.f_frsize);
+    return true;
+  }
+
+  static uint64_t getDirectorySizeBytes(const std::string& path)
+  {
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0)
+      return 0;
+    if (!S_ISDIR(st.st_mode))
+      return 0;
+
+    DIR* dir = opendir(path.c_str());
+    if (!dir)
+      return 0;
+
+    uint64_t total = 0;
+    struct dirent* de;
+    while ((de = readdir(dir)) != nullptr) {
+      if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+        continue;
+
+      std::string child = path;
+      child += "/";
+      child += de->d_name;
+
+      struct stat stChild;
+      if (stat(child.c_str(), &stChild) != 0)
+        continue;
+      if (S_ISREG(stChild.st_mode)) {
+        total += static_cast<uint64_t>(stChild.st_size);
+      }
+    }
+
+    closedir(dir);
+    return total;
+  }
+#endif
 }
 
 // Optional framebuffer hash debug helper (mirrors CConnection)
@@ -245,6 +310,27 @@ DecodeManager::DecodeManager(CConnection *conn_) :
       vlog.info("Client PersistentCache v3: mem=%zuMB, disk=%zuMB, shard=%zuMB%s",
                 pcMemSizeMB, effectiveDiskMB, pcShardSizeMB,
                 pcPathOverride.empty() ? "" : " (custom path)");
+
+#if !defined(WIN32)
+      // Warn if the requested disk cache size would likely fill the
+      // filesystem (taking into account that deleting the existing cache
+      // would recover space). We warn but continue.
+      const std::string& cacheDir = persistentCache->getCacheDirectory();
+      uint64_t freeBytes = 0;
+      uint64_t existingCacheBytes = getDirectorySizeBytes(cacheDir);
+      if (getFilesystemFreeBytes(cacheDir, &freeBytes)) {
+        uint64_t requestedBytes = bytesFromMBClamped(static_cast<uint64_t>(effectiveDiskMB));
+        uint64_t maxReasonableBytes = freeBytes + existingCacheBytes;
+        if (requestedBytes != UINT64_MAX && requestedBytes > maxReasonableBytes) {
+          vlog.info("PersistentCacheDiskSize warning: requested=%zuMB but filesystem has only %s free + %s current cache (cache dir %s)",
+                    effectiveDiskMB,
+                    core::iecPrefix(freeBytes, "B").c_str(),
+                    core::iecPrefix(existingCacheBytes, "B").c_str(),
+                    cacheDir.c_str());
+        }
+      }
+#endif
+
       // NOTE: Disk loading is DEFERRED until the server negotiates
       // PersistentCache protocol. This avoids blocking startup and wasting
       // I/O when connecting to servers that don't support PersistentCache.
