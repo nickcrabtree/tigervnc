@@ -135,11 +135,11 @@ static void logFBHashDebug(const char* tag,
     snprintf(hexBuf + i * 2, 3, "%02x", tmp[i]);
   hexBuf[n * 2] = '\0';
 
-  vlog.info("FBHASH %s: rect=[%d,%d-%d,%d] id=%llu bytes[0:%zu]=%s",
-            tag,
-            r.tl.x, r.tl.y, r.br.x, r.br.y,
-            (unsigned long long)cacheId,
-            n, hexBuf);
+  vlog.debug("FBHASH %s: rect=[%d,%d-%d,%d] id=%llu bytes[0:%zu]=%s",
+             tag,
+             r.tl.x, r.tl.y, r.br.x, r.br.y,
+             (unsigned long long)cacheId,
+             n, hexBuf);
 }
 
 DecodeManager::DecodeManager(CConnection *conn_) :
@@ -398,13 +398,13 @@ bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
     size_t n2 = std::min<size_t>(8, afterHash.size());
     for (size_t i = 0; i < n2; ++i)
       after64 = (after64 << 8) | afterHash[i];
-    vlog.info("FBDBG DECODE encoding=%d rect=[%d,%d-%d,%d] region=[%d,%d-%d,%d] before=%016llx after=%016llx",
-              encoding,
-              r.tl.x, r.tl.y, r.br.x, r.br.y,
-              hashRect.tl.x, hashRect.tl.y,
-              hashRect.br.x, hashRect.br.y,
-              (unsigned long long)before64,
-              (unsigned long long)after64);
+    vlog.debug("FBDBG DECODE encoding=%d rect=[%d,%d-%d,%d] region=[%d,%d-%d,%d] before=%016llx after=%016llx",
+               encoding,
+               r.tl.x, r.tl.y, r.br.x, r.br.y,
+               hashRect.tl.x, hashRect.tl.y,
+               hashRect.br.x, hashRect.br.y,
+               (unsigned long long)before64,
+               (unsigned long long)after64);
   }
 
   lock.lock();
@@ -1284,18 +1284,18 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
     // Unified cache engine disabled; treat as a miss so tests can still
     // reason about protocol behaviour when caches are turned off.
     recordCacheMiss(ccStats);
-    vlog.info("ContentCache cache miss for ID %llu (cache disabled) rect=[%d,%d-%d,%d]",
-              (unsigned long long)cacheId,
-              r.tl.x, r.tl.y, r.br.x, r.br.y);
+    vlog.debug("ContentCache cache miss for ID %llu (cache disabled) rect=[%d,%d-%d,%d]",
+               (unsigned long long)cacheId,
+               r.tl.x, r.tl.y, r.br.x, r.br.y);
     return;
   }
 
   const GlobalClientPersistentCache::CachedPixels* entry = persistentCache->getByKey(key);
   if (!entry || entry->pixels.empty()) {
     recordCacheMiss(ccStats);
-    vlog.info("ContentCache cache miss for ID %llu rect=[%d,%d-%d,%d]",
-              (unsigned long long)cacheId,
-              r.tl.x, r.tl.y, r.br.x, r.br.y);
+    vlog.debug("ContentCache cache miss for ID %llu rect=[%d,%d-%d,%d]",
+               (unsigned long long)cacheId,
+               r.tl.x, r.tl.y, r.br.x, r.br.y);
 
     // Request missing data from server so we can populate the cache.
     // Without this, the client stays out of sync and simply displays nothing/garbage.
@@ -1309,9 +1309,9 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
   }
  
   recordCacheHit(ccStats);
-  vlog.info("ContentCache cache hit for ID %llu rect=[%d,%d-%d,%d]",
-            (unsigned long long)cacheId,
-            r.tl.x, r.tl.y, r.br.x, r.br.y);
+  vlog.debug("ContentCache cache hit for ID %llu rect=[%d,%d-%d,%d]",
+             (unsigned long long)cacheId,
+             r.tl.x, r.tl.y, r.br.x, r.br.y);
 
   // Blit cached pixels to framebuffer at target position. CachedPixels
   // stores stride in pixels for its internal buffer.
@@ -1358,10 +1358,10 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   }
 
   if (hashId != cacheId) {
-    vlog.info("ContentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu",
-              r.tl.x, r.tl.y, r.br.x, r.br.y,
-              (unsigned long long)cacheId,
-              (unsigned long long)hashId);
+    vlog.debug("ContentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu",
+               r.tl.x, r.tl.y, r.br.x, r.br.y,
+               (unsigned long long)cacheId,
+               (unsigned long long)hashId);
     return;
   }
 
@@ -1412,9 +1412,9 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
                           entry.width, entry.height, entry.stridePixels,
                           /*isPersistable=*/false);  // Session-only
 
-  vlog.info("ContentCache storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
-            r.tl.x, r.tl.y, r.br.x, r.br.y,
-            (unsigned long long)cacheId);
+  vlog.debug("ContentCache storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
+             r.tl.x, r.tl.y, r.br.x, r.br.y,
+             (unsigned long long)cacheId);
   
   // Proactively send any eviction notifications triggered by this insert.
   // This ensures timely notification to the server instead of waiting for

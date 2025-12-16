@@ -100,6 +100,7 @@ def run_viewer_with_scenario(viewer_path: str, port: int, artifacts: ArtifactMan
     
     log_path = artifacts.logs_dir / f'{name}.log'
     env = os.environ.copy()
+    env['TIGERVNC_VIEWER_DEBUG_LOG'] = '1'
     env['DISPLAY'] = f':{display_viewer}'
     
     log_file = open(log_path, 'w')

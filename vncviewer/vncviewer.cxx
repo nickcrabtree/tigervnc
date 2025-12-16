@@ -663,31 +663,40 @@ int main(int argc, char** argv)
 
   core::initStdIOLoggers();
 
-  // Ensure a dedicated log directory exists
-  const char* logDir = "/tmp/vncviewer";
-  core::mkdir_p(logDir, 0755);
-
-  // Build timestamped logfile name
-  time_t now = time(nullptr);
-  struct tm tmNow;
-  localtime_r(&now, &tmNow);
-
-  char ts[32];
-  strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tmNow);
-
-  pid_t pid = getpid();
-
-  char logPath[512];
-  snprintf(logPath, sizeof(logPath), "%s/njcvncviewer_%s_%d.log", logDir, ts, (int)pid);
-
-  // Initialize file logger to our unique logfile
-  core::initFileLogger(logPath);
-
-  // Inform user where logs go (stderr so it appears in terminal)
-  fprintf(stderr, "Viewer debug log: %s\n", logPath);
+  auto isViewerDebugLogEnabled = []() -> bool {
+    const char* env = getenv("TIGERVNC_VIEWER_DEBUG_LOG");
+    return env && env[0] != '\0' && env[0] != '0';
+  };
 
   // Route logs to stderr for user-facing output (stats, warnings, etc.).
+  // Verbose log configuration (including 'Log=...') is only honoured when
+  // TIGERVNC_VIEWER_DEBUG_LOG is set.
   core::LogWriter::setLogParams("*:stderr:30");
+
+  if (isViewerDebugLogEnabled()) {
+    // Ensure a dedicated log directory exists
+    const char* logDir = "/tmp/vncviewer";
+    core::mkdir_p(logDir, 0755);
+
+    // Build timestamped logfile name
+    time_t now = time(nullptr);
+    struct tm tmNow;
+    localtime_r(&now, &tmNow);
+
+    char ts[32];
+    strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tmNow);
+
+    pid_t pid = getpid();
+
+    char logPath[512];
+    snprintf(logPath, sizeof(logPath), "%s/njcvncviewer_%s_%d.log", logDir, ts, (int)pid);
+
+    // Initialize file logger to our unique logfile
+    core::initFileLogger(logPath);
+
+    // Inform user where logs go (stderr so it appears in terminal)
+    fprintf(stderr, "Viewer debug log: %s\n", logPath);
+  }
 
 #ifdef SIGHUP
   signal(SIGHUP, CleanupSignalHandler);
@@ -748,6 +757,14 @@ int main(int argc, char** argv)
     strncpy(vncServerName, argv[i], VNCSERVERNAMELEN);
     vncServerName[VNCSERVERNAMELEN - 1] = '\0';
     i++;
+  }
+
+  // Unless explicitly enabled, ignore any verbose logging configuration to
+  // avoid spamming the terminal with debug output.
+  const char* dbg = getenv("TIGERVNC_VIEWER_DEBUG_LOG");
+  bool allowVerboseLog = dbg && dbg[0] != '\0' && dbg[0] != '0';
+  if (!allowVerboseLog) {
+    core::LogWriter::setLogParams("*:stderr:30");
   }
 
 #if !defined(WIN32) && !defined(__APPLE__)

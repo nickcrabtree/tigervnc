@@ -110,6 +110,7 @@ def main():
         print(f"\n[3/6] Starting viewer with PersistentCache...")
         viewer_log = artifacts.logs_dir / 'poc_viewer.log'
         env = os.environ.copy()
+        env['TIGERVNC_VIEWER_DEBUG_LOG'] = '1'
         env['DISPLAY'] = f':{display_viewer}'
         
         # SANDBOXED: Use test-specific cache (not production cache)
