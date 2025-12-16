@@ -53,13 +53,17 @@ from typing import Dict, Iterable, List, Optional
 
 
 TC_BIN = shutil.which("tc") or "tc"
-# Optional external helper command that can perform privileged WAN
-# shaping on our behalf. When set, apply_wan_profile() and
-# clear_wan_shaping() delegate to this helper instead of talking to tc
-# directly. The helper is expected to accept a simple CLI of the form:
-#   $TIGERVNC_WAN_HELPER apply <profile> <dev> <port1> <port2> ...
-#   $TIGERVNC_WAN_HELPER clear <dev>
-WAN_HELPER = os.environ.get("TIGERVNC_WAN_HELPER")
+
+
+def _get_wan_helper() -> str | None:
+    """Return the configured privileged WAN helper command, if any.
+
+    IMPORTANT: Tests may set $TIGERVNC_WAN_HELPER at runtime (after this module
+    has been imported), so we must read the environment dynamically rather than
+    caching it at import time.
+    """
+
+    return os.environ.get("TIGERVNC_WAN_HELPER")
 
 
 @dataclass(frozen=True)
@@ -362,10 +366,11 @@ def _run_helper(
       - "clear <dev>"
     """
 
-    if not WAN_HELPER:
+    wan_helper = _get_wan_helper()
+    if not wan_helper:
         return False
 
-    base = shlex.split(WAN_HELPER)
+    base = shlex.split(wan_helper)
     args: list[str] = []
     if subcommand == "apply" and profile_name and ports is not None:
         args = ["apply", profile_name, dev] + [str(p) for p in sorted(set(ports))]

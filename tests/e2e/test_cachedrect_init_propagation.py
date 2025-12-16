@@ -111,9 +111,14 @@ def parse_client_cache_messages(log_path: Path) -> dict:
             # Unified cache path: PersistentCachedRect / PersistentCachedRectInit.
             # For the purposes of this propagation test, we treat these as
             # equivalent to ContentCache references and inits.
-            elif 'received persistentcachedrectinit' in line_lower:
+            #
+            # IMPORTANT: Viewer logs can occasionally interleave lines (e.g.
+            # PlatformPixelBuffer output) such that the "Received" prefix is
+            # not present even though the message arrived. Count any line that
+            # contains "PersistentCachedRect:" as a reference.
+            elif 'persistentcachedrectinit' in line_lower:
                 stats['persistent_cached_rect_init_received'] += 1
-            elif 'received persistentcachedrect' in line_lower and 'init' not in line_lower:
+            elif re.search(r'\bpersistentcachedrect\s*:', line_lower) and 'init' not in line_lower:
                 stats['persistent_cached_rect_received'] += 1
             
             # Client sends RequestCachedData
