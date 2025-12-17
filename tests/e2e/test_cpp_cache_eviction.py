@@ -55,6 +55,7 @@ def run_cpp_viewer(viewer_path, port, artifacts, tracker, name,
 
     log_path = artifacts.logs_dir / f'{name}.log'
     env = os.environ.copy()
+    env['TIGERVNC_VIEWER_DEBUG_LOG'] = '1'
 
     if display_for_viewer is not None:
         env['DISPLAY'] = f':{display_for_viewer}'

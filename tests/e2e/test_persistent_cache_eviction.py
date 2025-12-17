@@ -41,6 +41,7 @@ def run_viewer_with_small_persistent_cache(viewer_path, port, artifacts, tracker
 
     log_path = artifacts.logs_dir / f'{name}.log'
     env = os.environ.copy()
+    env['TIGERVNC_VIEWER_DEBUG_LOG'] = '1'
 
     if display_for_viewer is not None:
         env['DISPLAY'] = f':{display_for_viewer}'

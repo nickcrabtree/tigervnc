@@ -22,6 +22,13 @@
 
 #include <assert.h>
 #include <string.h>
+#include <stdint.h>
+
+#include <sys/stat.h>
+#if !defined(WIN32)
+#include <dirent.h>
+#include <sys/statvfs.h>
+#endif
 
 #include <core/LogWriter.h>
 #include <core/Region.h>
@@ -72,6 +79,64 @@ namespace {
     stats.lookups++;
     stats.misses++;
   }
+
+  static uint64_t bytesFromMBClamped(uint64_t mb)
+  {
+    const uint64_t mul = 1024ULL * 1024ULL;
+    if (mb > (UINT64_MAX / mul))
+      return UINT64_MAX;
+    return mb * mul;
+  }
+
+#if !defined(WIN32)
+  static bool getFilesystemFreeBytes(const std::string& path, uint64_t* freeBytes)
+  {
+    if (!freeBytes)
+      return false;
+
+    struct statvfs vfs;
+    if (statvfs(path.c_str(), &vfs) != 0)
+      return false;
+
+    *freeBytes = static_cast<uint64_t>(vfs.f_bavail) *
+                 static_cast<uint64_t>(vfs.f_frsize);
+    return true;
+  }
+
+  static uint64_t getDirectorySizeBytes(const std::string& path)
+  {
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0)
+      return 0;
+    if (!S_ISDIR(st.st_mode))
+      return 0;
+
+    DIR* dir = opendir(path.c_str());
+    if (!dir)
+      return 0;
+
+    uint64_t total = 0;
+    struct dirent* de;
+    while ((de = readdir(dir)) != nullptr) {
+      if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+        continue;
+
+      std::string child = path;
+      child += "/";
+      child += de->d_name;
+
+      struct stat stChild;
+      if (stat(child.c_str(), &stChild) != 0)
+        continue;
+      if (S_ISREG(stChild.st_mode)) {
+        total += static_cast<uint64_t>(stChild.st_size);
+      }
+    }
+
+    closedir(dir);
+    return total;
+  }
+#endif
 }
 
 // Optional framebuffer hash debug helper (mirrors CConnection)
@@ -135,11 +200,11 @@ static void logFBHashDebug(const char* tag,
     snprintf(hexBuf + i * 2, 3, "%02x", tmp[i]);
   hexBuf[n * 2] = '\0';
 
-  vlog.info("FBHASH %s: rect=[%d,%d-%d,%d] id=%llu bytes[0:%zu]=%s",
-            tag,
-            r.tl.x, r.tl.y, r.br.x, r.br.y,
-            (unsigned long long)cacheId,
-            n, hexBuf);
+  vlog.debug("FBHASH %s: rect=[%d,%d-%d,%d] id=%llu bytes[0:%zu]=%s",
+             tag,
+             r.tl.x, r.tl.y, r.br.x, r.br.y,
+             (unsigned long long)cacheId,
+             n, hexBuf);
 }
 
 DecodeManager::DecodeManager(CConnection *conn_) :
@@ -245,6 +310,27 @@ DecodeManager::DecodeManager(CConnection *conn_) :
       vlog.info("Client PersistentCache v3: mem=%zuMB, disk=%zuMB, shard=%zuMB%s",
                 pcMemSizeMB, effectiveDiskMB, pcShardSizeMB,
                 pcPathOverride.empty() ? "" : " (custom path)");
+
+#if !defined(WIN32)
+      // Warn if the requested disk cache size would likely fill the
+      // filesystem (taking into account that deleting the existing cache
+      // would recover space). We warn but continue.
+      const std::string& cacheDir = persistentCache->getCacheDirectory();
+      uint64_t freeBytes = 0;
+      uint64_t existingCacheBytes = getDirectorySizeBytes(cacheDir);
+      if (getFilesystemFreeBytes(cacheDir, &freeBytes)) {
+        uint64_t requestedBytes = bytesFromMBClamped(static_cast<uint64_t>(effectiveDiskMB));
+        uint64_t maxReasonableBytes = freeBytes + existingCacheBytes;
+        if (requestedBytes != UINT64_MAX && requestedBytes > maxReasonableBytes) {
+          vlog.info("PersistentCacheDiskSize warning: requested=%zuMB but filesystem has only %s free + %s current cache (cache dir %s)",
+                    effectiveDiskMB,
+                    core::iecPrefix(freeBytes, "B").c_str(),
+                    core::iecPrefix(existingCacheBytes, "B").c_str(),
+                    cacheDir.c_str());
+        }
+      }
+#endif
+
       // NOTE: Disk loading is DEFERRED until the server negotiates
       // PersistentCache protocol. This avoids blocking startup and wasting
       // I/O when connecting to servers that don't support PersistentCache.
@@ -398,13 +484,13 @@ bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
     size_t n2 = std::min<size_t>(8, afterHash.size());
     for (size_t i = 0; i < n2; ++i)
       after64 = (after64 << 8) | afterHash[i];
-    vlog.info("FBDBG DECODE encoding=%d rect=[%d,%d-%d,%d] region=[%d,%d-%d,%d] before=%016llx after=%016llx",
-              encoding,
-              r.tl.x, r.tl.y, r.br.x, r.br.y,
-              hashRect.tl.x, hashRect.tl.y,
-              hashRect.br.x, hashRect.br.y,
-              (unsigned long long)before64,
-              (unsigned long long)after64);
+    vlog.debug("FBDBG DECODE encoding=%d rect=[%d,%d-%d,%d] region=[%d,%d-%d,%d] before=%016llx after=%016llx",
+               encoding,
+               r.tl.x, r.tl.y, r.br.x, r.br.y,
+               hashRect.tl.x, hashRect.tl.y,
+               hashRect.br.x, hashRect.br.y,
+               (unsigned long long)before64,
+               (unsigned long long)after64);
   }
 
   lock.lock();
@@ -1284,18 +1370,18 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
     // Unified cache engine disabled; treat as a miss so tests can still
     // reason about protocol behaviour when caches are turned off.
     recordCacheMiss(ccStats);
-    vlog.info("ContentCache cache miss for ID %llu (cache disabled) rect=[%d,%d-%d,%d]",
-              (unsigned long long)cacheId,
-              r.tl.x, r.tl.y, r.br.x, r.br.y);
+    vlog.debug("ContentCache cache miss for ID %llu (cache disabled) rect=[%d,%d-%d,%d]",
+               (unsigned long long)cacheId,
+               r.tl.x, r.tl.y, r.br.x, r.br.y);
     return;
   }
 
   const GlobalClientPersistentCache::CachedPixels* entry = persistentCache->getByKey(key);
   if (!entry || entry->pixels.empty()) {
     recordCacheMiss(ccStats);
-    vlog.info("ContentCache cache miss for ID %llu rect=[%d,%d-%d,%d]",
-              (unsigned long long)cacheId,
-              r.tl.x, r.tl.y, r.br.x, r.br.y);
+    vlog.debug("ContentCache cache miss for ID %llu rect=[%d,%d-%d,%d]",
+               (unsigned long long)cacheId,
+               r.tl.x, r.tl.y, r.br.x, r.br.y);
 
     // Request missing data from server so we can populate the cache.
     // Without this, the client stays out of sync and simply displays nothing/garbage.
@@ -1309,9 +1395,9 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
   }
  
   recordCacheHit(ccStats);
-  vlog.info("ContentCache cache hit for ID %llu rect=[%d,%d-%d,%d]",
-            (unsigned long long)cacheId,
-            r.tl.x, r.tl.y, r.br.x, r.br.y);
+  vlog.debug("ContentCache cache hit for ID %llu rect=[%d,%d-%d,%d]",
+             (unsigned long long)cacheId,
+             r.tl.x, r.tl.y, r.br.x, r.br.y);
 
   // Blit cached pixels to framebuffer at target position. CachedPixels
   // stores stride in pixels for its internal buffer.
@@ -1358,10 +1444,10 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   }
 
   if (hashId != cacheId) {
-    vlog.info("ContentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu",
-              r.tl.x, r.tl.y, r.br.x, r.br.y,
-              (unsigned long long)cacheId,
-              (unsigned long long)hashId);
+    vlog.debug("ContentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu",
+               r.tl.x, r.tl.y, r.br.x, r.br.y,
+               (unsigned long long)cacheId,
+               (unsigned long long)hashId);
     return;
   }
 
@@ -1412,9 +1498,9 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
                           entry.width, entry.height, entry.stridePixels,
                           /*isPersistable=*/false);  // Session-only
 
-  vlog.info("ContentCache storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
-            r.tl.x, r.tl.y, r.br.x, r.br.y,
-            (unsigned long long)cacheId);
+  vlog.debug("ContentCache storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
+             r.tl.x, r.tl.y, r.br.x, r.br.y,
+             (unsigned long long)cacheId);
   
   // Proactively send any eviction notifications triggered by this insert.
   // This ensures timely notification to the server instead of waiting for

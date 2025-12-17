@@ -105,7 +105,7 @@ echo "  DISPLAY: :$DISPLAY_NUM (isolated test X server)"
 echo ""
 
 # Run viewer on the test display so the window stays confined to :${DISPLAY_NUM}
-DISPLAY=:$DISPLAY_NUM timeout 10 "$VIEWER_BIN" \
+DISPLAY=:$DISPLAY_NUM TIGERVNC_VIEWER_DEBUG_LOG=1 timeout 10 "$VIEWER_BIN" \
     "127.0.0.1::$VNC_PORT" \
     "Shared=1" \
     "PreferredEncoding=ZRLE" \

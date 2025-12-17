@@ -390,6 +390,7 @@ def run_test_with_viewer(display_num: int = 998, port_num: int = 6898,
         
         # Set DISPLAY to viewer window server
         env = os.environ.copy()
+        env['TIGERVNC_VIEWER_DEBUG_LOG'] = '1'
         env['DISPLAY'] = f':{viewer_display_num}'
         
         log_file = open(viewer_log, 'w')

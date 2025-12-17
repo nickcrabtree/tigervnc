@@ -116,6 +116,7 @@ CConn::CConn()
   : serverPort(0), sock(nullptr), desktop(nullptr),
     updateCount(0), pixelCount(0),
     lastServerEncoding((unsigned int)-1),
+    hourlyStatsTimer(this, &CConn::handleHourlyStats),
     bpsEstimate(20000000),
     verificationInProgress_(false), savedFBWidth_(0), savedFBHeight_(0)
 {
@@ -162,6 +163,8 @@ CConn::CConn()
 
 CConn::~CConn()
 {
+  hourlyStatsTimer.stop();
+
   // Dump framebuffer/cache statistics at the end of the session so that
   // end-to-end tests (and users) can see actual bandwidth savings.
   // This mirrors the server-side behaviour where VNCServerST logs
@@ -351,6 +354,44 @@ void CConn::logFramebufferStats()
   logDecodeStats();
 }
 
+void CConn::handleHourlyStats(core::Timer* t)
+{
+  (void)t;
+
+  vlog.info("Hourly framebuffer statistics:");
+  logFramebufferStats();
+
+  if (sock) {
+    struct timeval now;
+    gettimeofday(&now, nullptr);
+
+    unsigned long long elapsedUsec =
+      (unsigned long long)(now.tv_sec - sessionStartTime.tv_sec) * 1000000ULL +
+      (unsigned long long)(now.tv_usec - sessionStartTime.tv_usec);
+    if (elapsedUsec == 0)
+      elapsedUsec = 1;
+
+    double seconds = (double)elapsedUsec / 1e6;
+    uint64_t rxBytes = sock->inStream().pos();
+    uint64_t txBytes = sock->outStream().bytesWritten();
+
+    double rxBitsPerSec = (double)rxBytes * 8.0 / seconds;
+    double txBitsPerSec = (double)txBytes * 8.0 / seconds;
+
+    vlog.info("Hourly network summary: duration=%.1fs, rx=%s, tx=%s",
+              seconds,
+              core::iecPrefix(rxBytes, "B").c_str(),
+              core::iecPrefix(txBytes, "B").c_str());
+    vlog.info("Hourly network throughput: rx≈%d kbit/s, tx≈%d kbit/s",
+              (int)(rxBitsPerSec / 1000.0),
+              (int)(txBitsPerSec / 1000.0));
+  }
+
+  // Re-arm for the next hour without accumulating drift
+  if (t)
+    t->repeat();
+}
+
 void CConn::socketEvent(FL_SOCKET fd, void *data)
 {
   CConn *cc;
@@ -460,6 +501,10 @@ void CConn::initDone()
   vlog.info("Client version: %s", BUILD_VERSION);
   vlog.info("Server name: %s", server.name());
   vlog.info("Server protocol: %d.%d", server.majorVersion, server.minorVersion);
+
+  // Periodic stats reporting so long-running sessions still emit bandwidth/
+  // cache statistics even if the viewer is never cleanly exited.
+  hourlyStatsTimer.start(3600 * 1000);
 
   // If using AutoSelect with old servers, start in FullColor
   // mode. See comment in autoSelectFormatAndEncoding. 

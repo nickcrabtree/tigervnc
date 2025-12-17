@@ -124,25 +124,25 @@ void CConnection::setFramebuffer(ModifiablePixelBuffer* fb)
 
     const uint8_t black[4] = { 0, 0, 0, 0 };
 
-    vlog.info("setFramebuffer: old %dx%d, new %dx%d",
-              framebuffer->width(), framebuffer->height(),
-              fb->width(), fb->height());
+    vlog.debug("setFramebuffer: old %dx%d, new %dx%d",
+               framebuffer->width(), framebuffer->height(),
+               fb->width(), fb->height());
 
     // Copy still valid area
 
     rect = fb->getRect();
     rect = rect.intersect(framebuffer->getRect());
-    vlog.info("setFramebuffer: copying overlap rect [%d,%d-%d,%d]",
-              rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
+    vlog.debug("setFramebuffer: copying overlap rect [%d,%d-%d,%d]",
+               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
     data = framebuffer->getBuffer(framebuffer->getRect(), &stride);
-    vlog.info("setFramebuffer: old framebuffer stride=%d, data ptr=%p", stride, data);
+    vlog.debug("setFramebuffer: old framebuffer stride=%d, data ptr=%p", stride, data);
     
     // Sample a few pixels from the old framebuffer before copy
     if (rect.width() >= 800 && rect.height() >= 860) {
       int bytesPerPixel = framebuffer->getPF().bpp / 8;
       const uint8_t* sample = data + (859 * stride + 797) * bytesPerPixel;
-      vlog.info("setFramebuffer: sample old pixel (797,859) = (%d,%d,%d,%d)",
-                sample[0], sample[1], sample[2], sample[3]);
+      vlog.debug("setFramebuffer: sample old pixel (797,859) = (%d,%d,%d,%d)",
+                 sample[0], sample[1], sample[2], sample[3]);
     }
     
     fb->imageRect(rect, data, stride);
@@ -151,8 +151,8 @@ void CConnection::setFramebuffer(ModifiablePixelBuffer* fb)
     if (rect.width() >= 800 && rect.height() >= 860) {
       int newStride;
       const uint8_t* newData = fb->getBuffer(core::Rect(797, 859, 798, 860), &newStride);
-      vlog.info("setFramebuffer: sample new pixel (797,859) = (%d,%d,%d,%d)",
-                newData[0], newData[1], newData[2], newData[3]);
+      vlog.debug("setFramebuffer: sample new pixel (797,859) = (%d,%d,%d,%d)",
+                 newData[0], newData[1], newData[2], newData[3]);
     }
 
     // Black out any new areas
@@ -161,8 +161,8 @@ void CConnection::setFramebuffer(ModifiablePixelBuffer* fb)
       rect.setXYWH(framebuffer->width(), 0,
                    fb->width() - framebuffer->width(),
                    fb->height());
-      vlog.info("setFramebuffer: blacking out right strip [%d,%d-%d,%d]",
-                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
+      vlog.debug("setFramebuffer: blacking out right strip [%d,%d-%d,%d]",
+                 rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
       fb->fillRect(rect, black);
     }
 
@@ -170,8 +170,8 @@ void CConnection::setFramebuffer(ModifiablePixelBuffer* fb)
       rect.setXYWH(0, framebuffer->height(),
                    framebuffer->width(),
                    fb->height() - framebuffer->height());
-      vlog.info("setFramebuffer: blacking out bottom strip [%d,%d-%d,%d]",
-                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
+      vlog.debug("setFramebuffer: blacking out bottom strip [%d,%d-%d,%d]",
+                 rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
       fb->fillRect(rect, black);
     }
   }

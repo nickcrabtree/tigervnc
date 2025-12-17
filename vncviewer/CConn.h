@@ -22,6 +22,7 @@
 
 #include <FL/Fl.H>
 
+#include <core/Timer.h>
 #include <rfb/CConnection.h>
 
 #include "UserDialog.h"
@@ -102,6 +103,8 @@ private:
 
   static void handleUpdateTimeout(void *data);
 
+  void handleHourlyStats(core::Timer* t);
+
 private:
   std::string serverHost;
   int serverPort;
@@ -118,6 +121,9 @@ private:
  
   // Per-session timing for aggregate bandwidth statistics
   struct timeval sessionStartTime;
+
+  // Periodic stats logging (once per hour)
+  core::MethodTimer<CConn> hourlyStatsTimer;
 
   struct timeval updateStartTime;
   size_t updateStartPos;

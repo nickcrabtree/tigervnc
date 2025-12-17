@@ -73,6 +73,7 @@ def _run_lossy_tight_viewer(
 
     log_path = artifacts.logs_dir / f"{name}.log"
     env = os.environ.copy()
+    env["TIGERVNC_VIEWER_DEBUG_LOG"] = "1"
     env["DISPLAY"] = f":{display_for_viewer}"
 
     print(f"  Starting {name} (Tight+JPEG)...")

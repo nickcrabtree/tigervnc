@@ -301,8 +301,15 @@ namespace rfb {
     // Cold entries - evicted from ARC but still on disk
     std::unordered_set<std::vector<uint8_t>, HashVectorHasher> coldEntries_;
     
-    // Dirty entry tracking for incremental saves
+    // Dirty entry tracking for incremental saves (payloads needing to be
+    // appended to shard files).
     std::unordered_set<std::vector<uint8_t>, HashVectorHasher> dirtyEntries_;
+
+    // True when indexMap_ has changes that must be persisted to index.dat.
+    // We keep this separate from dirtyEntries_ so that if the disk becomes
+    // full after writing shard payloads, we can retry saving the index later
+    // without re-appending duplicate payloads.
+    bool indexDirty_;
     
     // Shard management
     uint16_t currentShardId_;  // Current shard being written to

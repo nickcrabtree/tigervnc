@@ -132,6 +132,7 @@ def run_cpp_viewer(viewer_path: str, port: int, artifacts, tracker, name: str,
 
     log_path = artifacts.logs_dir / f"{name}.log"
     env = os.environ.copy()
+    env["TIGERVNC_VIEWER_DEBUG_LOG"] = "1"
     env["DISPLAY"] = f":{display_for_viewer}"
 
     print(f"  Starting {name} on :{display_for_viewer} -> port {port}...")
