@@ -90,6 +90,7 @@ def _run_cpp_viewer(
     persistent_cache: int,
     persistent_cache_size_mb: int,
     lossless: bool = False,
+    force_tight_jpeg: bool = False,
     persistent_cache_path: str | None = None,
 ):
     """Launch the C++ viewer with specified cache configuration.
@@ -123,6 +124,18 @@ def _run_cpp_viewer(
             "FullColor=1",             # keep full colour
             "NoJPEG=1",                # disable lossy JPEG in Tight
             "QualityLevel=9",          # highest quality if JPEG ever used
+        ])
+
+    # Optional lossy stress mode: force Tight encoding with JPEG enabled.
+    # This is useful for reproducing real-world WAN corruption cases.
+    if force_tight_jpeg:
+        cmd.extend([
+            "AutoSelect=0",            # disable auto tuning
+            "PreferredEncoding=Tight", # force Tight
+            "FullColor=1",             # keep full colour
+            "NoJPEG=0",                # allow JPEG in Tight
+            "QualityLevel=1",          # low quality => ensure JPEG path is exercised
+            "CompressLevel=9",         # aggressive compression
         ])
 
     log_path = artifacts.logs_dir / f"{name}.log"
@@ -624,10 +637,11 @@ def main() -> int:
     parser.add_argument(
         "--scenario",
         default="cache",
-        choices=["cache", "browser", "image_toggle"],
+        choices=["cache", "browser", "image_toggle", "tiled_logos"],
         help=(
             "Content scenario: cache (xterm cache_hits_minimal), "
-            "browser (long article scroll), or image_toggle (two-picture toggle). "
+            "browser (long article scroll), image_toggle (two-picture toggle), "
+            "or tiled_logos (repeat logo images across the desktop). "
             "Default: cache"
         ),
     )
@@ -650,6 +664,32 @@ def main() -> int:
         help=(
             "Geometry for the X server that hosts the viewer windows. "
             "Defaults to --viewer-geometry but can be larger to allow window resizes."
+        ),
+    )
+    parser.add_argument(
+        "--content-geometry",
+        default=None,
+        help=(
+            "Geometry for the content server desktop (WIDTHxHEIGHT). "
+            "Defaults to --viewer-geometry."
+        ),
+    )
+    parser.add_argument(
+        "--refresh-cache-viewer-at-checkpoint",
+        type=int,
+        default=0,
+        help=(
+            "If non-zero, send SIGUSR2 to the cache-on viewer before capturing the "
+            "given checkpoint to request a full refresh (server resend)."
+        ),
+    )
+    parser.add_argument(
+        "--refresh-delay-sec",
+        type=float,
+        default=0.0,
+        help=(
+            "Seconds to wait after requesting a refresh before capturing screenshots "
+            "(default: 0.0)."
         ),
     )
     parser.add_argument(
@@ -676,6 +716,14 @@ def main() -> int:
         help=(
             "Force both viewers to request lossless encodings via their own "
             "command-line options (PreferredEncoding=ZRLE, NoJPEG, etc.)",
+        ),
+    )
+    parser.add_argument(
+        "--force-tight-jpeg",
+        action="store_true",
+        help=(
+            "Force both viewers to use Tight encoding with JPEG enabled and aggressive "
+            "compression (AutoSelect=0, PreferredEncoding=Tight, NoJPEG=0, QualityLevel=1, CompressLevel=9)."
         ),
     )
     parser.add_argument(
@@ -755,6 +803,20 @@ def main() -> int:
         print(f"Invalid viewer geometry '{args.viewer_geometry}': {exc}")
         return 1
 
+    # Parse content server geometry (WIDTHxHEIGHT). Default: viewer geometry
+    # for backward compatibility.
+    if args.content_geometry is None:
+        content_width = viewer_width
+        content_height = viewer_height
+    else:
+        try:
+            content_parts = args.content_geometry.lower().split("x")
+            content_width = int(content_parts[0])
+            content_height = int(content_parts[1])
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"Invalid content geometry '{args.content_geometry}': {exc}")
+            return 1
+
     # Parse viewer display geometry, which may be larger to allow resizes.
     if args.viewer_display_geometry is None:
         viewer_display_width = viewer_width
@@ -778,7 +840,7 @@ def main() -> int:
             "bb_content",
             artifacts,
             tracker,
-            geometry=f"{viewer_width}x{viewer_height}",
+            geometry=f"{content_width}x{content_height}",
             log_level="*:stderr:30",
             server_choice=server_mode,
         )
@@ -832,6 +894,10 @@ def main() -> int:
             v_b_content = 1
             v_b_persistent = 1
 
+        if args.lossless and args.force_tight_jpeg:
+            print("\n✗ FAIL: --lossless and --force-tight-jpeg are mutually exclusive")
+            return 1
+
         viewer_ground = _run_cpp_viewer(
             cpp_viewer,
             args.port_content,
@@ -843,6 +909,7 @@ def main() -> int:
             persistent_cache=0,
             persistent_cache_size_mb=256,
             lossless=args.lossless,
+            force_tight_jpeg=args.force_tight_jpeg,
         )
         if viewer_ground.poll() is not None:
             print("\n✗ FAIL: Ground-truth viewer exited prematurely")
@@ -859,6 +926,7 @@ def main() -> int:
             persistent_cache=v_b_persistent,
             persistent_cache_size_mb=256,
             lossless=args.lossless,
+            force_tight_jpeg=args.force_tight_jpeg,
             persistent_cache_path=str(pcache_path) if v_b_persistent else None,
         )
         if viewer_cache.poll() is not None:
@@ -940,6 +1008,19 @@ def main() -> int:
                         )
                     finally:
                         static_runner.cleanup()
+                elif args.scenario == "tiled_logos":
+                    static_runner = StaticScenarioRunner(
+                        args.display_content,
+                        verbose=args.verbose,
+                    )
+                    try:
+                        static_runner.tiled_logos_test(
+                            tiles=12,
+                            duration=float(args.duration),
+                            delay_between=1.0,
+                        )
+                    finally:
+                        static_runner.cleanup()
                 else:
                     runner = ScenarioRunner(args.display_content, verbose=args.verbose)
                     try:
@@ -983,6 +1064,46 @@ def main() -> int:
                 pause_event.set()
                 # Allow a short settling time so any in-flight damage completes
                 time.sleep(0.5)
+
+            # Optionally request a full refresh (server resend) on the cache-on
+            # viewer before capturing this checkpoint. This mirrors the viewer's
+            # built-in "Refresh screen" action, but is triggered via SIGUSR2 so
+            # the test can drive it non-interactively.
+            if args.refresh_cache_viewer_at_checkpoint == i:
+                import signal
+
+                if not quiet:
+                    print(
+                        f"  Requesting cache-viewer full refresh (SIGUSR2) at checkpoint {i}..."
+                    )
+                _log_checkpoint_event(artifacts, i, "cache_refresh_sigusr2")
+                try:
+                    os.kill(viewer_cache.pid, signal.SIGUSR2)
+                except Exception as exc:
+                    print(f"\n✗ FAIL: Could not signal cache viewer for refresh: {exc}")
+                    return 1
+
+                # Like the refresh-stability test, ensure the viewer actually
+                # processes the refresh flag promptly even if the scene is
+                # temporarily static (e.g. browser paused for capture). We do
+                # this by nudging the content-server pointer within the already-
+                # ignored top-left region, which should generate a harmless
+                # cursor-position update.
+                _warp_pointer_to_display(
+                    args.display_content,
+                    6,
+                    6,
+                    "content server pointer (wake refresh)",
+                )
+                _warp_pointer_to_display(
+                    args.display_content,
+                    5,
+                    5,
+                    "content server pointer (park)",
+                )
+
+                if args.refresh_delay_sec > 0:
+                    time.sleep(args.refresh_delay_sec)
 
             # As an extra safety net, re-park the pointers on both displays
             # immediately before each checkpoint capture. This ensures that any
@@ -1135,14 +1256,36 @@ def main() -> int:
                 if not quiet:
                     print(f"  Checkpoint {idx}: OK (identical)")
             else:
+                # In --lossless mode, we intentionally force deterministic
+                # lossless encodings (ZRLE, NoJPEG). Any mismatch (outside the
+                # ignore masks) is a real correctness problem and must fail.
+                if args.lossless:
+                    if not quiet:
+                        ssim_str = f"{result.ssim_score:.3f}" if result.ssim_score is not None else "N/A"
+                        phash_str = str(result.perceptual_hash_distance) if result.perceptual_hash_distance is not None else "N/A"
+                        print(
+                            f"  Checkpoint {idx}: FAIL - LOSSLESS MISMATCH\n"
+                            f"    {result.diff_pixels} pixels differ ({result.diff_pct:.4f}%), "
+                            f"SSIM={ssim_str}, phash_dist={phash_str}"
+                        )
+                    if first_failure is None:
+                        first_failure = (idx, result)
+                    continue
+
                 # Use perceptual metrics to distinguish between:
                 # 1. Acceptable: JPEG compression artifacts (high SSIM, low phash distance)
                 # 2. Unacceptable: Structural corruption (black regions AND high-contrast edges)
                 
-                # Detect severe structural corruption (both indicators required)
+                # Detect corruption patterns. Some corruption is "black rect"
+                # style (needs both indicators to avoid false positives), but
+                # Tight/JPEG issues can also manifest as small localized magenta/
+                # cyan color shifts.
                 has_corruption = (
-                    result.has_solid_black_regions and
-                    result.has_high_contrast_edges
+                    result.has_large_color_shifts
+                    or (
+                        result.has_solid_black_regions
+                        and result.has_high_contrast_edges
+                    )
                 )
                 
                 # Check perceptual similarity (even if pixel-level diff is high)
@@ -1172,7 +1315,10 @@ def main() -> int:
                     
                     # Build clear failure reason
                     if has_corruption:
-                        reason = "CORRUPTION DETECTED (black regions + high-contrast edges)"
+                        if result.has_large_color_shifts:
+                            reason = "CORRUPTION DETECTED (large localized color shifts)"
+                        else:
+                            reason = "CORRUPTION DETECTED (black regions + high-contrast edges)"
                     elif not is_perceptually_similar:
                         if result.ssim_score is not None and result.ssim_score < 0.95:
                             reason = f"LOW STRUCTURAL SIMILARITY (SSIM={ssim_str} < 0.95)"

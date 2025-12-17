@@ -1,0 +1,684 @@
+#!/usr/bin/env python3
+"""End-to-end refresh stability test.
+
+This test runs a single C++ viewer against a content server, captures a
+screenshot, triggers a full refresh, captures again, and compares the two.
+
+Why this exists:
+- Some real-world corruption is transient and can change after a full refresh.
+- Two-viewer parity tests can miss bugs if both viewers display the same wrong
+  pixels.
+
+Pass criteria:
+- Lossless mode: pixel-identical before/after (outside ignore masks)
+- Lossy mode: perceptually similar AND no corruption patterns detected
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import signal
+import sys
+import threading
+import time
+from pathlib import Path
+from typing import Iterable, Tuple
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+from framework import (
+    ArtifactManager,
+    PreflightError,
+    ProcessTracker,
+    BUILD_DIR,
+    VNCServer,
+    check_display_available,
+    check_port_available,
+    preflight_check_cpp_only,
+)
+from scenarios import ScenarioRunner
+from scenarios_static import StaticScenarioRunner
+from screenshot_compare import compare_screenshots
+
+from PIL import Image
+
+
+def _select_server_mode() -> str:
+    """Choose server mode: local Xnjcvnc if available, else system Xtigervnc."""
+
+    local_server_symlink = BUILD_DIR / "unix" / "vncserver" / "Xnjcvnc"
+    local_server_actual = BUILD_DIR / "unix" / "xserver" / "hw" / "vnc" / "Xnjcvnc"
+    if local_server_symlink.exists() or local_server_actual.exists():
+        return "local"
+    return "system"
+
+
+def _ensure_screenshot_tool(binaries) -> str:
+    """Ensure at least one screenshot tool is available.
+
+    Returns a string identifying which backend to use: "xwd+convert" or "import".
+    """
+
+    has_xwd = "xwd" in binaries
+    has_convert = "convert" in binaries
+
+    if has_xwd and has_convert:
+        return "xwd+convert"
+
+    # Fallback: detect ImageMagick import directly via PATH
+    from shutil import which
+
+    if which("import") is not None:
+        return "import"
+
+    raise PreflightError(
+        "No suitable screenshot tool found. Install ImageMagick (xwd+convert or import)."
+    )
+
+
+def _run_cpp_viewer(
+    viewer_path: str,
+    port: int,
+    artifacts: ArtifactManager,
+    tracker: ProcessTracker,
+    name: str,
+    display_for_viewer: int,
+    content_cache: int,
+    persistent_cache: int,
+    persistent_cache_size_mb: int,
+    lossless: bool = False,
+    force_tight_jpeg: bool = False,
+    persistent_cache_path: str | None = None,
+):
+    """Launch the C++ viewer with specified cache and encoding configuration."""
+
+    cmd = [
+        viewer_path,
+        f"127.0.0.1::{port}",
+        "Shared=1",
+        "Log=*:stderr:30",
+        f"ContentCache={content_cache}",
+        f"PersistentCache={persistent_cache}",
+    ]
+
+    if persistent_cache:
+        cmd.append(f"PersistentCacheSize={persistent_cache_size_mb}")
+        if persistent_cache_path:
+            cmd.append(f"PersistentCachePath={persistent_cache_path}")
+
+    if lossless and force_tight_jpeg:
+        raise PreflightError("--lossless and --force-tight-jpeg are mutually exclusive")
+
+    if lossless:
+        cmd.extend(
+            [
+                "AutoSelect=0",
+                "PreferredEncoding=ZRLE",
+                "FullColor=1",
+                "NoJPEG=1",
+                "QualityLevel=9",
+            ]
+        )
+
+    if force_tight_jpeg:
+        cmd.extend(
+            [
+                "AutoSelect=0",
+                "PreferredEncoding=Tight",
+                "FullColor=1",
+                "NoJPEG=0",
+                "QualityLevel=1",
+                "CompressLevel=9",
+            ]
+        )
+
+    log_path = artifacts.logs_dir / f"{name}.log"
+    env = os.environ.copy()
+    env["DISPLAY"] = f":{display_for_viewer}"
+
+    import subprocess
+
+    if artifacts.logs_dir is not None:
+        log_file = open(log_path, "w")
+    else:
+        log_file = subprocess.DEVNULL
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+        preexec_fn=os.setpgrp,
+        env=env,
+    )
+
+    tracker.register(name, proc)
+    time.sleep(2.0)
+    return proc
+
+
+def _find_window_id_for_pid(display: int, pid: int) -> str:
+    """Find a window ID on the given display for a given PID."""
+
+    import subprocess
+
+    env = {**os.environ, "DISPLAY": f":{display}"}
+    deadline = time.time() + 15.0
+
+    while time.time() < deadline:
+        result = subprocess.run(
+            ["xdotool", "search", "--pid", str(pid)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+        stdout = result.stdout.strip()
+        if result.returncode == 0 and stdout:
+            lines = [l for l in stdout.splitlines() if l.strip()]
+            if lines:
+                return lines[0].strip()
+        time.sleep(0.5)
+
+    raise PreflightError(f"Could not find a window for viewer PID {pid} on :{display}")
+
+
+def _frame_crop_geometry(display: int, win_id: str) -> tuple[dict, str]:
+    """Return frame extents and optional ImageMagick crop geometry."""
+
+    import subprocess
+
+    env = {**os.environ, "DISPLAY": f":{display}"}
+
+    extents: dict[str, int] = {"left": 0, "right": 0, "top": 0, "bottom": 0}
+    crop_geom = ""
+
+    try:
+        result = subprocess.run(
+            ["xprop", "-id", win_id, "_NET_FRAME_EXTENTS"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+        if result.returncode != 0:
+            return extents, crop_geom
+
+        line = "".join(result.stdout.splitlines())
+        if "_NET_FRAME_EXTENTS" not in line or "=" not in line:
+            return extents, crop_geom
+
+        _, values = line.split("=", 1)
+        parts = [p.strip() for p in values.split(",")]
+        if len(parts) != 4:
+            return extents, crop_geom
+
+        left, right, top, bottom = (int(p) for p in parts)
+        extents.update({"left": left, "right": right, "top": top, "bottom": bottom})
+
+        if left == 0 and right == 0 and top == 0 and bottom == 0:
+            return extents, crop_geom
+
+        result = subprocess.run(
+            ["xwininfo", "-id", win_id],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+        if result.returncode != 0:
+            return extents, crop_geom
+
+        width = height = None
+        for l in result.stdout.splitlines():
+            l = l.strip()
+            if l.startswith("Width:"):
+                try:
+                    width = int(l.split()[1])
+                except Exception:
+                    pass
+            elif l.startswith("Height:"):
+                try:
+                    height = int(l.split()[1])
+                except Exception:
+                    pass
+
+        if width is None or height is None:
+            return extents, crop_geom
+
+        inner_w = max(1, width - left - right)
+        inner_h = max(1, height - top - bottom)
+        crop_geom = f"{inner_w}x{inner_h}+{left}+{top}"
+        return extents, crop_geom
+
+    except Exception:
+        return extents, crop_geom
+
+
+def _capture_window(display: int, backend: str, win_id: str, outfile: Path) -> Path:
+    """Capture a screenshot of a single viewer window."""
+
+    import subprocess
+
+    env = {**os.environ, "DISPLAY": f":{display}"}
+    outfile = outfile.with_suffix(".png")
+    outfile.parent.mkdir(parents=True, exist_ok=True)
+
+    _, crop_geom = _frame_crop_geometry(display, win_id)
+
+    if backend == "xwd+convert":
+        if crop_geom:
+            cmd = (
+                f"xwd -silent -id {win_id} | "
+                f"convert xwd:- -crop {crop_geom} +repage png:{outfile}"
+            )
+        else:
+            cmd = f"xwd -silent -id {win_id} | convert xwd:- png:{outfile}"
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=90.0,
+        )
+    elif backend == "import":
+        cmd = ["import", "-window", win_id, str(outfile)]
+        result = subprocess.run(
+            cmd,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=90.0,
+        )
+        if result.returncode == 0 and crop_geom:
+            try:
+                subprocess.run(
+                    ["convert", str(outfile), "-crop", crop_geom, "+repage", str(outfile)],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=30.0,
+                )
+            except Exception:
+                pass
+    else:
+        raise PreflightError(f"Unknown screenshot backend: {backend}")
+
+    if result.returncode != 0:
+        raise PreflightError(
+            f"Screenshot capture failed for window {win_id} (backend={backend}): {result.stderr.strip()}"
+        )
+
+    return outfile
+
+
+def _arrange_single_viewer_window(display: int, win_id: str, total_width: int, total_height: int) -> None:
+    """Resize a single viewer window to fill the display (below the top margin)."""
+
+    import subprocess
+
+    env = {**os.environ, "DISPLAY": f":{display}"}
+
+    margin_top = 40
+    usable_height = max(1, total_height - margin_top)
+
+    cmd = [
+        "wmctrl",
+        "-i",
+        "-r",
+        win_id,
+        "-e",
+        f"0,0,{margin_top},{total_width},{usable_height}",
+    ]
+    result = subprocess.run(
+        cmd,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10.0,
+    )
+    if result.returncode != 0:
+        raise PreflightError(f"Failed to move/resize window {win_id}: {result.stderr.strip()}")
+
+    time.sleep(1.0)
+
+
+def _defocus_and_hide_cursor(display: int, helper_win: str) -> None:
+    import subprocess
+
+    env = {**os.environ, "DISPLAY": f":{display}"}
+
+    result = subprocess.run(
+        ["wmctrl", "-i", "-a", helper_win],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10.0,
+    )
+    if result.returncode != 0:
+        raise PreflightError(f"Failed to activate helper window {helper_win}: {result.stderr.strip()}")
+
+    result = subprocess.run(
+        ["xdotool", "mousemove", "--window", helper_win, "5", "5"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10.0,
+    )
+    if result.returncode != 0:
+        raise PreflightError(f"Failed to move cursor into helper window {helper_win}: {result.stderr.strip()}")
+
+    time.sleep(0.2)
+
+
+def _warp_pointer_to_display(display: int, x: int, y: int, what: str) -> None:
+    import subprocess
+
+    env = {**os.environ, "DISPLAY": f":{display}"}
+
+    result = subprocess.run(
+        ["xdotool", "mousemove", str(x), str(y)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10.0,
+    )
+    if result.returncode != 0:
+        raise PreflightError(
+            f"Failed to warp pointer on display :{display} for {what}: {result.stderr.strip()}"
+        )
+
+    time.sleep(0.1)
+
+
+def _build_ignore_rects(img_w: int, img_h: int, scenario: str) -> list[Tuple[int, int, int, int]]:
+    ignore_rects: list[Tuple[int, int, int, int]] = [
+        (0, 0, 79, 79),
+        (max(0, img_w - 4), 0, max(0, img_w - 1), max(0, img_h - 1)),
+    ]
+
+    if scenario == "browser":
+        overlay_left = 80
+        overlay_top = 0
+        overlay_right = min(img_w - 1, 343)
+        overlay_bottom = min(img_h - 1, 60)
+        ignore_rects.append((overlay_left, overlay_top, overlay_right, overlay_bottom))
+
+        footer_top = max(0, img_h - 220)
+        footer_bottom = max(0, img_h - 1)
+        ignore_rects.append((0, footer_top, max(0, img_w - 1), footer_bottom))
+
+    return ignore_rects
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="End-to-end refresh stability test (single viewer before/after refresh)",
+    )
+    parser.add_argument("--display-content", type=int, default=998)
+    parser.add_argument("--port-content", type=int, default=6898)
+    parser.add_argument("--display-viewer", type=int, default=999)
+    parser.add_argument("--port-viewer", type=int, default=6899)
+    parser.add_argument("--wm", default="openbox")
+    parser.add_argument(
+        "--mode",
+        default="persistent",
+        choices=["none", "content", "persistent", "both"],
+        help="Cache mode for the single viewer under test (default: persistent)",
+    )
+    parser.add_argument(
+        "--scenario",
+        default="tiled_logos",
+        choices=["cache", "browser", "image_toggle", "tiled_logos"],
+    )
+    parser.add_argument("--browser-url", default=None)
+    parser.add_argument("--duration", type=int, default=90)
+    parser.add_argument(
+        "--content-geometry",
+        default="3840x2160",
+        help="Geometry for the content server desktop (WIDTHxHEIGHT)",
+    )
+    parser.add_argument(
+        "--viewer-display-geometry",
+        default="3840x2200",
+        help="Geometry for the viewer window X server (WIDTHxHEIGHT)",
+    )
+    parser.add_argument("--lossless", action="store_true")
+    parser.add_argument("--force-tight-jpeg", action="store_true")
+    parser.add_argument("--capture-after-sec", type=float, default=25.0)
+    parser.add_argument("--settle-before-sec", type=float, default=1.0)
+    parser.add_argument("--refresh-delay-sec", type=float, default=8.0)
+    parser.add_argument("--verbose", action="store_true")
+
+    args = parser.parse_args()
+
+    artifacts = ArtifactManager()
+    artifacts.create()
+
+    try:
+        binaries = preflight_check_cpp_only(verbose=args.verbose)
+        screenshot_backend = _ensure_screenshot_tool(binaries)
+
+        if not check_port_available(args.port_content):
+            raise PreflightError(f"Port {args.port_content} already in use")
+        if not check_port_available(args.port_viewer):
+            raise PreflightError(f"Port {args.port_viewer} already in use")
+        if not check_display_available(args.display_content):
+            raise PreflightError(f"Display :{args.display_content} already in use")
+        if not check_display_available(args.display_viewer):
+            raise PreflightError(f"Display :{args.display_viewer} already in use")
+
+        # Parse geometries
+        try:
+            cw, ch = (int(x) for x in args.content_geometry.lower().split("x"))
+        except Exception as exc:
+            raise PreflightError(f"Invalid --content-geometry '{args.content_geometry}': {exc}")
+
+        try:
+            vw, vh = (int(x) for x in args.viewer_display_geometry.lower().split("x"))
+        except Exception as exc:
+            raise PreflightError(f"Invalid --viewer-display-geometry '{args.viewer_display_geometry}': {exc}")
+
+        tracker = ProcessTracker()
+        server_mode = _select_server_mode()
+
+        # PersistentCache path is isolated under artifacts
+        pcache_path = artifacts.base_dir / "persistentcache"
+
+        server_content = VNCServer(
+            args.display_content,
+            args.port_content,
+            "refresh_content",
+            artifacts,
+            tracker,
+            geometry=f"{cw}x{ch}",
+            log_level="*:stderr:30",
+            server_choice=server_mode,
+        )
+        if not server_content.start() or not server_content.start_session(wm=args.wm):
+            raise PreflightError("Could not start content server")
+
+        server_viewer = VNCServer(
+            args.display_viewer,
+            args.port_viewer,
+            "refresh_viewerwin",
+            artifacts,
+            tracker,
+            geometry=f"{vw}x{vh}",
+            log_level="*:stderr:30",
+            server_choice=server_mode,
+        )
+        if not server_viewer.start() or not server_viewer.start_session(wm=args.wm):
+            raise PreflightError("Could not start viewer window server")
+
+        # Cache configuration for the single viewer
+        if args.mode == "none":
+            v_content = 0
+            v_persistent = 0
+        elif args.mode == "content":
+            v_content = 1
+            v_persistent = 0
+        elif args.mode == "persistent":
+            v_content = 0
+            v_persistent = 1
+        else:  # both
+            v_content = 1
+            v_persistent = 1
+
+        viewer = _run_cpp_viewer(
+            binaries["cpp_viewer"],
+            args.port_content,
+            artifacts,
+            tracker,
+            "viewer_under_test",
+            display_for_viewer=args.display_viewer,
+            content_cache=v_content,
+            persistent_cache=v_persistent,
+            persistent_cache_size_mb=256,
+            lossless=args.lossless,
+            force_tight_jpeg=args.force_tight_jpeg,
+            persistent_cache_path=str(pcache_path) if v_persistent else None,
+        )
+        if viewer.poll() is not None:
+            raise PreflightError("Viewer exited prematurely")
+
+        win_viewer = _find_window_id_for_pid(args.display_viewer, viewer.pid)
+        _arrange_single_viewer_window(args.display_viewer, win_viewer, vw, vh)
+
+        # Focus sentinel window to keep cursor out of viewer
+        helper_proc = server_viewer.run_in_display(
+            ["xterm", "-geometry", "10x1+0+0", "-name", "refresh_focus_sentinel"],
+            name="refresh_focus_sentinel",
+        )
+        helper_win = _find_window_id_for_pid(args.display_viewer, helper_proc.pid)
+        _defocus_and_hide_cursor(args.display_viewer, helper_win)
+
+        _warp_pointer_to_display(args.display_viewer, 5, 5, "viewer display pointer")
+        _warp_pointer_to_display(args.display_content, 5, 5, "content server pointer")
+
+        pause_event = threading.Event()
+
+        def _scenario_thread_body():
+            try:
+                if args.scenario == "browser":
+                    runner = ScenarioRunner(args.display_content, verbose=args.verbose)
+                    try:
+                        runner.browser_scroll_bbc(
+                            duration_sec=args.duration,
+                            url=args.browser_url,
+                            pause_event=pause_event,
+                        )
+                    finally:
+                        runner.cleanup()
+                elif args.scenario == "image_toggle":
+                    static_runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
+                    try:
+                        est_toggles = max(6, int(args.duration / 3))
+                        static_runner.toggle_two_pictures_test(
+                            toggles=est_toggles,
+                            delay_between=2.0,
+                        )
+                    finally:
+                        static_runner.cleanup()
+                elif args.scenario == "tiled_logos":
+                    static_runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
+                    try:
+                        static_runner.tiled_logos_test(
+                            tiles=12,
+                            duration=float(args.duration),
+                            delay_between=1.0,
+                        )
+                    finally:
+                        static_runner.cleanup()
+                else:
+                    runner = ScenarioRunner(args.display_content, verbose=args.verbose)
+                    try:
+                        runner.cache_hits_minimal(duration_sec=args.duration)
+                    finally:
+                        runner.cleanup()
+            except Exception:
+                raise
+
+        scenario_thread = threading.Thread(target=_scenario_thread_body, daemon=True)
+        scenario_thread.start()
+
+        # Wait until it is worth capturing
+        time.sleep(max(0.0, args.capture_after_sec))
+
+        if args.scenario == "browser":
+            pause_event.set()
+            time.sleep(max(0.0, args.settle_before_sec))
+        else:
+            time.sleep(max(0.0, args.settle_before_sec))
+
+        _warp_pointer_to_display(args.display_viewer, 5, 5, "viewer display pointer")
+        _warp_pointer_to_display(args.display_content, 5, 5, "content server pointer")
+
+        before_path = artifacts.screenshots_dir / "before_refresh.png"
+        after_path = artifacts.screenshots_dir / "after_refresh.png"
+        diff_png = artifacts.screenshots_dir / "refresh_diff.png"
+        diff_json = artifacts.reports_dir / "refresh_diff.json"
+
+        before_path = _capture_window(args.display_viewer, screenshot_backend, win_viewer, before_path)
+
+        # Trigger full refresh (non-incremental update request)
+        os.kill(viewer.pid, signal.SIGUSR2)
+        time.sleep(max(0.0, args.refresh_delay_sec))
+
+        after_path = _capture_window(args.display_viewer, screenshot_backend, win_viewer, after_path)
+
+        if args.scenario == "browser":
+            pause_event.clear()
+
+        scenario_thread.join(timeout=args.duration + 30.0)
+
+        # Build ignore rects based on actual image size
+        with Image.open(before_path) as img:
+            img_w, img_h = img.size
+        ignore_rects = _build_ignore_rects(img_w, img_h, args.scenario)
+
+        result = compare_screenshots(
+            before_path,
+            after_path,
+            diff_out=diff_png,
+            json_out=diff_json,
+            ignore_rects=ignore_rects,
+        )
+
+        # Fast path: pixel-identical (outside ignore masks).
+        if result.identical:
+            return 0
+
+        if args.lossless:
+            return 1
+
+        has_corruption = (
+            result.has_large_color_shifts
+            or (result.has_solid_black_regions and result.has_high_contrast_edges)
+        )
+
+        is_perceptually_similar = False
+        if result.ssim_score is not None and result.perceptual_hash_distance is not None:
+            is_perceptually_similar = (result.ssim_score >= 0.95 and result.perceptual_hash_distance < 10)
+
+        if is_perceptually_similar and not has_corruption:
+            return 0
+
+        return 1
+
+    except PreflightError as exc:
+        print(f"\n✗ FAIL: {exc}")
+        print(f"Artifacts saved to: {artifacts.base_dir}")
+        return 1
+    finally:
+        # Best-effort cleanup
+        try:
+            tracker.cleanup_all()
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

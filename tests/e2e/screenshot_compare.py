@@ -31,7 +31,8 @@ class ScreenshotDiffResult:
     perceptual_hash_distance: Optional[int] = None  # Hamming distance (0=identical, >10=different)
     ssim_score: Optional[float] = None  # Structural similarity (1.0=perfect, <0.95=corrupted)
     has_solid_black_regions: bool = False  # Detected solid black rectangles
-    has_high_contrast_edges: bool = False  # Detected abrupt color boundaries
+    has_high_contrast_edges: bool = False  # Detected abrupt grayscale boundaries
+    has_large_color_shifts: bool = False  # Detected abrupt localized RGB color shifts (e.g. magenta/cyan artifacts)
 
 
 def _ensure_png(path: Path) -> Path:
@@ -128,37 +129,123 @@ def _detect_solid_black_regions(diff_pixels_mask: list[tuple[int, int]],
 
 def _detect_high_contrast_edges(img1: Image.Image, img2: Image.Image, 
                                  diff_pixels_mask: list[tuple[int, int]]) -> bool:
-    """Detect abrupt color boundaries indicating structural corruption.
-    
+    """Detect abrupt grayscale boundaries indicating structural corruption.
+
     JPEG artifacts cause gradual color changes. Structural corruption
     (wrong rectangles) causes abrupt boundaries.
     """
     if len(diff_pixels_mask) < 10:
         return False
-    
+
     arr1 = np.array(img1.convert('L'), dtype=np.float64)
     arr2 = np.array(img2.convert('L'), dtype=np.float64)
-    
+
     # Compute gradient magnitude at differing pixels
     gy1, gx1 = np.gradient(arr1)
     gy2, gx2 = np.gradient(arr2)
-    
+
     gradient_mag1 = np.sqrt(gx1**2 + gy1**2)
     gradient_mag2 = np.sqrt(gx2**2 + gy2**2)
-    
+
     # Sample differing pixels and check for high gradients
     high_gradient_count = 0
     sample_size = min(100, len(diff_pixels_mask))
-    
+
     for i in range(0, len(diff_pixels_mask), max(1, len(diff_pixels_mask) // sample_size)):
         x, y = diff_pixels_mask[i]
         # High gradient (>50) indicates abrupt edge
         if gradient_mag1[y, x] > 50 or gradient_mag2[y, x] > 50:
             high_gradient_count += 1
-    
+
     # If >30% of differing pixels are at high-gradient edges, likely structural corruption
     return high_gradient_count > sample_size * 0.3
 
+
+def _is_large_color_shift_pixel(
+    r1: int,
+    g1: int,
+    b1: int,
+    r2: int,
+    g2: int,
+    b2: int,
+    *,
+    max_channel_delta_threshold: int = 80,
+    sum_delta_threshold: int = 120,
+    # Some real-world corruption presents as a *cast* (e.g. pink/magenta) with
+    # max-channel deltas below the strict threshold. Detect this by looking for
+    # a large saturation increase relative to ground truth.
+    sat_after_threshold: int = 70,
+    sat_before_max: int = 20,
+    brightness_min: int = 200,
+) -> bool:
+    """Return True if this pixel indicates a severe localized color shift.
+
+    This is intended to catch "completely wrong colour" regions that can slip
+    past grayscale SSIM + average-hash gating under Tight/JPEG.
+
+    The thresholds are deliberately high to avoid flagging normal JPEG artifacts.
+    """
+
+    dr = abs(r1 - r2)
+    dg = abs(g1 - g2)
+    db = abs(b1 - b2)
+
+    # Case 1: large absolute RGB delta (strong corruption)
+    if max(dr, dg, db) >= max_channel_delta_threshold and (dr + dg + db) >= sum_delta_threshold:
+        return True
+
+    # Case 2: saturation "explosion" (grey -> pink/magenta casts)
+    sat1 = max(r1, g1, b1) - min(r1, g1, b1)
+    sat2 = max(r2, g2, b2) - min(r2, g2, b2)
+    if sat2 >= sat_after_threshold and sat1 <= sat_before_max and (r2 + g2 + b2) >= brightness_min:
+        return True
+
+    return False
+
+
+def _decide_has_large_color_shifts(
+    tile_color_shift_counts: list[list[int]],
+    *,
+    tile_w: int,
+    tile_h: int,
+    total_color_shift_pixels: int,
+    max_tiles_for_cluster: int = 2,
+    min_total_pixels: int = 100,
+    tile_area_fraction_threshold: float = 0.0005,
+    min_pixels_in_one_tile: int = 50,
+) -> bool:
+    """Decide if the comparison shows large localized color shifts.
+
+    Important: this must remain robust even when overall diff_pct is large (e.g.
+    many small JPEG artifacts). We therefore look for a *cluster* of pixels that
+    satisfy the strong per-pixel criteria.
+    """
+
+    if total_color_shift_pixels <= 0:
+        return False
+
+    max_tile = 0
+    tiles_hit = 0
+    for row in tile_color_shift_counts:
+        for n in row:
+            if n > 0:
+                tiles_hit += 1
+            if n > max_tile:
+                max_tile = n
+
+    tile_area = max(1, tile_w) * max(1, tile_h)
+    per_tile_threshold = max(
+        min_pixels_in_one_tile,
+        int(tile_area * tile_area_fraction_threshold),
+    )
+
+    # Strong signal: many severe-shift pixels inside at least one tile.
+    if max_tile >= per_tile_threshold:
+        return True
+
+    # Weaker-but-still-important signal: a small localized cluster (e.g. small
+    # corrupted text area) that stays within a couple of tiles.
+    return total_color_shift_pixels >= min_total_pixels and tiles_hit <= max_tiles_for_cluster
 
 def compare_screenshots(
     ground_truth: Path,
@@ -234,12 +321,19 @@ def compare_screenshots(
     max_x = -1
     max_y = -1
 
+    # Track diff pixel coordinates for downstream detection heuristics.
+    diff_pixel_coords: list[tuple[int, int]] = []
+
     # 4x4 tiling for localising differences
     tiles_x = 4
     tiles_y = 4
     tile_w = max(1, width // tiles_x)
     tile_h = max(1, height // tiles_y)
     tile_diff_counts = [[0 for _ in range(tiles_x)] for _ in range(tiles_y)]
+
+    # Track severe localized color-shift pixels (magenta/cyan casts, etc.)
+    tile_color_shift_counts = [[0 for _ in range(tiles_x)] for _ in range(tiles_y)]
+    color_shift_pixels = 0
 
     def _ignored(x: int, y: int) -> bool:
         for x0, y0, x1, y1 in norm_ignore:
@@ -259,15 +353,24 @@ def compare_screenshots(
             b = px_cache[x, y]
             if a != b:
                 diff_pixels += 1
+                diff_pixel_coords.append((x, y))
 
                 # Update tile stats
                 tx = min(tiles_x - 1, x // tile_w)
                 ty = min(tiles_y - 1, y // tile_h)
                 tile_diff_counts[ty][tx] += 1
 
+                # Detect severe localized color shifts (e.g. grey -> magenta cast)
+                r1, g1, b1 = a[:3]
+                r2, g2, b2 = b[:3]
+                is_color_shift = _is_large_color_shift_pixel(r1, g1, b1, r2, g2, b2)
+                if is_color_shift:
+                    color_shift_pixels += 1
+                    tile_color_shift_counts[ty][tx] += 1
+
                 if px_diff is not None:
-                    # Mark differing pixels bright red
-                    px_diff[x, y] = (255, 0, 0, 255)
+                    # Mark differing pixels red, but highlight large color shifts as yellow
+                    px_diff[x, y] = (255, 255, 0, 255) if is_color_shift else (255, 0, 0, 255)
                 if x < min_x:
                     min_x = x
                 if y < min_y:
@@ -288,23 +391,20 @@ def compare_screenshots(
         diff_out.parent.mkdir(parents=True, exist_ok=True)
         diff_img.save(diff_out)
 
-    # Build list of differing pixel coordinates for perceptual analysis
-    diff_pixel_coords = []
-    if diff_pixels > 0:
-        for y in range(height):
-            for x in range(width):
-                if not _ignored(x, y):
-                    a = px_gt[x, y]
-                    b = px_cache[x, y]
-                    if a != b:
-                        diff_pixel_coords.append((x, y))
-    
+    # Decide whether the differences contain localized severe color shifts.
+    has_color_shifts = _decide_has_large_color_shifts(
+        tile_color_shift_counts,
+        tile_w=tile_w,
+        tile_h=tile_h,
+        total_color_shift_pixels=color_shift_pixels,
+    )
+
     # Compute perceptual similarity metrics
     phash_distance = None
     ssim_score = None
     has_black_regions = False
     has_edges = False
-    
+
     if diff_pixels > 0:
         # Perceptual hashing (robust to compression artifacts)
         try:
@@ -313,13 +413,13 @@ def compare_screenshots(
             phash_distance = _hamming_distance(hash_gt, hash_cache)
         except Exception:
             pass  # Skip if computation fails
-        
+
         # SSIM (structural similarity)
         try:
             ssim_score = _compute_ssim_simple(img_gt, img_cache)
         except Exception:
             pass  # Skip if computation fails
-        
+
         # Detect structural corruption patterns
         try:
             has_black_regions = _detect_solid_black_regions(diff_pixel_coords, img_cache)
@@ -337,6 +437,7 @@ def compare_screenshots(
         ssim_score=ssim_score,
         has_solid_black_regions=has_black_regions,
         has_high_contrast_edges=has_edges,
+        has_large_color_shifts=has_color_shifts,
     )
 
     if json_out is not None:
@@ -353,6 +454,7 @@ def compare_screenshots(
                 "ssim_score": result.ssim_score,
                 "has_solid_black_regions": result.has_solid_black_regions,
                 "has_high_contrast_edges": result.has_high_contrast_edges,
+                "has_large_color_shifts": result.has_large_color_shifts,
             },
             "tiles": {
                 "grid": [row[:] for row in tile_diff_counts],

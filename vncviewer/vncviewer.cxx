@@ -195,6 +195,11 @@ static void mainloop(const char* vncserver, network::Socket* sock)
         next_timer = INT_MAX;
 
       if (Fl::wait((double)next_timer / 1000.0) < 0.0) {
+        // FLTK returns a negative value on error. Some signal delivery can
+        // interrupt the underlying poll/select call and surface as EINTR.
+        // That is not a fatal condition; resume the event loop.
+        if (errno == EINTR)
+          continue;
         vlog.error(_("Internal FLTK error. Exiting."));
         exit(-1);
       }

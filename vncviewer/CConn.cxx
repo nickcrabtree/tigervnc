@@ -71,6 +71,7 @@ static core::LogWriter vlog("CConn");
 // Global pointer for signal handler and shutdown logging
 static CConn* g_activeConn = nullptr;
 static volatile sig_atomic_t g_verifyRequested = 0;
+static volatile sig_atomic_t g_refreshRequested = 0;
 static bool g_logStatsRegistered = false;
 
 static void logStatsAtExit()
@@ -88,6 +89,13 @@ static void handleVerifySignal(int sig)
 {
   (void)sig;
   g_verifyRequested = 1;
+}
+
+// Signal handler for SIGUSR2 - trigger safe full framebuffer refresh
+static void handleRefreshSignal(int sig)
+{
+  (void)sig;
+  g_refreshRequested = 1;
 }
 #endif
 
@@ -136,11 +144,13 @@ CConn::CConn()
 
   OptionsDialog::addCallback(handleOptions, this);
   
-  // Set global pointer for signal handler and install SIGUSR1 handler
+  // Set global pointer for signal handler and install signal handlers
   g_activeConn = this;
 #ifndef WIN32
   signal(SIGUSR1, handleVerifySignal);
+  signal(SIGUSR2, handleRefreshSignal);
   vlog.info("Framebuffer verification available: kill -USR1 %d", (int)getpid());
+  vlog.info("Full framebuffer refresh available: kill -USR2 %d", (int)getpid());
 #endif
 
   // Register an atexit handler once to dump framebuffer/cache statistics
@@ -381,6 +391,12 @@ void CConn::socketEvent(FL_SOCKET fd, void *data)
     if (g_verifyRequested) {
       g_verifyRequested = 0;
       cc->verifyFramebuffer();
+    }
+
+    // Check if a safe full refresh was requested via SIGUSR2
+    if (g_refreshRequested) {
+      g_refreshRequested = 0;
+      cc->refreshFramebuffer();
     }
 #endif
 
