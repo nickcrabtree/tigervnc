@@ -185,6 +185,11 @@ void CConnection::logDecodeStats()
   decoder.logStats();
 }
 
+void CConnection::dumpCacheDebugState(const char* outputDir)
+{
+  decoder.dumpCacheDebugState(outputDir);
+}
+
 void CConnection::initialiseProtocol()
 {
   state_ = RFBSTATE_PROTOCOL_VERSION;

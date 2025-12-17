@@ -247,6 +247,10 @@ namespace rfb {
     const std::string& getCacheDirectory() const { return cacheDir_; }
     std::string getIndexFilePath() const { return getIndexPath(); }
     
+    // Debug dump: Write comprehensive cache state to a file for post-mortem
+    // analysis of corruption issues. Returns the path to the dump file.
+    std::string dumpDebugState(const std::string& outputDir = "/tmp") const;
+    
   private:
     
     // Queue of hashes evicted from ARC; drained by DecodeManager to

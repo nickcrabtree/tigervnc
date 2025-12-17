@@ -22,6 +22,9 @@
 #include <config.h>
 #endif
 
+#include <sys/stat.h>
+#include <cstring>
+
 #include <core/LogWriter.h>
 #include <core/string.h>
 #include <core/time.h>
@@ -1035,6 +1038,71 @@ void VNCSConnectionST::handlePersistentCacheHashReport(uint64_t canonicalId, uin
             (unsigned long long)canonicalId,
             (unsigned long long)actualId,
             isLossless ? " LOSSLESS" : " LOSSY");
+}
+
+void VNCSConnectionST::handleDebugDumpRequest(uint32_t timestamp)
+{
+  // Create output directory with timestamp to match client
+  char outputDir[256];
+  snprintf(outputDir, sizeof(outputDir), "/tmp/corruption_debug_%u", timestamp);
+  
+  // Create directory if it doesn't exist
+  struct stat st;
+  memset(&st, 0, sizeof(st));
+  if (stat(outputDir, &st) == -1) {
+    mkdir(outputDir, 0755);
+  }
+  
+  vlog.info("Debug dump requested by client (timestamp=%u), dumping to %s",
+            timestamp, outputDir);
+  
+  // Dump EncodeManager state
+  encodeManager.dumpDebugState(outputDir);
+  
+  // Also dump VNCSConnectionST state
+  char filepath[512];
+  snprintf(filepath, sizeof(filepath), "%s/server_connection_state.txt", outputDir);
+  FILE* f = fopen(filepath, "w");
+  if (f) {
+    fprintf(f, "=== VNCSConnectionST Debug State ===\n");
+    fprintf(f, "Timestamp: %u\n", timestamp);
+    fprintf(f, "Peer: %s\n", peerEndpoint.c_str());
+    fprintf(f, "\n=== ID Tracking ===\n");
+    fprintf(f, "knownPersistentIds: %zu\n", knownPersistentIds_.size());
+    fprintf(f, "knownCacheIds: %zu\n", knownCacheIds_.size());
+    fprintf(f, "clientRequestedPersistentIds: %zu\n", clientRequestedPersistentIds_.size());
+    fprintf(f, "lossyHashCache: %zu\n", lossyHashCache_.size());
+    fprintf(f, "viewerConfirmedCache: %zu\n", viewerConfirmedCache_.size());
+    fprintf(f, "viewerPendingConfirmation: %zu\n", viewerPendingConfirmation_.size());
+    fprintf(f, "lastCachedRectRef: %zu\n", lastCachedRectRef_.size());
+    
+    // Dump first 50 known persistent IDs
+    fprintf(f, "\n=== Known Persistent IDs (first 50) ===\n");
+    int count = 0;
+    for (const auto& id : knownPersistentIds_) {
+      fprintf(f, "  %016llx\n", (unsigned long long)id);
+      if (++count >= 50) {
+        fprintf(f, "  ... (%zu total)\n", knownPersistentIds_.size());
+        break;
+      }
+    }
+    
+    // Dump lossy hash mappings
+    fprintf(f, "\n=== Lossy Hash Cache (first 50) ===\n");
+    count = 0;
+    for (const auto& kv : lossyHashCache_) {
+      fprintf(f, "  canonical=%016llx -> lossy=%016llx\n",
+              (unsigned long long)kv.first,
+              (unsigned long long)kv.second);
+      if (++count >= 50) {
+        fprintf(f, "  ... (%zu total)\n", lossyHashCache_.size());
+        break;
+      }
+    }
+    
+    fclose(f);
+    vlog.info("Server connection state dumped to: %s", filepath);
+  }
 }
 
 bool VNCSConnectionST::isShiftPressed()

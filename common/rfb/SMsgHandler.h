@@ -79,6 +79,9 @@ namespace rfb {
                                           const std::vector<uint64_t>& cacheIds) = 0;
     virtual void handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds) = 0;
     virtual void handlePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId) = 0;
+    
+    // Debug dump request (for corruption debugging)
+    virtual void handleDebugDumpRequest(uint32_t timestamp) = 0;
 
     ClientParams client;
   };

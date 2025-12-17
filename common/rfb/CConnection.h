@@ -312,6 +312,9 @@ namespace rfb {
 
     // Expose decoder statistics to derived classes (e.g. viewers)
     void logDecodeStats();
+    
+    // Dump cache debug state to a file (for corruption debugging)
+    void dumpCacheDebugState(const char* outputDir);
 
   protected:
     // Optional capabilities that a subclass is expected to set to true

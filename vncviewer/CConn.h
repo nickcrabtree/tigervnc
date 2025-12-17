@@ -50,6 +50,14 @@ public:
   
   // Debug: Request full framebuffer refresh and verify against current state
   void verifyFramebuffer();
+  
+  // Debug: Dump comprehensive cache and framebuffer state to files for
+  // post-mortem analysis of visual corruption. Call via SIGQUIT (CTRL+\).
+  // Writes:
+  //   /tmp/corruption_debug_TIMESTAMP/cache_state.txt - PersistentCache state
+  //   /tmp/corruption_debug_TIMESTAMP/framebuffer.ppm - Current framebuffer
+  //   /tmp/corruption_debug_TIMESTAMP/info.txt - Connection/session info
+  void dumpCorruptionDebugInfo();
 
 protected:
 

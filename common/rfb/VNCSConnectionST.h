@@ -156,6 +156,7 @@ namespace rfb {
                                   const std::vector<uint64_t>& cacheIds) override;
     void handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds) override;
     void handlePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId) override;
+    void handleDebugDumpRequest(uint32_t timestamp) override;
 
     // PersistentCache request helpers used by encoder
     bool clientRequestedPersistent(uint64_t id) const override {

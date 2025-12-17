@@ -76,6 +76,9 @@ namespace rfb {
     void writePersistentCacheEviction(const std::vector<uint64_t>& cacheIds);
     void writePersistentCacheEvictionBatched(const std::vector<uint64_t>& cacheIds);
     void writePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId);
+    
+    // Debug dump request (for corruption debugging)
+    void writeDebugDumpRequest(uint32_t timestamp);
 
     void writeClipboardCaps(uint32_t caps, const uint32_t* lengths);
     void writeClipboardRequest(uint32_t flags);

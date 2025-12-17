@@ -73,6 +73,7 @@ namespace rfb {
     ~EncodeManager();
 
     void logStats();
+    void dumpDebugState(const char* outputDir);
 
     // Hack to let ConnParams calculate the client's preferred encoding
     static bool supported(int encoding);

@@ -25,6 +25,8 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include <ctime>
+#include <string>
 
 #include <core/LogWriter.h>
 #include <core/string.h>
@@ -401,6 +403,57 @@ void EncodeManager::logStats()
             cacheLookups,
             cacheHits,
             hitPct);
+}
+
+void EncodeManager::dumpDebugState(const char* outputDir)
+{
+  std::string filepath = std::string(outputDir) + "/server_cache_state.txt";
+  FILE* f = fopen(filepath.c_str(), "w");
+  if (!f) {
+    vlog.error("Failed to create debug state file: %s", filepath.c_str());
+    return;
+  }
+  
+  fprintf(f, "=== Server EncodeManager Debug State ===\n");
+  
+  time_t now = time(nullptr);
+  char timebuf[64];
+  strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S", localtime(&now));
+  fprintf(f, "Timestamp: %s\n", timebuf);
+  
+  fprintf(f, "\n=== Configuration ===\n");
+  fprintf(f, "usePersistentCache: %s\n", usePersistentCache ? "true" : "false");
+  fprintf(f, "currentEncoding: %d\n", currentEncoding);
+  fprintf(f, "currentEncodingIsLossy: %s\n", currentEncodingIsLossy ? "true" : "false");
+  
+  fprintf(f, "\n=== Cache Statistics ===\n");
+  fprintf(f, "Lookups: %u\n", persistentCacheStats.cacheLookups);
+  fprintf(f, "Hits: %u\n", persistentCacheStats.cacheHits);
+  fprintf(f, "Misses: %u\n", persistentCacheStats.cacheMisses);
+  fprintf(f, "Bytes saved: %llu\n", (unsigned long long)persistentCacheStats.bytesSaved);
+  double hitPct = persistentCacheStats.cacheLookups > 0 ?
+    (100.0 * persistentCacheStats.cacheHits / persistentCacheStats.cacheLookups) : 0.0;
+  fprintf(f, "Hit rate: %.1f%%\n", hitPct);
+  
+  fprintf(f, "\n=== Client Known IDs (ServerHashSet) ===\n");
+  auto hashStats = clientKnownIds_.getStats();
+  fprintf(f, "Current size: %zu\n", hashStats.currentSize);
+  fprintf(f, "Total added: %llu\n", (unsigned long long)hashStats.totalAdded);
+  fprintf(f, "Total evicted: %llu\n", (unsigned long long)hashStats.totalEvicted);
+  
+  fprintf(f, "\n=== Update Statistics ===\n");
+  fprintf(f, "Total updates: %u\n", updates);
+  
+  fprintf(f, "\n=== Region State ===\n");
+  fprintf(f, "Lossy region: %s\n", strRegionSummary(lossyRegion));
+  fprintf(f, "Recently changed region: %s\n", strRegionSummary(recentlyChangedRegion));
+  fprintf(f, "Pending refresh region: %s\n", strRegionSummary(pendingRefreshRegion));
+  fprintf(f, "Last framebuffer rect: [%d,%d-%d,%d]\n",
+          lastFramebufferRect.tl.x, lastFramebufferRect.tl.y,
+          lastFramebufferRect.br.x, lastFramebufferRect.br.y);
+  
+  fclose(f);
+  vlog.info("Server cache state dumped to: %s", filepath.c_str());
 }
 
 bool EncodeManager::supported(int encoding)

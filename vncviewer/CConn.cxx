@@ -28,8 +28,10 @@
 #ifndef _WIN32
 #include <unistd.h>
 #include <csignal>
+#include <sys/stat.h>
 #endif
 #include <cstdlib>
+#include <fstream>
 
 #include <core/LogWriter.h>
 #include <core/Timer.h>
@@ -150,8 +152,8 @@ CConn::CConn()
 #ifndef WIN32
   signal(SIGUSR1, handleVerifySignal);
   signal(SIGUSR2, handleRefreshSignal);
-  vlog.info("Framebuffer verification available: kill -USR1 %d", (int)getpid());
-  vlog.info("Full framebuffer refresh available: kill -USR2 %d", (int)getpid());
+  vlog.info("Framebuffer verification + debug dump: kill -USR1 %d", (int)getpid());
+  vlog.info("Full framebuffer refresh: kill -USR2 %d", (int)getpid());
 #endif
 
   // Register an atexit handler once to dump framebuffer/cache statistics
@@ -428,9 +430,13 @@ void CConn::socketEvent(FL_SOCKET fd, void *data)
     }
     
     // Check if framebuffer verification was requested via SIGUSR1
+    // This also triggers a coordinated debug dump on both client and server
 #ifndef WIN32
     if (g_verifyRequested) {
       g_verifyRequested = 0;
+      // First dump debug state (before any updates change things)
+      cc->dumpCorruptionDebugInfo();
+      // Then request verification
       cc->verifyFramebuffer();
     }
 
@@ -916,4 +922,128 @@ void CConn::verifyFramebuffer()
   
   vlog.info("Verification update requested (will compare when received)");
   vlog.info("Note: Verification will use current encoding settings");
+}
+
+void CConn::dumpCorruptionDebugInfo()
+{
+#ifdef WIN32
+  vlog.error("Corruption debug dump not supported on Windows");
+  return;
+#else
+  vlog.info("=== CORRUPTION DEBUG DUMP TRIGGERED ===");
+  
+  // Use epoch timestamp so server and client use the same directory
+  uint32_t epochTimestamp = (uint32_t)time(nullptr);
+  
+  // Send debug dump request to server FIRST (so server dumps at same time)
+  vlog.info("Requesting server debug dump (timestamp=%u)", epochTimestamp);
+  writer()->writeDebugDumpRequest(epochTimestamp);
+  
+  // Create output directory using epoch timestamp
+  char dirName[64];
+  snprintf(dirName, sizeof(dirName), "/tmp/corruption_debug_%u", epochTimestamp);
+  std::string outputDir = dirName;
+  
+  if (mkdir(outputDir.c_str(), 0755) != 0) {
+    vlog.error("Failed to create debug output directory: %s", outputDir.c_str());
+    return;
+  }
+  
+  vlog.info("Debug output directory: %s", outputDir.c_str());
+  
+  // 1. Dump cache state
+  dumpCacheDebugState(outputDir.c_str());
+  
+  // 2. Save framebuffer as PPM image
+  rfb::ModifiablePixelBuffer* pb = getFramebuffer();
+  if (pb) {
+    int width = server.width();
+    int height = server.height();
+    const rfb::PixelFormat& pf = pb->getPF();
+    
+    std::string ppmPath = outputDir + "/framebuffer.ppm";
+    std::ofstream ppm(ppmPath, std::ios::binary);
+    if (ppm.is_open()) {
+      // PPM header
+      ppm << "P6\n" << width << " " << height << "\n255\n";
+      
+      // Get framebuffer data
+      core::Rect rect(0, 0, width, height);
+      int stride;
+      const uint8_t* fbData = pb->getBuffer(rect, &stride);
+      int bytesPerPixel = pf.bpp / 8;
+      
+      // Convert to RGB and write using PixelFormat::rgbFromBuffer
+      std::vector<uint8_t> rgbRow(width * 3);
+      
+      for (int y = 0; y < height; y++) {
+        const uint8_t* srcRow = fbData + (y * stride * bytesPerPixel);
+        // Use the pixel format's built-in conversion
+        pf.rgbFromBuffer(rgbRow.data(), srcRow, width);
+        ppm.write((const char*)rgbRow.data(), rgbRow.size());
+      }
+      ppm.close();
+      vlog.info("Framebuffer saved to: %s", ppmPath.c_str());
+    } else {
+      vlog.error("Failed to create PPM file: %s", ppmPath.c_str());
+    }
+  } else {
+    vlog.error("Framebuffer not available for dump");
+  }
+  
+  // 3. Write session info
+  std::string infoPath = outputDir + "/info.txt";
+  std::ofstream info(infoPath);
+  if (info.is_open()) {
+    info << "=== VNC Viewer Corruption Debug Info ===\n";
+    info << "Timestamp (epoch): " << epochTimestamp << "\n";
+    info << "PID: " << getpid() << "\n";
+    info << "\n=== Server Info ===\n";
+    info << "Server: " << serverHost << ":" << serverPort << "\n";
+    info << "Desktop name: " << server.name() << "\n";
+    info << "Resolution: " << server.width() << "x" << server.height() << "\n";
+    info << "\n=== Pixel Format ===\n";
+    const rfb::PixelFormat& pf = server.pf();
+    info << "Bits per pixel: " << pf.bpp << "\n";
+    info << "Depth: " << pf.depth << "\n";
+    info << "Big endian: " << (pf.isBigEndian() ? "yes" : "no") << "\n";
+    info << "True colour: " << (pf.trueColour ? "yes" : "no") << "\n";
+    char pfStr[256];
+    pf.print(pfStr, sizeof(pfStr));
+    info << "Format: " << pfStr << "\n";
+    info << "\n=== Statistics ===\n";
+    info << "Update count: " << updateCount << "\n";
+    info << "Pixel count: " << pixelCount << "\n";
+    info << "BPS estimate: " << bpsEstimate << "\n";
+    info << "\n=== Cache Protocol ===\n";
+    info << "ContentCache enabled: " << (::contentCache ? "yes" : "no") << "\n";
+    info << "PersistentCache enabled: " << (::persistentCache ? "yes" : "no") << "\n";
+    
+    // Network stats
+    if (sock) {
+      struct timeval now_tv;
+      gettimeofday(&now_tv, nullptr);
+      unsigned long long elapsedUsec =
+        (unsigned long long)(now_tv.tv_sec - sessionStartTime.tv_sec) * 1000000ULL +
+        (unsigned long long)(now_tv.tv_usec - sessionStartTime.tv_usec);
+      double seconds = (double)elapsedUsec / 1e6;
+      uint64_t rxBytes = sock->inStream().pos();
+      uint64_t txBytes = sock->outStream().bytesWritten();
+      
+      info << "\n=== Network Stats ===\n";
+      info << "Session duration: " << seconds << " seconds\n";
+      info << "Bytes received: " << rxBytes << "\n";
+      info << "Bytes sent: " << txBytes << "\n";
+      if (seconds > 0) {
+        info << "Avg RX rate: " << (rxBytes / seconds / 1024.0) << " KB/s\n";
+      }
+    }
+    
+    info.close();
+    vlog.info("Session info saved to: %s", infoPath.c_str());
+  }
+  
+  vlog.info("=== CORRUPTION DEBUG DUMP COMPLETE ===");
+  vlog.info("Output directory: %s", outputDir.c_str());
+#endif
 }

@@ -357,6 +357,13 @@ void CMsgWriter::writePersistentCacheHashReport(uint64_t canonicalId, uint64_t l
   endMsg();
 }
 
+void CMsgWriter::writeDebugDumpRequest(uint32_t timestamp)
+{
+  startMsg(msgTypeDebugDumpRequest);
+  os->writeU32(timestamp);
+  endMsg();
+}
+
 void CMsgWriter::writeClipboardCaps(uint32_t caps,
                                     const uint32_t* lengths)
 {

@@ -64,6 +64,11 @@ namespace rfb {
   // Allows client to report lossy hash after decoding, enabling server to
   // learn canonical→lossy hash mappings for future cache hits on first occurrence.
   const int msgTypePersistentCacheHashReport = 247;
+  
+  // Debug dump request (client→server)
+  // Requests server to dump its cache state to a file for debugging.
+  // Payload: U32 timestamp (seconds since epoch) to correlate with client dump
+  const int msgTypeDebugDumpRequest = 246;
 
   const int msgTypeQEMUClientMessage = 255;
 }

@@ -1512,3 +1512,12 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
 // (obsolete) trackCachedRectBandwidth/trackCachedRectInitBandwidth removed with
 // ContentCache implementation; PersistentCache bandwidth stats are tracked via
 // trackPersistentCacheRef/trackPersistentCacheInit.
+
+std::string DecodeManager::dumpCacheDebugState(const std::string& outputDir) const
+{
+  if (persistentCache) {
+    return persistentCache->dumpDebugState(outputDir);
+  }
+  vlog.info("No PersistentCache engine available for debug dump");
+  return "";
+}

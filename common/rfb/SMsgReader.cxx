@@ -126,6 +126,9 @@ bool SMsgReader::readMsg()
   case msgTypePersistentCacheHashReport:
     ret = readPersistentCacheHashReport();
     break;
+  case msgTypeDebugDumpRequest:
+    ret = readDebugDumpRequest();
+    break;
   case msgTypeQEMUClientMessage:
     ret = readQEMUMessage();
     break;
@@ -705,5 +708,19 @@ bool SMsgReader::readPersistentCacheHashReport()
              (unsigned long long)lossyId);
 
   handler->handlePersistentCacheHashReport(canonicalId, lossyId);
+  return true;
+}
+
+bool SMsgReader::readDebugDumpRequest()
+{
+  // Message contains a U32 timestamp for correlation with client dump
+  if (!is->hasData(4))
+    return false;
+
+  uint32_t timestamp = is->readU32();
+
+  vlog.info("Client requested debug dump (timestamp=%u)", timestamp);
+
+  handler->handleDebugDumpRequest(timestamp);
   return true;
 }

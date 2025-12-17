@@ -106,6 +106,11 @@ namespace rfb {
     // when PersistentCache protocol is first negotiated (on first use).
     // This defers disk I/O until we know the server actually supports PersistentCache.
     void triggerPersistentCacheLoad();
+    
+    // Debug dump: Write comprehensive cache state to a file for post-mortem
+    // analysis of corruption issues. Returns the path to the dump file.
+    // Call this when you notice corruption (e.g., via SIGUSR1 signal handler).
+    std::string dumpCacheDebugState(const std::string& outputDir = "/tmp") const;
 
   private:
     void setThreadException();

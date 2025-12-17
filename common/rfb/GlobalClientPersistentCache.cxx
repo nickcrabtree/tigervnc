@@ -1351,3 +1351,140 @@ uint32_t GlobalClientPersistentCache::getCurrentTime() const
 {
   return (uint32_t)time(nullptr);
 }
+
+std::string GlobalClientPersistentCache::dumpDebugState(const std::string& outputDir) const
+{
+  // Generate timestamped filename
+  time_t now = time(nullptr);
+  struct tm tmNow;
+  localtime_r(&now, &tmNow);
+  char timestamp[32];
+  strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &tmNow);
+  
+  std::string dumpPath = outputDir + "/pcache_debug_" + timestamp + ".txt";
+  
+  FILE* f = fopen(dumpPath.c_str(), "w");
+  if (!f) {
+    vlog.error("Failed to open debug dump file: %s", dumpPath.c_str());
+    return "";
+  }
+  
+  fprintf(f, "=== PersistentCache Debug Dump ===\n");
+  fprintf(f, "Timestamp: %s\n", timestamp);
+  fprintf(f, "Cache directory: %s\n", cacheDir_.c_str());
+  fprintf(f, "\n=== Configuration ===\n");
+  fprintf(f, "Max memory size: %zu bytes (%.1f MB)\n", maxMemorySize_, maxMemorySize_ / (1024.0 * 1024.0));
+  fprintf(f, "Max disk size: %zu bytes (%.1f MB)\n", maxDiskSize_, maxDiskSize_ / (1024.0 * 1024.0));
+  fprintf(f, "Shard size: %zu bytes (%.1f MB)\n", shardSize_, shardSize_ / (1024.0 * 1024.0));
+  
+  fprintf(f, "\n=== Statistics ===\n");
+  fprintf(f, "Total entries: %zu\n", stats_.totalEntries);
+  fprintf(f, "Total bytes: %zu\n", stats_.totalBytes);
+  fprintf(f, "Cache hits: %llu\n", (unsigned long long)stats_.cacheHits);
+  fprintf(f, "Cache misses: %llu\n", (unsigned long long)stats_.cacheMisses);
+  fprintf(f, "Evictions: %llu\n", (unsigned long long)stats_.evictions);
+  fprintf(f, "T1 size: %zu, T2 size: %zu\n", stats_.t1Size, stats_.t2Size);
+  fprintf(f, "B1 size: %zu, B2 size: %zu\n", stats_.b1Size, stats_.b2Size);
+  fprintf(f, "Target T1 size (p): %zu\n", stats_.targetT1Size);
+  
+  fprintf(f, "\n=== Hydration State ===\n");
+  const char* stateStr = "Unknown";
+  switch (hydrationState_) {
+    case HydrationState::Uninitialized: stateStr = "Uninitialized"; break;
+    case HydrationState::IndexLoaded: stateStr = "IndexLoaded"; break;
+    case HydrationState::PartiallyHydrated: stateStr = "PartiallyHydrated"; break;
+    case HydrationState::FullyHydrated: stateStr = "FullyHydrated"; break;
+  }
+  fprintf(f, "Hydration state: %s\n", stateStr);
+  fprintf(f, "Hydration queue size: %zu\n", hydrationQueue_.size());
+  fprintf(f, "Cold entries (on disk, not in memory): %zu\n", coldEntries_.size());
+  fprintf(f, "Dirty entries (pending disk write): %zu\n", dirtyEntries_.size());
+  fprintf(f, "Index dirty: %s\n", indexDirty_ ? "yes" : "no");
+  
+  fprintf(f, "\n=== In-Memory Cache Entries (%zu) ===\n", cache_.size());
+  size_t entryNum = 0;
+  for (const auto& kv : cache_) {
+    const CacheKey& key = kv.first;
+    const CachedPixels& entry = kv.second;
+    
+    fprintf(f, "\nEntry %zu:\n", entryNum++);
+    fprintf(f, "  Key: w=%u h=%u contentHash=0x%016llx\n",
+            key.width, key.height, (unsigned long long)key.contentHash);
+    fprintf(f, "  Canonical hash: 0x%016llx\n", (unsigned long long)entry.canonicalHash);
+    fprintf(f, "  Actual hash: 0x%016llx\n", (unsigned long long)entry.actualHash);
+    fprintf(f, "  Is lossless: %s\n", entry.isLossless() ? "yes" : "no");
+    fprintf(f, "  Dimensions: %ux%u, stride=%u pixels\n", entry.width, entry.height, entry.stridePixels);
+    fprintf(f, "  Pixel format: depth=%d bpp=%d\n", entry.format.depth, entry.format.bpp);
+    fprintf(f, "  Pixel data size: %zu bytes\n", entry.pixels.size());
+    fprintf(f, "  Is hydrated: %s\n", entry.isHydrated() ? "yes" : "no");
+    fprintf(f, "  Last access time: %u\n", entry.lastAccessTime);
+    
+    // Check for suspicious patterns in pixel data
+    if (entry.isHydrated() && !entry.pixels.empty()) {
+      bool allZero = true;
+      bool allSame = true;
+      uint8_t firstByte = entry.pixels[0];
+      for (size_t i = 0; i < entry.pixels.size() && (allZero || allSame); i++) {
+        if (entry.pixels[i] != 0) allZero = false;
+        if (entry.pixels[i] != firstByte) allSame = false;
+      }
+      if (allZero) {
+        fprintf(f, "  WARNING: All pixel bytes are zero (black rect)!\n");
+      } else if (allSame) {
+        fprintf(f, "  Note: All pixel bytes are same value (0x%02x)\n", firstByte);
+      }
+      
+      // Sample first few bytes for debugging
+      fprintf(f, "  First 16 bytes: ");
+      for (size_t i = 0; i < std::min(entry.pixels.size(), (size_t)16); i++) {
+        fprintf(f, "%02x ", entry.pixels[i]);
+      }
+      fprintf(f, "\n");
+    }
+    
+    // Limit output for very large caches
+    if (entryNum >= 100) {
+      fprintf(f, "\n... (truncated, %zu more entries)\n", cache_.size() - entryNum);
+      break;
+    }
+  }
+  
+  fprintf(f, "\n=== Index Map Entries (%zu) ===\n", indexMap_.size());
+  size_t idxNum = 0;
+  for (const auto& kv : indexMap_) {
+    const std::vector<uint8_t>& hash = kv.first;
+    const IndexEntry& idx = kv.second;
+    
+    fprintf(f, "\nIndex entry %zu:\n", idxNum++);
+    fprintf(f, "  Hash (first 16 bytes): ");
+    for (size_t i = 0; i < std::min(hash.size(), (size_t)16); i++) {
+      fprintf(f, "%02x", hash[i]);
+    }
+    fprintf(f, "\n");
+    fprintf(f, "  Shard: %u, offset: %u, size: %u\n", idx.shardId, idx.payloadOffset, idx.payloadSize);
+    fprintf(f, "  Dimensions: %ux%u, stride=%u\n", idx.width, idx.height, idx.stridePixels);
+    fprintf(f, "  Canonical hash: 0x%016llx\n", (unsigned long long)idx.canonicalHash);
+    fprintf(f, "  Is cold: %s\n", idx.isCold ? "yes" : "no");
+    
+    if (idxNum >= 100) {
+      fprintf(f, "\n... (truncated, %zu more index entries)\n", indexMap_.size() - idxNum);
+      break;
+    }
+  }
+  
+  fprintf(f, "\n=== Pending Evictions (%zu) ===\n", pendingEvictions_.size());
+  for (size_t i = 0; i < std::min(pendingEvictions_.size(), (size_t)20); i++) {
+    const auto& hash = pendingEvictions_[i];
+    fprintf(f, "  ");
+    for (size_t j = 0; j < std::min(hash.size(), (size_t)8); j++) {
+      fprintf(f, "%02x", hash[j]);
+    }
+    fprintf(f, "\n");
+  }
+  
+  fprintf(f, "\n=== End of Debug Dump ===\n");
+  fclose(f);
+  
+  vlog.info("PersistentCache debug state dumped to: %s", dumpPath.c_str());
+  return dumpPath;
+}
