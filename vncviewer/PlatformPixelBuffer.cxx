@@ -69,6 +69,10 @@ PlatformPixelBuffer::PlatformPixelBuffer(int width, int height) :
   clear(0, 0, 0);
 #else
   setBuffer(width, height, (uint8_t*)Surface::data, width);
+  // On macOS (and Windows), the Surface data buffer is uninitialized.
+  // Clear it to prevent reading garbage pixels if PersistentCache hits
+  // occur before the framebuffer region has been updated by the server.
+  clear(0, 0, 0);
 #endif
 }
 
