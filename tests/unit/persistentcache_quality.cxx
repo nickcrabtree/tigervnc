@@ -332,3 +332,113 @@ TEST(PersistentCacheQuality, PreferLosslessOverLossySameDepth)
 
   removeDir(cacheDir);
 }
+
+// Test that qualityCode is correctly computed and persisted in v7 format
+TEST(PersistentCacheQuality, QualityCodePersistence)
+{
+  char tmpl[] = "/tmp/tigervnc_pcache_qc_XXXXXX";
+  char* dir = mkdtemp(tmpl);
+  ASSERT_NE(dir, nullptr);
+  std::string cacheDir(dir);
+
+  // Test different combinations of bpp and lossy/lossless
+  rfb::PixelFormat pf8(8, 8, false, true, 7, 7, 3, 5, 2, 0);
+  rfb::PixelFormat pf16(16, 16, false, true, 31, 63, 31, 11, 5, 0);
+  rfb::PixelFormat pf32(32, 24, false, true, 255, 255, 255, 16, 8, 0);
+  
+  uint16_t testWidth = 4;
+  uint16_t testHeight = 4;
+  
+  // Create test pixels
+  std::vector<uint8_t> pixels8(testWidth * testHeight);
+  std::vector<uint8_t> pixels16(testWidth * testHeight * 2);
+  std::vector<uint8_t> pixels32(testWidth * testHeight * 4);
+  
+  for (int i = 0; i < testWidth * testHeight; i++) {
+    pixels8[i] = 0xE0;
+    pixels16[i * 2] = 0x00;
+    pixels16[i * 2 + 1] = 0xF8;
+    pixels32[i * 4 + 0] = 0x00;
+    pixels32[i * 4 + 1] = 0x00;
+    pixels32[i * 4 + 2] = 0xFF;
+    pixels32[i * 4 + 3] = 0x00;
+  }
+  
+  // Different canonical hashes
+  uint64_t canon8 = 0x1111111111111111ULL;
+  uint64_t canon16 = 0x2222222222222222ULL;
+  uint64_t canon32lossless = 0x3333333333333333ULL;
+  uint64_t canon32lossy = 0x4444444444444444ULL;
+  
+  uint64_t actual8 = simpleHash(pixels8.data(), pixels8.size());
+  uint64_t actual16 = simpleHash(pixels16.data(), pixels16.size());
+  uint64_t actual32 = simpleHash(pixels32.data(), pixels32.size());
+  
+  std::vector<uint8_t> hash8(16), hash16(16), hash32ll(16), hash32lossy(16);
+  memcpy(hash8.data(), &actual8, 8);
+  memcpy(hash16.data(), &actual16, 8);
+  memcpy(hash32ll.data(), &canon32lossless, 8);  // lossless: actual==canonical
+  memcpy(hash32lossy.data(), &actual32, 8);
+
+  {
+    rfb::GlobalClientPersistentCache cache(16, 32, 1, cacheDir);
+    
+    // 8bpp lossy (actual != canonical)
+    cache.insert(canon8, actual8, hash8, pixels8.data(), pf8,
+                 testWidth, testHeight, testWidth, true);
+    
+    // 16bpp lossy
+    cache.insert(canon16, actual16, hash16, pixels16.data(), pf16,
+                 testWidth, testHeight, testWidth, true);
+    
+    // 32bpp lossless (actual == canonical)
+    cache.insert(canon32lossless, canon32lossless, hash32ll, pixels32.data(), pf32,
+                 testWidth, testHeight, testWidth, true);
+    
+    // 32bpp lossy
+    cache.insert(canon32lossy, actual32, hash32lossy, pixels32.data(), pf32,
+                 testWidth, testHeight, testWidth, true);
+    
+    cache.flushDirtyEntries();
+    ASSERT_TRUE(cache.saveToDisk());
+  }
+
+  // Reload and verify quality filtering works correctly
+  {
+    rfb::GlobalClientPersistentCache cache(16, 32, 1, cacheDir);
+    ASSERT_TRUE(cache.loadIndexFromDisk());
+    
+    // 8bpp entry should be found with no filter or minBpp=8
+    auto cached = cache.getByCanonicalHash(canon8, testWidth, testHeight);
+    ASSERT_NE(cached, nullptr) << "Should find 8bpp entry";
+    EXPECT_EQ(cached->format.bpp, 8);
+    
+    // 8bpp entry should be rejected with minBpp=16 or minBpp=32
+    cached = cache.getByCanonicalHash(canon8, testWidth, testHeight, 16);
+    EXPECT_EQ(cached, nullptr) << "8bpp should be rejected with minBpp=16";
+    
+    cached = cache.getByCanonicalHash(canon8, testWidth, testHeight, 32);
+    EXPECT_EQ(cached, nullptr) << "8bpp should be rejected with minBpp=32";
+    
+    // 16bpp entry should be found with minBpp<=16, rejected with minBpp=32
+    cached = cache.getByCanonicalHash(canon16, testWidth, testHeight, 16);
+    ASSERT_NE(cached, nullptr) << "Should find 16bpp entry with minBpp=16";
+    EXPECT_EQ(cached->format.bpp, 16);
+    
+    cached = cache.getByCanonicalHash(canon16, testWidth, testHeight, 32);
+    EXPECT_EQ(cached, nullptr) << "16bpp should be rejected with minBpp=32";
+    
+    // 32bpp entries should be found with any minBpp<=32
+    cached = cache.getByCanonicalHash(canon32lossless, testWidth, testHeight, 32);
+    ASSERT_NE(cached, nullptr) << "Should find 32bpp lossless entry";
+    EXPECT_EQ(cached->format.bpp, 32);
+    EXPECT_TRUE(cached->isLossless());
+    
+    cached = cache.getByCanonicalHash(canon32lossy, testWidth, testHeight, 32);
+    ASSERT_NE(cached, nullptr) << "Should find 32bpp lossy entry";
+    EXPECT_EQ(cached->format.bpp, 32);
+    EXPECT_FALSE(cached->isLossless());
+  }
+
+  removeDir(cacheDir);
+}

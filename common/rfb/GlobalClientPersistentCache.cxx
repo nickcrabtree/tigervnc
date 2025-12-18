@@ -779,6 +779,15 @@ bool GlobalClientPersistentCache::writeEntryToShard(const std::vector<uint8_t>& 
   idx.isCold = false;
   idx.canonicalHash = entry.canonicalHash;
   
+  // NEW in v7: compute quality code from pixel format and lossy flag
+  bool isLossy = (entry.actualHash != entry.canonicalHash);
+  idx.qualityCode = computeQualityCode(entry.format, isLossy);
+  
+  // Set key for index lookups
+  idx.key.width = entry.width;
+  idx.key.height = entry.height;
+  idx.key.contentHash = entry.actualHash;
+  
   indexMap_[hash] = idx;
   indexDirty_ = true;
   
@@ -932,16 +941,18 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
   // v4 introduces canonicalHash field
   // v5 changes ContentHash to include dimensions
   // v6 fixes PixelFormat serialization (was truncated at 24 bytes)
-  if (header.version != 6) {
-    vlog.info("PersistentCache: unsupported index version %u (expected 6), starting fresh", header.version);
+  // v7 adds qualityCode (3-bit field for depth + lossy flag)
+  if (header.version != 6 && header.version != 7) {
+    vlog.info("PersistentCache: unsupported index version %u (expected 6 or 7), starting fresh", header.version);
     fclose(f);
     remove(indexPath.c_str());
     hydrationState_ = HydrationState::FullyHydrated;
     return false;
   }
   
-  vlog.info("PersistentCache: loading v6 index (%llu entries, %u shards)",
-            (unsigned long long)header.entryCount, header.maxShardId + 1);
+  bool isV7 = (header.version == 7);
+  vlog.info("PersistentCache: loading v%u index (%llu entries, %u shards)",
+            header.version, (unsigned long long)header.entryCount, header.maxShardId + 1);
   
   indexMap_.clear();
   hydrationQueue_.clear();
@@ -996,6 +1007,21 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
 
       // New in v4
       if (fread(&entry.canonicalHash, sizeof(entry.canonicalHash), 1, f) != 1) break;
+      
+      // New in v7: read qualityCode
+      if (isV7) {
+        if (fread(&entry.qualityCode, sizeof(entry.qualityCode), 1, f) != 1) break;
+      } else {
+        // v6 migration: compute qualityCode from existing data
+        // Determine if lossy by comparing actualHash (from hash) to canonicalHash
+        uint64_t actualFromHash = 0;
+        if (!hash.empty()) {
+          size_t n = std::min(hash.size(), sizeof(uint64_t));
+          memcpy(&actualFromHash, hash.data(), n);
+        }
+        bool isLossy = (actualFromHash != entry.canonicalHash);
+        entry.qualityCode = computeQualityCode(entry.format, isLossy);
+      }
 
     entry.key.width = entry.width;
     entry.key.height = entry.height;
@@ -1328,7 +1354,7 @@ bool GlobalClientPersistentCache::saveToDisk()
 
   memset(&header, 0, sizeof(header));
   header.magic = 0x50435633;  // "PCV3" (magic stays same, version bumped)
-  header.version = 6;
+  header.version = 7;  // v7 adds qualityCode
   header.entryCount = indexMap_.size();
   header.created = time(nullptr);
   header.lastAccess = time(nullptr);
@@ -1418,7 +1444,8 @@ bool GlobalClientPersistentCache::saveToDisk()
 
     uint8_t flags = idx.isCold ? 0x01 : 0x00;
     if (!writeOrFail(&flags, 1, 1, "flags") ||
-        !writeOrFail(&idx.canonicalHash, sizeof(idx.canonicalHash), 1, "canonicalHash")) {
+        !writeOrFail(&idx.canonicalHash, sizeof(idx.canonicalHash), 1, "canonicalHash") ||
+        !writeOrFail(&idx.qualityCode, sizeof(idx.qualityCode), 1, "qualityCode")) {
       fclose(f);
       remove(tmpPath.c_str());
       return false;
@@ -1441,7 +1468,7 @@ bool GlobalClientPersistentCache::saveToDisk()
     return false;
   }
 
-  vlog.debug("PersistentCache: saved v6 index with %zu entries", indexMap_.size());
+  vlog.debug("PersistentCache: saved v7 index with %zu entries", indexMap_.size());
 
   return true;
 }
