@@ -1417,7 +1417,8 @@ bool GlobalClientPersistentCache::saveToDisk()
     return false;
   }
 
-  vlog.info("PersistentCache: saved v6 index with %zu entries", indexMap_.size());
+  vlog.debug("PersistentCache: saved v6 index with %zu entries", indexMap_.size());
+
   return true;
 }
 
