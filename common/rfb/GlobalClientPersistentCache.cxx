@@ -907,15 +907,16 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
   
   // v4 introduces canonicalHash field
   // v5 changes ContentHash to include dimensions
-  if (header.version != 5) {
-    vlog.info("PersistentCache: unsupported index version %u (expected 5), starting fresh", header.version);
+  // v6 fixes PixelFormat serialization (was truncated at 24 bytes)
+  if (header.version != 6) {
+    vlog.info("PersistentCache: unsupported index version %u (expected 6), starting fresh", header.version);
     fclose(f);
     remove(indexPath.c_str());
     hydrationState_ = HydrationState::FullyHydrated;
     return false;
   }
   
-  vlog.info("PersistentCache: loading v5 index (%llu entries, %u shards)",
+  vlog.info("PersistentCache: loading v6 index (%llu entries, %u shards)",
             (unsigned long long)header.entryCount, header.maxShardId + 1);
   
   indexMap_.clear();
@@ -927,7 +928,8 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
   hashToKey_.clear();
   
     // Read index entries
-    // Format: hash(16) + shardId(2) + offset(4) + size(4) + width(2) + height(2) + stride(2) + PixelFormat(24) + flags(1) + canonicalHash(8)
+    // Format v6: hash(16) + shardId(2) + offset(4) + size(4) + width(2) + height(2) + stride(2)
+    //            + PixelFormat(16 bytes VNC wire format) + flags(1) + canonicalHash(8)
     for (uint64_t i = 0; i < header.entryCount; i++) {
       std::vector<uint8_t> hash(16);
       if (fread(hash.data(), 1, 16, f) != 16) break;
@@ -939,7 +941,30 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
       if (fread(&entry.width, sizeof(entry.width), 1, f) != 1) break;
       if (fread(&entry.height, sizeof(entry.height), 1, f) != 1) break;
       if (fread(&entry.stridePixels, sizeof(entry.stridePixels), 1, f) != 1) break;
-      if (fread(&entry.format, 24, 1, f) != 1) break;
+      
+      // Read PixelFormat in VNC wire format (16 bytes)
+      // This matches the format used by PixelFormat::read()/write() methods
+      struct {
+        uint8_t bpp;
+        uint8_t depth;
+        uint8_t bigEndian;
+        uint8_t trueColour;
+        uint16_t redMax;
+        uint16_t greenMax;
+        uint16_t blueMax;
+        uint8_t redShift;
+        uint8_t greenShift;
+        uint8_t blueShift;
+        uint8_t padding[3];
+      } pfData;  // 16 bytes total (VNC wire format)
+      
+      if (fread(&pfData, sizeof(pfData), 1, f) != 1) break;
+      
+      // Reconstruct PixelFormat from serialized data
+      entry.format = PixelFormat(pfData.bpp, pfData.depth,
+                                  pfData.bigEndian != 0, pfData.trueColour != 0,
+                                  pfData.redMax, pfData.greenMax, pfData.blueMax,
+                                  pfData.redShift, pfData.greenShift, pfData.blueShift);
       
       uint8_t flags;
       if (fread(&flags, 1, 1, f) != 1) break;
@@ -1279,7 +1304,7 @@ bool GlobalClientPersistentCache::saveToDisk()
 
   memset(&header, 0, sizeof(header));
   header.magic = 0x50435633;  // "PCV3" (magic stays same, version bumped)
-  header.version = 5;
+  header.version = 6;
   header.entryCount = indexMap_.size();
   header.created = time(nullptr);
   header.lastAccess = time(nullptr);
@@ -1311,8 +1336,57 @@ bool GlobalClientPersistentCache::saveToDisk()
         !writeOrFail(&idx.payloadSize, sizeof(idx.payloadSize), 1, "payloadSize") ||
         !writeOrFail(&idx.width, sizeof(idx.width), 1, "width") ||
         !writeOrFail(&idx.height, sizeof(idx.height), 1, "height") ||
-        !writeOrFail(&idx.stridePixels, sizeof(idx.stridePixels), 1, "stridePixels") ||
-        !writeOrFail(&idx.format, 24, 1, "PixelFormat") ) {
+        !writeOrFail(&idx.stridePixels, sizeof(idx.stridePixels), 1, "stridePixels")) {
+      fclose(f);
+      remove(tmpPath.c_str());
+      return false;
+    }
+    
+    // Write PixelFormat in VNC wire format (16 bytes)
+    // This matches the format used by PixelFormat::read()/write() methods
+    struct {
+      uint8_t bpp;
+      uint8_t depth;
+      uint8_t bigEndian;
+      uint8_t trueColour;
+      uint16_t redMax;
+      uint16_t greenMax;
+      uint16_t blueMax;
+      uint8_t redShift;
+      uint8_t greenShift;
+      uint8_t blueShift;
+      uint8_t padding[3];
+    } pfData;  // 16 bytes total (VNC wire format)
+    
+    pfData.bpp = (uint8_t)idx.format.bpp;
+    pfData.depth = (uint8_t)idx.format.depth;
+    pfData.trueColour = idx.format.trueColour ? 1 : 0;
+    pfData.bigEndian = idx.format.isBigEndian() ? 1 : 0;
+    
+    // Access protected fields via raw memory (same platform, same layout)
+    // These fields are at fixed offsets from the start of PixelFormat:
+    // redMax at offset 12, greenMax at 16, blueMax at 20
+    // redShift at 24, greenShift at 28, blueShift at 32
+    const uint8_t* pfRaw = reinterpret_cast<const uint8_t*>(&idx.format);
+    int32_t redMax, greenMax, blueMax, redShift, greenShift, blueShift;
+    memcpy(&redMax, pfRaw + 12, 4);
+    memcpy(&greenMax, pfRaw + 16, 4);
+    memcpy(&blueMax, pfRaw + 20, 4);
+    memcpy(&redShift, pfRaw + 24, 4);
+    memcpy(&greenShift, pfRaw + 28, 4);
+    memcpy(&blueShift, pfRaw + 32, 4);
+    
+    pfData.redMax = (uint16_t)redMax;
+    pfData.greenMax = (uint16_t)greenMax;
+    pfData.blueMax = (uint16_t)blueMax;
+    pfData.redShift = (uint8_t)redShift;
+    pfData.greenShift = (uint8_t)greenShift;
+    pfData.blueShift = (uint8_t)blueShift;
+    pfData.padding[0] = 0;
+    pfData.padding[1] = 0;
+    pfData.padding[2] = 0;
+    
+    if (!writeOrFail(&pfData, sizeof(pfData), 1, "PixelFormat")) {
       fclose(f);
       remove(tmpPath.c_str());
       return false;
@@ -1343,7 +1417,7 @@ bool GlobalClientPersistentCache::saveToDisk()
     return false;
   }
 
-  vlog.info("PersistentCache: saved v5 index with %zu entries", indexMap_.size());
+  vlog.info("PersistentCache: saved v6 index with %zu entries", indexMap_.size());
   return true;
 }
 
