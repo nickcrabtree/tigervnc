@@ -103,7 +103,7 @@ void PlatformPixelBuffer::commitBufferRW(const core::Rect& r)
   damage.assign_union(r);
 
   core::Rect accumulated = damage.get_bounding_rect();
-  vlog.info("PlatformPixelBuffer::commitBufferRW: new rect [%d,%d-%d,%d], accumulated damage [%d,%d-%d,%d]",
+  vlog.debug("PlatformPixelBuffer::commitBufferRW: new rect [%d,%d-%d,%d], accumulated damage [%d,%d-%d,%d]",
             r.tl.x, r.tl.y, r.br.x, r.br.y,
             accumulated.tl.x, accumulated.tl.y,
             accumulated.br.x, accumulated.br.y);
@@ -120,7 +120,7 @@ core::Rect PlatformPixelBuffer::getDamage(void)
   damage.clear();
 
   if (r.width() > 0 && r.height() > 0) {
-    vlog.info("PlatformPixelBuffer::getDamage: flushing damage [%d,%d-%d,%d]",
+    vlog.debug("PlatformPixelBuffer::getDamage: flushing damage [%d,%d-%d,%d]",
               r.tl.x, r.tl.y, r.br.x, r.br.y);
   }
 
