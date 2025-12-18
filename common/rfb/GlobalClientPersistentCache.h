@@ -157,8 +157,18 @@ namespace rfb {
     const CachedPixels* getByKey(const CacheKey& key);
     
     // NEW: Lookup by canonical hash (for viewer-managed lossy mapping)
-    // Must match dimensions to avoid hash collisions between different shapes
-    const CachedPixels* getByCanonicalHash(uint64_t canonicalHash, uint16_t width, uint16_t height);
+    // Must match dimensions to avoid hash collisions between different shapes.
+    //
+    // minBpp (optional): Minimum bits-per-pixel required. If the only matching
+    // entries have lower bpp than minBpp, returns nullptr so the caller can
+    // request fresh high-quality data from the server. This prevents quality
+    // loss when upscaling from a low-quality cached entry (e.g., 8bpp) to a
+    // high-quality viewer format (e.g., 32bpp).
+    //
+    // When minBpp=0 (default), no filtering is applied and the best available
+    // entry is returned (preferring higher bpp and lossless over lossy).
+    const CachedPixels* getByCanonicalHash(uint64_t canonicalHash, uint16_t width,
+                                           uint16_t height, uint8_t minBpp = 0);
     
     // Insert/update a cache entry with dual-hash design.
     // 
@@ -294,9 +304,23 @@ namespace rfb {
       uint16_t stridePixels;
       PixelFormat format;
       bool isCold;              // True if evicted from memory but still on disk
-      uint64_t canonicalHash;   // NEW: Server's canonical hash (persisted in v4)
+      uint64_t canonicalHash;   // Server's canonical hash (persisted since v4)
       CacheKey key;             // Corresponding in-memory key
+      
+      // Quality code (v7): 3-bit field encoding color depth and lossy/lossless
+      //   Bit 0: Lossy flag (0=lossless, 1=lossy)
+      //   Bits 1-2: Color depth code (00=8bpp, 01=16bpp, 10=24/32bpp, 11=reserved)
+      // Values: 0=8bpp lossless, 1=8bpp lossy, 2=16bpp lossless, 3=16bpp lossy,
+      //         4=24/32bpp lossless, 5=24/32bpp lossy, 6-7=reserved
+      uint8_t qualityCode;
+      
+      IndexEntry() : shardId(0), payloadOffset(0), payloadSize(0), width(0),
+                     height(0), stridePixels(0), isCold(false), canonicalHash(0),
+                     qualityCode(0) {}
     };
+    
+    // Helper to compute quality code from pixel format and lossy flag
+    static uint8_t computeQualityCode(const PixelFormat& pf, bool isLossy);
     std::unordered_map<std::vector<uint8_t>, IndexEntry, HashVectorHasher> indexMap_;
     
     // Queue of hashes waiting to be hydrated (background loading)

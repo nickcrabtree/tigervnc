@@ -56,6 +56,14 @@ add_executable(persistentcache_pixelformat persistentcache_pixelformat.cxx)
 target_link_libraries(persistentcache_pixelformat rfb core GTest::gtest_main)
 gtest_discover_tests(persistentcache_pixelformat)
 
+add_executable(persistentcache_crossbpp persistentcache_crossbpp.cxx)
+target_link_libraries(persistentcache_crossbpp rfb core GTest::gtest_main)
+gtest_discover_tests(persistentcache_crossbpp)
+
+add_executable(persistentcache_quality persistentcache_quality.cxx)
+target_link_libraries(persistentcache_quality rfb core GTest::gtest_main)
+gtest_discover_tests(persistentcache_quality)
+
 add_executable(test_hash_report_protocol test_hash_report_protocol.cxx)
 target_link_libraries(test_hash_report_protocol rfb core rdr network GTest::gtest_main)
 gtest_discover_tests(test_hash_report_protocol)

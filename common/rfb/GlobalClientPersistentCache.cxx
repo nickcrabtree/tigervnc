@@ -99,6 +99,22 @@ static bool isSolidBlack(const uint8_t* pixels, size_t length)
   return true;
 }
 
+// Compute 3-bit quality code from pixel format and lossy flag
+// Bit 0: lossy flag (0=lossless, 1=lossy)
+// Bits 1-2: depth code (00=8bpp, 01=16bpp, 10=24/32bpp, 11=reserved)
+uint8_t GlobalClientPersistentCache::computeQualityCode(const PixelFormat& pf, bool isLossy)
+{
+  uint8_t depthCode = 0;
+  if (pf.bpp <= 8) {
+    depthCode = 0;  // 8bpp
+  } else if (pf.bpp <= 16) {
+    depthCode = 1;  // 16bpp
+  } else {
+    depthCode = 2;  // 24/32bpp
+  }
+  return (depthCode << 1) | (isLossy ? 1 : 0);
+}
+
 static size_t mbToBytesClamped(size_t mb)
 {
   const unsigned long long mul = 1024ULL * 1024ULL;
@@ -263,19 +279,26 @@ GlobalClientPersistentCache::getByKey(const CacheKey& key)
 }
 
 const GlobalClientPersistentCache::CachedPixels*
-GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t width, uint16_t height)
+GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t width,
+                                                 uint16_t height, uint8_t minBpp)
 {
   // Lookup by canonical hash (server's lossless ID) and dimensions.
-  // PREFERENCE ORDER:
-  // 1) Lossless entry (actual == canonical)
-  // 2) Lossy entry (actual != canonical)
+  // PREFERENCE ORDER (when minBpp allows):
+  // 1) Highest bpp lossless entry
+  // 2) Highest bpp lossy entry
+  // 3) Lower bpp entries (only if minBpp=0 or entry meets minBpp)
   //
-  // This ensures we prefer best-quality pixels when both variants exist.
+  // When minBpp > 0, entries with bpp < minBpp are rejected to prevent quality
+  // loss from upscaling low-quality cached data to high-quality display format.
 
   if (!arcCache_)
     return nullptr;
 
-  const CachedPixels* lossyCandidate = nullptr;
+  // Track best candidates at each quality level
+  const CachedPixels* bestLossless = nullptr;
+  const CachedPixels* bestLossy = nullptr;
+  uint8_t bestLosslessBpp = 0;
+  uint8_t bestLossyBpp = 0;
 
   // 1) Scan hydrated entries in memory.
   for (const auto& kv : cache_) {
@@ -289,23 +312,26 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t
     if (!e)
       continue;
 
-    // Prefer lossless immediately.
+    uint8_t entryBpp = e->format.bpp;
+    
+    // Skip entries below minimum quality threshold
+    if (minBpp > 0 && entryBpp < minBpp)
+      continue;
+
     if (e->isLossless()) {
-      stats_.cacheHits++;
-      if (e->width * e->height > 1024 && isSolidBlack(e->pixels.data(), e->pixels.size())) {
-        vlog.info("PersistentCache WARNING: Retrieved solid black entry (Hit)! canonical=%llu size=%dx%d",
-                  (unsigned long long)canonicalHash, e->width, e->height);
+      if (entryBpp > bestLosslessBpp || !bestLossless) {
+        bestLossless = e;
+        bestLosslessBpp = entryBpp;
       }
-      return e;
+    } else {
+      if (entryBpp > bestLossyBpp || !bestLossy) {
+        bestLossy = e;
+        bestLossyBpp = entryBpp;
+      }
     }
-
-    if (!lossyCandidate)
-      lossyCandidate = e;
   }
 
-  // 2) If no lossless entry is hydrated, try to find a lossless entry on disk.
-  // Index v5 persists canonicalHash for each entry, so we can filter without
-  // hydrating unrelated payloads.
+  // 2) Also check disk index for entries not yet hydrated
   for (const auto& idxKv : indexMap_) {
     const std::vector<uint8_t>& hash = idxKv.first;
     const IndexEntry& idx = idxKv.second;
@@ -315,8 +341,23 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t
     if (idx.canonicalHash != canonicalHash)
       continue;
 
-    // Prefer lossless-on-disk entries (actual == canonical).
-    if (idx.key.contentHash != idx.canonicalHash)
+    uint8_t entryBpp = idx.format.bpp;
+    
+    // Skip entries below minimum quality threshold
+    if (minBpp > 0 && entryBpp < minBpp)
+      continue;
+
+    // Check if this could be better than current best
+    bool isLossless = (idx.key.contentHash == idx.canonicalHash);
+    bool shouldHydrate = false;
+    
+    if (isLossless && entryBpp > bestLosslessBpp) {
+      shouldHydrate = true;
+    } else if (!isLossless && entryBpp > bestLossyBpp && !bestLossless) {
+      shouldHydrate = true;
+    }
+    
+    if (!shouldHydrate)
       continue;
 
     if (!hydrateEntry(hash))
@@ -330,49 +371,32 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t
     if (!e)
       continue;
 
-    stats_.cacheHits++;
     coldEntries_.erase(hash);
-    if (e->width * e->height > 1024 && isSolidBlack(e->pixels.data(), e->pixels.size())) {
-      vlog.info("PersistentCache WARNING: Retrieved solid black entry (Hit/Hydrated)! canonical=%llu size=%dx%d",
-                (unsigned long long)canonicalHash, e->width, e->height);
+    
+    if (e->isLossless()) {
+      if (e->format.bpp > bestLosslessBpp || !bestLossless) {
+        bestLossless = e;
+        bestLosslessBpp = e->format.bpp;
+      }
+    } else {
+      if (e->format.bpp > bestLossyBpp || !bestLossy) {
+        bestLossy = e;
+        bestLossyBpp = e->format.bpp;
+      }
     }
-    return e;
   }
 
-  // 3) If we already have a lossy candidate in memory, use it.
-  if (lossyCandidate) {
+  // Return best available entry: prefer lossless, then highest bpp lossy
+  const CachedPixels* result = bestLossless ? bestLossless : bestLossy;
+  
+  if (result) {
     stats_.cacheHits++;
-    return lossyCandidate;
-  }
-
-  // 4) Otherwise, try to hydrate a lossy entry from disk.
-  for (const auto& idxKv : indexMap_) {
-    const std::vector<uint8_t>& hash = idxKv.first;
-    const IndexEntry& idx = idxKv.second;
-
-    if (idx.width != width || idx.height != height)
-      continue;
-    if (idx.canonicalHash != canonicalHash)
-      continue;
-
-    if (!hydrateEntry(hash))
-      continue;
-
-    auto itKey = hashToKey_.find(hash);
-    if (itKey == hashToKey_.end())
-      continue;
-
-    const CachedPixels* e = arcCache_->get(itKey->second);
-    if (!e)
-      continue;
-
-    stats_.cacheHits++;
-    coldEntries_.erase(hash);
-    if (e->width * e->height > 1024 && isSolidBlack(e->pixels.data(), e->pixels.size())) {
-      vlog.info("PersistentCache WARNING: Retrieved solid black entry (Hit/Hydrated)! canonical=%llu size=%dx%d",
-                (unsigned long long)canonicalHash, e->width, e->height);
+    if (result->width * result->height > 1024 && 
+        isSolidBlack(result->pixels.data(), result->pixels.size())) {
+      vlog.info("PersistentCache WARNING: Retrieved solid black entry (Hit)! canonical=%llu size=%dx%d",
+                (unsigned long long)canonicalHash, result->width, result->height);
     }
-    return e;
+    return result;
   }
 
   stats_.cacheMisses++;

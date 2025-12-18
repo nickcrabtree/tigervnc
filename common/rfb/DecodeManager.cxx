@@ -1001,7 +1001,13 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   // Cast dimensions to match CacheKey type (uint16_t)
   uint16_t w = (uint16_t)r.width();
   uint16_t h = (uint16_t)r.height();
-  const GlobalClientPersistentCache::CachedPixels* cached = persistentCache->getByCanonicalHash(cacheId, w, h);
+  
+  // Pass viewer's current bpp as minBpp to prevent quality loss from upscaling.
+  // If cache only has lower-bpp entries than the viewer needs, we prefer to miss
+  // and request fresh high-quality data from the server rather than upscale
+  // low-quality cached data (which causes visible artifacts).
+  uint8_t minBpp = pb->getPF().bpp;
+  const GlobalClientPersistentCache::CachedPixels* cached = persistentCache->getByCanonicalHash(cacheId, w, h, minBpp);
   
   if (cached == nullptr) {
     // Cache miss - queue request for later batching
