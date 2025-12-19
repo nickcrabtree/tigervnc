@@ -127,8 +127,8 @@ void Surface::clear(unsigned char r, unsigned char g, unsigned char b, unsigned 
   b = (unsigned)b * a / 255;
 
   out = data;
-  for (y = 0;y < width();y++) {
-    for (x = 0;x < height();x++) {
+  for (y = 0; y < height(); y++) {
+    for (x = 0; x < width(); x++) {
       *out++ = b;
       *out++ = g;
       *out++ = r;
@@ -142,25 +142,31 @@ void Surface::draw(int src_x, int src_y, int dst_x, int dst_y,
 {
   CGColorSpaceRef lut;
   CGAffineTransform origTransform;
-  CGFloat scale;
+  CGFloat scaleX, scaleY;
 
   CGContextSaveGState(fl_gc);
 
   // Get the current transformation matrix which includes Retina scaling
   origTransform = CGContextGetCTM(fl_gc);
   
-  // Extract scale factor (typically 2.0 for Retina)
-  scale = origTransform.a;
+  // Extract scale factors (typically 2.0 for Retina)
+  // Note: scaleY (d component) may be negative if Y axis is flipped
+  scaleX = origTransform.a;
+  scaleY = origTransform.d;
 
   // Reset the transformation matrix to identity
   CGContextConcatCTM(fl_gc, CGAffineTransformInvert(origTransform));
   
-  // Build new transform: scale for Retina but keep top-left origin
-  CGAffineTransform transform = CGAffineTransformMakeScale(scale, scale);
+  // Build new transform preserving scale and Y direction
+  CGAffineTransform transform = CGAffineTransformMakeScale(scaleX, scaleY);
   CGContextConcatCTM(fl_gc, transform);
 
-  // macOS uses bottom-left origin, we need top-left, so flip Y coordinate
-  dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
+  // Convert Y coordinate based on the transform's Y direction:
+  // - If scaleY > 0: Y increases upward (macOS default), need to flip
+  // - If scaleY < 0: Y increases downward (already flipped), no flip needed
+  if (scaleY > 0) {
+    dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
+  }
 
   lut = cocoa_win_color_space(Fl_Window::current());
   render(fl_gc, lut, data, kCGBlendModeCopy, 1.0,
@@ -191,25 +197,31 @@ void Surface::blend(int src_x, int src_y, int dst_x, int dst_y,
 {
   CGColorSpaceRef lut;
   CGAffineTransform origTransform;
-  CGFloat scale;
+  CGFloat scaleX, scaleY;
 
   CGContextSaveGState(fl_gc);
 
   // Get the current transformation matrix which includes Retina scaling
   origTransform = CGContextGetCTM(fl_gc);
   
-  // Extract scale factor (typically 2.0 for Retina)
-  scale = origTransform.a;
+  // Extract scale factors (typically 2.0 for Retina)
+  // Note: scaleY (d component) may be negative if Y axis is flipped
+  scaleX = origTransform.a;
+  scaleY = origTransform.d;
 
   // Reset the transformation matrix to identity
   CGContextConcatCTM(fl_gc, CGAffineTransformInvert(origTransform));
   
-  // Build new transform: scale for Retina but keep top-left origin
-  CGAffineTransform transform = CGAffineTransformMakeScale(scale, scale);
+  // Build new transform preserving scale and Y direction
+  CGAffineTransform transform = CGAffineTransformMakeScale(scaleX, scaleY);
   CGContextConcatCTM(fl_gc, transform);
 
-  // macOS uses bottom-left origin, we need top-left, so flip Y coordinate
-  dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
+  // Convert Y coordinate based on the transform's Y direction:
+  // - If scaleY > 0: Y increases upward (macOS default), need to flip
+  // - If scaleY < 0: Y increases downward (already flipped), no flip needed
+  if (scaleY > 0) {
+    dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
+  }
 
   lut = cocoa_win_color_space(Fl_Window::current());
   render(fl_gc, lut, data, kCGBlendModeNormal, (CGFloat)a/255.0,
