@@ -105,6 +105,10 @@ add_executable(mac_coord_utils mac_coord_utils.cxx)
 target_link_libraries(mac_coord_utils GTest::gtest_main)
 gtest_discover_tests(mac_coord_utils)
 
+add_executable(cachecoordinator cachecoordinator.cxx)
+target_link_libraries(cachecoordinator rfb core GTest::gtest_main)
+gtest_discover_tests(cachecoordinator)
+
 # Standalone test for lossy cache hash behavior (not using GTest)
 add_executable(test_lossy_cache test_lossy_cache.cxx)
 target_link_libraries(test_lossy_cache rfb core rdr)

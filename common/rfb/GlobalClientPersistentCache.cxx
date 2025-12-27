@@ -202,6 +202,9 @@ GlobalClientPersistentCache::~GlobalClientPersistentCache()
 {
   PersistentCacheDebugLogger::getInstance().log("GlobalClientPersistentCache destructor ENTER: entries=" + std::to_string(cache_.size()));
   
+  // Stop coordinator first (releases lock, allows other viewers to become master)
+  stopCoordinator();
+  
   // Close current shard handle if open
   closeCurrentShard();
   
@@ -1613,4 +1616,191 @@ std::string GlobalClientPersistentCache::dumpDebugState(const std::string& outpu
   
   vlog.info("PersistentCache debug state dumped to: %s", dumpPath.c_str());
   return dumpPath;
+}
+
+// ============================================================================
+// Multi-Viewer Cache Coordination
+// ============================================================================
+
+bool GlobalClientPersistentCache::startCoordinator()
+{
+  std::lock_guard<std::mutex> lock(coordinatorMutex_);
+  
+  if (coordinator_ && coordinator_->isRunning())
+    return true;
+  
+  // Create coordinator with callbacks
+  auto indexCb = [this](const std::vector<cache::WireIndexEntry>& entries) {
+    onIndexUpdate(entries);
+  };
+  auto writeCb = [this](const cache::WireIndexEntry& entry,
+                        const std::vector<uint8_t>& payload,
+                        cache::WireIndexEntry& result) -> bool {
+    return onWriteRequest(entry, payload, result);
+  };
+  
+  coordinator_ = cache::CacheCoordinator::create(cacheDir_, indexCb, writeCb);
+  
+  if (!coordinator_) {
+    vlog.error("Failed to create cache coordinator");
+    return false;
+  }
+  
+  if (!coordinator_->start()) {
+    vlog.error("Failed to start cache coordinator");
+    coordinator_.reset();
+    return false;
+  }
+  
+  const char* roleStr = "unknown";
+  switch (coordinator_->role()) {
+    case cache::CacheCoordinator::Role::Master: roleStr = "master"; break;
+    case cache::CacheCoordinator::Role::Slave: roleStr = "slave"; break;
+    case cache::CacheCoordinator::Role::Standalone: roleStr = "standalone"; break;
+    default: break;
+  }
+  vlog.info("Cache coordinator started as %s", roleStr);
+  
+  return true;
+}
+
+void GlobalClientPersistentCache::stopCoordinator()
+{
+  std::lock_guard<std::mutex> lock(coordinatorMutex_);
+  
+  if (coordinator_) {
+    coordinator_->stop();
+    coordinator_.reset();
+    vlog.debug("Cache coordinator stopped");
+  }
+}
+
+cache::CacheCoordinator::Role GlobalClientPersistentCache::getCoordinatorRole() const
+{
+  std::lock_guard<std::mutex> lock(coordinatorMutex_);
+  if (!coordinator_)
+    return cache::CacheCoordinator::Role::Uninitialized;
+  return coordinator_->role();
+}
+
+cache::CacheCoordinator::Stats GlobalClientPersistentCache::getCoordinatorStats() const
+{
+  std::lock_guard<std::mutex> lock(coordinatorMutex_);
+  if (!coordinator_)
+    return cache::CacheCoordinator::Stats{};
+  return coordinator_->getStats();
+}
+
+void GlobalClientPersistentCache::onIndexUpdate(const std::vector<cache::WireIndexEntry>& entries)
+{
+  // Called when we (as slave) receive index updates from master.
+  // Add these entries to our index so we can hydrate them on demand.
+  vlog.debug("Received %zu index updates from coordinator", entries.size());
+  
+  for (const auto& wireEntry : entries) {
+    // Convert WireIndexEntry to internal IndexEntry
+    std::vector<uint8_t> hash(wireEntry.hash, wireEntry.hash + 16);
+    
+    // Check if we already have this entry
+    if (indexMap_.find(hash) != indexMap_.end())
+      continue;
+    
+    IndexEntry idx;
+    idx.shardId = wireEntry.shardId;
+    idx.payloadOffset = wireEntry.payloadOffset;
+    idx.payloadSize = wireEntry.payloadSize;
+    idx.width = wireEntry.width;
+    idx.height = wireEntry.height;
+    idx.stridePixels = wireEntry.width;  // Stored contiguously
+    idx.canonicalHash = wireEntry.canonicalHash;
+    idx.qualityCode = wireEntry.qualityCode;
+    idx.isCold = true;  // Not in our memory yet
+    
+    // Reconstruct pixel format from qualityCode
+    uint8_t depthCode = (wireEntry.qualityCode >> 1) & 0x03;
+    switch (depthCode) {
+      case 0: idx.format.bpp = 8; idx.format.depth = 8; break;
+      case 1: idx.format.bpp = 16; idx.format.depth = 16; break;
+      default: idx.format.bpp = 32; idx.format.depth = 24; break;
+    }
+    
+    // Set up CacheKey
+    idx.key.width = wireEntry.width;
+    idx.key.height = wireEntry.height;
+    idx.key.contentHash = wireEntry.actualHash;
+    
+    indexMap_[hash] = idx;
+    coldEntries_.insert(hash);
+    hashToKey_[hash] = idx.key;
+    
+    // Add to hydration queue for potential background loading
+    hydrationQueue_.push_back(hash);
+  }
+}
+
+bool GlobalClientPersistentCache::onWriteRequest(const cache::WireIndexEntry& wireEntry,
+                                                 const std::vector<uint8_t>& payload,
+                                                 cache::WireIndexEntry& resultEntry)
+{
+  // Called when we (as master) receive a write request from a slave.
+  // We need to write the payload to our shard and return the result.
+  
+  std::vector<uint8_t> hash(wireEntry.hash, wireEntry.hash + 16);
+  
+  // Check if we already have this entry
+  if (indexMap_.find(hash) != indexMap_.end()) {
+    // Already have it - return existing entry info
+    const IndexEntry& existing = indexMap_[hash];
+    memcpy(resultEntry.hash, hash.data(), 16);
+    resultEntry.shardId = existing.shardId;
+    resultEntry.payloadOffset = existing.payloadOffset;
+    resultEntry.payloadSize = existing.payloadSize;
+    resultEntry.width = existing.width;
+    resultEntry.height = existing.height;
+    resultEntry.canonicalHash = existing.canonicalHash;
+    resultEntry.actualHash = existing.key.contentHash;
+    resultEntry.qualityCode = existing.qualityCode;
+    return true;
+  }
+  
+  // Build a CachedPixels from the wire entry and payload
+  CachedPixels entry;
+  entry.pixels = payload;
+  entry.width = wireEntry.width;
+  entry.height = wireEntry.height;
+  entry.stridePixels = wireEntry.width;  // Stored contiguously
+  entry.canonicalHash = wireEntry.canonicalHash;
+  entry.actualHash = wireEntry.actualHash;
+  entry.lastAccessTime = getCurrentTime();
+  
+  // Reconstruct pixel format from qualityCode
+  uint8_t depthCode = (wireEntry.qualityCode >> 1) & 0x03;
+  switch (depthCode) {
+    case 0: entry.format.bpp = 8; entry.format.depth = 8; break;
+    case 1: entry.format.bpp = 16; entry.format.depth = 16; break;
+    default: entry.format.bpp = 32; entry.format.depth = 24; break;
+  }
+  
+  // Write to shard
+  if (!writeEntryToShard(hash, entry)) {
+    vlog.error("Failed to write slave's entry to shard");
+    return false;
+  }
+  
+  // Return result
+  const IndexEntry& idx = indexMap_[hash];
+  memcpy(resultEntry.hash, hash.data(), 16);
+  resultEntry.shardId = idx.shardId;
+  resultEntry.payloadOffset = idx.payloadOffset;
+  resultEntry.payloadSize = idx.payloadSize;
+  resultEntry.width = idx.width;
+  resultEntry.height = idx.height;
+  resultEntry.canonicalHash = idx.canonicalHash;
+  resultEntry.actualHash = wireEntry.actualHash;
+  resultEntry.qualityCode = idx.qualityCode;
+  
+  vlog.debug("Wrote entry for slave: %dx%d, shard=%u, offset=%u",
+             idx.width, idx.height, idx.shardId, idx.payloadOffset);
+  
+  return true;
 }
