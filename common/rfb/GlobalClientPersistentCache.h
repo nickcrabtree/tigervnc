@@ -39,6 +39,7 @@
 #include <rfb/PixelFormat.h>
 #include <rfb/CacheKey.h>
 #include <rfb/cache/ArcCache.h>
+#include <rfb/cache/CacheCoordinator.h>
 
 namespace rfb {
 
@@ -250,6 +251,16 @@ namespace rfb {
     // Configuration
     void setMaxSize(size_t maxSizeMB);
     void clear();
+    
+    // Multi-viewer coordination
+    // Start the cache coordinator (should be called after loadIndexFromDisk)
+    bool startCoordinator();
+    // Stop the coordinator (called automatically in destructor)
+    void stopCoordinator();
+    // Get coordinator role (for diagnostics)
+    cache::CacheCoordinator::Role getCoordinatorRole() const;
+    // Get coordinator stats
+    cache::CacheCoordinator::Stats getCoordinatorStats() const;
 
     // Expose cache location for logging and diagnostics. These helpers are
     // intentionally narrow so callers do not need to know about the on-disk
@@ -345,6 +356,15 @@ namespace rfb {
     size_t currentShardSize_;  // Current size of active shard
     std::unordered_map<uint16_t, size_t> shardSizes_;  // Size of each shard
     
+    // Multi-viewer coordination
+    std::unique_ptr<cache::CacheCoordinator> coordinator_;
+    mutable std::mutex coordinatorMutex_;  // Protects coordinator_ access
+    
+    // Coordinator callbacks
+    void onIndexUpdate(const std::vector<cache::WireIndexEntry>& entries);
+    bool onWriteRequest(const cache::WireIndexEntry& entry,
+                        const std::vector<uint8_t>& payload,
+                        cache::WireIndexEntry& resultEntry);
 
     // Helper methods
     std::string getShardPath(uint16_t shardId) const;

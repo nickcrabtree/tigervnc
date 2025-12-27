@@ -55,6 +55,7 @@ add_library(rfb STATIC
   encodings.cxx
   obfuscate.cxx
   cache/BandwidthStats.cxx
+  cache/CacheCoordinator.cxx
   cache/TilingAnalysis.cxx
   cache/TilingIntegration.cxx)
 

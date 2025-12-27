@@ -94,6 +94,10 @@ add_executable(tiling_analysis tiling_analysis.cxx)
 target_link_libraries(tiling_analysis rfb core GTest::gtest_main)
 gtest_discover_tests(tiling_analysis)
 
+add_executable(cachecoordinator cachecoordinator.cxx)
+target_link_libraries(cachecoordinator rfb core GTest::gtest_main)
+gtest_discover_tests(cachecoordinator)
+
 # Standalone test for lossy cache hash behavior (not using GTest)
 add_executable(test_lossy_cache test_lossy_cache.cxx)
 target_link_libraries(test_lossy_cache rfb core rdr)

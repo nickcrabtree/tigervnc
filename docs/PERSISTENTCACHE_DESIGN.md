@@ -1182,6 +1182,49 @@ preserving the existing PersistentCache protocol semantics.
 
 **Testing:** Ready for integration testing with restart scenarios
 
+### ✅ Phase 8: Multi-Viewer Coordination (COMPLETED)
+
+**Completed:** 2025-12-27
+
+**Goal:** Enable concurrent VNC viewers on the same machine to coordinate writes to the shared PersistentCache directory and share index updates in real-time.
+
+**Tasks completed:**
+1. ✅ Created `CoordinatorProtocol.h` - Wire format, message types (HELLO, WELCOME, WRITE_REQ, WRITE_ACK, INDEX_UPDATE, etc.)
+2. ✅ Created `CacheCoordinator.h` - Abstract interface with Role enum, factory method, callbacks
+3. ✅ Implemented `MasterCoordinator` - Unix domain socket server, accepts slave connections, processes writes, broadcasts updates
+4. ✅ Implemented `SlaveCoordinator` - Connects to master, sends write requests, receives index updates
+5. ✅ Implemented `StandaloneCoordinator` - No-op fallback for single-viewer or Windows
+6. ✅ Factory uses `flock()` on `coordinator.lock` for atomic master election
+7. ✅ Integrated into `GlobalClientPersistentCache` with `startCoordinator()`/`stopCoordinator()` methods
+8. ✅ Added callbacks for index updates (slaves) and write requests (master)
+9. ✅ Created 7 unit tests covering role detection, IPC, message serialization
+
+**Files created:**
+- `common/rfb/cache/CoordinatorProtocol.h` - Message types, wire format structs, serialization helpers
+- `common/rfb/cache/CacheCoordinator.h` - Abstract base class, Master/Slave/Standalone declarations
+- `common/rfb/cache/CacheCoordinator.cxx` - Full implementation (~960 lines)
+- `tests/unit/cachecoordinator.cxx` - Unit tests (7 tests, all passing)
+
+**Files modified:**
+- `common/rfb/GlobalClientPersistentCache.h` - Added coordinator member, methods, callbacks
+- `common/rfb/GlobalClientPersistentCache.cxx` - Implemented coordinator integration (~190 lines)
+- `common/rfb/CMakeLists.txt` - Added CacheCoordinator.cxx
+- `tests/unit/CMakeLists.txt` - Added cachecoordinator test
+
+**Architecture:**
+- **Master election**: First viewer acquires `coordinator.lock` via `flock()`, becomes master
+- **IPC**: Unix domain socket at `coordinator.sock` in cache directory
+- **Write flow**: Slaves send WRITE_REQ → Master writes to shard → Master sends WRITE_ACK + broadcasts INDEX_UPDATE
+- **Graceful degradation**: Falls back to standalone mode if coordination fails
+- **Control files**: `coordinator.sock`, `coordinator.pid`, `coordinator.lock`
+
+**Key Features:**
+- Real-time index sharing between concurrent viewers
+- Entry written by Viewer A immediately available to Viewer B
+- No separate daemon process required
+- Automatic cleanup of stale sockets from crashed masters
+- Windows falls back to standalone mode (named pipes not yet implemented)
+
 ## Changelog
 
 - **2025-10-24:** Initial PersistentCache protocol design, distinct from ContentCache
@@ -1192,3 +1235,4 @@ preserving the existing PersistentCache protocol semantics.
 - **2025-10-24:** Phase 5 completed - server protocol message reading/writing implementation
 - **2025-10-24:** Phase 6 completed - server integration with hash-based encoding in EncodeManager
 - **2025-10-24:** Phase 7 completed - disk persistence with load/save, integrity checks, and corruption recovery
+- **2025-12-27:** Phase 8 completed - multi-viewer coordination with master/slave architecture and Unix domain socket IPC
