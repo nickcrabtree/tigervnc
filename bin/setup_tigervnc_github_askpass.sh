@@ -37,4 +37,5 @@ git config --global user.name "Nick Crabtree"
 git config --global user.email nickcrabtree@gmail.com
 git config --global push.default simple
 
+echo "Configured askpass for ${GITHUB_OWNER}/${GITHUB_REPO} (helper: $GIT_ASKPASS)"
 echo "tigervnc GitHub App askpass configured in this shell. You can now run git pull / git push."

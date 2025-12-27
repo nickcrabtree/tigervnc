@@ -32,6 +32,7 @@
 
 #include "cocoa.h"
 #include "Surface.h"
+#include "mac_coord_utils.h"
 
 static CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 
@@ -140,38 +141,30 @@ void Surface::clear(unsigned char r, unsigned char g, unsigned char b, unsigned 
 void Surface::draw(int src_x, int src_y, int dst_x, int dst_y,
                    int dst_w, int dst_h)
 {
-  CGColorSpaceRef lut;
   CGAffineTransform origTransform;
-  CGFloat scaleX, scaleY;
+  CGFloat scale;
 
   CGContextSaveGState(fl_gc);
 
   // Get the current transformation matrix which includes Retina scaling
   origTransform = CGContextGetCTM(fl_gc);
-  
-  // Extract scale factors (typically 2.0 for Retina)
-  // Note: scaleY (d component) may be negative if Y axis is flipped
-  scaleX = origTransform.a;
-  scaleY = origTransform.d;
+
+  // Extract scale factor (typically 2.0 for Retina, 1.0 otherwise)
+  // Use absolute value since scaleY may be negative
+  scale = fabs(origTransform.a);
 
   // Reset the transformation matrix to identity
   CGContextConcatCTM(fl_gc, CGAffineTransformInvert(origTransform));
-  
-  // Build new transform preserving scale and Y direction
-  CGAffineTransform transform = CGAffineTransformMakeScale(scaleX, scaleY);
-  CGContextConcatCTM(fl_gc, transform);
 
-  // Convert Y coordinate based on the transform's Y direction:
-  // - If scaleY > 0: Y increases upward (macOS default), need to flip
-  // - If scaleY < 0: Y increases downward (already flipped), no flip needed
-  if (scaleY > 0) {
-    dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
-  }
+  // Apply only the scale (no translation, no Y-flip from CTM)
+  CGContextScaleCTM(fl_gc, scale, scale);
 
-  lut = cocoa_win_color_space(Fl_Window::current());
-  render(fl_gc, lut, data, kCGBlendModeCopy, 1.0,
+  // macOS Coordinates are from bottom left, not top left
+  dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
+
+  // Use sRGB to match the surface data format and avoid color space conversion
+  render(fl_gc, srgb, data, kCGBlendModeCopy, 1.0,
          src_x, src_y, width(), height(), dst_x, dst_y, dst_w, dst_h);
-  CGColorSpaceRelease(lut);
 
   CGContextRestoreGState(fl_gc);
 }
@@ -195,38 +188,30 @@ void Surface::draw(Surface* dst, int src_x, int src_y,
 void Surface::blend(int src_x, int src_y, int dst_x, int dst_y,
                     int dst_w, int dst_h, int a)
 {
-  CGColorSpaceRef lut;
   CGAffineTransform origTransform;
-  CGFloat scaleX, scaleY;
+  CGFloat scale;
 
   CGContextSaveGState(fl_gc);
 
   // Get the current transformation matrix which includes Retina scaling
   origTransform = CGContextGetCTM(fl_gc);
-  
-  // Extract scale factors (typically 2.0 for Retina)
-  // Note: scaleY (d component) may be negative if Y axis is flipped
-  scaleX = origTransform.a;
-  scaleY = origTransform.d;
+
+  // Extract scale factor (typically 2.0 for Retina, 1.0 otherwise)
+  // Use absolute value since scaleY may be negative
+  scale = fabs(origTransform.a);
 
   // Reset the transformation matrix to identity
   CGContextConcatCTM(fl_gc, CGAffineTransformInvert(origTransform));
-  
-  // Build new transform preserving scale and Y direction
-  CGAffineTransform transform = CGAffineTransformMakeScale(scaleX, scaleY);
-  CGContextConcatCTM(fl_gc, transform);
 
-  // Convert Y coordinate based on the transform's Y direction:
-  // - If scaleY > 0: Y increases upward (macOS default), need to flip
-  // - If scaleY < 0: Y increases downward (already flipped), no flip needed
-  if (scaleY > 0) {
-    dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
-  }
+  // Apply only the scale (no translation, no Y-flip from CTM)
+  CGContextScaleCTM(fl_gc, scale, scale);
 
-  lut = cocoa_win_color_space(Fl_Window::current());
-  render(fl_gc, lut, data, kCGBlendModeNormal, (CGFloat)a/255.0,
+  // macOS Coordinates are from bottom left, not top left
+  dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
+
+  // Use sRGB to match the surface data format and avoid color space conversion
+  render(fl_gc, srgb, data, kCGBlendModeNormal, (CGFloat)a/255.0,
          src_x, src_y, width(), height(), dst_x, dst_y, dst_w, dst_h);
-  CGColorSpaceRelease(lut);
 
   CGContextRestoreGState(fl_gc);
 }

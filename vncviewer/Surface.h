@@ -71,6 +71,9 @@ protected:
   HBITMAP bitmap;
 #elif defined(__APPLE__)
   unsigned char* data;
+  friend class SurfaceOSXOrientation_BlitPreservesTopRow_Test; // test access to data buffer
+  friend class SurfaceOSXWindowOrientation_RendersUprightInWindow_Test; // test access to data buffer
+  friend class SurfaceOSXWindowOrientation; // fixture helper access
 #else
   Pixmap pixmap;
   Picture picture;
