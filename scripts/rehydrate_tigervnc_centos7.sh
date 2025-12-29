@@ -4,7 +4,7 @@ set -euo pipefail
 # Rehydrate script for TigerVNC on CentOS 7 using /data_parallel/PreStackPro/share/nickc as install root
 # - Installs system packages via yum (requires sudo)
 # - Builds and installs a modern CMake (>= 3.10) into /data_parallel/PreStackPro/share/nickc
-# - Leaves the actual TigerVNC build to the user (e.g. `make viewer server`)
+# - Configures and builds the custom TigerVNC Xnjcvnc server so that "make server" is immediately usable
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
@@ -95,9 +95,12 @@ else
   echo "[rehydrate] Installed CMake $CMAKE_VERSION into $PREFIX/bin/cmake"
 fi
 
+# Ensure we prefer tools under $PREFIX/bin within this script
+export PATH="$PREFIX/bin:$PATH"
+
 # --- 3. Environment hints ---
 echo
-printf "[rehydrate] Done. To use the locally installed tools under %s, ensure these are in your shell init (e.g. ~/.bashrc):\n" "$PREFIX"
+printf "[rehydrate] Done installing toolchain. To use the locally installed tools under %s in future shells, ensure these are in your shell init (e.g. ~/.bashrc):\n" "$PREFIX"
 printf "  export PATH=\"$PREFIX/bin:\$PATH\"\n"
 echo
 
@@ -117,12 +120,57 @@ install -m 0755 "$ROOT_DIR/unix/vncserver/xstartup.centos7" "$CONFIG_DIR/xstartu
 
 echo "[rehydrate] Installed xstartup to $CONFIG_DIR/xstartup (KDE/startkde-based session)"
 
-echo "[rehydrate] You can now run, for example:"
-echo "  cmake -S . -B build -DBUILD_VIEWER=ON"
-echo "  make -j$NPROC viewer server"
+# --- 5. Configure and build TigerVNC Xnjcvnc server ---
+
+echo "[rehydrate] Configuring TigerVNC CMake build tree under $ROOT_DIR/build ..."
+cmake -S "$ROOT_DIR" -B "$ROOT_DIR/build" -DBUILD_VIEWER=0
+
+echo "[rehydrate] Preparing Xorg Xserver tree under $ROOT_DIR/build/unix/xserver ..."
+mkdir -p "$ROOT_DIR/build/unix"
+if [ ! -d "$ROOT_DIR/build/unix/xserver" ]; then
+  cp -R "$ROOT_DIR/unix/xserver" "$ROOT_DIR/build/unix/"
+fi
+cp -R /usr/share/xorg-x11-server-source/* "$ROOT_DIR/build/unix/xserver/"
+
+cd "$ROOT_DIR/build/unix/xserver"
+
+# Apply TigerVNC Xorg patch matching Xorg 1.20.x (idempotent via dry-run)
+if patch -p1 --dry-run < "$ROOT_DIR/unix/xserver120.patch" >/dev/null 2>&1; then
+  echo "[rehydrate] Applying TigerVNC Xorg 1.20 patch ..."
+  patch -p1 < "$ROOT_DIR/unix/xserver120.patch"
+else
+  echo "[rehydrate] TigerVNC Xorg patch already applied; skipping."
+fi
+
+echo "[rehydrate] Regenerating Xorg autotools build system ..."
+autoreconf -fiv
+
+echo "[rehydrate] Configuring Xorg for use as Xnjcvnc backend ..."
+./configure --with-pic --without-dtrace --disable-static --disable-dri \
+  --disable-xinerama --disable-xvfb --disable-xnest --disable-xorg \
+  --disable-dmx --disable-xwin --disable-xephyr --disable-kdrive \
+  --disable-config-hal --disable-config-udev --disable-dri2 --enable-glx \
+  --with-default-font-path="catalogue:/etc/X11/fontpath.d,built-ins" \
+  --with-xkb-path=/usr/share/X11/xkb \
+  --with-xkb-output=/var/lib/xkb \
+  --with-xkb-bin-directory=/usr/bin \
+  --with-serverconfig-path=/usr/lib64/xorg
+
+cd "$ROOT_DIR"
+
+# Symlink used by wrapper scripts and tests
+mkdir -p "$ROOT_DIR/build/unix/vncserver"
+ln -sf ../xserver/hw/vnc/Xnjcvnc "$ROOT_DIR/build/unix/vncserver/Xnjcvnc"
+
+echo "[rehydrate] Building TigerVNC core libraries and Xnjcvnc server ..."
+make -j"$NPROC" server
+
+echo "[rehydrate] TigerVNC server build complete. You can now run make server again later for incremental rebuilds."
 
 # Create symlinks for tigervnc binaries
-BUILD_DIR="/data_parallel/PreStackPro/share/nickc/tigervnc/build/unix"
+BUILD_DIR="$ROOT_DIR/build/unix"
+mkdir -p "$BUILD_DIR/vncserver"
 ln -sf ../vncpasswd/vncpasswd "$BUILD_DIR/vncserver/tigervncpasswd" 2>/dev/null
 ln -sf ../vncconfig/vncconfig "$BUILD_DIR/vncserver/vncconfig" 2>/dev/null
+
 echo "[rehydrate] Created symlinks for tigervnc binaries"
