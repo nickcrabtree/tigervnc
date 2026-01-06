@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+rm -f /tmp/gh-askpass-*
+
 cat > /tmp/gh-askpass-tigervnc.sh << 'EOS3'
 #!/usr/bin/env bash
 set -euo pipefail
