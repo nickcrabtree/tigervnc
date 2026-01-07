@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <ctime>
+#include <sys/time.h>
 #include <string>
 
 #include <core/LogWriter.h>
@@ -101,6 +102,20 @@ namespace {
   // Format yes/no
   inline const char* yesNo(bool b) {
     return b ? "yes" : "no";
+  }
+
+  // Get current time as epoch.milliseconds (matches viewer log format)
+  inline double getEpochTime() {
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    return tv.tv_sec + tv.tv_usec / 1000000.0;
+  }
+
+  // Format timestamp for logging
+  inline const char* strTimestamp() {
+    static thread_local char buf[32];
+    snprintf(buf, sizeof(buf), "[%.3f]", getEpochTime());
+    return buf;
   }
 
   // Helper: when TIGERVNC_FB_HASH_DEBUG is set, dump the first few bytes
@@ -1196,6 +1211,31 @@ void EncodeManager::writeRects(const core::Region& changed,
         size_t n = std::min(contentHash.size(), sizeof(uint64_t));
         memcpy(&contentId, contentHash.data(), n);
       }
+      
+      // DEBUG: Log pixel sample to help diagnose hash collisions
+      // Sample a few pixels from corners and center to verify framebuffer content
+      {
+        int stride = 0;
+        const uint8_t* buf = pb->getBuffer(contentRect, &stride);
+        int bpp = pb->getPF().bpp / 8;
+        if (buf && stride > 0 && bpp > 0) {
+          // Sample top-left, top-right, center, bottom-left pixels
+          int w = contentRect.width();
+          int h = contentRect.height();
+          uint32_t tlPixel = 0, trPixel = 0, cPixel = 0, blPixel = 0;
+          if (bpp == 4) {
+            tlPixel = *(uint32_t*)(buf);
+            trPixel = *(uint32_t*)(buf + (w-1)*bpp);
+            cPixel = *(uint32_t*)(buf + (h/2)*stride*bpp + (w/2)*bpp);
+            blPixel = *(uint32_t*)(buf + (h-1)*stride*bpp);
+          }
+          vlog.info("%s BORDERED: Hash debug [%d,%d-%d,%d] id=%s pixels: TL=%08x TR=%08x C=%08x BL=%08x",
+                    strTimestamp(),
+                    contentRect.tl.x, contentRect.tl.y,
+                    contentRect.br.x, contentRect.br.y,
+                    hex64(contentId), tlPixel, trPixel, cPixel, blPixel);
+        }
+      }
 
       // For large bordered regions (e.g. slide canvases or document panes),
       // avoid taking an optimistic cache hit when only a tiny fraction of the
@@ -1203,34 +1243,27 @@ void EncodeManager::writeRects(const core::Region& changed,
       // viewer to display a cached full-screen rect even though a non-trivial
       // sub-rect has new content.
       //
-      // HOWEVER: skip this heuristic if we've already seeded this exact hash.
-      // Once seeded, the hash comparison itself ensures correctness - if the
-      // content changed, the hash will be different. This allows cache hits
-      // for toggling between known images even when the image area is small
-      // relative to the bordered region.
+      // SAFETY: We now ALWAYS apply the coverage check for large bordered regions.
+      // Even if the hash is "known", a low-coverage HIT can cause corruption if
+      // there's a hash collision or framebuffer race condition. The small
+      // performance cost of re-encoding is worth the visual correctness.
       const int contentArea = contentRect.area();
       bool alreadyKnown = conn->knowsPersistentId(contentId);
       
-      if (contentArea > WholeRectCacheMinArea && !alreadyKnown) {
-        const core::Rect damageBboxInContent = damageInContent.get_bounding_rect();
-        const int damageAreaInContent = damageBboxInContent.area();
-        // Require that a reasonable fraction of the bordered region is
-        // actually involved in this update before we consider a cache hit.
-        // This still allows the slide-editing use case (most of the slide
-        // changes when paging) while avoiding over-eager hits when only small
-        // patches inside the region are updating.
-        const double coverage = static_cast<double>(damageAreaInContent) /
-                                static_cast<double>(contentArea);
-        if (coverage < 0.5) {
-          vlog.info("BORDERED: Skipping cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f) - hash not yet known",
-                    contentRect.tl.x, contentRect.tl.y,
-                    contentRect.br.x, contentRect.br.y, coverage);
-          continue;
-        }
-      } else if (alreadyKnown) {
-        vlog.debug("BORDERED: Bypassing coverage check for [%d,%d-%d,%d] - hash %s already known",
-                   contentRect.tl.x, contentRect.tl.y,
-                   contentRect.br.x, contentRect.br.y, hex64(contentId));
+      const core::Rect damageBboxInContent = damageInContent.get_bounding_rect();
+      const int damageAreaInContent = damageBboxInContent.area();
+      const double coverage = static_cast<double>(damageAreaInContent) /
+                              static_cast<double>(contentArea);
+      
+      // For very large bordered regions with low coverage, skip cache lookup
+      // to avoid potential visual corruption from hash collisions or races
+      if (contentArea > WholeRectCacheMinArea && coverage < 0.5) {
+        vlog.info("%s BORDERED: Skipping cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)%s",
+                  strTimestamp(),
+                  contentRect.tl.x, contentRect.tl.y,
+                  contentRect.br.x, contentRect.br.y, coverage,
+                  alreadyKnown ? " - hash known but coverage too low" : "");
+        continue;
       }
 
       // Debug: record the canonical bytes used for this content region.
@@ -1257,9 +1290,10 @@ void EncodeManager::writeRects(const core::Region& changed,
         conn->writer()->writePersistentCachedRect(contentRect, matchedId);
         copyStats.bytes += conn->getOutStream()->length() - beforeLength;
 
-        vlog.info("BORDERED: Cache HIT for content region [%d,%d-%d,%d] id=%s",
+        vlog.info("%s BORDERED: Cache HIT for content region [%d,%d-%d,%d] id=%s cov=%.3f",
+                  strTimestamp(),
                   contentRect.tl.x, contentRect.tl.y,
-                  contentRect.br.x, contentRect.br.y, hex64(matchedId));
+                  contentRect.br.x, contentRect.br.y, hex64(matchedId), coverage);
 
         conn->onCachedRectRef(matchedId, contentRect);
         lossyRegion.assign_subtract(contentRect);
@@ -1272,10 +1306,11 @@ void EncodeManager::writeRects(const core::Region& changed,
       }
 
       // Miss - will seed after encoding
-      vlog.info("BORDERED: Content region [%d,%d-%d,%d] id=%s - will seed",
+      vlog.info("%s BORDERED: Content region [%d,%d-%d,%d] id=%s - will seed (cov=%.3f)",
+                strTimestamp(),
                 contentRect.tl.x, contentRect.tl.y,
                 contentRect.br.x, contentRect.br.y,
-                hex64(contentId));
+                hex64(contentId), coverage);
       persistentCacheStats.cacheMisses++;
     }
   }
