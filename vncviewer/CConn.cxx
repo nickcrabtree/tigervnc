@@ -91,6 +91,8 @@ static void handleVerifySignal(int sig)
 {
   (void)sig;
   g_verifyRequested = 1;
+  // Wake up FLTK event loop so the flag gets checked even if no network activity
+  Fl::awake();
 }
 
 // Signal handler for SIGUSR2 - trigger safe full framebuffer refresh
@@ -98,6 +100,8 @@ static void handleRefreshSignal(int sig)
 {
   (void)sig;
   g_refreshRequested = 1;
+  // Wake up FLTK event loop so the flag gets checked even if no network activity
+  Fl::awake();
 }
 #endif
 
@@ -443,7 +447,13 @@ void CConn::socketEvent(FL_SOCKET fd, void *data)
     // Check if a safe full refresh was requested via SIGUSR2
     if (g_refreshRequested) {
       g_refreshRequested = 0;
+      vlog.info("SIGUSR2: calling refreshFramebuffer()");
       cc->refreshFramebuffer();
+      vlog.info("SIGUSR2: refreshFramebuffer() returned, forcing display update");
+      if (cc->desktop) {
+        cc->desktop->updateWindow();
+        Fl::flush();
+      }
     }
 #endif
 

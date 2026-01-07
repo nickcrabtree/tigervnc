@@ -188,7 +188,11 @@ void Viewport::updateWindow()
   core::Rect r;
 
   r = frameBuffer->getDamage();
-  damage(FL_DAMAGE_USER1, r.tl.x + x(), r.tl.y + y(), r.width(), r.height());
+  vlog.debug("Viewport::updateWindow: damage rect [%d,%d-%d,%d]",
+             r.tl.x, r.tl.y, r.br.x, r.br.y);
+  if (!r.is_empty()) {
+    damage(FL_DAMAGE_USER1, r.tl.x + x(), r.tl.y + y(), r.width(), r.height());
+  }
 }
 
 static const char * dotcursor_xpm[] = {
@@ -402,6 +406,8 @@ void Viewport::draw()
 
   // Check what actually needs updating
   fl_clip_box(x(), y(), w(), h(), X, Y, W, H);
+  vlog.debug("Viewport::draw: clip_box returned X=%d Y=%d W=%d H=%d (widget x=%d y=%d w=%d h=%d)",
+             X, Y, W, H, x(), y(), w(), h());
   if ((W == 0) || (H == 0))
     return;
 
@@ -411,14 +417,11 @@ void Viewport::draw()
 
 void Viewport::resize(int x, int y, int w, int h)
 {
-  vlog.info("Viewport::resize called: widget (%d,%d,%dx%d), framebuffer currently %dx%d",
-            x, y, w, h, frameBuffer->width(), frameBuffer->height());
+  vlog.debug("Viewport::resize called: widget (%d,%d,%dx%d), framebuffer currently %dx%d",
+             x, y, w, h, frameBuffer->width(), frameBuffer->height());
   if ((w != frameBuffer->width()) || (h != frameBuffer->height())) {
-    vlog.info("Resizing framebuffer from %dx%d to %dx%d",
-              frameBuffer->width(), frameBuffer->height(), w, h);
-
-    int old_w = frameBuffer->width();
-    int old_h = frameBuffer->height();
+    vlog.debug("Resizing framebuffer from %dx%d to %dx%d",
+               frameBuffer->width(), frameBuffer->height(), w, h);
 
     PlatformPixelBuffer* newFrameBuffer = new PlatformPixelBuffer(w, h);
     assert(newFrameBuffer);
@@ -435,41 +438,38 @@ void Viewport::resize(int x, int y, int w, int h)
     // Force sync of framebuffer to X11 Pixmap/display surface
     // setFramebuffer() marks regions as damaged via commitBufferRW(), but
     // those changes are only applied to the underlying XImage. We need to
-    // call getDamage() to copy the damaged regions to the actual display Pixmap,
-    // then trigger an FLTK redraw so the Pixmap is rendered to the window.
+    // call getDamage() to copy the damaged regions to the actual display Pixmap.
     core::Rect syncedDamage = frameBuffer->getDamage();
-    vlog.info("Synced framebuffer damage after resize: [%d,%d-%d,%d]",
-              syncedDamage.tl.x, syncedDamage.tl.y, syncedDamage.br.x, syncedDamage.br.y);
-    if (!syncedDamage.is_empty()) {
-      damage(FL_DAMAGE_USER1, syncedDamage.tl.x + Fl_Widget::x(),
-             syncedDamage.tl.y + Fl_Widget::y(),
-             syncedDamage.width(), syncedDamage.height());
-    }
+    vlog.debug("Synced framebuffer damage after resize: [%d,%d-%d,%d]",
+               syncedDamage.tl.x, syncedDamage.tl.y, syncedDamage.br.x, syncedDamage.br.y);
     
-    // After a resize that increases the logical framebuffer size we want to
-    // guarantee that both viewers see a fully refreshed desktop, not just
-    // the newly exposed edge strips. Request a single non-incremental
-    // framebuffer update that covers the entire new area so any stale
-    // pixels near the old boundary are overwritten deterministically.
-    if ((w > old_w || h > old_h) && cc->writer() != nullptr) {
+    // Always damage the ENTIRE framebuffer area after resize, not just the
+    // synced damage region. This fixes a race condition during drag-resize
+    // where intermediate resize events create partial damage regions that
+    // don't cover the full final size, leaving black areas.
+    damage(FL_DAMAGE_USER1, Fl_Widget::x(), Fl_Widget::y(), w, h);
+    
+    // Request a full non-incremental framebuffer update after ANY resize.
+    // During drag-resize, multiple resize events fire in quick succession.
+    // Each creates a new framebuffer and requests an update, but intermediate
+    // responses may arrive after the final resize, leaving stale content.
+    // Always requesting a full refresh ensures the final state is correct.
+    if (cc->writer() != nullptr) {
       try {
-        vlog.info("Requesting full framebuffer refresh after resize [%d,%d-%d,%d]",
-                  0, 0, w, h);
+        vlog.debug("Requesting full framebuffer refresh after resize [%d,%d-%d,%d]",
+                   0, 0, w, h);
         cc->writer()->writeFramebufferUpdateRequest(core::Rect(0, 0, w, h), false);
       } catch (std::exception& e) {
         vlog.error("Failed to request framebuffer refresh after resize: %s", e.what());
       }
-    } else {
-      vlog.info("Skipping update request: w_change=%d, h_change=%d, writer=%p",
-                w - old_w, h - old_h, cc->writer());
     }
   }
 
   Fl_Widget::resize(x, y, w, h);
   
-  vlog.info("After Fl_Widget::resize: widget=(%d,%d,%dx%d), framebuffer=%dx%d",
-            Fl_Widget::x(), Fl_Widget::y(), Fl_Widget::w(), Fl_Widget::h(),
-            frameBuffer->width(), frameBuffer->height());
+  vlog.debug("After Fl_Widget::resize: widget=(%d,%d,%dx%d), framebuffer=%dx%d",
+             Fl_Widget::x(), Fl_Widget::y(), Fl_Widget::w(), Fl_Widget::h(),
+             frameBuffer->width(), frameBuffer->height());
 }
 
 

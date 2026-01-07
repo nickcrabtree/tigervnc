@@ -53,6 +53,18 @@ namespace rfb {
     
     void log(const std::string& message);
     
+    // Convenience methods for cache events
+    void logCacheHit(const char* cacheType, int x, int y, int w, int h,
+                     uint64_t cacheId, bool isLossless);
+    void logCacheMiss(const char* cacheType, int x, int y, int w, int h,
+                      uint64_t cacheId);
+    void logCacheStore(const char* cacheType, int x, int y, int w, int h,
+                       uint64_t cacheId, int encoding, size_t bytes);
+    void logCacheSeed(const char* cacheType, int x, int y, int w, int h,
+                      uint64_t cacheId, bool hashMatch);
+    void logStats(unsigned hits, unsigned misses, unsigned stores,
+                  size_t totalEntries, size_t totalBytes);
+    
   private:
     PersistentCacheDebugLogger();
     ~PersistentCacheDebugLogger();

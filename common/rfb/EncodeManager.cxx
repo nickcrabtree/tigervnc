@@ -1188,17 +1188,30 @@ void EncodeManager::writeRects(const core::Region& changed,
         continue;
       }
 
+      // Compute content hash for this bordered region first, so we can check
+      // if we've already seeded it before applying coverage heuristics.
+      std::vector<uint8_t> contentHash = ContentHash::computeRect(pb, contentRect);
+      uint64_t contentId = 0;
+      if (!contentHash.empty()) {
+        size_t n = std::min(contentHash.size(), sizeof(uint64_t));
+        memcpy(&contentId, contentHash.data(), n);
+      }
+
       // For large bordered regions (e.g. slide canvases or document panes),
       // avoid taking an optimistic cache hit when only a tiny fraction of the
       // region has changed. In highly dynamic UIs this can otherwise cause the
       // viewer to display a cached full-screen rect even though a non-trivial
       // sub-rect has new content.
       //
-      // We keep this as a geometry *heuristic* for when it's worth attempting a
-      // bordered-region hit. Correctness is still enforced by the content
-      // hash check below.
+      // HOWEVER: skip this heuristic if we've already seeded this exact hash.
+      // Once seeded, the hash comparison itself ensures correctness - if the
+      // content changed, the hash will be different. This allows cache hits
+      // for toggling between known images even when the image area is small
+      // relative to the bordered region.
       const int contentArea = contentRect.area();
-      if (contentArea > WholeRectCacheMinArea) {
+      bool alreadyKnown = conn->knowsPersistentId(contentId);
+      
+      if (contentArea > WholeRectCacheMinArea && !alreadyKnown) {
         const core::Rect damageBboxInContent = damageInContent.get_bounding_rect();
         const int damageAreaInContent = damageBboxInContent.area();
         // Require that a reasonable fraction of the bordered region is
@@ -1209,21 +1222,15 @@ void EncodeManager::writeRects(const core::Region& changed,
         const double coverage = static_cast<double>(damageAreaInContent) /
                                 static_cast<double>(contentArea);
         if (coverage < 0.5) {
-          if (isCCDebugEnabled()) {
-            vlog.info("BORDERED: Skipping cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)",
-                      contentRect.tl.x, contentRect.tl.y,
-                      contentRect.br.x, contentRect.br.y, coverage);
-          }
+          vlog.info("BORDERED: Skipping cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f) - hash not yet known",
+                    contentRect.tl.x, contentRect.tl.y,
+                    contentRect.br.x, contentRect.br.y, coverage);
           continue;
         }
-      }
-      
-      // Compute content hash for this bordered region
-      std::vector<uint8_t> contentHash = ContentHash::computeRect(pb, contentRect);
-      uint64_t contentId = 0;
-      if (!contentHash.empty()) {
-        size_t n = std::min(contentHash.size(), sizeof(uint64_t));
-        memcpy(&contentId, contentHash.data(), n);
+      } else if (alreadyKnown) {
+        vlog.debug("BORDERED: Bypassing coverage check for [%d,%d-%d,%d] - hash %s already known",
+                   contentRect.tl.x, contentRect.tl.y,
+                   contentRect.br.x, contentRect.br.y, hex64(contentId));
       }
 
       // Debug: record the canonical bytes used for this content region.
@@ -1232,7 +1239,7 @@ void EncodeManager::writeRects(const core::Region& changed,
       // Decide if we can safely send a reference. We only do so when the
       // connection believes the viewer can satisfy this canonical ID.
       bool clientRequested = conn->clientRequestedPersistent(contentId);
-      bool hasMatch = conn->knowsPersistentId(contentId) && !clientRequested;
+      bool hasMatch = alreadyKnown && !clientRequested;
       uint64_t matchedId = contentId;  // Always canonical
 
       // Count this bordered-region attempt as a cache lookup.

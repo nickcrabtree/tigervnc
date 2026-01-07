@@ -747,6 +747,11 @@ void DecodeManager::logStats()
       const auto ps = persistentCacheBandwidthStats.formatSummary("PersistentCache");
       vlog.info("  %s", ps.c_str());
     }
+    
+    // Log final stats to debug file
+    PersistentCacheDebugLogger::getInstance().logStats(
+        persistentCacheStats.cache_hits, persistentCacheStats.cache_misses,
+        persistentCacheStats.stores, pcStats.totalEntries, pcStats.totalBytes);
   }
   
   // Ensure any accumulated PersistentCache entries are flushed to disk when
@@ -994,9 +999,6 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   // NEW DESIGN: cacheId is the canonical hash from the server.
   // Look up by canonical hash to find entries with matching canonical,
   // regardless of whether we have lossless or lossy version.
-  vlog.debug("PersistentCache lookup: canonical=%llu for rect [%d,%d-%d,%d]",
-             (unsigned long long)cacheId,
-             r.tl.x, r.tl.y, r.br.x, r.br.y);
 
   // Cast dimensions to match CacheKey type (uint16_t)
   uint16_t w = (uint16_t)r.width();
@@ -1012,8 +1014,10 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   if (cached == nullptr) {
     // Cache miss - queue request for later batching
     recordCacheMiss(pcStats);
-    vlog.debug("PersistentCache MISS: rect [%d,%d-%d,%d] cacheId=%llu, queuing query",
-               r.tl.x, r.tl.y, r.br.x, r.br.y, (unsigned long long)cacheId);
+    
+    // Log to debug file (less verbose than console)
+    PersistentCacheDebugLogger::getInstance().logCacheMiss(
+        "PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(), cacheId);
     
     // Add to pending queries for batching
     pendingQueries.push_back(cacheId);
@@ -1034,16 +1038,9 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   
   recordCacheHit(pcStats);
   
-  if (isLossless) {
-    vlog.debug("PersistentCache LOSSLESS HIT: rect [%d,%d-%d,%d] canonical=%llu",
-               r.tl.x, r.tl.y, r.br.x, r.br.y,
-               (unsigned long long)cacheId);
-  } else {
-    vlog.debug("PersistentCache LOSSY HIT: rect [%d,%d-%d,%d] canonical=%llu actual=%llu",
-               r.tl.x, r.tl.y, r.br.x, r.br.y,
-               (unsigned long long)cached->canonicalHash,
-               (unsigned long long)cached->actualHash);
-  }
+  // Log to debug file
+  PersistentCacheDebugLogger::getInstance().logCacheHit(
+      "PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(), cacheId, isLossless);
   
   // IMPORTANT: We do NOT send PersistentCacheHashReport on every cache hit.
   // Hash reports are only needed when the viewer detects a canonical!=actual
@@ -1075,8 +1072,6 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   // When the unified cache engine is not available (both PersistentCache and
   // ContentCache disabled), we cannot store anything; treat as a no-op.
   if (persistentCache == nullptr) {
-    vlog.debug("storePersistentCachedRect: cache engine disabled; ignoring store for ID %llu",
-               (unsigned long long)cacheId);
     return;
   }
   
@@ -1088,9 +1083,6 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   // caused the server to send full pixel data for this ID.
   recordCacheInit(pcStats);
 
-  vlog.debug("PersistentCache STORE: rect [%d,%d-%d,%d] cacheId=%llu encoding=%d",
-             r.tl.x, r.tl.y, r.br.x, r.br.y,
-             (unsigned long long)cacheId, encoding);
   // Get pixel data from framebuffer
   // CRITICAL: stride from getBuffer() is in pixels, not bytes
   int stridePixels;
@@ -1098,8 +1090,6 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   
   size_t bppBytes = (size_t)pb->getPF().bpp / 8;
   size_t pixelBytes = (size_t)r.height() * stridePixels * bppBytes;
-  vlog.debug("PersistentCache STORE details: bpp=%d stridePx=%d pixelBytes=%zu",
-             pb->getPF().bpp, stridePixels, pixelBytes);
 
   
   // Track bandwidth for this PersistentCachedRectInit (ID + encoded data)
@@ -1150,21 +1140,11 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
     }
 
     // Hash mismatch indicates lossy compression (e.g. JPEG artifacts).
-    // Store in memory but don't persist to disk.
-    vlog.debug("PersistentCache STORE (lossy): hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu encoding=%d",
-               r.tl.x, r.tl.y, r.br.x, r.br.y,
-               (unsigned long long)cacheId,
-               (unsigned long long)hashId,
-               encoding);
-    
     // Report the lossy hash back to the server so it can learn the
     // canonical->lossy mapping. This enables cache hits on first occurrence
     // instead of second occurrence for lossy content.
     if (conn->writer() != nullptr) {
       conn->writer()->writePersistentCacheHashReport(cacheId, hashId);
-      vlog.debug("Reported lossy hash to server: canonical=%llu lossy=%llu",
-                 (unsigned long long)cacheId,
-                 (unsigned long long)hashId);
     }
   }
 
@@ -1191,10 +1171,9 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
                           r.width(), r.height(), stridePixels,
                           /*isPersistable=*/true);  // NEW: Always persist
   
-  vlog.debug("PersistentCache STORE complete: canonical=%llu actual=%llu%s",
-             (unsigned long long)canonicalHash,
-             (unsigned long long)actualHash,
-             hashMatch ? " (lossless)" : " (lossy)");
+  // Log to debug file
+  PersistentCacheDebugLogger::getInstance().logCacheStore(
+      "PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(), cacheId, encoding, pixelBytes);
   
   // Proactively send any eviction notifications triggered by this insert
   flushPendingEvictions();
@@ -1231,9 +1210,7 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
     return;
   }
   
-  vlog.info("seedCachedRect: [%d,%d-%d,%d] cacheId=%llu",
-            r.tl.x, r.tl.y, r.br.x, r.br.y,
-            (unsigned long long)cacheId);
+  // Logged to debug file below
   
   // Get pixel data from existing framebuffer
   int stridePixels;
@@ -1277,9 +1254,6 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
       // future references can still use the canonical ID.
       if (conn && conn->writer() != nullptr) {
         conn->writer()->writePersistentCacheHashReport(cacheId, hashId);
-        vlog.debug("seedCachedRect: reported canonical->actual mapping to server: canonical=%llu actual=%llu",
-                   (unsigned long long)cacheId,
-                   (unsigned long long)hashId);
       }
     }
 
@@ -1299,12 +1273,9 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
                             /*isPersistable=*/true);  // NEW: Always persist
     persistentCacheStats.stores++;
     
-    // Log the storage details with dual-hash design
-    vlog.debug("seedCachedRect: stored canonical=%llu actual=%llu%s for rect [%d,%d-%d,%d]",
-               (unsigned long long)canonicalHash,
-               (unsigned long long)actualHash,
-               hashMatch ? " (lossless)" : " (lossy)",
-               r.tl.x, r.tl.y, r.br.x, r.br.y);
+    // Log to debug file
+    PersistentCacheDebugLogger::getInstance().logCacheSeed(
+        "PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(), cacheId, hashMatch);
     
     // Proactively send any eviction notifications triggered by this insert
     flushPendingEvictions();
@@ -1316,9 +1287,6 @@ void DecodeManager::flushPendingQueries()
 {
   if (pendingQueries.empty())
     return;
-    
-  vlog.debug("Flushing %zu pending PersistentCache queries",
-             pendingQueries.size());
   
   // Send batched query to server
   conn->writer()->writePersistentCacheQuery(pendingQueries);
@@ -1338,10 +1306,8 @@ void DecodeManager::flushPendingEvictions()
     auto evictions = persistentCache->getPendingEvictions();
     if (!evictions.empty()) {
       if (conn->isPersistentCacheNegotiated()) {
-        vlog.debug("Sending %zu PersistentCache eviction notifications", evictions.size());
         conn->writer()->writePersistentCacheEvictionBatched(evictions);
       } else if (conn->isContentCacheNegotiated()) {
-        vlog.debug("Sending %zu ContentCache eviction notifications", evictions.size());
         conn->writer()->writeCacheEviction(evictions);
       }
     }
@@ -1376,24 +1342,21 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
     // Unified cache engine disabled; treat as a miss so tests can still
     // reason about protocol behaviour when caches are turned off.
     recordCacheMiss(ccStats);
-    vlog.debug("ContentCache cache miss for ID %llu (cache disabled) rect=[%d,%d-%d,%d]",
-               (unsigned long long)cacheId,
-               r.tl.x, r.tl.y, r.br.x, r.br.y);
     return;
   }
 
   const GlobalClientPersistentCache::CachedPixels* entry = persistentCache->getByKey(key);
   if (!entry || entry->pixels.empty()) {
     recordCacheMiss(ccStats);
-    vlog.debug("ContentCache cache miss for ID %llu rect=[%d,%d-%d,%d]",
-               (unsigned long long)cacheId,
-               r.tl.x, r.tl.y, r.br.x, r.br.y);
+    
+    // Log to debug file
+    PersistentCacheDebugLogger::getInstance().logCacheMiss(
+        "ContentCache", r.tl.x, r.tl.y, r.width(), r.height(), cacheId);
 
     // Request missing data from server so we can populate the cache.
     // Without this, the client stays out of sync and simply displays nothing/garbage.
     if (conn && conn->writer()) {
       conn->writer()->writeRequestCachedData(cacheId);
-      vlog.debug("Sent RequestCachedData for ID %llu", (unsigned long long)cacheId);
     } else {
       vlog.error("Cannot send RequestCachedData: conn=%p writer=%p", conn, conn ? conn->writer() : nullptr);
     }
@@ -1401,9 +1364,10 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
   }
  
   recordCacheHit(ccStats);
-  vlog.debug("ContentCache cache hit for ID %llu rect=[%d,%d-%d,%d]",
-             (unsigned long long)cacheId,
-             r.tl.x, r.tl.y, r.br.x, r.br.y);
+  
+  // Log to debug file
+  PersistentCacheDebugLogger::getInstance().logCacheHit(
+      "ContentCache", r.tl.x, r.tl.y, r.width(), r.height(), cacheId, entry->isLossless());
 
   // Blit cached pixels to framebuffer at target position. CachedPixels
   // stores stride in pixels for its internal buffer.
@@ -1431,9 +1395,6 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   recordCacheInit(ccStats);
   
   if (!persistentCache) {
-    vlog.debug("ContentCache disabled; skipping store for ID %llu rect=[%d,%d-%d,%d]",
-               (unsigned long long)cacheId,
-               r.tl.x, r.tl.y, r.br.x, r.br.y);
     return;
   }
 
@@ -1450,10 +1411,7 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   }
 
   if (hashId != cacheId) {
-    vlog.debug("ContentCache STORE skipped: hash mismatch for rect [%d,%d-%d,%d] cacheId=%llu localHash=%llu",
-               r.tl.x, r.tl.y, r.br.x, r.br.y,
-               (unsigned long long)cacheId,
-               (unsigned long long)hashId);
+    // Hash mismatch - logged to debug file if needed
     return;
   }
 
@@ -1504,9 +1462,9 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
                           entry.width, entry.height, entry.stridePixels,
                           /*isPersistable=*/false);  // Session-only
 
-  vlog.debug("ContentCache storing decoded rect [%d,%d-%d,%d] with cache ID %llu",
-             r.tl.x, r.tl.y, r.br.x, r.br.y,
-             (unsigned long long)cacheId);
+  // Log to debug file
+  PersistentCacheDebugLogger::getInstance().logCacheStore(
+      "ContentCache", r.tl.x, r.tl.y, r.width(), r.height(), cacheId, 0, entry.pixels.size());
   
   // Proactively send any eviction notifications triggered by this insert.
   // This ensures timely notification to the server instead of waiting for

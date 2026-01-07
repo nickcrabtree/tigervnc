@@ -965,12 +965,22 @@ void CConnection::releaseAllKeys()
 
 void CConnection::refreshFramebuffer()
 {
+  vlog.info("refreshFramebuffer: forceNonincremental=true, continuousUpdates=%d, pendingUpdate=%d",
+            continuousUpdates, pendingUpdate);
   forceNonincremental = true;
 
-  // Without continuous updates we have to make sure we only have a
-  // single update in flight, so we'll have to wait to do the refresh
-  if (continuousUpdates)
-    requestNewUpdate();
+  // Always request an update immediately. The previous logic only called
+  // requestNewUpdate() for continuous updates, but this left the refresh
+  // pending until the next update cycle, which might never happen if the
+  // screen is static. For non-continuous mode, setting pendingUpdate=false
+  // first ensures we can send a new request.
+  if (!continuousUpdates) {
+    vlog.info("refreshFramebuffer: clearing pendingUpdate for non-continuous mode");
+    pendingUpdate = false;
+  }
+  vlog.info("refreshFramebuffer: calling requestNewUpdate()");
+  requestNewUpdate();
+  vlog.info("refreshFramebuffer: done");
 }
 
 void CConnection::setPreferredEncoding(int encoding)
@@ -1066,6 +1076,8 @@ void CConnection::disablePersistentCacheForSession()
 // format and encoding appropriately.
 void CConnection::requestNewUpdate()
 {
+  vlog.debug("requestNewUpdate: forceNonincremental=%d, continuousUpdates=%d, pendingUpdate=%d",
+             forceNonincremental, continuousUpdates, pendingUpdate);
   if (formatChange && !pendingPFChange) {
     /* Catch incorrect requestNewUpdate calls */
     assert(!pendingUpdate || continuousUpdates);
@@ -1247,9 +1259,7 @@ void CConnection::seedCachedRect(const core::Rect& r, uint64_t cacheId)
   // where subrect data was already sent via normal encoding.
   //
   // We read pixels from our current framebuffer and store them in the cache.
-  vlog.info("seedCachedRect: [%d,%d-%d,%d] cacheId=%llu",
-            r.tl.x, r.tl.y, r.br.x, r.br.y,
-            (unsigned long long)cacheId);
+  // Logged to debug file via DecodeManager
   
   // Forward to decoder manager to seed cache using existing framebuffer pixels.
   // Use encodingRaw as the "encoding" since we're reading raw pixels from framebuffer.

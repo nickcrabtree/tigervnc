@@ -965,11 +965,7 @@ bool CMsgReader::readPersistentCachedRect(const core::Rect& r)
   uint32_t lo = is->readU32();
   uint64_t cacheId = ((uint64_t)hi << 32) | lo;
 
-  vlog.debug("Received PersistentCachedRect: [%d,%d-%d,%d] cacheId=%llu",
-             r.tl.x, r.tl.y, r.br.x, r.br.y,
-             (unsigned long long)cacheId);
-
-  // Forward to handler to lookup and blit cached content
+  // Forward to handler to lookup and blit cached content (logged to debug file)
   handler->handlePersistentCachedRect(r, cacheId);
 
   return true;
@@ -989,24 +985,11 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
     pendingPersistentCacheEncoding = is->readS32();
     pendingPersistentCacheInitActive = true;
 
-    vlog.debug("Received PersistentCachedRectInit: [%d,%d-%d,%d] cacheId=%llu encoding=%d",
-               r.tl.x, r.tl.y, r.br.x, r.br.y,
-               (unsigned long long)pendingPersistentCacheId,
-               pendingPersistentCacheEncoding);
+    // Logged to debug file via DecodeManager
   }
 
-  // Attempt to decode the rect using the remembered encoding
-  vlog.debug("PCDBG: begin decode cacheId=%llu encoding=%d rect=[%d,%d-%d,%d]",
-             (unsigned long long)pendingPersistentCacheId,
-             pendingPersistentCacheEncoding,
-             r.tl.x, r.tl.y, r.br.x, r.br.y);
-
+  // Decode the rect using the remembered encoding
   bool ret = readRect(r, pendingPersistentCacheEncoding);
-
-  vlog.debug("PCDBG: end decode cacheId=%llu encoding=%d ret=%d",
-             (unsigned long long)pendingPersistentCacheId,
-             pendingPersistentCacheEncoding,
-             (int)ret);
 
   if (ret) {
     // Notify handler to store this decoded rect with cacheId and the
@@ -1037,9 +1020,7 @@ bool CMsgReader::readCachedRectSeed(const core::Rect& r)
   uint32_t lo = is->readU32();
   uint64_t cacheId = ((uint64_t)hi << 32) | lo;
 
-  vlog.info("Received CachedRectSeed: [%d,%d-%d,%d] cacheId=%llu",
-            r.tl.x, r.tl.y, r.br.x, r.br.y,
-            (unsigned long long)cacheId);
+  // Logged to debug file via DecodeManager
 
   // Tell handler to seed cache using existing framebuffer pixels
   handler->seedCachedRect(r, cacheId);

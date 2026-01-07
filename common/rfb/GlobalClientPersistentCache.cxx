@@ -90,6 +90,49 @@ void PersistentCacheDebugLogger::log(const std::string& message) {
   }
 }
 
+void PersistentCacheDebugLogger::logCacheHit(const char* cacheType, int x, int y, int w, int h,
+                                              uint64_t cacheId, bool isLossless) {
+  char buf[256];
+  snprintf(buf, sizeof(buf), "%s HIT: rect [%d,%d %dx%d] id=0x%llx %s",
+           cacheType, x, y, w, h, (unsigned long long)cacheId,
+           isLossless ? "(lossless)" : "(lossy)");
+  log(buf);
+}
+
+void PersistentCacheDebugLogger::logCacheMiss(const char* cacheType, int x, int y, int w, int h,
+                                               uint64_t cacheId) {
+  char buf[256];
+  snprintf(buf, sizeof(buf), "%s MISS: rect [%d,%d %dx%d] id=0x%llx",
+           cacheType, x, y, w, h, (unsigned long long)cacheId);
+  log(buf);
+}
+
+void PersistentCacheDebugLogger::logCacheStore(const char* cacheType, int x, int y, int w, int h,
+                                                uint64_t cacheId, int encoding, size_t bytes) {
+  char buf[256];
+  snprintf(buf, sizeof(buf), "%s STORE: rect [%d,%d %dx%d] id=0x%llx enc=%d bytes=%zu",
+           cacheType, x, y, w, h, (unsigned long long)cacheId, encoding, bytes);
+  log(buf);
+}
+
+void PersistentCacheDebugLogger::logCacheSeed(const char* cacheType, int x, int y, int w, int h,
+                                               uint64_t cacheId, bool hashMatch) {
+  char buf[256];
+  snprintf(buf, sizeof(buf), "%s SEED: rect [%d,%d %dx%d] id=0x%llx %s",
+           cacheType, x, y, w, h, (unsigned long long)cacheId,
+           hashMatch ? "(hash match)" : "(hash mismatch)");
+  log(buf);
+}
+
+void PersistentCacheDebugLogger::logStats(unsigned hits, unsigned misses, unsigned stores,
+                                           size_t totalEntries, size_t totalBytes) {
+  char buf[256];
+  double hitRate = (hits + misses) > 0 ? (100.0 * hits / (hits + misses)) : 0.0;
+  snprintf(buf, sizeof(buf), "STATS: hits=%u misses=%u stores=%u hitRate=%.1f%% entries=%zu bytes=%zu",
+           hits, misses, stores, hitRate, totalEntries, totalBytes);
+  log(buf);
+}
+
 static bool isSolidBlack(const uint8_t* pixels, size_t length)
 {
   for (size_t i = 0; i < length; i++) {
