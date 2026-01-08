@@ -53,9 +53,14 @@ These commands will kill ALL matching processes across the ENTIRE system, includ
 **This system has production processes that must NEVER be killed:**
 
 On Linux (quartz):
-- `Xtigervnc :1` (port 5901) - PRODUCTION SERVER
-- `Xnjcvnc :2` (port 5902) - PRODUCTION SERVER
-- `Xtigervnc :3` (port 5903) - PRODUCTION SERVER
+```bash
+# Standard TigerVNC (system-installed)
+Xtigervnc :1  # Display :1, port 5901 - PRODUCTION
+Xtigervnc :2  # Display :2, port 5902 - PRODUCTION (USER'S ACTIVE DESKTOP)
+
+# Custom fork (Xnjcvnc) - PRODUCTION
+Xnjcvnc  :3   # Display :3, port 5903 - PRODUCTION (with ContentCache/PersistentCache)
+```
 
 On macOS (user's desktop):
 - `njcvncviewer` - User's active VNC viewer sessions
@@ -111,6 +116,24 @@ kill <specific-test-pid>
 pkill -f Xnjcvnc  # ❌ NEVER DO THIS
 killall Xnjcvnc   # ❌ NEVER DO THIS
 ```
+**Safe process termination**:
+```bash
+# ✅ Good: Kill specific test server by verified PID
+kill 3250351 3250371
+
+# ❌ Bad: Pattern matching (kills production!)
+pkill -f "Xnjcvnc"           # Kills :3, :998, :999 - WRONG!
+killall Xnjcvnc              # Kills all Xnjcvnc - WRONG!
+pkill -f "display_number"    # Still dangerous
+```
+
+```bash
+# ❌ FORBIDDEN: Pattern-based killing
+# pkill -f Xnjcvnc           # Kills ALL Xnjcvnc including production!
+# killall Xnjcvnc            # Kills ALL Xnjcvnc including production!
+# pkill -f "script_name.py"  # Kills ALL matching scripts!
+```
+
 
 ## Build Commands
 
@@ -353,35 +376,53 @@ See `BUILDING.txt` for MinGW details. Xnjcvnc requires patching Xorg source (`un
 
 ### Server Infrastructure
 
-The development and testing environment uses a remote server at `nickc@birdsurvey.hopto.org` (hostname: `quartz`).
+There are two remote server environments:
 
-**Server Code Location**: `/home/nickc/code/tigervnc`
+1. **quartz** (`nickc@birdsurvey.hopto.org`): Local development server
+   - Code location: `/home/nickc/code/tigervnc`
+   - Production displays: `:1`, `:2`, `:3`
+
+2. **AWS Jakarta** (`pspuser@108.136.194.23`): Remote testing server
+   - SSH: `ssh -i ~/premierJakarta.key pspuser@108.136.194.23`
+   - Code location: `/data_parallel/PreStackPro/share/nickc/tigervnc`
+   - Production display: `:1` (port 5901)
+
+### Starting and Managing Servers
+
+**⚠️ ALWAYS use the startup scripts rather than raw Xnjcvnc commands:**
+
+**On AWS Jakarta (pspuser):**
+```bash
+# Start the VNC server (auto-selects display, uses correct binary)
+timeout 30 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 \
+  '/data_parallel/PreStackPro/share/nickc/tigervnc/scripts/njcvncserver_start.bash'
+
+# Check server status
+timeout 10 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 'ps aux | grep Xnjcvnc | grep -v grep'
+
+# View server log
+timeout 10 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 \
+  'cat /home/pspuser/.config/tigervnc/ip-10-20-0-24.ap-southeast-3.compute.internal:1.log'
+```
+
+**On quartz (nickc):**
+```bash
+# Use the startup script in ~/scripts/
+~/scripts/njcvncserver_start.bash
+```
+
+**Local viewer (macOS):**
+```bash
+# The wrapper script handles password file and redirects stderr to timestamped log
+~/scripts/njcvncviewer_start.sh [options] host[:display]
+
+# Example with options:
+~/scripts/njcvncviewer_start.sh -FullColor=1 -AutoSelect=0 108.136.194.23:1
+```
 
 ### VNC Server Processes
 
 There are **two different VNC server binaries** running on the same machine:
-
-#### Production Servers (DO NOT MODIFY)
-
-```bash
-# Standard TigerVNC (system-installed)
-Xtigervnc :1  # Display :1, port 5901 - PRODUCTION
-Xtigervnc :2  # Display :2, port 5902 - PRODUCTION (USER'S ACTIVE DESKTOP)
-
-# Custom fork (Xnjcvnc) - PRODUCTION
-Xnjcvnc  :3   # Display :3, port 5903 - PRODUCTION (with ContentCache/PersistentCache)
-```
-
-**🔴 CRITICAL**: All of the above are **production servers in active use**. DO NOT:
-- Stop or restart these processes
-- Modify their configuration  
-- Kill these processes (even temporarily!)
-- Send them test traffic
-- Connect test viewers to them
-- Display test windows on display :2 (user's working desktop)
-
-**Why this matters**: Display :2 is the user's active working desktop. Interrupting it or
-popping up test windows will disrupt their work. The other displays are also production services.
 
 #### Test Architecture
 
@@ -392,12 +433,6 @@ Use the end-to-end test framework under `tests/e2e`, which launches isolated VNC
 - Managed by e2e framework
 - Can be safely killed by specific PID after verification
 
-**⚠️ NEVER run test binaries on production displays**:
-- Do NOT run viewers that connect to displays `:1`, `:2`, or `:3`
-- Do NOT start test servers on displays `:1`, `:2`, or `:3`
-- Do NOT pop up GUI windows on display :2 (user's working desktop)
-
-Note: The local build binary exists at `/home/nickc/code/tigervnc/build/unix/vncserver/Xnjcvnc`. Do not run it on displays `:1`, `:2`, or `:3`.
 
 ### SSH Tunnels
 
@@ -437,40 +472,75 @@ ps aux | grep -E "Xnjcvnc :99[89]"  # Only matches test displays :998, :999
 # nickc 3250371  Xnjcvnc :999      <- TEST SERVER (safe to kill by PID only)
 ```
 
-**Safe process termination**:
-```bash
-# ✅ Good: Kill specific test server by verified PID
-kill 3250351 3250371
-
-# ❌ Bad: Pattern matching (kills production!)
-pkill -f "Xnjcvnc"           # Kills :3, :998, :999 - WRONG!
-killall Xnjcvnc              # Kills all Xnjcvnc - WRONG!
-pkill -f "display_number"    # Still dangerous
-```
-
 ### Test Architecture Management
 
 Use the e2e test framework to start/stop isolated test servers on high-numbered displays. Do not manage or restart production servers.
 
 See `tests/e2e/README.md` for commands and options.
 
-#### Log Locations
+### Log Locations
 
+**Server logs:**
 ```bash
-# Production server logs (do not read/modify)
+# quartz production server logs (do not modify)
 /home/nickc/.vnc/quartz:1.log
 /home/nickc/.vnc/quartz:2.log
 /home/nickc/.vnc/quartz:3.log
 
-# Test framework logs
-# See tests/e2e output and logs produced by the harness
-
-# Client logs (on local Mac)
-/tmp/vncviewer_*.log   # Created by njcvncviewer_start.sh
-
-# Remote logs on AWS server (user pspuser):
+# AWS Jakarta server log (pspuser)
 /home/pspuser/.config/tigervnc/ip-10-20-0-24.ap-southeast-3.compute.internal:1.log
+
+# Test framework logs (tests/e2e)
+# See tests/e2e output and logs produced by the harness
 ```
+
+**Client logs (macOS):**
+```bash
+# Viewer stderr log (created by njcvncviewer_start.sh wrapper)
+# Format: /tmp/njcvncviewer_YYYY-MM-DD_HH-MM-SS.log
+/tmp/njcvncviewer_*.log
+
+# PersistentCache debug logs (when TIGERVNC_PERSISTENTCACHE_DEBUG=1)
+/tmp/persistentcache_debug_*.log
+```
+
+**Log separation:**
+- **stdout** (console): Startup/shutdown messages, hourly stats
+- **stderr** (log file): Debug messages, vlog output, cache operations
+
+### Debug Logging Framework
+
+The viewer uses `vlog` for logging with different levels:
+- `vlog.error()` - Errors (always shown)
+- `vlog.info()` - Info messages (stdout by default)
+- `vlog.debug()` - Debug messages (stderr, goes to log file)
+
+**Enabling debug output:**
+```bash
+# Run viewer with verbose flag (-v or -vv)
+~/scripts/njcvncviewer_start.sh -v host:display
+
+# Debug output goes to /tmp/njcvncviewer_YYYY-MM-DD_HH-MM-SS.log
+```
+
+**Key debug modules (grep patterns for log analysis):**
+```bash
+# Cache operations
+grep -E 'PC(CLT|SRV)|CACHE_' /tmp/njcvncviewer_*.log
+
+# Pixel format changes (auto-select issues)
+grep -E 'pixel format|FullColor|Throughput|rgb[0-9]+' /tmp/njcvncviewer_*.log
+
+# Hash operations
+grep -E 'hash|Hash|canonical|lossy' /tmp/njcvncviewer_*.log
+
+# Decode/blit operations
+grep -E 'imageRect|blit|DecodeManager' /tmp/njcvncviewer_*.log
+```
+
+**Server-side debug (EncodeManager):**
+- Look for `CC doUpdate`, `PCSRV TOPBAND_*`, `PersistentCache protocol HIT/INIT`
+- Server logs cache lookups, hits, misses, and ID tracking
 
 ### ContentCache Debugging
 
@@ -504,6 +574,21 @@ When debugging rectangle corruption issues:
    "Storing decoded rect [x,y-x,y] with cache ID N"
    ```
 
+4. **Auto-Select color depth issues**:
+   The viewer's AutoSelect feature can cause visual corruption by switching
+   between 8bpp (rgb332) and 32bpp (rgb888) based on bandwidth:
+   ```bash
+   # Disable auto-select to force full color:
+   ~/scripts/njcvncviewer_start.sh -AutoSelect=0 -FullColor=1 host:display
+   
+   # Or set in ~/.vnc/default.tigervnc:
+   AutoSelect=0
+   FullColor=1
+   ```
+   
+   Symptoms: Purple/color-shifted areas that "creep" across the display.
+   Cause: Format switching at 256kbit/s threshold combined with lossy cache entries.
+
 ## Important Code Patterns and Gotchas
 
 ### Stride is in Pixels, Not Bytes!
@@ -525,33 +610,6 @@ size_t byteLen = rect.height() * stride * bytesPerPixel;
 
 **Why this matters**: This caused a critical bug (Oct 7 2025) in ContentCache hash calculation that resulted in frequent hash collisions and severe visual corruption. Always multiply stride by `bytesPerPixel` when calculating byte lengths.
 
-### Process Management Safety
-
-**🔴 Critical**: When killing processes, always verify working directory and exact PID to avoid killing production instances.
-
-```bash
-# Step 1: Find candidate processes
-ps aux | grep Xnjcvnc | grep -v grep
-
-# Step 2: Verify EACH PID before killing
-pwdx <PID>                          # Check working directory
-ps -p <PID> -o pid,args             # Check display number
-
-# Step 3: Only kill specific verified test PIDs
-kill -TERM <verified-test-pid>
-
-# ❌ FORBIDDEN: Pattern-based killing
-# pkill -f Xnjcvnc              # Kills ALL Xnjcvnc including production!
-# killall Xnjcvnc               # Kills ALL Xnjcvnc including production!
-# pkill -f "script_name.py"     # Kills ALL matching scripts!
-```
-
-**Why this is critical**:
-- Multiple VNC servers run simultaneously (production `:1`, `:2`, `:3` + test `:998`, `:999`)
-- Pattern-based killing will destroy production servers and interrupt user's work
-- Display `:2` is the user's active desktop - ANY interruption is disruptive
-- Recovery from killing production servers requires manual restart and may lose state
-- The user has explicitly warned about this multiple times - it's very important to them!
 
 ### PixelBuffer Access Patterns
 
