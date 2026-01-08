@@ -232,6 +232,10 @@ DecodeManager::DecodeManager(CConnection *conn_) :
     if (auto* bp = dynamic_cast<core::BoolParameter*>(p))
       enableContentCache = static_cast<bool>(*bp);
   }
+  
+  vlog.info("Cache config: enablePersistentCache=%s enableContentCache=%s",
+            enablePersistentCache ? "true" : "false",
+            enableContentCache ? "true" : "false");
 
   // Unified client-side cache engine: a single GlobalClientPersistentCache
   // instance backs both PersistentCache (cross-session, optionally disk-backed)
@@ -270,8 +274,11 @@ DecodeManager::DecodeManager(CConnection *conn_) :
       // negotiate the PersistentCache protocol but keep all storage
       // memory-only.
       persistentCacheDiskEnabled_ = (pcDiskSizeMB != (size_t)-1);
+      vlog.info("Cache config: pcDiskSizeMB=%zu -> persistentCacheDiskEnabled_=%s",
+                pcDiskSizeMB, persistentCacheDiskEnabled_ ? "true" : "false");
     } else {
       persistentCacheDiskEnabled_ = false;
+      vlog.info("Cache config: PersistentCache disabled -> persistentCacheDiskEnabled_=false");
     }
 
     // Shard size (default 64MB)
@@ -545,13 +552,23 @@ void DecodeManager::flush()
 
 void DecodeManager::triggerPersistentCacheLoad()
 {
+  vlog.info("triggerPersistentCacheLoad called: triggered=%s cache=%p diskEnabled=%s",
+            persistentCacheLoadTriggered ? "true" : "false",
+            (void*)persistentCache,
+            persistentCacheDiskEnabled_ ? "true" : "false");
+  
   // Only load once per connection, and only if disk persistence is enabled
   // for this connection. Ephemeral "ContentCache alias" sessions still use
   // the PersistentCache protocol on the wire but must not touch disk.
-  if (persistentCacheLoadTriggered)
+  if (persistentCacheLoadTriggered) {
+    vlog.debug("triggerPersistentCacheLoad: already triggered, returning");
     return;
-  if (!persistentCache || !persistentCacheDiskEnabled_)
+  }
+  if (!persistentCache || !persistentCacheDiskEnabled_) {
+    vlog.info("triggerPersistentCacheLoad: skipping - cache=%p diskEnabled=%s",
+              (void*)persistentCache, persistentCacheDiskEnabled_ ? "true" : "false");
     return;
+  }
 
   persistentCacheLoadTriggered = true;
 
@@ -1133,7 +1150,7 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
 #endif
 
     if (!encodingCanBeLossy) {
-      vlog.error("PersistentCache STORE: hash mismatch for LOSSLESS encoding %d! Dropping corrupt entry for cacheId=%llu",
+      vlog.debug("PersistentCache STORE: hash mismatch for LOSSLESS encoding %d! Dropping corrupt entry for cacheId=%llu",
                  encoding, (unsigned long long)cacheId);
       // Do not insert into cache. This forces a miss on next reference, triggering self-healing.
       return;
