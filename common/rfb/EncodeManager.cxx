@@ -1288,6 +1288,21 @@ void EncodeManager::writeRects(const core::Region& changed,
       bool hasMatch = alreadyKnown && !clientRequested;
       uint64_t matchedId = contentId;  // Always canonical
 
+      // Check for lossy hash mapping (encoder-lossy cache entry)
+      uint64_t lossyContentIdUnused = 0;
+      bool hasLossyContentMapping = conn->hasLossyHash(contentId, lossyContentIdUnused);
+      
+      // If pixel format is now full quality but we only have a lossy match,
+      // skip the cache reference - client's minBpp filter would reject anyway
+      bool pixelFormatIsFullQuality = (conn->client.pf().bpp >= 24);
+      if (hasLossyContentMapping && pixelFormatIsFullQuality) {
+        hasMatch = false;  // Force miss, send fresh data
+        vlog.debug("BORDERED: Skipping lossy match for [%d,%d-%d,%d] - format now %dbpp",
+                   contentRect.tl.x, contentRect.tl.y,
+                   contentRect.br.x, contentRect.br.y,
+                   conn->client.pf().bpp);
+      }
+
       // Count this bordered-region attempt as a cache lookup.
       persistentCacheStats.cacheLookups++;
 
@@ -1392,6 +1407,25 @@ void EncodeManager::writeRects(const core::Region& changed,
         bool clientRequested = conn->clientRequestedPersistent(bboxId);
         bool hasHit = conn->knowsPersistentId(bboxId) && !clientRequested;
         uint64_t matchedBboxId = bboxId;  // Always canonical
+
+        // Check for lossy hash mapping (encoder-lossy cache entry)
+        uint64_t lossyBboxIdCheck = 0;
+        bool hasLossyBboxMappingCheck = conn->hasLossyHash(bboxId, lossyBboxIdCheck);
+        
+        // If pixel format is now full quality but we only have a lossy match,
+        // skip the cache reference - client's minBpp filter would reject anyway
+        bool pixelFormatIsFullQuality = (conn->client.pf().bpp >= 24);
+        if (hasLossyBboxMappingCheck && pixelFormatIsFullQuality && !hasHit) {
+          // hasHit is already false in this case, but add logging
+          vlog.debug("TILING: Would skip lossy match for bbox [%d,%d-%d,%d]",
+                     bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y);
+        }
+        if (hasLossyBboxMappingCheck && pixelFormatIsFullQuality) {
+          hasHit = false;  // Force miss, send fresh data
+          vlog.debug("TILING: Skipping lossy match for bbox [%d,%d-%d,%d] - format now %dbpp",
+                     bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
+                     conn->client.pf().bpp);
+        }
 
         // Count this bbox attempt as a cache lookup.
         persistentCacheStats.cacheLookups++;
