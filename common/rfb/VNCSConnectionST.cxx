@@ -550,17 +550,9 @@ void VNCSConnectionST::setPixelFormat(const PixelFormat& pf)
   vlog.info("Client pixel format %s (was %dbpp)", buffer, oldPf.bpp);
   setCursor();
   
-  // If upgrading from lower to higher quality (e.g. 8bpp -> 32bpp),
-  // force IMMEDIATE refresh to prevent purple corruption from cached
-  // low-quality content. forceImmediateRefresh bypasses the
-  // recently-changed protection that can delay refresh indefinitely.
-  if (pf.bpp > oldPf.bpp || pf.depth > oldPf.depth) {
-    vlog.info("Pixel format upgrade detected (%dbpp/%ddepth -> %dbpp/%ddepth), forcing immediate refresh",
-              oldPf.bpp, oldPf.depth, pf.bpp, pf.depth);
-    encodeManager.forceImmediateRefresh(server->getPixelBuffer()->getRect());
-  } else {
-    encodeManager.forceRefresh(server->getPixelBuffer()->getRect());
-  }
+  // Notify EncodeManager of pixel format change.
+  // This handles refresh of regions sent at reduced depth when upgrading.
+  encodeManager.handlePixelFormatChange(pf.bpp);
 }
 
 void VNCSConnectionST::pointerEvent(const core::Point& pos,

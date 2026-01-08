@@ -266,7 +266,7 @@ static bool isCCTilingDebugEnabled()
 }
 
 EncodeManager::EncodeManager(SConnection* conn_)
-  : conn(conn_), recentChangeTimer(this), cacheStatsTimer(this),
+  : conn(conn_), lastSentBpp(0), recentChangeTimer(this), cacheStatsTimer(this),
     usePersistentCache(false)
 {
   StatsVector::iterator iter;
@@ -527,6 +527,27 @@ void EncodeManager::forceImmediateRefresh(const core::Region& req)
   recentlyChangedRegion.clear();
 }
 
+void EncodeManager::handlePixelFormatChange(int newBpp)
+{
+  // When pixel format upgrades to higher quality, schedule refresh of
+  // regions that were sent at reduced depth (e.g., 8bpp -> 32bpp).
+  // This prevents purple corruption from displaying 8bpp content at 32bpp.
+  if (newBpp >= 24 && lastSentBpp > 0 && lastSentBpp < 24) {
+    if (!reducedDepthRegion.is_empty()) {
+      vlog.info("Pixel format upgrade %dbpp -> %dbpp: scheduling refresh of %s",
+                lastSentBpp, newBpp, strRegionSummary(reducedDepthRegion));
+      // Add to lossyRegion for refresh
+      lossyRegion.assign_union(reducedDepthRegion);
+      pendingRefreshRegion.assign_union(reducedDepthRegion);
+      // Clear recently changed so refresh isn't blocked
+      recentlyChangedRegion.clear();
+      // Clear the tracking now that we've scheduled refresh
+      reducedDepthRegion.clear();
+    }
+  }
+  lastSentBpp = newBpp;
+}
+
 void EncodeManager::writeUpdate(const UpdateInfo& ui, const PixelBuffer* pb,
                                 const RenderedCursor* renderedCursor)
 {
@@ -707,6 +728,21 @@ void EncodeManager::doUpdate(bool allowLossy, const
       }
 
     conn->writer()->writeFramebufferUpdateEnd();
+    
+    // Track regions sent at reduced pixel depth (< 24 bpp).
+    // These need refresh when pixel format upgrades to higher quality.
+    int currentBpp = conn->client.pf().bpp;
+    core::Region sentRegion = changed_;
+    sentRegion.assign_union(copied);
+    
+    if (currentBpp < 24) {
+      // Sending at reduced depth - track for later refresh
+      reducedDepthRegion.assign_union(sentRegion);
+    } else {
+      // Sending at full depth - clear from reduced depth tracking
+      reducedDepthRegion.assign_subtract(sentRegion);
+    }
+    lastSentBpp = currentBpp;
 }
 
 void EncodeManager::prepareEncoders(bool allowLossy)

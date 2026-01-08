@@ -84,6 +84,7 @@ namespace rfb {
     void pruneLosslessRefresh(const core::Region& limits);
     void forceRefresh(const core::Region& req);
     void forceImmediateRefresh(const core::Region& req);
+    void handlePixelFormatChange(int newBpp);  // Trigger refresh of reduced-depth regions
 
     void writeUpdate(const UpdateInfo& ui, const PixelBuffer* pb,
                      const RenderedCursor* renderedCursor);
@@ -176,6 +177,8 @@ namespace rfb {
     std::vector<int> activeEncoders;
 
     core::Region lossyRegion;
+    core::Region reducedDepthRegion;  // Regions sent at bpp < 24 (need refresh on format upgrade)
+    int lastSentBpp;                  // Track pixel format depth of last update
     core::Region recentlyChangedRegion;
     core::Region pendingRefreshRegion;
 
