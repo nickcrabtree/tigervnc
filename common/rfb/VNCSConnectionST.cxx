@@ -541,12 +541,26 @@ void VNCSConnectionST::setEncodings(int nEncodings, const int32_t* encodings)
 
 void VNCSConnectionST::setPixelFormat(const PixelFormat& pf)
 {
+  // Get old format before updating
+  PixelFormat oldPf = client.pf();
+  
   SConnection::setPixelFormat(pf);
   char buffer[256];
   pf.print(buffer, 256);
-  vlog.info("Client pixel format %s", buffer);
+  vlog.info("Client pixel format %s (was %dbpp)", buffer, oldPf.bpp);
   setCursor();
-  encodeManager.forceRefresh(server->getPixelBuffer()->getRect());
+  
+  // If upgrading from lower to higher quality (e.g. 8bpp -> 32bpp),
+  // force IMMEDIATE refresh to prevent purple corruption from cached
+  // low-quality content. forceImmediateRefresh bypasses the
+  // recently-changed protection that can delay refresh indefinitely.
+  if (pf.bpp > oldPf.bpp || pf.depth > oldPf.depth) {
+    vlog.info("Pixel format upgrade detected (%dbpp/%ddepth -> %dbpp/%ddepth), forcing immediate refresh",
+              oldPf.bpp, oldPf.depth, pf.bpp, pf.depth);
+    encodeManager.forceImmediateRefresh(server->getPixelBuffer()->getRect());
+  } else {
+    encodeManager.forceRefresh(server->getPixelBuffer()->getRect());
+  }
 }
 
 void VNCSConnectionST::pointerEvent(const core::Point& pos,

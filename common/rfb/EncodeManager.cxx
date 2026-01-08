@@ -515,6 +515,18 @@ void EncodeManager::forceRefresh(const core::Region& req)
     pendingRefreshRegion.assign_union(req);
 }
 
+void EncodeManager::forceImmediateRefresh(const core::Region& req)
+{
+  // Force refresh without waiting for recently-changed timeout.
+  // Used when pixel format upgrades to higher quality - we must
+  // re-send content immediately, bypassing recent-change protection.
+  vlog.info("forceImmediateRefresh: %s", strRegionSummary(req));
+  lossyRegion.assign_union(req);
+  pendingRefreshRegion.assign_union(req);
+  // Clear recentlyChangedRegion so the refresh isn't blocked
+  recentlyChangedRegion.clear();
+}
+
 void EncodeManager::writeUpdate(const UpdateInfo& ui, const PixelBuffer* pb,
                                 const RenderedCursor* renderedCursor)
 {

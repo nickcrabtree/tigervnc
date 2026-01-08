@@ -82,8 +82,8 @@ namespace rfb {
     int getNextLosslessRefresh(const core::Region& req);
 
     void pruneLosslessRefresh(const core::Region& limits);
-
     void forceRefresh(const core::Region& req);
+    void forceImmediateRefresh(const core::Region& req);
 
     void writeUpdate(const UpdateInfo& ui, const PixelBuffer* pb,
                      const RenderedCursor* renderedCursor);
