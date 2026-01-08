@@ -323,6 +323,15 @@ void ModifiablePixelBuffer::imageRect(const PixelFormat& pf,
   if (stride == 0)
     stride = dest.width();
 
+  // Debug: log format conversion details when formats differ
+  if (pf != format) {
+    char srcFmt[256], dstFmt[256];
+    pf.print(srcFmt, sizeof(srcFmt));
+    format.print(dstFmt, sizeof(dstFmt));
+    vlog.debug("imageRect FORMAT CONVERSION: rect=[%d,%d-%d,%d] src=[%s] dst=[%s]",
+               dest.tl.x, dest.tl.y, dest.br.x, dest.br.y, srcFmt, dstFmt);
+  }
+
   dstBuffer = getBufferRW(dest, &dstStride);
   format.bufferFromBuffer(dstBuffer, pf, (const uint8_t*)pixels,
                           dest.width(), dest.height(),

@@ -839,9 +839,12 @@ void CConn::updatePixelFormat()
   }
 
   if (pf != server.pf()) {
-    char str[256];
-    pf.print(str, 256);
-    vlog.info(_("Using pixel format %s"),str);
+    char oldStr[256], newStr[256];
+    server.pf().print(oldStr, 256);
+    pf.print(newStr, 256);
+    vlog.info(_("PIXEL FORMAT CHANGE: old=[%s] new=[%s] bpsEstimate=%llu"),
+              oldStr, newStr, (unsigned long long)bpsEstimate);
+    vlog.debug("WARNING: Pixel format change may cause cache format mismatches!");
     setPF(pf);
   }
 }

@@ -337,6 +337,9 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t
   // When minBpp > 0, entries with bpp < minBpp are rejected to prevent quality
   // loss from upscaling low-quality cached data to high-quality display format.
 
+  vlog.debug("getByCanonicalHash: canonical=%llx dims=%dx%d minBpp=%d",
+             (unsigned long long)canonicalHash, width, height, minBpp);
+
   if (!arcCache_)
     return nullptr;
 
@@ -345,6 +348,8 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t
   const CachedPixels* bestLossy = nullptr;
   uint8_t bestLosslessBpp = 0;
   uint8_t bestLossyBpp = 0;
+  int candidatesChecked = 0;
+  int candidatesFiltered = 0;
 
   // 1) Scan hydrated entries in memory.
   for (const auto& kv : cache_) {
@@ -359,10 +364,15 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t
       continue;
 
     uint8_t entryBpp = e->format.bpp;
+    candidatesChecked++;
     
     // Skip entries below minimum quality threshold
-    if (minBpp > 0 && entryBpp < minBpp)
+    if (minBpp > 0 && entryBpp < minBpp) {
+      vlog.debug("  Filtering entry: canonical=%llx entryBpp=%d < minBpp=%d",
+                 (unsigned long long)entry.canonicalHash, entryBpp, minBpp);
+      candidatesFiltered++;
       continue;
+    }
 
     if (e->isLossless()) {
       if (entryBpp > bestLosslessBpp || !bestLossless) {
@@ -435,7 +445,18 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t
   // Return best available entry: prefer lossless, then highest bpp lossy
   const CachedPixels* result = bestLossless ? bestLossless : bestLossy;
   
+  vlog.debug("  Lookup result: checked=%d filtered=%d bestLossless=%p(bpp=%d) bestLossy=%p(bpp=%d)",
+             candidatesChecked, candidatesFiltered,
+             bestLossless, bestLosslessBpp, bestLossy, bestLossyBpp);
+  
   if (result) {
+    char fmtStr[256];
+    result->format.print(fmtStr, sizeof(fmtStr));
+    vlog.debug("  Returning entry: bpp=%d format=[%s] lossless=%s canonical=%llx actual=%llx",
+               result->format.bpp, fmtStr,
+               result->isLossless() ? "yes" : "no",
+               (unsigned long long)result->canonicalHash,
+               (unsigned long long)result->actualHash);
     stats_.cacheHits++;
     if (result->width * result->height > 1024 && 
         isSolidBlack(result->pixels.data(), result->pixels.size())) {
@@ -445,6 +466,7 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t
     return result;
   }
 
+  vlog.debug("  No matching entry found - MISS");
   stats_.cacheMisses++;
   return nullptr;
 }
@@ -460,6 +482,14 @@ void GlobalClientPersistentCache::insert(uint64_t canonicalHash,
 {
   if (!arcCache_ || pixels == nullptr || width == 0 || height == 0)
     return;
+
+  // Debug: log the format being stored
+  char fmtStr[256];
+  pf.print(fmtStr, sizeof(fmtStr));
+  bool isLossless = (canonicalHash == actualHash);
+  vlog.debug("INSERT: canonical=%llx actual=%llx dims=%dx%d format=[%s] bpp=%d lossless=%s",
+             (unsigned long long)canonicalHash, (unsigned long long)actualHash,
+             width, height, fmtStr, pf.bpp, isLossless ? "yes" : "no");
 
   // NEW DESIGN: Index by actualHash (client's computed hash) for fast direct
   // lookup, but store canonicalHash so we can also lookup by canonical.

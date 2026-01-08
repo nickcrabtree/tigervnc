@@ -941,9 +941,17 @@ Encoder* EncodeManager::startRect(const core::Rect& rect, int type)
   encoder = encoders[klass];
   conn->writer()->startRect(rect, encoder->encoding);
 
-  if ((encoder->flags & EncoderLossy) &&
-      ((encoder->losslessQuality == -1) ||
-       (encoder->getQualityLevel() < encoder->losslessQuality)))
+  // Determine if this rect should be marked for lossless refresh.
+  // A rect is "lossy" if:
+  // 1. The encoder itself is lossy (e.g., JPEG) at current quality, OR
+  // 2. The client's pixel format has reduced color depth (bpp < 24)
+  //    which causes color quantization loss (e.g., rgb332 at 8bpp)
+  bool encoderIsLossy = (encoder->flags & EncoderLossy) &&
+                        ((encoder->losslessQuality == -1) ||
+                         (encoder->getQualityLevel() < encoder->losslessQuality));
+  bool pixelFormatIsLossy = (conn->client.pf().bpp < 24);
+
+  if (encoderIsLossy || pixelFormatIsLossy)
     lossyRegion.assign_union(rect);
   else
     lossyRegion.assign_subtract(rect);
@@ -1297,18 +1305,20 @@ void EncodeManager::writeRects(const core::Region& changed,
 
         conn->onCachedRectRef(matchedId, contentRect);
         
-        // Only clear lossy tracking if client has lossless content.
-        // If there's a lossy hash mapping for this canonical ID, the client
-        // might only have lossy pixels, so keep in lossyRegion for refresh.
+        // Only clear lossy tracking if client has lossless content AND
+        // pixel format is full color depth. If either condition fails, keep
+        // the region in lossyRegion so that lossless refresh will upgrade quality.
         uint64_t lossyIdUnused = 0;
         bool hasLossyMapping = conn->hasLossyHash(contentId, lossyIdUnused);
-        if (!hasLossyMapping) {
+        bool pixelFormatIsLossy = (conn->client.pf().bpp < 24);
+        bool contentIsLossy = hasLossyMapping || pixelFormatIsLossy;
+        if (!contentIsLossy) {
           lossyRegion.assign_subtract(contentRect);
         }
         pendingRefreshRegion.assign_subtract(contentRect);
         // If we kept content in lossyRegion but removed from pendingRefreshRegion,
         // and the timer isn't running, re-add to pending (same pattern as forceRefresh).
-        if (hasLossyMapping && !recentChangeTimer.isStarted()) {
+        if (contentIsLossy && !recentChangeTimer.isStarted()) {
           pendingRefreshRegion.assign_union(contentRect);
         }
 
@@ -1409,18 +1419,20 @@ void EncodeManager::writeRects(const core::Region& changed,
 
           conn->onCachedRectRef(matchedBboxId, bbox);
           
-          // Only clear lossy tracking if client has lossless content.
-          // If there's a lossy hash mapping for this canonical ID, the client
-          // might only have lossy pixels, so keep in lossyRegion for refresh.
+          // Only clear lossy tracking if client has lossless content AND
+          // pixel format is full color depth. If either condition fails, keep
+          // the region in lossyRegion so that lossless refresh will upgrade quality.
           uint64_t lossyBboxIdUnused = 0;
           bool hasLossyBboxMapping = conn->hasLossyHash(bboxId, lossyBboxIdUnused);
-          if (!hasLossyBboxMapping) {
+          bool pixelFormatIsLossy = (conn->client.pf().bpp < 24);
+          bool contentIsLossy = hasLossyBboxMapping || pixelFormatIsLossy;
+          if (!contentIsLossy) {
             lossyRegion.assign_subtract(bbox);
           }
           pendingRefreshRegion.assign_subtract(bbox);
           // If we kept content in lossyRegion but removed from pendingRefreshRegion,
           // and the timer isn't running, re-add to pending (same pattern as forceRefresh).
-          if (hasLossyBboxMapping && !recentChangeTimer.isStarted()) {
+          if (contentIsLossy && !recentChangeTimer.isStarted()) {
             pendingRefreshRegion.assign_union(bbox);
           }
           return;  // Entire region handled by one cache hit!
@@ -1979,6 +1991,19 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
                hex64(lossyId), hex64(cacheId));
   }
 
+  // Determine if pixel format supports full quality (bpp >= 24)
+  bool pixelFormatIsFullQuality = (conn->client.pf().bpp >= 24);
+  
+  // When pixel format is full quality but we only have a lossy match,
+  // skip the cache reference. The client's minBpp filter would reject
+  // our low-quality cached entry anyway, causing a round-trip delay.
+  // Better to fall through and send fresh high-quality data via INIT.
+  if (hasLossyMatch && pixelFormatIsFullQuality) {
+    vlog.debug("tryLookup: Skipping lossy match (bpp=%d) - will send fresh INIT",
+               conn->client.pf().bpp);
+    hasLossyMatch = false;  // Force fallthrough to INIT path
+  }
+
   if (hasCanonicalMatch || hasLossyMatch) {
     // Cache hit! Client has this content, send reference
     persistentCacheStats.cacheHits++;
@@ -2012,16 +2037,18 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     // targeted refresh of the same region.
     conn->onCachedRectRef(matchedId, rect);
     
-    // Only clear lossy tracking if the client has lossless content.
-    // If the hit is for a lossy entry, keep the region in lossyRegion
-    // so that lossless refresh will eventually upgrade quality.
-    if (!hasLossyMatch) {
+    // Only clear lossy tracking if the client has lossless content AND
+    // pixel format is full color depth. If either condition fails, keep
+    // the region in lossyRegion so that lossless refresh will upgrade quality.
+    bool pixelFormatIsLossy = (conn->client.pf().bpp < 24);
+    bool contentIsLossy = hasLossyMatch || pixelFormatIsLossy;
+    if (!contentIsLossy) {
       lossyRegion.assign_subtract(rect);
     }
     pendingRefreshRegion.assign_subtract(rect);
     // If we kept content in lossyRegion but removed from pendingRefreshRegion,
     // and the timer isn't running, re-add to pending (same pattern as forceRefresh).
-    if (hasLossyMatch && !recentChangeTimer.isStarted()) {
+    if (contentIsLossy && !recentChangeTimer.isStarted()) {
       pendingRefreshRegion.assign_union(rect);
     }
     return true;
@@ -2085,19 +2112,21 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     conn->clearClientPersistentRequest(cacheId);
   }
 
-  // Only clear lossy tracking if the payload encoder is lossless.
-  // If this INIT used a lossy encoder (e.g., Tight/JPEG), keep the
-  // region in lossyRegion so that lossless refresh will upgrade quality.
-  bool payloadIsLossy = (payloadEnc->flags & EncoderLossy) &&
-                        ((payloadEnc->losslessQuality == -1) ||
-                         (payloadEnc->getQualityLevel() < payloadEnc->losslessQuality));
-  if (!payloadIsLossy) {
+  // Only clear lossy tracking if the payload encoder is lossless AND
+  // pixel format is full color depth. If either condition fails, keep
+  // the region in lossyRegion so that lossless refresh will upgrade quality.
+  bool payloadEncoderIsLossy = (payloadEnc->flags & EncoderLossy) &&
+                               ((payloadEnc->losslessQuality == -1) ||
+                                (payloadEnc->getQualityLevel() < payloadEnc->losslessQuality));
+  bool pixelFormatIsLossy = (conn->client.pf().bpp < 24);
+  bool contentIsLossy = payloadEncoderIsLossy || pixelFormatIsLossy;
+  if (!contentIsLossy) {
     lossyRegion.assign_subtract(rect);
   }
   pendingRefreshRegion.assign_subtract(rect);
   // If we kept content in lossyRegion but removed from pendingRefreshRegion,
   // and the timer isn't running, re-add to pending (same pattern as forceRefresh).
-  if (payloadIsLossy && !recentChangeTimer.isStarted()) {
+  if (contentIsLossy && !recentChangeTimer.isStarted()) {
     pendingRefreshRegion.assign_union(rect);
   }
   

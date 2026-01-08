@@ -1026,11 +1026,18 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   // and request fresh high-quality data from the server rather than upscale
   // low-quality cached data (which causes visible artifacts).
   uint8_t minBpp = pb->getPF().bpp;
+  vlog.debug("Cache lookup: cacheId=%llx rect=[%d,%d-%d,%d] minBpp=%d",
+             (unsigned long long)cacheId, r.tl.x, r.tl.y, r.br.x, r.br.y, minBpp);
   const GlobalClientPersistentCache::CachedPixels* cached = persistentCache->getByCanonicalHash(cacheId, w, h, minBpp);
   
   if (cached == nullptr) {
     // Cache miss - queue request for later batching
     recordCacheMiss(pcStats);
+    
+    char pbFmtStr[256];
+    pb->getPF().print(pbFmtStr, sizeof(pbFmtStr));
+    vlog.debug("Cache MISS: cacheId=%llx rect=[%d,%d-%d,%d] fb_format=[%s] minBpp=%d (no matching entry or filtered)",
+               (unsigned long long)cacheId, r.tl.x, r.tl.y, r.br.x, r.br.y, pbFmtStr, minBpp);
     
     // Log to debug file (less verbose than console)
     PersistentCacheDebugLogger::getInstance().logCacheMiss(
@@ -1067,11 +1074,15 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
 
   // Blit cached pixels to framebuffer
   // Debug: log format comparison on cache hit
+  char cachedFmtStr[256], pbFmtStr[256];
+  cached->format.print(cachedFmtStr, sizeof(cachedFmtStr));
+  pb->getPF().print(pbFmtStr, sizeof(pbFmtStr));
   if (cached->format != pb->getPF()) {
-    char cachedFmtStr[256], pbFmtStr[256];
-    cached->format.print(cachedFmtStr, sizeof(cachedFmtStr));
-    pb->getPF().print(pbFmtStr, sizeof(pbFmtStr));
-    vlog.debug("Cache HIT format mismatch! cached=[%s] fb=[%s]", cachedFmtStr, pbFmtStr);
+    vlog.debug("Cache HIT format MISMATCH! cached=[%s] fb=[%s] rect=[%d,%d-%d,%d]",
+               cachedFmtStr, pbFmtStr, r.tl.x, r.tl.y, r.br.x, r.br.y);
+  } else {
+    vlog.debug("Cache HIT format OK: bpp=%d rect=[%d,%d-%d,%d]",
+               cached->format.bpp, r.tl.x, r.tl.y, r.br.x, r.br.y);
   }
   pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
 
@@ -1114,6 +1125,15 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   
   size_t bppBytes = (size_t)pb->getPF().bpp / 8;
   size_t pixelBytes = (size_t)r.height() * stridePixels * bppBytes;
+
+  // Debug: log format being stored
+  {
+    char fmtStr[256];
+    pb->getPF().print(fmtStr, sizeof(fmtStr));
+    vlog.debug("STORE: rect=[%d,%d-%d,%d] cacheId=%llx encoding=%d fb_format=[%s] bpp=%d",
+               r.tl.x, r.tl.y, r.br.x, r.br.y,
+               (unsigned long long)cacheId, encoding, fmtStr, pb->getPF().bpp);
+  }
 
   
   // Track bandwidth for this PersistentCachedRectInit (ID + encoded data)
@@ -1296,7 +1316,10 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
     {
       char fmtStr[256];
       pb->getPF().print(fmtStr, sizeof(fmtStr));
-      vlog.debug("SEED storing with format: %s bpp=%d", fmtStr, pb->getPF().bpp);
+      vlog.debug("SEED: rect=[%d,%d-%d,%d] cacheId=%llx actualHash=%llx format=[%s] bpp=%d hashMatch=%s",
+                 r.tl.x, r.tl.y, r.br.x, r.br.y,
+                 (unsigned long long)canonicalHash, (unsigned long long)actualHash,
+                 fmtStr, pb->getPF().bpp, hashMatch ? "yes" : "no");
     }
     persistentCache->insert(canonicalHash, actualHash, diskKey, pixels, pb->getPF(),
                             r.width(), r.height(), stridePixels,
@@ -1398,6 +1421,18 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
   // Log to debug file
   PersistentCacheDebugLogger::getInstance().logCacheHit(
       "ContentCache", r.tl.x, r.tl.y, r.width(), r.height(), cacheId, entry->isLossless());
+
+  // Debug: log format comparison on content cache hit
+  char cachedFmtStr[256], pbFmtStr[256];
+  entry->format.print(cachedFmtStr, sizeof(cachedFmtStr));
+  pb->getPF().print(pbFmtStr, sizeof(pbFmtStr));
+  if (entry->format != pb->getPF()) {
+    vlog.debug("ContentCache HIT format MISMATCH! cached=[%s] fb=[%s] rect=[%d,%d-%d,%d]",
+               cachedFmtStr, pbFmtStr, r.tl.x, r.tl.y, r.br.x, r.br.y);
+  } else {
+    vlog.debug("ContentCache HIT format OK: bpp=%d rect=[%d,%d-%d,%d]",
+               entry->format.bpp, r.tl.x, r.tl.y, r.br.x, r.br.y);
+  }
 
   // Blit cached pixels to framebuffer at target position. CachedPixels
   // stores stride in pixels for its internal buffer.
