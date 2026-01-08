@@ -387,6 +387,35 @@ There are two remote server environments:
    - Code location: `/data_parallel/PreStackPro/share/nickc/tigervnc`
    - Production display: `:1` (port 5901)
 
+### Code Synchronization
+
+**🔴 IMPORTANT: Use git, NOT rsync or scp, to sync code between machines 🔴**
+
+All code synchronization between local development machine (macOS) and remote servers must use git:
+
+```bash
+# On local machine (macOS):
+git add <files>
+git commit -m "Description
+
+Co-Authored-By: Warp <agent@warp.dev>"
+git push origin master
+
+# On remote server (AWS Jakarta):
+timeout 30 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 \
+  'cd /data_parallel/PreStackPro/share/nickc/tigervnc && git pull'
+
+# Then rebuild:
+timeout 300 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 \
+  'cd /data_parallel/PreStackPro/share/nickc/tigervnc && make server'
+```
+
+**Why git, not rsync:**
+- Maintains proper version history
+- Avoids corrupting the remote git repository
+- Ensures both sides stay in sync with origin
+- Allows easy rollback if needed
+
 ### Starting and Managing Servers
 
 **⚠️ ALWAYS use the startup scripts rather than raw Xnjcvnc commands:**
