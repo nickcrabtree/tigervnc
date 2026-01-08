@@ -1296,7 +1296,15 @@ void EncodeManager::writeRects(const core::Region& changed,
                   contentRect.br.x, contentRect.br.y, hex64(matchedId), coverage);
 
         conn->onCachedRectRef(matchedId, contentRect);
-        lossyRegion.assign_subtract(contentRect);
+        
+        // Only clear lossy tracking if client has lossless content.
+        // If there's a lossy hash mapping for this canonical ID, the client
+        // might only have lossy pixels, so keep in lossyRegion for refresh.
+        uint64_t lossyIdUnused = 0;
+        bool hasLossyMapping = conn->hasLossyHash(contentId, lossyIdUnused);
+        if (!hasLossyMapping) {
+          lossyRegion.assign_subtract(contentRect);
+        }
         pendingRefreshRegion.assign_subtract(contentRect);
 
         // This reference satisfies the entire bordered region, but we might still
@@ -1395,7 +1403,15 @@ void EncodeManager::writeRects(const core::Region& changed,
                     hex64(matchedBboxId), equiv - 20, changed.numRects());
 
           conn->onCachedRectRef(matchedBboxId, bbox);
-          lossyRegion.assign_subtract(bbox);
+          
+          // Only clear lossy tracking if client has lossless content.
+          // If there's a lossy hash mapping for this canonical ID, the client
+          // might only have lossy pixels, so keep in lossyRegion for refresh.
+          uint64_t lossyBboxIdUnused = 0;
+          bool hasLossyBboxMapping = conn->hasLossyHash(bboxId, lossyBboxIdUnused);
+          if (!hasLossyBboxMapping) {
+            lossyRegion.assign_subtract(bbox);
+          }
           pendingRefreshRegion.assign_subtract(bbox);
           return;  // Entire region handled by one cache hit!
         }
@@ -1986,7 +2002,12 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     // targeted refresh of the same region.
     conn->onCachedRectRef(matchedId, rect);
     
-    lossyRegion.assign_subtract(rect);
+    // Only clear lossy tracking if the client has lossless content.
+    // If the hit is for a lossy entry, keep the region in lossyRegion
+    // so that lossless refresh will eventually upgrade quality.
+    if (!hasLossyMatch) {
+      lossyRegion.assign_subtract(rect);
+    }
     pendingRefreshRegion.assign_subtract(rect);
     return true;
   }
@@ -2049,7 +2070,15 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     conn->clearClientPersistentRequest(cacheId);
   }
 
-  lossyRegion.assign_subtract(rect);
+  // Only clear lossy tracking if the payload encoder is lossless.
+  // If this INIT used a lossy encoder (e.g., Tight/JPEG), keep the
+  // region in lossyRegion so that lossless refresh will upgrade quality.
+  bool payloadIsLossy = (payloadEnc->flags & EncoderLossy) &&
+                        ((payloadEnc->losslessQuality == -1) ||
+                         (payloadEnc->getQualityLevel() < payloadEnc->losslessQuality));
+  if (!payloadIsLossy) {
+    lossyRegion.assign_subtract(rect);
+  }
   pendingRefreshRegion.assign_subtract(rect);
   
   vlog.debug("PersistentCache INIT: rect [%d,%d-%d,%d] id=%s (now known for session)",

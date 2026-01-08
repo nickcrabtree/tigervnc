@@ -1066,6 +1066,13 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   // lossless runs to have zero hash-mismatch reports.
 
   // Blit cached pixels to framebuffer
+  // Debug: log format comparison on cache hit
+  if (cached->format != pb->getPF()) {
+    char cachedFmtStr[256], pbFmtStr[256];
+    cached->format.print(cachedFmtStr, sizeof(cachedFmtStr));
+    pb->getPF().print(pbFmtStr, sizeof(pbFmtStr));
+    vlog.debug("Cache HIT format mismatch! cached=[%s] fb=[%s]", cachedFmtStr, pbFmtStr);
+  }
   pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
 
 }
@@ -1285,6 +1292,12 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
     if (diskKey.size() < 16)
       diskKey.resize(16, 0);
 
+    // Debug: log format being stored
+    {
+      char fmtStr[256];
+      pb->getPF().print(fmtStr, sizeof(fmtStr));
+      vlog.debug("SEED storing with format: %s bpp=%d", fmtStr, pb->getPF().bpp);
+    }
     persistentCache->insert(canonicalHash, actualHash, diskKey, pixels, pb->getPF(),
                             r.width(), r.height(), stridePixels,
                             /*isPersistable=*/true);  // NEW: Always persist
