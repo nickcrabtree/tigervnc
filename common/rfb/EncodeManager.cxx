@@ -103,6 +103,12 @@ namespace {
   inline const char* yesNo(bool b) {
     return b ? "yes" : "no";
   }
+  // Canonical 32bpp/24-depth truecolour format used for native-format cache upgrades.
+  static const PixelFormat canonicalNativePF(32, 24,
+                                             false,  // little-endian buffer
+                                             true,   // trueColour
+                                             255, 255, 255,
+                                             16, 8, 0);
 
   // Get current time as epoch.milliseconds (matches viewer log format)
   inline double getEpochTime() {
@@ -267,7 +273,7 @@ static bool isCCTilingDebugEnabled()
 
 EncodeManager::EncodeManager(SConnection* conn_)
   : conn(conn_), lastSentBpp(0), recentChangeTimer(this), cacheStatsTimer(this),
-    usePersistentCache(false)
+    usePersistentCache(false), nativeFormatCacheSupported(false)
 {
   StatsVector::iterator iter;
 
@@ -564,8 +570,68 @@ void EncodeManager::writeLosslessRefresh(const core::Region& req,
                                          const RenderedCursor* renderedCursor,
                                          size_t maxUpdateSize)
 {
-  doUpdate(false, getLosslessRefresh(req, maxUpdateSize),
-           {}, {}, pb, renderedCursor);
+  core::Region refresh = getLosslessRefresh(req, maxUpdateSize);
+
+  // Step 1: If the client negotiated native-format cache (-327) and we have
+  // regions previously sent at reduced depth (<24bpp), upgrade those first
+  // using canonical 32bpp PersistentCachedRectInit messages. This fills the
+  // client's cache with high-quality pixels even while the negotiated wire
+  // format remains reduced depth.
+  if (usePersistentCache && nativeFormatCacheSupported && !reducedDepthRegion.is_empty()) {
+    core::Region nativeRegion = refresh.intersect(reducedDepthRegion);
+    if (!nativeRegion.is_empty()) {
+      std::vector<core::Rect> rects;
+      nativeRegion.get_rects(&rects);
+
+      for (const auto& rect : rects) {
+        // Compute canonical cache ID (hash over canonical pixels)
+        std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, rect);
+        uint64_t cacheId = 0;
+        if (!fullHash.empty()) {
+          size_t n = std::min(fullHash.size(), sizeof(uint64_t));
+          memcpy(&cacheId, fullHash.data(), n);
+        }
+
+        // Temporarily encode using canonical PF by overriding client PF
+        PixelFormat savedPF = conn->client.pf();
+        conn->client.setPF(canonicalNativePF);
+        prepareEncoders(false);
+
+        PixelBuffer* ppb;
+        struct RectInfo info;
+        EncoderType type;
+        selectEncoderForRect(rect, pb, ppb, &info, type);
+        Encoder* payloadEnc = encoders[activeEncoders[type]];
+
+        // Emit PersistentCachedRectInit with native_format flag + canonical PF
+        uint8_t flags = 0x01;  // native_format
+        conn->writer()->writePersistentCachedRectInit(rect, cacheId,
+                                                      payloadEnc->encoding,
+                                                      flags, &canonicalNativePF,
+                                                      /*includeFlags=*/true);
+        payloadEnc->writeRect(ppb, info.palette);
+        conn->writer()->endRect();
+
+        conn->client.setPF(savedPF);
+
+        // Mark ID as known so future references can use CachedRect
+        conn->markPersistentIdKnown(cacheId);
+        clientKnownIds_.add(cacheId);
+
+        // Remove from reduced-depth tracking once upgraded
+        reducedDepthRegion.assign_subtract(rect);
+        pendingRefreshRegion.assign_subtract(rect);
+      }
+
+      // Avoid re-sending these rects in negotiated (reduced) format
+      refresh.assign_subtract(nativeRegion);
+    }
+  }
+
+  // Step 2: Refresh any remaining lossy regions using the normal lossless path
+  if (!refresh.is_empty()) {
+    doUpdate(false, refresh, {}, {}, pb, renderedCursor);
+  }
 }
 
 void EncodeManager::handleTimeout(core::Timer* t)
@@ -714,7 +780,9 @@ void EncodeManager::doUpdate(bool allowLossy, const
 
           Encoder* payloadEnc = encoders[activeEncoders[type]];
           // Emit CachedRectInit header (cacheId + encoding)
-          conn->writer()->writeCachedRectInit(r, cacheId, payloadEnc->encoding);
+          conn->writer()->writePersistentCachedRectInit(r, cacheId, payloadEnc->encoding,
+                                                        /*flags=*/0, /*pf=*/nullptr,
+                                                        /*includeFlags=*/nativeFormatCacheSupported);
           // Prepare pixel buffer respecting native-PF usage for the payload encoder
           if (payloadEnc->flags & EncoderUseNativePF)
             ppb = preparePixelBuffer(r, pb, false);
@@ -2176,8 +2244,13 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   //   return false;
   // }
 
-  // Emit PersistentCachedRectInit header (ID + encoding)
-  conn->writer()->writePersistentCachedRectInit(rect, cacheId, payloadEnc->encoding);
+  // Emit PersistentCachedRectInit header (ID + encoding). If the client
+  // negotiated native-format cache (-327), include a flags byte even when
+  // native_format is not used so the client can parse v2 headers reliably.
+  uint8_t initFlags = 0;
+  bool includeFlags = nativeFormatCacheSupported;
+  conn->writer()->writePersistentCachedRectInit(rect, cacheId, payloadEnc->encoding,
+                                                initFlags, nullptr, includeFlags);
   // Prepare pixel buffer respecting native-PF usage for the payload encoder
   if (payloadEnc->flags & EncoderUseNativePF)
     ppb = preparePixelBuffer(rect, pb, false);

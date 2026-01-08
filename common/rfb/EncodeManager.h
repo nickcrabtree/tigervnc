@@ -99,6 +99,7 @@ namespace rfb {
     void removeClientKnownHash(uint64_t cacheId);
     bool clientKnowsHash(uint64_t cacheId) const;
     void setUsePersistentCache(bool enable) { usePersistentCache = enable; }
+    void setNativeFormatCacheSupported(bool enable) { nativeFormatCacheSupported = enable; }
 
   protected:
     void handleTimeout(core::Timer* t) override;
@@ -223,6 +224,7 @@ namespace rfb {
 
     // PersistentCache protocol state
     bool usePersistentCache;
+    bool nativeFormatCacheSupported;
     // Set of 64-bit content IDs known to be present on the client. This
     // mirrors the ContentCache cacheId tracking logic, but for
     // cross-session PersistentCache entries.

@@ -68,6 +68,8 @@ namespace rfb {
   // TigerVNC cache-based protocol extensions
   const int pseudoEncodingContentCache = -320;      // Session-only, server-assigned IDs
   const int pseudoEncodingPersistentCache = -321;   // Cross-session, content hashes
+  // Native-format (canonical 32bpp) cache init extension negotiated separately
+  const int pseudoEncodingNativeFormatCache = -327;
 
   // TightVNC-specific
   const int pseudoEncodingLastRect = -224;

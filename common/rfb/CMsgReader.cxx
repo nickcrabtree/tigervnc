@@ -62,6 +62,8 @@ CMsgReader::CMsgReader(CMsgHandler* handler_, rdr::InStream* is_)
   // Initialize PersistentCachedRectInit state
   pendingPersistentCacheInitActive = false;
   pendingPersistentCacheEncoding = 0;
+  pendingPersistentCacheFlags = 0;
+  pendingPersistentCacheHasPF = false;
 }
 
 CMsgReader::~CMsgReader()
@@ -500,7 +502,8 @@ bool CMsgReader::readFramebufferUpdate()
   return true;
 }
 
-bool CMsgReader::readRect(const core::Rect& r, int encoding)
+bool CMsgReader::readRect(const core::Rect& r, int encoding,
+                          const ServerParams* serverOverride)
 {
   if ((r.br.x > handler->server.width()) ||
       (r.br.y > handler->server.height())) {
@@ -512,7 +515,7 @@ bool CMsgReader::readRect(const core::Rect& r, int encoding)
 
   if (r.is_empty())
     vlog.error("Zero size rect");
-
+  return handler->dataRect(r, encoding, serverOverride);
   return handler->dataRect(r, encoding);
 }
 
@@ -975,21 +978,74 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
 {
   // Incremental decode without outer restore point to avoid nesting with decoder
   if (!pendingPersistentCacheInitActive) {
-    // Header: 64-bit cacheId (hi,lo) + 32-bit innerEncoding
-    if (!is->hasData(8 + 4))
+    bool supportsNative = handler->supportsNativeFormatCache();
+
+    // Header: 64-bit cacheId (hi,lo) + [flags + optional PF] + 32-bit innerEncoding
+    is->setRestorePoint();
+
+    if (!is->hasDataOrRestore(8))
       return false;
 
     uint32_t hi = is->readU32();
     uint32_t lo = is->readU32();
     pendingPersistentCacheId = ((uint64_t)hi << 32) | lo;
+
+    pendingPersistentCacheFlags = 0;
+    pendingPersistentCacheHasPF = false;
+
+    if (supportsNative) {
+      // Require flags byte
+      if (!is->hasDataOrRestore(1 + 4))
+        return false;
+      pendingPersistentCacheFlags = is->readU8();
+
+      // Reserved bits must be zero
+      if (pendingPersistentCacheFlags & 0xFE) {
+        throw protocol_error("PersistentCachedRectInit: reserved flag bits set");
+      }
+
+      if (pendingPersistentCacheFlags & 0x01) {
+        // native_format flag set: PixelFormat follows
+        if (!is->hasDataOrRestore(16 + 4))
+          return false;
+        pendingPersistentCachePF.read(is);
+
+        // Validate canonical PF: 32bpp/24-depth truecolor RGB888 little-endian
+        static const PixelFormat canonicalPF(32, 24,
+                                             false,  // little endian
+                                             true,   // trueColour
+                                             255, 255, 255,
+                                             16, 8, 0);
+        if (pendingPersistentCachePF != canonicalPF) {
+          throw protocol_error("PersistentCachedRectInit: non-canonical PixelFormat in native_format");
+        }
+        pendingPersistentCacheHasPF = true;
+      }
+    } else {
+      // Legacy v1: no flags or PF, just encoding
+      if (!is->hasDataOrRestore(4))
+        return false;
+    }
+
+    // Inner encoding follows
     pendingPersistentCacheEncoding = is->readS32();
     pendingPersistentCacheInitActive = true;
+    is->clearRestorePoint();
 
-    // Logged to debug file via DecodeManager
+    // Logged to debug file via DecodeManager (on store step)
   }
 
   // Decode the rect using the remembered encoding
-  bool ret = readRect(r, pendingPersistentCacheEncoding);
+  const ServerParams* serverOverride = nullptr;
+  ServerParams nativeServerParams;
+  if (pendingPersistentCacheFlags & 0x01) {
+    // Use canonical PF for decode path
+    nativeServerParams = handler->server;
+    nativeServerParams.setPF(pendingPersistentCachePF);
+    serverOverride = &nativeServerParams;
+  }
+
+  bool ret = readRect(r, pendingPersistentCacheEncoding, serverOverride);
 
   if (ret) {
     // Notify handler to store this decoded rect with cacheId and the
@@ -1003,6 +1059,8 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
     pendingPersistentCacheInitActive = false;
     pendingPersistentCacheId = 0;
     pendingPersistentCacheEncoding = 0;
+    pendingPersistentCacheFlags = 0;
+    pendingPersistentCacheHasPF = false;
   }
 
   return ret;

@@ -170,6 +170,8 @@ namespace rfb {
     // DecodeManager when it detects systemic hash mismatches so we can
     // gracefully fall back to non-cache behaviour without visual corruption.
     void disablePersistentCacheForSession();
+    // Whether this client advertised native-format cache extension (-327).
+    bool supportsNativeFormatCache() const override { return supportsPersistentCache && supportsNativeFormatCache_; }
 
     enum stateEnum {
       RFBSTATE_UNINITIALISED,
@@ -228,11 +230,13 @@ namespace rfb {
                     const char* name) override;
 
     bool readAndDecodeRect(const core::Rect& r, int encoding,
-                           ModifiablePixelBuffer* pb) override;
+                           ModifiablePixelBuffer* pb,
+                           const ServerParams* serverOverride = nullptr) override;
 
     void framebufferUpdateStart() override;
     void framebufferUpdateEnd() override;
-    bool dataRect(const core::Rect& r, int encoding) override;
+    bool dataRect(const core::Rect& r, int encoding,
+                  const ServerParams* serverOverride = nullptr) override;
 
     void setColourMapEntries(int firstColour, int nColours,
                              uint16_t* rgbs) override;
@@ -327,6 +331,7 @@ namespace rfb {
     // Cache protocol support (can be disabled via config/command-line)
     bool supportsContentCache;
     bool supportsPersistentCache;
+    bool supportsNativeFormatCache_;
 
     // Negotiated cache protocol (first one actually used by server)
     enum CacheProtocolNegotiated {

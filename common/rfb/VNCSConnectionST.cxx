@@ -527,12 +527,16 @@ void VNCSConnectionST::setEncodings(int nEncodings, const int32_t* encodings)
   // PersistentCache pseudo-encoding. ContentCache is now a viewer-side
   // alias that reuses the same on-wire protocol.
   bool clientWantsPersistent = client.supportsEncoding(pseudoEncodingPersistentCache);
+  bool clientWantsNativeFormat = client.supportsEncoding(pseudoEncodingNativeFormatCache);
 
   if (clientWantsPersistent) {
     encodeManager.setUsePersistentCache(true);
   } else {
     encodeManager.setUsePersistentCache(false);
   }
+
+  // Gate native-format cache upgrades behind explicit capability advertisement
+  encodeManager.setNativeFormatCacheSupported(clientWantsNativeFormat);
 
   if (clientWantsPersistent && Server::enablePersistentCache) {
     vlog.info("PersistentCache enabled for this connection (server allows persistence)");

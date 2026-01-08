@@ -75,7 +75,7 @@ CConnection::CConnection()
   : csecurity(nullptr),
     supportsLocalCursor(false), supportsCursorPosition(false),
     supportsDesktopResize(false), supportsLEDState(false),
-    supportsContentCache(true), supportsPersistentCache(true),
+    supportsContentCache(true), supportsPersistentCache(true), supportsNativeFormatCache_(true),
     is(nullptr), os(nullptr), reader_(nullptr), writer_(nullptr),
     shared(false),
     state_(RFBSTATE_UNINITIALISED),
@@ -598,9 +598,10 @@ void CConnection::serverInit(int width, int height,
 }
 
 bool CConnection::readAndDecodeRect(const core::Rect& r, int encoding,
-                                    ModifiablePixelBuffer* pb)
+                                    ModifiablePixelBuffer* pb,
+                                    const ServerParams* serverOverride)
 {
-  if (!decoder.decodeRect(r, encoding, pb))
+  if (!decoder.decodeRect(r, encoding, pb, serverOverride))
     return false;
   decoder.flush();
   return true;
@@ -662,7 +663,8 @@ void CConnection::framebufferUpdateEnd()
   }
 }
 
-bool CConnection::dataRect(const core::Rect& r, int encoding)
+bool CConnection::dataRect(const core::Rect& r, int encoding,
+                           const ServerParams* serverOverride)
 {
   // Optional client-side tracing of update ordering in the problematic region
   if (isClientCCDebugEnabled()) {
@@ -672,7 +674,7 @@ bool CConnection::dataRect(const core::Rect& r, int encoding)
                 r.tl.x, r.tl.y, r.br.x, r.br.y, encoding);
     }
   }
-  return decoder.decodeRect(r, encoding, framebuffer);
+  return decoder.decodeRect(r, encoding, framebuffer, serverOverride);
 }
 
 void CConnection::setColourMapEntries(int /*firstColour*/,
@@ -1062,6 +1064,7 @@ void CConnection::disablePersistentCacheForSession()
   // visual corruption once the client has detected hash mismatches.
   if (supportsPersistentCache) {
     supportsPersistentCache = false;
+    supportsNativeFormatCache_ = false;
     encodingChange = true;
   }
 
@@ -1165,6 +1168,10 @@ void CConnection::updateEncodings()
     // a guaranteed miss (server didn't know we had the hash).
     decoder.triggerPersistentCacheLoad();
     encodings.push_back(pseudoEncodingPersistentCache);
+    if (supportsNativeFormatCache_) {
+      encodings.push_back(pseudoEncodingNativeFormatCache);
+      vlog.info("Cache protocol: advertising NativeFormatCache (-327)");
+    }
     vlog.info("Cache protocol: advertising PersistentCache (-321)");
   }
 

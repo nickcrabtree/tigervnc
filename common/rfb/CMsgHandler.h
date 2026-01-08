@@ -63,11 +63,13 @@ namespace rfb {
                             const char* name) = 0;
 
     virtual bool readAndDecodeRect(const core::Rect& r, int encoding,
-                                   ModifiablePixelBuffer* pb) = 0;
+                                   ModifiablePixelBuffer* pb,
+                                   const ServerParams* serverOverride = nullptr) = 0;
 
     virtual void framebufferUpdateStart() = 0;
     virtual void framebufferUpdateEnd() = 0;
-    virtual bool dataRect(const core::Rect& r, int encoding) = 0;
+    virtual bool dataRect(const core::Rect& r, int encoding,
+                          const ServerParams* serverOverride = nullptr) = 0;
 
     virtual void setColourMapEntries(int firstColour, int nColours,
 				     uint16_t* rgbs) = 0;
@@ -106,6 +108,10 @@ namespace rfb {
     // at rect R and associate them with cache ID. Used for whole-rectangle
     // caching where subrect data was already sent via normal encoding.
     virtual void seedCachedRect(const core::Rect& r, uint64_t cacheId) = 0;
+    // Whether this connection advertised the native-format cache extension
+    // (PersistentCachedRectInit v2). Default false; override in clients that
+    // send pseudoEncodingNativeFormatCache in SetEncodings.
+    virtual bool supportsNativeFormatCache() const { return false; }
 
     ServerParams server;
   };

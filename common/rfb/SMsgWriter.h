@@ -129,7 +129,10 @@ namespace rfb {
     void writePersistentCachedRect(const core::Rect& r, uint64_t cacheId);
     
     // PersistentCache protocol extension: initial transmission with 64-bit ID
-    void writePersistentCachedRectInit(const core::Rect& r, uint64_t cacheId, int encoding);
+    void writePersistentCachedRectInit(const core::Rect& r, uint64_t cacheId,
+                                       int encoding, uint8_t flags = 0,
+                                       const PixelFormat* pf = nullptr,
+                                       bool includeFlags = false);
     
     // Cache seed: tell client to associate existing framebuffer pixels at rect R
     // with cache ID. No pixel payload follows - client uses its own framebuffer.

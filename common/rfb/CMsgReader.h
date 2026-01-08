@@ -28,6 +28,8 @@
 #include <vector>
 
 #include <core/Rect.h>
+#include <rfb/PixelFormat.h>
+#include <rfb/ServerParams.h>
 
 namespace rdr { class InStream; }
 
@@ -59,7 +61,8 @@ namespace rfb {
 
     bool readFramebufferUpdate();
 
-    bool readRect(const core::Rect& r, int encoding);
+    bool readRect(const core::Rect& r, int encoding,
+                  const ServerParams* serverOverride = nullptr);
 
     bool readSetXCursor(int width, int height,
                         const core::Point& hotspot);
@@ -114,6 +117,9 @@ namespace rfb {
     bool pendingPersistentCacheInitActive;
     uint64_t pendingPersistentCacheId;
     int pendingPersistentCacheEncoding;
+    uint8_t pendingPersistentCacheFlags;
+    PixelFormat pendingPersistentCachePF;
+    bool pendingPersistentCacheHasPF;
 
     static const int maxCursorSize = 256;
   };

@@ -398,7 +398,8 @@ DecodeManager::~DecodeManager()
 }
 
 bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
-                               ModifiablePixelBuffer* pb)
+                               ModifiablePixelBuffer* pb,
+                               const ServerParams* serverOverride)
 {
   Decoder *decoder;
   rdr::MemOutStream *bufferStream;
@@ -456,13 +457,15 @@ bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
 
   // Read the rect
   bufferStream->clear();
-  if (!decoder->readRect(r, conn->getInStream(), conn->server, bufferStream))
+  const ServerParams& serverParams = serverOverride ? *serverOverride : conn->server;
+
+  if (!decoder->readRect(r, conn->getInStream(), serverParams, bufferStream))
     return false;
 
   stats[encoding].rects++;
   stats[encoding].bytes += 12 + bufferStream->length();
   stats[encoding].pixels += r.area();
-  equiv = 12 + r.area() * (conn->server.pf().bpp/8);
+  equiv = 12 + r.area() * (serverParams.pf().bpp/8);
   stats[encoding].equivalent += equiv;
   
   // Track last decoded bytes for CachedRectInit bandwidth calculation
@@ -475,12 +478,17 @@ bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
   entry->rect = r;
   entry->encoding = encoding;
   entry->decoder = decoder;
-  entry->server = &conn->server;
+  if (serverOverride) {
+    entry->serverParams = *serverOverride;
+    entry->server = &entry->serverParams;
+  } else {
+    entry->server = &conn->server;
+  }
   entry->pb = pb;
   entry->bufferStream = bufferStream;
-
   decoder->getAffectedRegion(r, bufferStream->data(),
-                             bufferStream->length(), conn->server,
+                             bufferStream->length(), *entry->server,
+                             &entry->affectedRegion);
                              &entry->affectedRegion);
 
   // If we captured a BEFORE hash, capture AFTER now that the decoded

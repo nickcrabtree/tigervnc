@@ -56,7 +56,8 @@ namespace rfb {
     ~DecodeManager();
 
     bool decodeRect(const core::Rect& r, int encoding,
-                    ModifiablePixelBuffer* pb);
+                    ModifiablePixelBuffer* pb,
+                    const ServerParams* serverOverride = nullptr);
 
     void flush();
     
@@ -146,6 +147,7 @@ namespace rfb {
       core::Rect rect;
       int encoding;
       Decoder* decoder;
+      ServerParams serverParams;
       const ServerParams* server;
       ModifiablePixelBuffer* pb;
       rdr::MemOutStream* bufferStream;

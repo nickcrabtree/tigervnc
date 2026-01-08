@@ -258,13 +258,28 @@ void SMsgWriter::writePersistentCachedRect(const core::Rect& r, uint64_t cacheId
 
 void SMsgWriter::writePersistentCachedRectInit(const core::Rect& r,
                                                uint64_t cacheId,
-                                               int encoding)
+                                               int encoding,
+                                               uint8_t flags,
+                                               const PixelFormat* pf,
+                                               bool includeFlags)
 {
-  // Server → client: initial payload plus 64-bit ID and inner encoding.
-  // Wire format mirrors ContentCache CachedRectInit: rect header + U64 ID + S32 encoding.
+  // Server → client: initial payload plus 64-bit ID, optional flags/PF, and inner encoding.
   startRect(r, encodingPersistentCachedRectInit);
   os->writeU32((uint32_t)(cacheId >> 32));
   os->writeU32((uint32_t)(cacheId & 0xFFFFFFFF));
+
+  // v2 header extension: flags + optional PixelFormat when native-format flag is set.
+  if (includeFlags || flags != 0 || pf != nullptr) {
+    os->writeU8(flags);
+    if (flags & 0x01) {
+      // native_format flag set: PixelFormat must be present
+      if (pf != nullptr)
+        pf->write(os);
+      else
+        throw std::logic_error("PersistentCachedRectInit: native_format flag set without PixelFormat");
+    }
+  }
+
   os->writeS32(encoding);
 }
 
