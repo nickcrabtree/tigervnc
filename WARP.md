@@ -418,6 +418,10 @@ timeout 300 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 \
 
 ### Starting and Managing Servers
 
+**🔴 CRITICAL: Always ASK the user before killing or restarting any remote server 🔴**
+
+Never kill or restart the VNC server on AWS Jakarta or quartz without explicit user permission. The user may have active work or connections that would be disrupted.
+
 **⚠️ ALWAYS use the startup scripts rather than raw Xnjcvnc commands:**
 
 **On AWS Jakarta (pspuser):**
