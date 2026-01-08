@@ -1862,13 +1862,13 @@ void EncodeManager::selectEncoderForRect(const core::Rect& rect,
 }
 
 void EncodeManager::OffsetPixelBuffer::update(const PixelFormat& pf,
-                                              int width, int height,
+                                              int width_, int height_,
                                               const uint8_t* data_,
                                               int stride_)
 {
   format = pf;
   // Forced cast. We never write anything though, so it should be safe.
-  setBuffer(width, height, (uint8_t*)data_, stride_);
+  setBuffer(width_, height_, (uint8_t*)data_, stride_);
 }
 
 uint8_t* EncodeManager::OffsetPixelBuffer::getBufferRW(const core::Rect& /*r*/, int* /*stride*/)

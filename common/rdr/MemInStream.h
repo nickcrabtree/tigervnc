@@ -54,7 +54,7 @@ namespace rdr {
     }
 
     size_t pos() override { return ptr - start; }
-    void reposition(size_t pos) { ptr = start + pos; }
+    void reposition(size_t newPos) { ptr = start + newPos; }
 
   private:
 

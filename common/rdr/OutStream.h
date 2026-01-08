@@ -71,30 +71,30 @@ namespace rdr {
 
     // writeBytes() writes an exact number of bytes.
 
-    void writeBytes(const uint8_t* data, size_t length) {
-      while (length > 0) {
+    void writeBytes(const uint8_t* data, size_t len) {
+      while (len > 0) {
         check(1);
-        size_t n = length;
-        if (length > avail())
+        size_t n = len;
+        if (len > avail())
           n = avail();
         memcpy(ptr, data, n);
         ptr += n;
         data = (uint8_t*)data + n;
-        length -= n;
+        len -= n;
       }
     }
 
     // copyBytes() efficiently transfers data between streams
 
-    void copyBytes(InStream* is, size_t length) {
-      while (length > 0) {
+    void copyBytes(InStream* is, size_t len) {
+      while (len > 0) {
         check(1);
-        size_t n = length;
-        if (length > avail())
+        size_t n = len;
+        if (len > avail())
           n = avail();
         is->readBytes(ptr, n);
         ptr += n;
-        length -= n;
+        len -= n;
       }
     }
 
@@ -128,17 +128,17 @@ namespace rdr {
     // larger than the bytes actually written as doing so can result in
     // security issues. Use pad() in such cases instead.
 
-    inline uint8_t* getptr(size_t length) { check(length); return ptr; }
-    inline void setptr(size_t length) { if (length > avail())
-                                          throw std::out_of_range("Output stream overflow");
-                                        ptr += length; }
+    inline uint8_t* getptr(size_t len) { check(len); return ptr; }
+    inline void setptr(size_t len) { if (len > avail())
+                                       throw std::out_of_range("Output stream overflow");
+                                     ptr += len; }
 
   private:
 
-    inline void check(size_t length)
+    inline void check(size_t needed)
     {
-      if (length > avail())
-        overrun(length);
+      if (needed > avail())
+        overrun(needed);
     }
 
     // overrun() is implemented by a derived class to cope with buffer overrun.
