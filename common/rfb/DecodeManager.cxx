@@ -1071,7 +1071,7 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
     char cachedFmtStr[256], pbFmtStr[256];
     cached->format.print(cachedFmtStr, sizeof(cachedFmtStr));
     pb->getPF().print(pbFmtStr, sizeof(pbFmtStr));
-    vlog.info("Cache HIT format mismatch! cached=[%s] fb=[%s]", cachedFmtStr, pbFmtStr);
+    vlog.debug("Cache HIT format mismatch! cached=[%s] fb=[%s]", cachedFmtStr, pbFmtStr);
   }
   pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
 
