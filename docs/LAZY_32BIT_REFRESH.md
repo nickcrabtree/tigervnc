@@ -301,113 +301,96 @@ bool clientSupportsNativeFormatCache =
 ## Implementation Phases
 
 ### Phase 1: Foundation (Server-Side Tracking)
-**Status**: Partially complete
+**Status**: Complete
 
 - [x] Track `reducedDepthRegion` for content sent at < 24 bpp
-- [x] Trigger refresh when pixel format upgrades
-- [ ] Skip 8bpp lossless refresh for reduced-depth regions (defer to upgrade)
-- [ ] Add logging/metrics for reduced-depth region size
+- [x] Trigger refresh when pixel format upgrades via `handlePixelFormatChange()`
+- [x] `lastSentBpp` tracks pixel depth of updates
 
-**Deliverable**: Reduced-depth regions refresh correctly on format upgrade, no wasted 8bpp lossless refresh bandwidth.
+### Phase 2: Server-Side Native Format Refresh
+**Estimated effort**: 1-2 days
 
-### Phase 2: Protocol Extension (Wire Format)
-**Estimated effort**: 2-3 days
+- [ ] Modify `writeLosslessRefresh()` to send at native 32bpp format (not client format)
+- [ ] Prioritize `reducedDepthRegion` over `lossyRegion` in refresh order
+- [ ] Use `preparePixelBuffer()` with native format for refresh encoding
+- [ ] Clear `reducedDepthRegion` after successful 32bpp send
 
-- [ ] Define `NATIVE_FORMAT_FLAG` constant
-- [ ] Extend `SMsgWriter::writePersistentCachedRectInit()` to accept format flag
-- [ ] Extend `CMsgReader::readPersistentCachedRectInit()` to parse format flag
-- [ ] Add `pseudoEncodingNativeFormatCache` for capability negotiation
-- [ ] Update protocol documentation
+**Deliverable**: Server sends 32bpp data during idle time regardless of client's current pixel format.
 
-**Deliverable**: Wire protocol supports native-format cache messages.
+### Phase 3: Protocol Extension
+**Estimated effort**: 1 day
 
-### Phase 3: Client Cache Enhancement
-**Estimated effort**: 2-3 days
+- [ ] Add `flags` byte to `PersistentCachedRectInit` header
+- [ ] Define `NATIVE_FORMAT_FLAG` (bit 0)
+- [ ] When flag set, include 16-byte PixelFormat after flags
+- [ ] Update `SMsgWriter::writePersistentCachedRectInit()`
+- [ ] Update `CMsgReader::readPersistentCachedRectInit()`
 
-- [ ] Modify `PersistentCache::store()` to track pixel format per entry
-- [ ] Implement quality-upgrade logic (prefer higher bpp)
-- [ ] Modify `PersistentCache::retrieve()` to convert formats
-- [ ] Add format conversion utilities (32bpp ↔ 8bpp)
-- [ ] Update on-disk cache format to include pixel format metadata
+**Deliverable**: Wire protocol carries pixel format with cache INIT messages.
 
-**Deliverable**: Client cache stores and retrieves at best available quality.
+### Phase 4: Client-Side Format Handling
+**Estimated effort**: 1-2 days
 
-### Phase 4: Server Lossless Refresh Enhancement
-**Estimated effort**: 2-3 days
+- [ ] Parse `flags` and optional PixelFormat in cache INIT
+- [ ] Decode payload using specified format (not connection format)
+- [ ] Store decoded pixels at native quality in cache
+- [ ] On cache HIT retrieval, convert from stored format to display format
+- [ ] Delete existing cache (no migration needed)
 
-- [ ] Modify `writeLosslessRefresh()` to use native format for upgrade regions
-- [ ] Integrate with `reducedDepthRegion` tracking
-- [ ] Add bandwidth throttling for native-format upgrades
-- [ ] Clear `reducedDepthRegion` after successful upgrade send
+**Deliverable**: Client displays 32bpp cached content regardless of current wire format.
 
-**Deliverable**: Server sends 32bpp upgrades during idle time.
+### Phase 5: Testing
+**Estimated effort**: 1-2 days
 
-### Phase 5: Testing and Optimization
-**Estimated effort**: 3-5 days
+- [ ] Manual testing with bandwidth-limited connection
+- [ ] Verify 8bpp regions upgrade to 32bpp during idle
+- [ ] Verify cache HITs return 32bpp quality
+- [ ] Verify AutoSelect sees upgrade traffic in throughput
 
-- [ ] E2E tests for native-format cache round-trip
-- [ ] Performance testing with bandwidth throttling
-- [ ] Visual quality comparison tests
-- [ ] Memory/disk usage analysis for dual-format cache entries
-- [ ] Backward compatibility testing with non-upgraded clients
+**Deliverable**: Feature works end-to-end.
 
-**Deliverable**: Feature is production-ready.
+## Design Decisions
 
-## Open Questions
+The following decisions have been made for this implementation:
 
-### 1. Cache Entry Format Migration
+### 1. Upgrade Priority: 8bpp First
 
-**Question**: When upgrading an 8bpp cache entry to 32bpp, should we:
-- (a) Keep both entries (more memory, faster retrieval)
-- (b) Replace 8bpp with 32bpp (less memory, always convert on 8bpp display)
-- (c) Store at native format, convert on retrieval always
+**Decision**: 8bpp (reduced depth) regions are upgraded BEFORE JPEG/lossy regions.
 
-**Recommendation**: Option (c) - always store at highest quality received, convert on retrieval. Disk space is cheap; visual quality is valuable.
+**Rationale**: Purple/color-shifted areas from 8bpp are much more visually objectionable than JPEG compression artifacts. Users notice and complain about purple immediately; JPEG artifacts are often acceptable.
 
-### 2. Bandwidth Budget for Upgrades
+**Implementation**: In lossless refresh, process `reducedDepthRegion` before `lossyRegion`.
 
-**Question**: How much bandwidth should be allocated to native-format upgrades vs. other lossless refresh?
+### 2. AutoSelect Includes All Traffic
 
-**Considerations**:
-- Native-format data is ~4x larger (32bpp vs 8bpp)
-- But it only needs to be sent once per cache entry
-- Should be lower priority than damage repair
+**Decision**: Lazy upgrade bandwidth IS included in throughput measurement.
 
-**Recommendation**: Use 25-50% of lossless refresh bandwidth budget for upgrades, configurable via server parameter.
+**Rationale**: AutoSelect measures overall network capacity, not just "realtime" traffic. All bytes sent contribute to understanding the link's capabilities.
 
-### 3. Client Memory Pressure
+**Implementation**: No special handling needed - upgrades use the same write path and naturally contribute to throughput measurement.
 
-**Question**: Should client limit how many native-format cache entries it stores?
+### 3. No Backward Compatibility Required
 
-**Recommendation**: Yes, add a separate memory limit for "upgrade" entries. When exceeded, evict oldest upgrade entries first (they can be re-fetched as 8bpp if needed).
+**Decision**: This is a testing repository with exactly one PersistentCache on disk. Breaking changes are acceptable.
 
-### 4. Disk Cache Format Versioning
+**Implications**:
+- Can delete and recreate cache freely
+- No format migration code needed
+- No fallback paths for old clients
+- Simpler protocol changes (no version negotiation)
+- Can change on-disk format without migration
 
-**Question**: How to handle existing disk cache entries that don't have format metadata?
+### 4. Cache Storage: Always Highest Quality
 
-**Recommendation**: Add format version to cache header. Existing entries assumed to be at connection format when cached. New entries include explicit format. Migration happens lazily on read.
+**Decision**: Store at highest quality received, convert on retrieval.
 
-### 5. Hash Computation with Multiple Formats
+**Implementation**: When 32bpp data arrives for an ID that has 8bpp cached, replace with 32bpp.
 
-**Question**: Should cache ID (hash) be computed on 32bpp or 8bpp data?
+### 5. Hash Computation
 
-**Current behavior**: Hash computed on server framebuffer (32bpp)
-**Recommendation**: Keep current behavior. The hash identifies content, not format. Same content at different formats should share the same cache ID.
+**Decision**: Keep current behavior - hash computed on server's 32bpp framebuffer.
 
-### 6. Fallback Behavior
-
-**Question**: If client receives native-format data but can't process it, what happens?
-
-**Recommendation**: Client should:
-1. Attempt to decode at specified format
-2. If decoder fails, log error and request fresh data via `RequestCachedData`
-3. Server responds with standard-format data
-
-### 7. AutoSelect Interaction
-
-**Question**: Should native-format upgrades affect AutoSelect bandwidth measurement?
-
-**Recommendation**: No - native-format upgrades should be tagged as "background" traffic and excluded from throughput calculation. Otherwise, sending 32bpp data could trigger immediate downgrade to 8bpp.
+**Rationale**: Hash identifies content semantically, not by format. Same visual content at different depths shares the same cache ID.
 
 ## Metrics and Monitoring
 
