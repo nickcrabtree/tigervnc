@@ -467,6 +467,9 @@ See `tests/e2e/README.md` for commands and options.
 
 # Client logs (on local Mac)
 /tmp/vncviewer_*.log   # Created by njcvncviewer_start.sh
+
+# Remote logs on AWS server (user pspuser):
+/home/pspuser/.config/tigervnc/ip-10-20-0-24.ap-southeast-3.compute.internal:1.log
 ```
 
 ### ContentCache Debugging

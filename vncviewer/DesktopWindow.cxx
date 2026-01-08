@@ -784,6 +784,11 @@ void DesktopWindow::resize(int x, int y, int w, int h)
   Fl_Window::resize(x, y, w, h);
 
   if (resizing) {
+    // Force a full redraw after resize to avoid black areas on macOS
+    // (which doesn't use an offscreen buffer) and ensure any stale
+    // pixels near old boundaries are properly overwritten.
+    forceFullRedraw = true;
+
     remoteResize();
 
     repositionWidgets();
