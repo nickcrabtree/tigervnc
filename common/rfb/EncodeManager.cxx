@@ -1306,6 +1306,11 @@ void EncodeManager::writeRects(const core::Region& changed,
           lossyRegion.assign_subtract(contentRect);
         }
         pendingRefreshRegion.assign_subtract(contentRect);
+        // If we kept content in lossyRegion but removed from pendingRefreshRegion,
+        // and the timer isn't running, re-add to pending (same pattern as forceRefresh).
+        if (hasLossyMapping && !recentChangeTimer.isStarted()) {
+          pendingRefreshRegion.assign_union(contentRect);
+        }
 
         // This reference satisfies the entire bordered region, but we might still
         // have other dirty areas outside it in this same update.
@@ -1413,6 +1418,11 @@ void EncodeManager::writeRects(const core::Region& changed,
             lossyRegion.assign_subtract(bbox);
           }
           pendingRefreshRegion.assign_subtract(bbox);
+          // If we kept content in lossyRegion but removed from pendingRefreshRegion,
+          // and the timer isn't running, re-add to pending (same pattern as forceRefresh).
+          if (hasLossyBboxMapping && !recentChangeTimer.isStarted()) {
+            pendingRefreshRegion.assign_union(bbox);
+          }
           return;  // Entire region handled by one cache hit!
         }
 
@@ -2009,6 +2019,11 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
       lossyRegion.assign_subtract(rect);
     }
     pendingRefreshRegion.assign_subtract(rect);
+    // If we kept content in lossyRegion but removed from pendingRefreshRegion,
+    // and the timer isn't running, re-add to pending (same pattern as forceRefresh).
+    if (hasLossyMatch && !recentChangeTimer.isStarted()) {
+      pendingRefreshRegion.assign_union(rect);
+    }
     return true;
   }
   
@@ -2080,6 +2095,11 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     lossyRegion.assign_subtract(rect);
   }
   pendingRefreshRegion.assign_subtract(rect);
+  // If we kept content in lossyRegion but removed from pendingRefreshRegion,
+  // and the timer isn't running, re-add to pending (same pattern as forceRefresh).
+  if (payloadIsLossy && !recentChangeTimer.isStarted()) {
+    pendingRefreshRegion.assign_union(rect);
+  }
   
   vlog.debug("PersistentCache INIT: rect [%d,%d-%d,%d] id=%s (now known for session)",
              rect.tl.x, rect.tl.y, rect.br.x, rect.br.y, hex64(cacheId));
