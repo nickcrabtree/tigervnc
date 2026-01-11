@@ -489,7 +489,6 @@ bool DecodeManager::decodeRect(const core::Rect& r, int encoding,
   decoder->getAffectedRegion(r, bufferStream->data(),
                              bufferStream->length(), *entry->server,
                              &entry->affectedRegion);
-                             &entry->affectedRegion);
 
   // If we captured a BEFORE hash, capture AFTER now that the decoded
   // rect bytes are available (workers will apply them shortly).

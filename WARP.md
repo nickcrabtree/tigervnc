@@ -37,6 +37,8 @@ make test                # Tests may hang
 
 **Exception:** Only skip timeout for commands that are known to be instant (e.g., `echo`, variable assignment).
 
+**macOS host note:** GNU coreutils `timeout` is installed and reliable at `/usr/local/bin/timeout` (preferred) and also available as `/opt/local/bin/gtimeout`. Use either path explicitly when invoking timeouts in scripts or commands on this machine.
+
 ## ⚠️ CRITICAL SAFETY WARNINGS
 
 ### Production Servers and Viewers
