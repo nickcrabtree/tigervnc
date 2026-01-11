@@ -86,7 +86,8 @@ protected:
 
   void framebufferUpdateStart() override;
   void framebufferUpdateEnd() override;
-  bool dataRect(const core::Rect& r, int encoding) override;
+  bool dataRect(const core::Rect& r, int encoding,
+              const rfb::ServerParams* serverOverride = nullptr) override;
 
   void setCursor(int width, int height, const core::Point& hotspot,
                  const uint8_t* data) override;

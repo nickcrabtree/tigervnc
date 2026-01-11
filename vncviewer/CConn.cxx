@@ -690,14 +690,15 @@ void CConn::bell()
   fl_beep();
 }
 
-bool CConn::dataRect(const core::Rect& r, int encoding)
+bool CConn::dataRect(const core::Rect& r, int encoding,
+		     const rfb::ServerParams* serverOverride)
 {
   bool ret;
 
   if (encoding != rfb::encodingCopyRect)
     lastServerEncoding = encoding;
 
-  ret = CConnection::dataRect(r, encoding);
+  ret = CConnection::dataRect(r, encoding, serverOverride);
 
   if (ret)
     pixelCount += r.area();
