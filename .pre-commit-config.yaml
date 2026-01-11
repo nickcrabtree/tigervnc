@@ -1,0 +1,52 @@
+# Pre-commit hooks for make_millions repository
+# Run: pre-commit install
+# Test: pre-commit run --all-files
+
+repos:
+  - repo: local
+    hooks:
+      - id: fail-fast-compliance
+        name: Fail-Fast Policy Compliance
+        entry: python tools/fail_fast_linter.py
+        language: system
+        files: '\.py$'
+        args: ['--quiet', '--exit-code']
+        description: Check for fail-fast policy violations
+        
+  - repo: https://github.com/psf/black
+    rev: 23.9.1
+    hooks:
+      - id: black
+        language_version: python3
+        args: ['--line-length', '120']
+        
+#  - repo: https://github.com/pycqa/flake8
+#    rev: 6.1.0
+#    hooks:
+#      - id: flake8
+#        args: ['--max-line-length', '200', '--extend-ignore', 'E203,W503']
+#        additional_dependencies:
+#          - flake8-bugbear
+#          - flake8-comprehensions
+
+
+#  - repo: https://github.com/astral-sh/ruff-pre-commit
+#    rev: v0.6.9  # pin to a specific version
+#    hooks:
+#      - id: ruff
+#        args: [--fix]   # auto-fix where possible
+
+
+# mypy (type checker)
+#   - repo: https://github.com/pre-commit/mirrors-mypy
+#    rev: v1.11.2
+#    hooks:
+#      - id: mypy
+#        # If your project uses a local virtualenv or pyproject.toml,
+#        # set the python version here to match.
+#        additional_dependencies:
+#          # Add your typing stubs here as needed, e.g.:
+#          # - types-requests
+#          # - types-PyYAML
+#          []
+
