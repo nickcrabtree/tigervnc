@@ -22,6 +22,7 @@
 #endif
 
 #include <stdio.h>
+#include <string.h>
 
 #include <vector>
 
@@ -40,11 +41,29 @@
 #include <rfb/ScreenSet.h>
 #include <rfb/SMsgHandler.h>
 #include <rfb/SMsgReader.h>
+#include <rfb/CacheKey.h>
 
 using namespace rfb;
 
 static core::LogWriter vlog("SMsgReader");
 
+// Read a unified 16-byte CacheKey from the stream.
+static inline bool readCacheKey(rdr::InStream* is, rfb::CacheKey* outKey) {
+  if (!is || !outKey)
+    return false;
+  if (!is->hasData(16))
+    return false;
+  uint8_t buf[16];
+  is->readBytes(buf, 16);
+  *outKey = rfb::CacheKey(buf);
+  return true;
+}
+
+static inline uint64_t cacheKeyFirstU64(const rfb::CacheKey& key) {
+  uint64_t v = 0;
+  memcpy(&v, key.bytes.data(), sizeof(v));
+  return v;
+}
 static core::IntParameter maxCutText("MaxCutText",
                                      "Maximum permitted length of an "
                                      "incoming clipboard update",
@@ -541,16 +560,12 @@ bool SMsgReader::readQEMUKeyEvent()
 
 bool SMsgReader::readRequestCachedData()
 {
-  if (!is->hasData(8))
+  rfb::CacheKey key;
+  if (!readCacheKey(is, &key))
     return false;
-
-  uint32_t hi = is->readU32();
-  uint32_t lo = is->readU32();
-  uint64_t cacheId = ((uint64_t)hi << 32) | lo;
-
+  uint64_t cacheId = cacheKeyFirstU64(key);
   vlog.debug("Client requested cached data for ID %llu",
              (unsigned long long)cacheId);
-
   handler->handleRequestCachedData(cacheId);
   return true;
 }
@@ -559,28 +574,22 @@ bool SMsgReader::readCacheEviction()
 {
   if (!is->hasData(4))
     return false;
-
   is->setRestorePoint();
-
   uint32_t count = is->readU32();
-
-  if (!is->hasDataOrRestore(count * 8))
+  if (!is->hasDataOrRestore(count * 16))
     return false;
-
   is->clearRestorePoint();
 
   std::vector<uint64_t> cacheIds;
   cacheIds.reserve(count);
-
   for (uint32_t i = 0; i < count; i++) {
-    uint32_t hi = is->readU32();
-    uint32_t lo = is->readU32();
-    uint64_t cacheId = ((uint64_t)hi << 32) | lo;
-    cacheIds.push_back(cacheId);
+    rfb::CacheKey key;
+    if (!readCacheKey(is, &key))
+      return false;
+    cacheIds.push_back(cacheKeyFirstU64(key));
   }
 
   vlog.debug("Client evicted %u cache entries", count);
-
   handler->handleCacheEviction(cacheIds);
   return true;
 }
@@ -589,29 +598,22 @@ bool SMsgReader::readPersistentCacheQuery()
 {
   if (!is->hasData(2))
     return false;
-
   is->setRestorePoint();
-
   uint16_t count = is->readU16();
-
-  // Each entry is a 64-bit cacheId (two U32s)
-  if (!is->hasDataOrRestore(count * 8))
+  if (!is->hasDataOrRestore(count * 16))
     return false;
 
   std::vector<uint64_t> cacheIds;
   cacheIds.reserve(count);
-
   for (uint16_t i = 0; i < count; i++) {
-    uint32_t hi = is->readU32();
-    uint32_t lo = is->readU32();
-    uint64_t id = ((uint64_t)hi << 32) | lo;
-    cacheIds.push_back(id);
+    rfb::CacheKey key;
+    if (!readCacheKey(is, &key))
+      return false;
+    cacheIds.push_back(cacheKeyFirstU64(key));
   }
 
   is->clearRestorePoint();
-
   vlog.debug("Client queried %d persistent cache IDs", count);
-
   handler->handlePersistentCacheQuery(cacheIds);
   return true;
 }
@@ -620,33 +622,26 @@ bool SMsgReader::readPersistentHashList()
 {
   if (!is->hasData(4 + 2 + 2 + 2))
     return false;
-
   is->setRestorePoint();
-
   uint32_t sequenceId = is->readU32();
   uint16_t totalChunks = is->readU16();
   uint16_t chunkIndex = is->readU16();
   uint16_t count = is->readU16();
-
-  // Each entry is a 64-bit cacheId (two U32s)
-  if (!is->hasDataOrRestore(count * 8))
+  if (!is->hasDataOrRestore(count * 16))
     return false;
 
   std::vector<uint64_t> cacheIds;
   cacheIds.reserve(count);
-
   for (uint16_t i = 0; i < count; i++) {
-    uint32_t hi = is->readU32();
-    uint32_t lo = is->readU32();
-    uint64_t id = ((uint64_t)hi << 32) | lo;
-    cacheIds.push_back(id);
+    rfb::CacheKey key;
+    if (!readCacheKey(is, &key))
+      return false;
+    cacheIds.push_back(cacheKeyFirstU64(key));
   }
 
   is->clearRestorePoint();
-
   vlog.debug("Client advertised %d persistent cache IDs (chunk %d/%d, seq %u)",
              count, chunkIndex + 1, totalChunks, sequenceId);
-
   handler->handlePersistentHashList(sequenceId, totalChunks, chunkIndex, cacheIds);
   return true;
 }
@@ -655,58 +650,49 @@ bool SMsgReader::readPersistentCacheEviction()
 {
   if (!is->hasData(1 + 2))
     return false;
-
   is->setRestorePoint();
-
-  is->skip(1);  // padding
+  is->skip(1); // padding
   uint16_t count = is->readU16();
-
-  // Validate count to prevent excessive memory allocation
   if (count > 1000) {
     vlog.error("Invalid persistent cache eviction count: %u", count);
     throw protocol_error("Invalid persistent cache eviction count");
   }
-
-  // Each entry is a 64-bit cacheId
-  if (!is->hasDataOrRestore(count * 8))
+  if (!is->hasDataOrRestore(count * 16))
     return false;
 
   std::vector<uint64_t> cacheIds;
   cacheIds.reserve(count);
-
   for (uint16_t i = 0; i < count; i++) {
-    uint32_t hi = is->readU32();
-    uint32_t lo = is->readU32();
-    uint64_t id = ((uint64_t)hi << 32) | lo;
-    cacheIds.push_back(id);
+    rfb::CacheKey key;
+    if (!readCacheKey(is, &key))
+      return false;
+    cacheIds.push_back(cacheKeyFirstU64(key));
   }
 
   is->clearRestorePoint();
-
   vlog.debug("Client evicted %u persistent cache entries", count);
-
   handler->handlePersistentCacheEviction(cacheIds);
   return true;
 }
 
 bool SMsgReader::readPersistentCacheHashReport()
 {
-  // Message contains two uint64_t values: canonicalId and lossyId
-  if (!is->hasData(16))
+  if (!is->hasData(32))
     return false;
 
-  uint32_t canonicalHi = is->readU32();
-  uint32_t canonicalLo = is->readU32();
-  uint64_t canonicalId = ((uint64_t)canonicalHi << 32) | canonicalLo;
+  rfb::CacheKey canonicalKey;
+  rfb::CacheKey actualKey;
+  if (!readCacheKey(is, &canonicalKey))
+    return false;
+  if (!readCacheKey(is, &actualKey))
+    return false;
 
-  uint32_t lossyHi = is->readU32();
-  uint32_t lossyLo = is->readU32();
-  uint64_t lossyId = ((uint64_t)lossyHi << 32) | lossyLo;
+  uint64_t canonicalId = cacheKeyFirstU64(canonicalKey);
+  uint64_t lossyId = cacheKeyFirstU64(actualKey);
 
   vlog.debug("Client reported lossy hash: canonical=%llu, lossy=%llu",
              (unsigned long long)canonicalId,
              (unsigned long long)lossyId);
-
   handler->handlePersistentCacheHashReport(canonicalId, lossyId);
   return true;
 }

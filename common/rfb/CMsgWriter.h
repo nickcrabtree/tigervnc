@@ -27,6 +27,7 @@
 #include <vector>
 
 #include <stdint.h>
+#include <rfb/CacheKey.h>
 
 namespace core {
   struct Point;
@@ -64,18 +65,18 @@ namespace rfb {
     void writeClientCutText(const char* str);
 
     // ContentCache protocol (session-only)
-    void writeRequestCachedData(uint64_t cacheId);
-    void writeCacheEviction(const std::vector<uint64_t>& cacheIds);
+    void writeRequestCachedData(const CacheKey& key);
+    void writeCacheEviction(const std::vector<CacheKey>& keys);
     
-    // PersistentCache protocol (cross-session) now uses 64-bit content IDs
-    // (cacheIds) on the wire, mirroring ContentCache cacheIds.
-    void writePersistentCacheQuery(const std::vector<uint64_t>& cacheIds);
+    // PersistentCache protocol (cross-session) uses unified 16-byte CacheKey values
+    // (keys) on the wire, mirroring ContentCache.
+    void writePersistentCacheQuery(const std::vector<CacheKey>& keys);
     void writePersistentHashList(uint32_t sequenceId, uint16_t totalChunks, 
                                  uint16_t chunkIndex,
-                                 const std::vector<uint64_t>& cacheIds);
-    void writePersistentCacheEviction(const std::vector<uint64_t>& cacheIds);
-    void writePersistentCacheEvictionBatched(const std::vector<uint64_t>& cacheIds);
-    void writePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId);
+                                 const std::vector<CacheKey>& keys);
+    void writePersistentCacheEviction(const std::vector<CacheKey>& keys);
+    void writePersistentCacheEvictionBatched(const std::vector<CacheKey>& keys);
+    void writePersistentCacheHashReport(const CacheKey& canonicalKey, const CacheKey& actualKey);
     
     // Debug dump request (for corruption debugging)
     void writeDebugDumpRequest(uint32_t timestamp);

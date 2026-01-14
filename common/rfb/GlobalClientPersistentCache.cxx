@@ -47,6 +47,24 @@ using namespace rfb;
 
 static core::LogWriter vlog("PersistentCache");
 
+// Helpers for the unified 16-byte CacheKey
+static inline uint64_t cacheKeyFirstU64(const CacheKey& key) {
+  uint64_t v = 0;
+  std::memcpy(&v, key.bytes.data(), sizeof(v));
+  return v;
+}
+
+static inline void cacheKeyToHex(const CacheKey& key, char out[33]) {
+  static const char* hexd = "0123456789abcdef";
+  for (int i = 0; i < 16; ++i) {
+    uint8_t b = key.bytes[(size_t)i];
+    out[i*2+0] = hexd[(b >> 4) & 0xF];
+    out[i*2+1] = hexd[b & 0xF];
+  }
+  out[32] = '\0';
+}
+
+
 // ============================================================================
 // PersistentCache Debug Logger Implementation
 // ============================================================================
@@ -224,7 +242,7 @@ GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxMemorySizeMB,
         auto itHash = keyToHash_.find(key);
         if (itHash != keyToHash_.end()) {
           const std::vector<uint8_t>& fullHash = itHash->second;
-          pendingEvictions_.push_back(fullHash);
+          pendingEvictions_.push_back(key);
           // Mark as cold - entry stays on disk but is evicted from memory
           auto it = indexMap_.find(fullHash);
           if (it != indexMap_.end()) {
@@ -404,7 +422,7 @@ GlobalClientPersistentCache::getByCanonicalHash(uint64_t canonicalHash, uint16_t
       continue;
 
     // Check if this could be better than current best
-    bool isLossless = (idx.key.contentHash == idx.canonicalHash);
+    bool isLossless = (cacheKeyFirstU64(idx.key) == idx.canonicalHash);
     bool shouldHydrate = false;
     
     if (isLossless && entryBpp > bestLosslessBpp) {
@@ -493,10 +511,7 @@ void GlobalClientPersistentCache::insert(uint64_t canonicalHash,
 
   // NEW DESIGN: Index by actualHash (client's computed hash) for fast direct
   // lookup, but store canonicalHash so we can also lookup by canonical.
-  CacheKey key;
-  key.width = width;
-  key.height = height;
-  key.contentHash = actualHash;  // Index by actual hash
+  CacheKey key(hash.data()); // Unified key: 16-byte protocol hash
 
   // Update ARC statistics: treat new inserts as misses and
   // re-initialisations of existing entries as hits.
@@ -572,36 +587,30 @@ GlobalClientPersistentCache::getAllHashes() const
   return hashes;
 }
 
-std::vector<uint64_t>
-GlobalClientPersistentCache::getAllContentIds() const
+
+std::vector<CacheKey>
+GlobalClientPersistentCache::getAllKeys() const
 {
-  // HashList inventory should advertise *canonical* content IDs (server-side
-  // lossless hashes). The viewer can satisfy these IDs even when only a lossy
-  // variant is stored locally (dual-hash design), because lookups are by
-  // canonicalHash.
-  std::unordered_set<uint64_t> ids;
-  ids.reserve(cache_.size() + indexMap_.size());
+  std::unordered_set<CacheKey, CacheKeyHash> keys;
+  keys.reserve(cache_.size() + indexMap_.size());
 
   // Hydrated entries
   for (const auto& kv : cache_) {
-    const CachedPixels& entry = kv.second;
-    if (entry.canonicalHash != 0)
-      ids.insert(entry.canonicalHash);
-    else
-      ids.insert(kv.first.contentHash);
+    keys.insert(kv.first);
   }
 
-  // Index-only entries (not yet hydrated)
+  // Index-only entries
   for (const auto& kv : indexMap_) {
-    const IndexEntry& idx = kv.second;
-    if (idx.canonicalHash != 0)
-      ids.insert(idx.canonicalHash);
-    else
-      ids.insert(idx.key.contentHash);
+    auto it = hashToKey_.find(kv.first);
+    if (it != hashToKey_.end())
+      keys.insert(it->second);
+    else if (kv.first.size() >= 16)
+      keys.insert(CacheKey(kv.first.data()));
   }
 
-  return std::vector<uint64_t>(ids.begin(), ids.end());
+  return std::vector<CacheKey>(keys.begin(), keys.end());
 }
+
 
 void GlobalClientPersistentCache::clear()
 {
@@ -654,71 +663,35 @@ void GlobalClientPersistentCache::resetStats()
   stats_.evictions = 0;
 }
 
-void GlobalClientPersistentCache::invalidateByContentId(uint64_t cacheId)
+
+void GlobalClientPersistentCache::invalidateByKey(const CacheKey& key)
 {
-  // Find all CacheKey entries whose 64-bit contentHash matches cacheId.
-  // There may be multiple hashes/keys that share the same content ID; we
-  // must remove them all and also drop any corresponding disk index
-  // entries so they cannot be re-hydrated later.
-  if (cache_.empty() && indexMap_.empty() && keyToHash_.empty())
+  auto itHash = keyToHash_.find(key);
+  if (itHash == keyToHash_.end())
     return;
 
-  std::vector<CacheKey> keysToRemove;
-  keysToRemove.reserve(keyToHash_.size());
+  const std::vector<uint8_t>& hash = itHash->second;
 
-  for (const auto &kv : keyToHash_) {
-    const CacheKey &key = kv.first;
-    if (key.contentHash == cacheId)
-      keysToRemove.push_back(key);
-  }
+  cache_.erase(key);
+  keyToHash_.erase(itHash);
+  hashToKey_.erase(hash);
 
-  if (keysToRemove.empty())
-    return;
+  indexMap_.erase(hash);
+  coldEntries_.erase(hash);
+  dirtyEntries_.erase(hash);
+  hydrationQueue_.remove(hash);
 
-  for (const CacheKey &key : keysToRemove) {
-    auto itHash = keyToHash_.find(key);
-    if (itHash == keyToHash_.end())
-      continue;
+  pendingEvictions_.erase(
+      std::remove(pendingEvictions_.begin(), pendingEvictions_.end(), key),
+      pendingEvictions_.end());
 
-    const std::vector<uint8_t> &hash = itHash->second;
-
-    // Remove from in-memory cache and bookkeeping maps.
-    cache_.erase(key);
-    keyToHash_.erase(itHash);
-
-    auto htIt = hashToKey_.find(hash);
-    if (htIt != hashToKey_.end())
-      hashToKey_.erase(htIt);
-
-    // Drop any index/disk metadata so this entry cannot be
-    // re-hydrated from shards on a future lookup.
-    auto idxIt = indexMap_.find(hash);
-    if (idxIt != indexMap_.end())
-      indexMap_.erase(idxIt);
-
-    coldEntries_.erase(hash);
-    dirtyEntries_.erase(hash);
-
-    // Remove from hydration queue and pending-eviction bookkeeping.
-    hydrationQueue_.remove(hash);
-
-    auto evIt = std::remove(pendingEvictions_.begin(), pendingEvictions_.end(), hash);
-    if (evIt != pendingEvictions_.end())
-      pendingEvictions_.erase(evIt, pendingEvictions_.end());
-  }
-
-  // For correctness, blow away the ARC state entirely. Reconstructing a
-  // precise erase operation is more complex and unnecessary for the cache
-  // sizes used here, while clearing guarantees that no stale entries
-  // remain resident in memory.
-  if (arcCache_) {
+  if (arcCache_)
     arcCache_->clear();
-  }
 
-  // Reset aggregate stats to reflect the new empty/trimmed state.
   stats_.totalEntries = cache_.size();
   stats_.totalBytes = 0;
 }
+
 
 void GlobalClientPersistentCache::setMaxSize(size_t maxSizeMB)
 {
@@ -732,7 +705,7 @@ void GlobalClientPersistentCache::setMaxSize(size_t maxSizeMB)
         auto itHash = keyToHash_.find(key);
         if (itHash != keyToHash_.end()) {
           const std::vector<uint8_t>& fullHash = itHash->second;
-          pendingEvictions_.push_back(fullHash);
+          pendingEvictions_.push_back(key);
           auto it = indexMap_.find(fullHash);
           if (it != indexMap_.end()) {
             it->second.isCold = true;
@@ -859,10 +832,8 @@ bool GlobalClientPersistentCache::writeEntryToShard(const std::vector<uint8_t>& 
   bool isLossy = (entry.actualHash != entry.canonicalHash);
   idx.qualityCode = computeQualityCode(entry.format, isLossy);
   
-  // Set key for index lookups
-  idx.key.width = entry.width;
-  idx.key.height = entry.height;
-  idx.key.contentHash = entry.actualHash;
+  // Set key for index lookups (unified 16-byte hash)
+  idx.key = CacheKey(hash.data());
   
   indexMap_[hash] = idx;
   indexDirty_ = true;
@@ -1099,15 +1070,8 @@ bool GlobalClientPersistentCache::loadIndexFromDisk()
         entry.qualityCode = computeQualityCode(entry.format, isLossy);
       }
 
-    entry.key.width = entry.width;
-    entry.key.height = entry.height;
-    entry.key.contentHash = 0;
-    if (!hash.empty()) {
-      size_t n = std::min(hash.size(), sizeof(uint64_t));
-      memcpy(&entry.key.contentHash, hash.data(), n);
-    }
-
-    indexMap_[hash] = entry;
+    entry.key = CacheKey(hash.data());
+  indexMap_[hash] = entry;
     hydrationQueue_.push_back(hash);
 
     // Maintain bidirectional mapping so in-memory ARC/cache use ContentKey
@@ -1197,7 +1161,7 @@ bool GlobalClientPersistentCache::hydrateEntry(const std::vector<uint8_t>& hash)
   
   // Restore hashes
   entry.canonicalHash = idx.canonicalHash;
-  entry.actualHash = idx.key.contentHash;
+  entry.actualHash = cacheKeyFirstU64(idx.key);
   
   // Use the key stored in the index so CacheKey/ContentHash mapping stays
   // consistent across disk and memory.
@@ -1609,9 +1573,11 @@ std::string GlobalClientPersistentCache::dumpDebugState(const std::string& outpu
     const CacheKey& key = kv.first;
     const CachedPixels& entry = kv.second;
     
+    char hexKey[33];
+    cacheKeyToHex(key, hexKey);
     fprintf(f, "\nEntry %zu:\n", entryNum++);
-    fprintf(f, "  Key: w=%u h=%u contentHash=0x%016llx\n",
-            key.width, key.height, (unsigned long long)key.contentHash);
+    fprintf(f, "  Key: %s (u64=0x%016llx)\n",
+            hexKey, (unsigned long long)cacheKeyFirstU64(key));
     fprintf(f, "  Canonical hash: 0x%016llx\n", (unsigned long long)entry.canonicalHash);
     fprintf(f, "  Actual hash: 0x%016llx\n", (unsigned long long)entry.actualHash);
     fprintf(f, "  Is lossless: %s\n", entry.isLossless() ? "yes" : "no");
@@ -1676,10 +1642,11 @@ std::string GlobalClientPersistentCache::dumpDebugState(const std::string& outpu
   
   fprintf(f, "\n=== Pending Evictions (%zu) ===\n", pendingEvictions_.size());
   for (size_t i = 0; i < std::min(pendingEvictions_.size(), (size_t)20); i++) {
-    const auto& hash = pendingEvictions_[i];
+    const CacheKey& k = pendingEvictions_[i];
     fprintf(f, "  ");
-    for (size_t j = 0; j < std::min(hash.size(), (size_t)8); j++) {
-      fprintf(f, "%02x", hash[j]);
+    // Print first 8 bytes of the key for compactness
+    for (size_t j = 0; j < 8; j++) {
+      fprintf(f, "%02x", (unsigned)k.bytes[j]);
     }
     fprintf(f, "\n");
   }
@@ -1797,10 +1764,8 @@ void GlobalClientPersistentCache::onIndexUpdate(const std::vector<cache::WireInd
       default: idx.format.bpp = 32; idx.format.depth = 24; break;
     }
     
-    // Set up CacheKey
-    idx.key.width = wireEntry.width;
-    idx.key.height = wireEntry.height;
-    idx.key.contentHash = wireEntry.actualHash;
+    // Set up CacheKey (unified)
+    idx.key = CacheKey(wireEntry.hash);
     
     indexMap_[hash] = idx;
     coldEntries_.insert(hash);
@@ -1831,7 +1796,7 @@ bool GlobalClientPersistentCache::onWriteRequest(const cache::WireIndexEntry& wi
     resultEntry.width = existing.width;
     resultEntry.height = existing.height;
     resultEntry.canonicalHash = existing.canonicalHash;
-    resultEntry.actualHash = existing.key.contentHash;
+    resultEntry.actualHash = cacheKeyFirstU64(existing.key);
     resultEntry.qualityCode = existing.qualityCode;
     return true;
   }

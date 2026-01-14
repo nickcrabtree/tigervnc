@@ -28,6 +28,7 @@
 #include <vector>
 
 #include <rfb/ServerParams.h>
+#include <rfb/CacheKey.h>
 
 namespace core {
   struct Point;
@@ -88,26 +89,23 @@ namespace rfb {
                                         const uint8_t* const* data) = 0;
 
     // Cache protocol extension handlers (ContentCache - session-only)
-    virtual void handleCachedRect(const core::Rect& r, uint64_t cacheId) = 0;
-    virtual void storeCachedRect(const core::Rect& r, uint64_t cacheId) = 0;
+    virtual void handleCachedRect(const core::Rect& r, const CacheKey& key) = 0;
+    virtual void storeCachedRect(const core::Rect& r, const CacheKey& key) = 0;
     
     // PersistentCache protocol extension handlers (cross-session).
-    // Use the same 64-bit contentHash/cacheId identity as ContentCache so
+    // Use the same 16-byte CacheKey identity as ContentCache so
     // both protocols share ContentKey-based keying. PersistentCache differs
     // only in that entries persist across sessions and are backed by disk.
-    virtual void handlePersistentCachedRect(const core::Rect& r,
-                                            uint64_t cacheId) = 0;
+    virtual void handlePersistentCachedRect(const core::Rect& r, const CacheKey& key) = 0;
     // encoding is the inner payload encoding used for this INIT (e.g.
     // encodingRaw, encodingZRLE, encodingTight). This allows the client
     // implementation to treat lossy payloads differently for persistence.
-    virtual void storePersistentCachedRect(const core::Rect& r,
-                                           uint64_t cacheId,
-                                           int encoding) = 0;
+    virtual void storePersistentCachedRect(const core::Rect& r, const CacheKey& key, int encoding) = 0;
     
     // Cache seed: server tells client to take existing framebuffer pixels
-    // at rect R and associate them with cache ID. Used for whole-rectangle
+    // at rect R and associate them with cache key. Used for whole-rectangle
     // caching where subrect data was already sent via normal encoding.
-    virtual void seedCachedRect(const core::Rect& r, uint64_t cacheId) = 0;
+    virtual void seedCachedRect(const core::Rect& r, const CacheKey& key) = 0;
     // Whether this connection advertised the native-format cache extension
     // (PersistentCachedRectInit v2). Default false; override in clients that
     // send pseudoEncodingNativeFormatCache in SetEncodings.

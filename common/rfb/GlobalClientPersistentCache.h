@@ -209,7 +209,10 @@ namespace rfb {
     
     // Optional: Get all known hashes/IDs for HashList message
     std::vector<std::vector<uint8_t>> getAllHashes() const;
-    std::vector<uint64_t> getAllContentIds() const;
+    // Deprecated: 64-bit content IDs are no longer part of the unified cache protocol.
+// Callers should use getAllHashes() (protocol hashes).
+// std::vector<uint64_t> getAllContentIds() const;
+std::vector<CacheKey> getAllKeys() const; // All known keys (16-byte)
     
     // Statistics
     struct Stats {
@@ -228,39 +231,19 @@ namespace rfb {
     Stats getStats() const;
     void resetStats();
 
-    // Invalidate all cache entries (in-memory and index) associated with
-    // the given 64-bit content ID. This is used when the viewer detects a
-    // hash mismatch between the server-provided cacheId and the locally
-    // recomputed hash for a rect. Any existing entry for that ID must be
-    // treated as corrupt and removed so that future PersistentCachedRect
-    // references cannot replay stale pixels.
-    void invalidateByContentId(uint64_t cacheId);
+    // Invalidate a cache entry by its unified CacheKey.
+// Used when the viewer detects a hash mismatch or corruption.
+void invalidateByKey(const CacheKey& key);
     
-    // Pending evictions (to notify server). Exposed as 64-bit content IDs
-    // (ContentKey::contentHash) even though we internally track full
-    // protocol hashes for disk/index bookkeeping.
-    bool hasPendingEvictions() const { return !pendingEvictions_.empty(); }
-    std::vector<uint64_t> getPendingEvictions() {
-      std::vector<uint64_t> ids;
-      ids.reserve(pendingEvictions_.size());
-      for (const auto& hash : pendingEvictions_) {
-        uint64_t id = 0;
-        auto itKey = hashToKey_.find(hash);
-        if (itKey != hashToKey_.end()) {
-          id = itKey->second.contentHash;
-        } else if (!hash.empty()) {
-          // Fallback: derive ID from first up-to-8 bytes of hash
-          size_t n = std::min(hash.size(), sizeof(uint64_t));
-          memcpy(&id, hash.data(), n);
-        }
-        if (id != 0)
-          ids.push_back(id);
-      }
-      pendingEvictions_.clear();
-      return ids;
-    }
-    
-    // Configuration
+    // Pending evictions (to notify server). Drained by DecodeManager.
+// Returned as unified CacheKey values (16-byte content hashes).
+bool hasPendingEvictions() const { return !pendingEvictions_.empty(); }
+std::vector<CacheKey> getPendingEvictions() {
+  auto keys = pendingEvictions_;
+  pendingEvictions_.clear();
+  return keys;
+}
+// Configuration
     void setMaxSize(size_t maxSizeMB);
     void clear();
     
@@ -289,7 +272,7 @@ namespace rfb {
     // Queue of hashes evicted from ARC; drained by DecodeManager to
     // notify server. Stored as protocol-level full hashes even though
     // the in-memory ARC key is CacheKey.
-    std::vector<std::vector<uint8_t>> pendingEvictions_;
+    std::vector<CacheKey> pendingEvictions_;
     
     // Shared ARC cache (byte-capacity), keyed by CacheKey just like the
     // original ContentCache. PersistentCache differs only in that it also

@@ -31,3 +31,4 @@ tests/e2e/_artifacts/
 tests/e2e/_runs/
 
 .DS_Store
+.clang-format

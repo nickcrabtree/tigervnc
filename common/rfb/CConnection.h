@@ -254,20 +254,17 @@ namespace rfb {
                                 const uint8_t* const* data) override;
 
     // Cache protocol extension handlers (ContentCache - session-only)
-    void handleCachedRect(const core::Rect& r, uint64_t cacheId) override;
-    void storeCachedRect(const core::Rect& r, uint64_t cacheId) override;
+    void handleCachedRect(const core::Rect& r, const CacheKey& key) override;
+    void storeCachedRect(const core::Rect& r, const CacheKey& key) override;
     
     // PersistentCache protocol extension handlers (cross-session), using
     // the shared 64-bit contentHash/cacheId identity on the wire.
-    void handlePersistentCachedRect(const core::Rect& r,
-                                    uint64_t cacheId) override;
-    void storePersistentCachedRect(const core::Rect& r,
-                                   uint64_t cacheId,
-                                   int encoding) override;
+    void handlePersistentCachedRect(const core::Rect& r, const CacheKey& key) override;
+    void storePersistentCachedRect(const core::Rect& r, const CacheKey& key, int encoding) override;
     
     // Cache seed: server tells client to associate existing framebuffer pixels
     // at rect R with cache ID. Used for whole-rectangle caching.
-    void seedCachedRect(const core::Rect& r, uint64_t cacheId) override;
+    void seedCachedRect(const core::Rect& r, const CacheKey& key) override;
 
     // Methods to be overridden in a derived class
 

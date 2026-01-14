@@ -1194,7 +1194,7 @@ void CConnection::updateEncodings()
   writer()->writeSetEncodings(encodings);
 }
 
-void CConnection::handleCachedRect(const core::Rect& r, uint64_t cacheId)
+void CConnection::handleCachedRect(const core::Rect& r, const CacheKey& key)
 {
   // On first use, record and log negotiated cache protocol
   if (negotiatedCacheProtocol == CacheProtocolNone) {
@@ -1207,17 +1207,16 @@ void CConnection::handleCachedRect(const core::Rect& r, uint64_t cacheId)
 
   // Forward to decoder manager to handle cache lookup and blit using the
   // unified cache engine (ContentCache now aliases PersistentCache policy).
-  decoder.handleCachedRect(r, cacheId, framebuffer);
+  decoder.handleCachedRect(r, key, framebuffer);
 }
 
-void CConnection::storeCachedRect(const core::Rect& r, uint64_t cacheId)
+void CConnection::storeCachedRect(const core::Rect& r, const CacheKey& key)
 {
   // Forward to decoder manager to store decoded content with cache ID
-  decoder.storeCachedRect(r, cacheId, framebuffer);
+  decoder.storeCachedRect(r, key, framebuffer);
 }
 
-void CConnection::handlePersistentCachedRect(const core::Rect& r,
-                                            uint64_t cacheId)
+void CConnection::handlePersistentCachedRect(const core::Rect& r, const CacheKey& key)
 {
   // On first use, record and log negotiated cache protocol
   if (negotiatedCacheProtocol == CacheProtocolNone) {
@@ -1232,12 +1231,10 @@ void CConnection::handlePersistentCachedRect(const core::Rect& r,
   }
 
   // Forward to decoder manager to handle cache lookup and blit
-  decoder.handlePersistentCachedRect(r, cacheId, framebuffer);
+  decoder.handlePersistentCachedRect(r, key, framebuffer);
 }
 
-void CConnection::storePersistentCachedRect(const core::Rect& r,
-                                           uint64_t cacheId,
-                                           int encoding)
+void CConnection::storePersistentCachedRect(const core::Rect& r, const CacheKey& key, int encoding)
 {
   // On first use, record and log negotiated cache protocol and trigger disk load.
   // PersistentCachedRectInit may be the first message if server is sending new content,
@@ -1256,10 +1253,10 @@ void CConnection::storePersistentCachedRect(const core::Rect& r,
   // Forward to decoder manager to store decoded content with ID and
   // inner encoding so it can distinguish lossless vs lossy payloads for
   // persistence policy.
-  decoder.storePersistentCachedRect(r, cacheId, encoding, framebuffer);
+  decoder.storePersistentCachedRect(r, key, encoding, framebuffer);
 }
 
-void CConnection::seedCachedRect(const core::Rect& r, uint64_t cacheId)
+void CConnection::seedCachedRect(const core::Rect& r, const CacheKey& key)
 {
   // Server tells us to take existing framebuffer pixels at rect R and
   // associate them with cache ID. This is used for whole-rectangle caching
@@ -1270,5 +1267,5 @@ void CConnection::seedCachedRect(const core::Rect& r, uint64_t cacheId)
   
   // Forward to decoder manager to seed cache using existing framebuffer pixels.
   // Use encodingRaw as the "encoding" since we're reading raw pixels from framebuffer.
-  decoder.seedCachedRect(r, cacheId, framebuffer);
+  decoder.seedCachedRect(r, key, framebuffer);
 }

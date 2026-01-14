@@ -30,6 +30,7 @@
 #include <core/Rect.h>
 #include <rfb/PixelFormat.h>
 #include <rfb/ServerParams.h>
+#include <rfb/CacheKey.h>
 
 namespace rdr { class InStream; }
 
@@ -110,12 +111,12 @@ namespace rfb {
 
     // State for incremental CachedRectInit decode to avoid nested restore points
     bool pendingCacheInitActive;
-    uint64_t pendingCacheId;
+    CacheKey pendingCacheKey;
     int pendingCacheEncoding;
     
     // State for PersistentCachedRectInit decode
     bool pendingPersistentCacheInitActive;
-    uint64_t pendingPersistentCacheId;
+    CacheKey pendingPersistentCacheKey;
     int pendingPersistentCacheEncoding;
     uint8_t pendingPersistentCacheFlags;
     PixelFormat pendingPersistentCachePF;

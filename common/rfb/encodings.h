@@ -32,23 +32,26 @@ namespace rfb {
   const int encodingH264 = 50;
 #endif
 
-  // TigerVNC cache-based encoding extension (ContentCache - session-only)
-  const int encodingCachedRect = 100;
-  const int encodingCachedRectInit = 101;
-  
-  // TigerVNC persistent cache encoding extension (PersistentCache - cross-session)
-  const int encodingPersistentCachedRect = 102;
-  const int encodingPersistentCachedRectInit = 103;
+  // TigerVNC cache protocol (unified ContentCache/PersistentCache)
+//
+// In this fork, ContentCache and PersistentCache share identical semantics and
+// key type (content-addressable 16-byte hashes). The only behavioural difference
+// is whether the viewer preloads entries from disk and advertises an initial
+// inventory ("persistent" mode) or starts empty ("content" mode).
+const int encodingCachedRect = 100;       // Reference: payload is 16-byte CacheKey
+const int encodingCachedRectInit = 101;   // Init: 16-byte CacheKey + actual encoding + pixels
+const int encodingPersistentCachedRect = 102;     // Deprecated alias (kept for now)
+const int encodingPersistentCachedRectInit = 103; // Deprecated alias (kept for now)
   
   // TigerVNC cache eviction notification (client→server)
-  // Sent by client to notify server when cache entries are evicted
-  // Format: U32 count, followed by count U64 cache IDs
+// Sent by client to notify server when cache entries are evicted.
+// Format: U32 count, followed by count *16-byte* CacheKey values.
   const int encodingCacheEviction = 104;
   
   // TigerVNC cache seed encoding (server→client)
-  // Tells client to take pixels already in framebuffer at rect R and
-  // associate them with cache ID. No pixel payload follows.
-  // Wire format: rect header + U64 cache ID
+// Tells client to take pixels already in framebuffer at rect R and
+// associate them with a CacheKey. No pixel payload follows.
+// Wire format: rect header + 16-byte CacheKey
   const int encodingCachedRectSeed = 105;
 
   const int encodingMax = 255;

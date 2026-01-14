@@ -23,6 +23,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <algorithm>
 
 #include <core/Rect.h>
 #include <core/string.h>
@@ -40,10 +41,15 @@
 #include <rfb/ScreenSet.h>
 #include <rfb/ServerParams.h>
 #include <rfb/CMsgWriter.h>
+#include <rfb/CacheKey.h>
 
 using namespace rfb;
 
 static core::LogWriter vlog("CMsgWriter");
+static inline void writeCacheKeyBytes(rdr::OutStream* os, const CacheKey& key) {
+  os->writeBytes(key.bytes.data(), 16);
+}
+
 
 CMsgWriter::CMsgWriter(ServerParams* server_, rdr::OutStream* os_)
   : server(server_), os(os_)
@@ -239,121 +245,89 @@ void CMsgWriter::writeClientCutText(const char* str)
   endMsg();
 }
 
-void CMsgWriter::writeRequestCachedData(uint64_t cacheId)
+void CMsgWriter::writeRequestCachedData(const CacheKey& key)
 {
   startMsg(msgTypeRequestCachedData);
-  os->writeU32((uint32_t)(cacheId >> 32));  // High 32 bits
-  os->writeU32((uint32_t)(cacheId & 0xFFFFFFFF));  // Low 32 bits
+  writeCacheKeyBytes(os, key);
   endMsg();
 }
 
-void CMsgWriter::writeCacheEviction(const std::vector<uint64_t>& cacheIds)
+void CMsgWriter::writeCacheEviction(const std::vector<CacheKey>& keys)
 {
-  if (cacheIds.empty())
+  if (keys.empty())
     return;
-  
   startMsg(msgTypeCacheEviction);
-  os->writeU32(cacheIds.size());
-  
-  for (uint64_t cacheId : cacheIds) {
-    os->writeU32((uint32_t)(cacheId >> 32));  // High 32 bits
-    os->writeU32((uint32_t)(cacheId & 0xFFFFFFFF));  // Low 32 bits
+  os->writeU32(keys.size());
+  for (const auto& key : keys) {
+    writeCacheKeyBytes(os, key);
   }
-  
   endMsg();
 }
 
-void CMsgWriter::writePersistentCacheQuery(const std::vector<uint64_t>& cacheIds)
+void CMsgWriter::writePersistentCacheQuery(const std::vector<CacheKey>& keys)
 {
-  if (cacheIds.empty())
+  if (keys.empty())
     return;
-    
   startMsg(msgTypePersistentCacheQuery);
-  os->writeU16(cacheIds.size());
-  
-  for (uint64_t id : cacheIds) {
-    os->writeU32((uint32_t)(id >> 32));
-    os->writeU32((uint32_t)(id & 0xFFFFFFFF));
+  os->writeU16(keys.size());
+  for (const auto& key : keys) {
+    writeCacheKeyBytes(os, key);
   }
-  
   endMsg();
 }
 
 void CMsgWriter::writePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
-                                        uint16_t chunkIndex,
-                                        const std::vector<uint64_t>& cacheIds)
+ uint16_t chunkIndex,
+ const std::vector<CacheKey>& keys)
 {
-  if (cacheIds.empty())
+  if (keys.empty())
     return;
-    
   startMsg(msgTypePersistentCacheHashList);
   os->writeU32(sequenceId);
   os->writeU16(totalChunks);
   os->writeU16(chunkIndex);
-  os->writeU16(cacheIds.size());
-  
-  for (uint64_t id : cacheIds) {
-    os->writeU32((uint32_t)(id >> 32));
-    os->writeU32((uint32_t)(id & 0xFFFFFFFF));
+  os->writeU16(keys.size());
+  for (const auto& key : keys) {
+    writeCacheKeyBytes(os, key);
   }
-  
   endMsg();
 }
 
-void CMsgWriter::writePersistentCacheEviction(const std::vector<uint64_t>& cacheIds)
+void CMsgWriter::writePersistentCacheEviction(const std::vector<CacheKey>& keys)
 {
-  // Always emit a well-formed message, even for an empty list, so that
-  // the receiver can rely on a header with a count field (possibly zero).
-  // This matches the PersistentCacheProtocol tests and keeps the wire
-  // format consistent with other count-prefixed messages.
-
-  // Validate and clamp count
-  size_t count = cacheIds.size();
+  // Always emit a well-formed message, even for an empty list.
+  size_t count = keys.size();
   if (count > 1000) {
-    vlog.error("Too many PersistentCache IDs to evict (%zu), clamping to 1000", count);
+    vlog.error("Too many PersistentCache keys to evict (%zu), clamping to 1000", count);
     count = 1000;
   }
-
   startMsg(msgTypePersistentCacheEviction);
-  os->writeU8(0);   // padding
+  os->writeU8(0); // padding
   os->writeU16(count);
-
   for (size_t i = 0; i < count; i++) {
-    uint64_t id = cacheIds[i];
-    os->writeU32((uint32_t)(id >> 32));
-    os->writeU32((uint32_t)(id & 0xFFFFFFFF));
+    writeCacheKeyBytes(os, keys[i]);
   }
-
   endMsg();
 }
 
-void CMsgWriter::writePersistentCacheEvictionBatched(const std::vector<uint64_t>& cacheIds)
+void CMsgWriter::writePersistentCacheEvictionBatched(const std::vector<CacheKey>& keys)
 {
-  if (cacheIds.empty())
+  if (keys.empty())
     return;
-    
   // Split into conservative batches to respect message size limits
   const size_t batchSize = 100;
-  
-  for (size_t offset = 0; offset < cacheIds.size(); offset += batchSize) {
-    size_t end = std::min(offset + batchSize, cacheIds.size());
-    std::vector<uint64_t> batch(cacheIds.begin() + offset, cacheIds.begin() + end);
+  for (size_t offset = 0; offset < keys.size(); offset += batchSize) {
+    size_t end = std::min(offset + batchSize, keys.size());
+    std::vector<CacheKey> batch(keys.begin() + offset, keys.begin() + end);
     writePersistentCacheEviction(batch);
   }
 }
 
-void CMsgWriter::writePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId)
+void CMsgWriter::writePersistentCacheHashReport(const CacheKey& canonicalKey, const CacheKey& actualKey)
 {
   startMsg(msgTypePersistentCacheHashReport);
-  
-  // Write canonicalId (64-bit, split into high/low 32-bit parts)
-  os->writeU32((uint32_t)(canonicalId >> 32));
-  os->writeU32((uint32_t)(canonicalId & 0xFFFFFFFF));
-  
-  // Write lossyId (64-bit, split into high/low 32-bit parts)
-  os->writeU32((uint32_t)(lossyId >> 32));
-  os->writeU32((uint32_t)(lossyId & 0xFFFFFFFF));
-  
+  writeCacheKeyBytes(os, canonicalKey);
+  writeCacheKeyBytes(os, actualKey);
   endMsg();
 }
 

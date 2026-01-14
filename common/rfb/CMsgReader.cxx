@@ -23,6 +23,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <vector>
 
@@ -43,6 +44,23 @@
 
 static core::LogWriter vlog("CMsgReader");
 
+// Read a unified 16-byte CacheKey from the stream.
+static inline bool readCacheKey(rdr::InStream* is, rfb::CacheKey* outKey) {
+  if (!is || !outKey)
+    return false;
+  if (!is->hasData(16))
+    return false;
+  uint8_t buf[16];
+  is->readBytes(buf, 16);
+  *outKey = rfb::CacheKey(buf);
+  return true;
+}
+
+static inline uint64_t cacheKeyFirstU64(const rfb::CacheKey& key) {
+  uint64_t v = 0;
+  memcpy(&v, key.bytes.data(), sizeof(v));
+  return v;
+}
 static core::IntParameter maxCutText("MaxCutText",
                                      "Maximum permitted length of an "
                                      "incoming clipboard update",
@@ -56,7 +74,7 @@ CMsgReader::CMsgReader(CMsgHandler* handler_, rdr::InStream* is_)
 {
   // Initialize incremental CachedRectInit state
   pendingCacheInitActive = false;
-  pendingCacheId = 0;
+  pendingCacheKey = CacheKey();
   pendingCacheEncoding = 0;
   
   // Initialize PersistentCachedRectInit state
@@ -899,21 +917,15 @@ bool CMsgReader::readVMwareLEDState()
 
 bool CMsgReader::readCachedRect(const core::Rect& r)
 {
-  // Read 64-bit cache ID (sent as two U32s, big-endian)
-  if (!is->hasData(8))
+  rfb::CacheKey key;
+  if (!readCacheKey(is, &key))
     return false;
 
-  uint32_t hi = is->readU32();
-  uint32_t lo = is->readU32();
-  uint64_t cacheId = ((uint64_t)hi << 32) | lo;
-
-  vlog.debug("Received CachedRect: [%d,%d-%d,%d] cacheId=%llu",
+  vlog.debug("Received CachedRect: [%d,%d-%d,%d] cacheKey64=%llu",
              r.tl.x, r.tl.y, r.br.x, r.br.y,
-             (unsigned long long)cacheId);
+             (unsigned long long)cacheKeyFirstU64(key));
 
-  // Forward to handler to lookup and blit cached content
-  handler->handleCachedRect(r, cacheId);
-
+  handler->handleCachedRect(r, key);
   return true;
 }
 
@@ -921,56 +933,38 @@ bool CMsgReader::readCachedRectInit(const core::Rect& r)
 {
   // Incremental decode without outer restore point to avoid nesting with decoder
   if (!pendingCacheInitActive) {
-    // Need header: 64-bit cacheId (hi,lo) + 32-bit encoding
-    if (!is->hasData(8 + 4))
+    // Need header: 16-byte CacheKey + 32-bit encoding
+    if (!is->hasData(16 + 4))
       return false;
-
-    uint32_t hi = is->readU32();
-    uint32_t lo = is->readU32();
-    pendingCacheId = ((uint64_t)hi << 32) | lo;
+    uint8_t keyBuf[16];
+    is->readBytes(keyBuf, 16);
+    pendingCacheKey = rfb::CacheKey(keyBuf);
     pendingCacheEncoding = is->readS32();
     pendingCacheInitActive = true;
 
-    vlog.debug("Received CachedRectInit: [%d,%d-%d,%d] cacheId=%llu encoding=%d",
+    vlog.debug("Received CachedRectInit: [%d,%d-%d,%d] cacheKey64=%llu encoding=%d",
                r.tl.x, r.tl.y, r.br.x, r.br.y,
-               (unsigned long long)pendingCacheId, pendingCacheEncoding);
+               (unsigned long long)cacheKeyFirstU64(pendingCacheKey),
+               pendingCacheEncoding);
   }
-
-  // Attempt to decode the rect using the remembered encoding
-  vlog.debug("CCDBG: begin decode cacheId=%llu encoding=%d rect=[%d,%d-%d,%d]",
-             (unsigned long long)pendingCacheId, pendingCacheEncoding,
-             r.tl.x, r.tl.y, r.br.x, r.br.y);
 
   bool ret = readRect(r, pendingCacheEncoding);
-
-  vlog.debug("CCDBG: end decode cacheId=%llu encoding=%d ret=%d",
-             (unsigned long long)pendingCacheId, pendingCacheEncoding, (int)ret);
-
   if (ret) {
-    // Notify handler to store this decoded rect with cache ID
-    handler->storeCachedRect(r, pendingCacheId);
-    // Clear pending state
+    handler->storeCachedRect(r, pendingCacheKey);
     pendingCacheInitActive = false;
-    pendingCacheId = 0;
+    pendingCacheKey = CacheKey();
     pendingCacheEncoding = 0;
   }
-
   return ret;
 }
 
 bool CMsgReader::readPersistentCachedRect(const core::Rect& r)
 {
-  // New PersistentCache wire format: 64-bit contentId/cacheId (two U32s)
-  if (!is->hasData(8))
+  rfb::CacheKey key;
+  if (!readCacheKey(is, &key))
     return false;
 
-  uint32_t hi = is->readU32();
-  uint32_t lo = is->readU32();
-  uint64_t cacheId = ((uint64_t)hi << 32) | lo;
-
-  // Forward to handler to lookup and blit cached content (logged to debug file)
-  handler->handlePersistentCachedRect(r, cacheId);
-
+  handler->handlePersistentCachedRect(r, key);
   return true;
 }
 
@@ -980,15 +974,13 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
   if (!pendingPersistentCacheInitActive) {
     bool supportsNative = handler->supportsNativeFormatCache();
 
-    // Header: 64-bit cacheId (hi,lo) + [flags + optional PF] + 32-bit innerEncoding
+    // Header: 16-byte CacheKey + [flags + optional PF] + 32-bit innerEncoding
     is->setRestorePoint();
-
-    if (!is->hasDataOrRestore(8))
+    if (!is->hasDataOrRestore(16))
       return false;
-
-    uint32_t hi = is->readU32();
-    uint32_t lo = is->readU32();
-    pendingPersistentCacheId = ((uint64_t)hi << 32) | lo;
+    uint8_t keyBuf[16];
+    is->readBytes(keyBuf, 16);
+    pendingPersistentCacheKey = rfb::CacheKey(keyBuf);
 
     pendingPersistentCacheFlags = 0;
     pendingPersistentCacheHasPF = false;
@@ -998,27 +990,22 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
       if (!is->hasDataOrRestore(1 + 4))
         return false;
       pendingPersistentCacheFlags = is->readU8();
-
       // Reserved bits must be zero
-      if (pendingPersistentCacheFlags & 0xFE) {
+      if (pendingPersistentCacheFlags & 0xFE)
         throw protocol_error("PersistentCachedRectInit: reserved flag bits set");
-      }
 
       if (pendingPersistentCacheFlags & 0x01) {
         // native_format flag set: PixelFormat follows
         if (!is->hasDataOrRestore(16 + 4))
           return false;
         pendingPersistentCachePF.read(is);
-
-        // Validate canonical PF: 32bpp/24-depth truecolor RGB888 little-endian
         static const PixelFormat canonicalPF(32, 24,
-                                             false,  // little endian
-                                             true,   // trueColour
-                                             255, 255, 255,
-                                             16, 8, 0);
-        if (pendingPersistentCachePF != canonicalPF) {
+                                            false,
+                                            true,
+                                            255, 255, 255,
+                                            16, 8, 0);
+        if (pendingPersistentCachePF != canonicalPF)
           throw protocol_error("PersistentCachedRectInit: non-canonical PixelFormat in native_format");
-        }
         pendingPersistentCacheHasPF = true;
       }
     } else {
@@ -1027,61 +1014,40 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
         return false;
     }
 
-    // Inner encoding follows
     pendingPersistentCacheEncoding = is->readS32();
     pendingPersistentCacheInitActive = true;
     is->clearRestorePoint();
-
-    // Logged to debug file via DecodeManager (on store step)
   }
 
-  // Decode the rect using the remembered encoding
   const ServerParams* serverOverride = nullptr;
   ServerParams nativeServerParams;
   if (pendingPersistentCacheFlags & 0x01) {
-    // Use canonical PF for decode path
     nativeServerParams = handler->server;
     nativeServerParams.setPF(pendingPersistentCachePF);
     serverOverride = &nativeServerParams;
   }
 
   bool ret = readRect(r, pendingPersistentCacheEncoding, serverOverride);
-
   if (ret) {
-    // Notify handler to store this decoded rect with cacheId and the
-    // inner encoding used for the payload. The encoding allows the
-    // client-side cache to distinguish lossless vs lossy content when
-    // deciding what to persist to disk.
     handler->storePersistentCachedRect(r,
-                                       pendingPersistentCacheId,
+                                       pendingPersistentCacheKey,
                                        pendingPersistentCacheEncoding);
-    // Clear pending state
+
     pendingPersistentCacheInitActive = false;
-    pendingPersistentCacheId = 0;
+    pendingPersistentCacheKey = CacheKey();
     pendingPersistentCacheEncoding = 0;
     pendingPersistentCacheFlags = 0;
     pendingPersistentCacheHasPF = false;
   }
-
   return ret;
 }
 
 bool CMsgReader::readCachedRectSeed(const core::Rect& r)
 {
-  // CachedRectSeed: server tells client to take existing framebuffer pixels
-  // at rect R and associate them with cache ID. No pixel payload follows.
-  // Wire format: rect header + U64 cache ID
-  if (!is->hasData(8))
+  rfb::CacheKey key;
+  if (!readCacheKey(is, &key))
     return false;
 
-  uint32_t hi = is->readU32();
-  uint32_t lo = is->readU32();
-  uint64_t cacheId = ((uint64_t)hi << 32) | lo;
-
-  // Logged to debug file via DecodeManager
-
-  // Tell handler to seed cache using existing framebuffer pixels
-  handler->seedCachedRect(r, cacheId);
-
+  handler->seedCachedRect(r, key);
   return true;
 }

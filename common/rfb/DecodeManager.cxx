@@ -51,6 +51,19 @@ using namespace rfb;
 
 static core::LogWriter vlog("DecodeManager");
 
+static inline CacheKey makeCacheKeyFromU64(uint64_t id) {
+  CacheKey k;
+  memcpy(k.bytes.data(), &id, sizeof(id));
+  return k;
+}
+
+static inline uint64_t cacheKeyFirstU64(const CacheKey& key) {
+  uint64_t v = 0;
+  memcpy(&v, key.bytes.data(), sizeof(v));
+  return v;
+}
+
+
 namespace {
   // Lightweight view over a cache stats struct so we can share the same
   // accounting logic between ContentCache and PersistentCache.
@@ -609,29 +622,26 @@ void DecodeManager::advertisePersistentCacheHashes()
   if (!persistentCache || !conn || !conn->writer())
     return;
 
-  std::vector<uint64_t> ids = persistentCache->getAllContentIds();
-  if (ids.empty()) {
-    vlog.debug("PersistentCache: no IDs available for HashList advertisement");
+  std::vector<CacheKey> keys = persistentCache->getAllKeys();
+  if (keys.empty()) {
+    vlog.debug("PersistentCache: no keys available for HashList advertisement");
     return;
   }
 
-  const size_t batchSize = 1000;  // conservative chunking
-  uint32_t sequenceId = 1;        // per-connection sequence
-  uint16_t totalChunks = (ids.size() + batchSize - 1) / batchSize;
+  const size_t batchSize = 1000; // conservative chunking
+  uint32_t sequenceId = 1;       // per-connection sequence
+  uint16_t totalChunks = (keys.size() + batchSize - 1) / batchSize;
+
   size_t offset = 0;
   uint16_t chunkIndex = 0;
 
-  vlog.info("PersistentCache: advertising %zu IDs to server via HashList (%u chunks)",
-            ids.size(), (unsigned)totalChunks);
+  vlog.info("PersistentCache: advertising %zu keys to server via HashList (%u chunks)",
+            keys.size(), (unsigned)totalChunks);
 
-  while (offset < ids.size()) {
-    size_t end = std::min(offset + batchSize, ids.size());
-    std::vector<uint64_t> chunk(ids.begin() + offset,
-                                ids.begin() + end);
-    conn->writer()->writePersistentHashList(sequenceId,
-                                            totalChunks,
-                                            chunkIndex,
-                                            chunk);
+  while (offset < keys.size()) {
+    size_t end = std::min(offset + batchSize, keys.size());
+    std::vector<CacheKey> chunk(keys.begin() + offset, keys.begin() + end);
+    conn->writer()->writePersistentHashList(sequenceId, totalChunks, chunkIndex, chunk);
     offset = end;
     chunkIndex++;
   }
@@ -963,17 +973,17 @@ next:
   return nullptr;
 }
 
-void DecodeManager::handleCachedRect(const core::Rect& r, uint64_t cacheId,
+void DecodeManager::handleCachedRect(const core::Rect& r, const CacheKey& key,
                                     ModifiablePixelBuffer* pb)
 {
   // Legacy ContentCache entry point. In the unified implementation this is
   // backed by the same GlobalClientPersistentCache engine as PersistentCache
   // but inserts are flagged as non-persistent so they never hit disk.
   flush();
-  handleContentCacheRect(r, cacheId, pb);
+  handleContentCacheRect(r, key, pb);
 }
 
-void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
+void DecodeManager::storeCachedRect(const core::Rect& r, const CacheKey& key,
                                    ModifiablePixelBuffer* pb)
 {
   // Legacy ContentCache INIT path. Store decoded pixels in the unified cache
@@ -981,11 +991,10 @@ void DecodeManager::storeCachedRect(const core::Rect& r, uint64_t cacheId,
   // ContentCache behaviour session-only even when PersistentCache is enabled
   // or disabled.
   flush();
-  storeContentCacheRect(r, cacheId, pb);
+  storeContentCacheRect(r, key, pb);
 }
 
-void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
-                                             uint64_t cacheId,
+void DecodeManager::handlePersistentCachedRect(const core::Rect& r, const CacheKey& key,
                                              ModifiablePixelBuffer* pb)
 {
   // Ensure all pending decodes have completed before we blit cached
@@ -993,6 +1002,7 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   // semantics as the vanilla decode path (including CopyRect and ContentCache).
   flush();
 
+  uint64_t cacheId = cacheKeyFirstU64(key);
   if (pb == nullptr) {
     vlog.error("handlePersistentCachedRect called with null framebuffer");
     return;
@@ -1004,7 +1014,7 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
   // so that ContentCache e2e tests still observe cache hits without
   // touching disk.
   if (persistentCache == nullptr) {
-    handleContentCacheRect(r, cacheId, pb);
+    handleContentCacheRect(r, key, pb);
     return;
   }
 
@@ -1095,8 +1105,7 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r,
 
 }
 
-void DecodeManager::storePersistentCachedRect(const core::Rect& r,
-                                             uint64_t cacheId,
+void DecodeManager::storePersistentCachedRect(const core::Rect& r, const CacheKey& key,
                                              int encoding,
                                              ModifiablePixelBuffer* pb)
 {
@@ -1106,6 +1115,7 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   // same framebuffer state the non-cache path would see.
   flush();
 
+  uint64_t cacheId = cacheKeyFirstU64(key);
   if (pb == nullptr) {
     vlog.error("storePersistentCachedRect called with null framebuffer");
     return;
@@ -1195,7 +1205,10 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
     // canonical->lossy mapping. This enables cache hits on first occurrence
     // instead of second occurrence for lossy content.
     if (conn->writer() != nullptr) {
-      conn->writer()->writePersistentCacheHashReport(cacheId, hashId);
+      if (contentHash.size() >= 16) {
+        CacheKey actualKey(contentHash.data());
+        conn->writer()->writePersistentCacheHashReport(key, actualKey);
+      }
     }
   }
 
@@ -1230,18 +1243,16 @@ void DecodeManager::storePersistentCachedRect(const core::Rect& r,
   flushPendingEvictions();
 }
 
-void DecodeManager::storePersistentCachedRect(const core::Rect& r,
-                                             uint64_t cacheId,
+void DecodeManager::storePersistentCachedRect(const core::Rect& r, const CacheKey& key,
                                              ModifiablePixelBuffer* pb)
 {
   // Legacy helper for callers that do not propagate an inner encoding
   // (e.g. unified ContentCache entry point). Treat these as effectively
   // lossless for policy purposes by using encodingRaw.
-  storePersistentCachedRect(r, cacheId, encodingRaw, pb);
+  storePersistentCachedRect(r, key, encodingRaw, pb);
 }
 
-void DecodeManager::seedCachedRect(const core::Rect& r,
-                                   uint64_t cacheId,
+void DecodeManager::seedCachedRect(const core::Rect& r, const CacheKey& key,
                                    ModifiablePixelBuffer* pb)
 {
   // Cache seed: server tells us to take existing framebuffer pixels at rect R
@@ -1256,6 +1267,7 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
   // Ensure any pending decodes have completed so framebuffer is up-to-date
   flush();
   
+  uint64_t cacheId = cacheKeyFirstU64(key);
   if (pb == nullptr) {
     vlog.error("seedCachedRect called with null framebuffer");
     return;
@@ -1304,7 +1316,10 @@ void DecodeManager::seedCachedRect(const core::Rect& r,
       // Store using the *actual* hash and report the mapping to the server so
       // future references can still use the canonical ID.
       if (conn && conn->writer() != nullptr) {
-        conn->writer()->writePersistentCacheHashReport(cacheId, hashId);
+        if (contentHash.size() >= 16) {
+        CacheKey actualKey(contentHash.data());
+        conn->writer()->writePersistentCacheHashReport(key, actualKey);
+      }
       }
     }
 
@@ -1349,7 +1364,10 @@ void DecodeManager::flushPendingQueries()
     return;
   
   // Send batched query to server
-  conn->writer()->writePersistentCacheQuery(pendingQueries);
+  std::vector<CacheKey> queryKeys;
+  queryKeys.reserve(pendingQueries.size());
+  for (uint64_t id : pendingQueries) queryKeys.push_back(makeCacheKeyFromU64(id));
+  conn->writer()->writePersistentCacheQuery(queryKeys);
   
   persistentCacheStats.queries_sent += pendingQueries.size();
   
@@ -1359,8 +1377,7 @@ void DecodeManager::flushPendingQueries()
 
 void DecodeManager::flushPendingEvictions()
 {
-  // Forward any evictions from the unified cache engine to the server using
-  // the protocol negotiated for this connection.
+  // Forward any evictions from the unified cache engine to the server.
   if (persistentCache != nullptr && persistentCache->hasPendingEvictions() &&
       conn && conn->writer()) {
     auto evictions = persistentCache->getPendingEvictions();
@@ -1382,8 +1399,7 @@ void DecodeManager::flushPendingEvictions()
 // received but the viewer's PersistentCache option is disabled. No disk I/O
 // or PersistentCache logging occurs via this path.
 
-void DecodeManager::handleContentCacheRect(const core::Rect& r,
-                                           uint64_t cacheId,
+void DecodeManager::handleContentCacheRect(const core::Rect& r, const CacheKey& key,
                                            ModifiablePixelBuffer* pb)
 {
   if (pb == nullptr) {
@@ -1395,9 +1411,7 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
                          contentCacheStats_.cache_lookups,
                          contentCacheStats_.cache_misses,
                          contentCacheStats_.stores};
-
-  CacheKey key((uint16_t)r.width(), (uint16_t)r.height(), (uint64_t)cacheId);
-
+  uint64_t cacheId = cacheKeyFirstU64(key);
   if (!persistentCache) {
     // Unified cache engine disabled; treat as a miss so tests can still
     // reason about protocol behaviour when caches are turned off.
@@ -1416,7 +1430,7 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
     // Request missing data from server so we can populate the cache.
     // Without this, the client stays out of sync and simply displays nothing/garbage.
     if (conn && conn->writer()) {
-      conn->writer()->writeRequestCachedData(cacheId);
+      conn->writer()->writeRequestCachedData(key);
     } else {
       vlog.error("Cannot send RequestCachedData: conn=%p writer=%p", conn, conn ? conn->writer() : nullptr);
     }
@@ -1446,8 +1460,7 @@ void DecodeManager::handleContentCacheRect(const core::Rect& r,
   pb->imageRect(entry->format, r, entry->pixels.data(), entry->stridePixels);
 }
 
-void DecodeManager::storeContentCacheRect(const core::Rect& r,
-                                          uint64_t cacheId,
+void DecodeManager::storeContentCacheRect(const core::Rect& r, const CacheKey& key,
                                           ModifiablePixelBuffer* pb)
 {
   if (pb == nullptr) {
@@ -1464,6 +1477,7 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
                          contentCacheStats_.cache_lookups,
                          contentCacheStats_.cache_misses,
                          contentCacheStats_.stores};
+  uint64_t cacheId = cacheKeyFirstU64(key);
   recordCacheInit(ccStats);
   
   if (!persistentCache) {
@@ -1476,14 +1490,10 @@ void DecodeManager::storeContentCacheRect(const core::Rect& r,
   // with the server's ID, which protects the cache from truncated or
   // corrupted transfers.
   std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
-  uint64_t hashId = 0;
-  if (!contentHash.empty()) {
-    size_t n = std::min(contentHash.size(), sizeof(uint64_t));
-    memcpy(&hashId, contentHash.data(), n);
-  }
-
-  if (hashId != cacheId) {
-    // Hash mismatch - logged to debug file if needed
+  if (contentHash.size() < 16)
+    return;
+  if (memcmp(contentHash.data(), key.bytes.data(), 16) != 0) {
+    // Hash mismatch - drop corrupt entry
     return;
   }
 

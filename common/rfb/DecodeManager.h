@@ -64,37 +64,37 @@ namespace rfb {
     // Cache protocol extension (legacy ContentCache entry point).
     // In the unified implementation this is backed by a session-only,
     // in-memory cache on the client. PersistentCache reuses the same
-    // 64-bit ID space but adds disk-backed persistence and HashList
+    // CacheKey space but adds disk-backed persistence and HashList
     // negotiation.
-    void handleCachedRect(const core::Rect& r, uint64_t cacheId,
-                          ModifiablePixelBuffer* pb);
-    void storeCachedRect(const core::Rect& r, uint64_t cacheId,
-                         ModifiablePixelBuffer* pb);
+    void handleCachedRect(const core::Rect& r, const CacheKey& key,
+                     ModifiablePixelBuffer* pb);
+    void storeCachedRect(const core::Rect& r, const CacheKey& key,
+                    ModifiablePixelBuffer* pb);
     
     // PersistentCache protocol extension (cross-session), using 64-bit
     // contentHash/cacheId identifiers on the wire (shared with ContentCache).
     void handlePersistentCachedRect(const core::Rect& r,
-                                    uint64_t cacheId,
-                                    ModifiablePixelBuffer* pb);
+                               const CacheKey& key,
+                               ModifiablePixelBuffer* pb);
     // PersistentCache INIT: encoding is the inner payload encoding used
     // for this rect. This allows the client cache to treat lossy and
     // lossless payloads differently for on-disk persistence.
     void storePersistentCachedRect(const core::Rect& r,
-                                   uint64_t cacheId,
-                                   int encoding,
-                                   ModifiablePixelBuffer* pb);
+                              const CacheKey& key,
+                              int encoding,
+                              ModifiablePixelBuffer* pb);
     // Backwards-compatible helper used by the unified ContentCache entry
     // point, which does not propagate an inner encoding. These rects are
     // treated as effectively lossless for the purposes of disk policy.
     void storePersistentCachedRect(const core::Rect& r,
-                                   uint64_t cacheId,
-                                   ModifiablePixelBuffer* pb);
+                              const CacheKey& key,
+                              ModifiablePixelBuffer* pb);
     
     // Cache seed: read existing framebuffer pixels at rect R and store
     // them in cache with the given ID. Used for whole-rectangle caching.
     void seedCachedRect(const core::Rect& r,
-                        uint64_t cacheId,
-                        ModifiablePixelBuffer* pb);
+                    const CacheKey& key,
+                    ModifiablePixelBuffer* pb);
 
     // Log end-of-session decode and cache statistics (client-side)
     void logStats();
@@ -124,10 +124,10 @@ namespace rfb {
     // implementation they are backed by the same GlobalClientPersistentCache
     // engine as PersistentCache, but inserts are flagged as non-persistent so
     // they never hit disk.
-    void handleContentCacheRect(const core::Rect& r, uint64_t cacheId,
-                                ModifiablePixelBuffer* pb);
-    void storeContentCacheRect(const core::Rect& r, uint64_t cacheId,
-                               ModifiablePixelBuffer* pb);
+    void handleContentCacheRect(const core::Rect& r, const CacheKey& key,
+                            ModifiablePixelBuffer* pb);
+    void storeContentCacheRect(const core::Rect& r, const CacheKey& key,
+                           ModifiablePixelBuffer* pb);
 
   private:
     CConnection *conn;
