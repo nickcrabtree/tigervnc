@@ -1,15 +1,15 @@
 /* Copyright (C) 2026 TigerVNC Team
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -27,21 +27,31 @@
 #include <rfb/SMsgHandler.h>
 #include <rfb/ServerParams.h>
 #include <rfb/msgTypes.h>
+#include <rfb/CacheKey.h>
 #include <rdr/MemOutStream.h>
 #include <rdr/MemInStream.h>
+#include <cstring>
 
 using namespace rfb;
+
+static CacheKey makeKeyFromU64(uint64_t id)
+{
+  CacheKey key;
+  key.bytes.fill(0);
+  std::memcpy(key.bytes.data(), &id, sizeof(id));
+  return key;
+}
 
 // Mock handler to capture eviction messages (now using 64-bit IDs)
 class MockSMsgHandler : public SMsgHandler {
 public:
   std::vector<uint64_t> receivedEvictions;
-  
+
   // Override PersistentCache eviction to capture data
   void handlePersistentCacheEviction(const std::vector<uint64_t>& ids) override {
     receivedEvictions = ids;
   }
-  
+
   // Stub all pure virtual methods from SMsgHandler
   void clientInit(bool) override {}
   void setPixelFormat(const PixelFormat&) override {}
@@ -62,7 +72,7 @@ public:
   void handleCacheEviction(const std::vector<uint64_t>&) override {}
   void handlePersistentCacheQuery(const std::vector<uint64_t>&) override {}
   void handlePersistentHashList(uint32_t, uint16_t, uint16_t, const std::vector<uint64_t>&) override {}
-  void handlePersistentCacheHashReport(uint64_t, uint64_t) override {}
+  void handlePersistentCacheHashReport(const CacheKey&, const CacheKey&) override {}
 };
 
 // ============================================================================
@@ -75,20 +85,24 @@ TEST(PersistentCacheProtocol, EvictionRoundTripBasic)
   std::vector<uint64_t> ids;
   ids.push_back(0x0102030405060708ULL);
   ids.push_back(0xAABBCCDDEEFF0011ULL);
-  
+  std::vector<CacheKey> keys;
+  for (uint64_t id : ids) {
+    keys.push_back(makeKeyFromU64(id));
+  }
+
   // Write to stream
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  writer.writePersistentCacheEviction(ids);
-  
+  writer.writePersistentCacheEviction(keys);
+
   // Read back via SMsgReader, which owns message-type parsing
   rdr::MemInStream inStream(outStream.data(), outStream.length());
   MockSMsgHandler handler;
   SMsgReader reader(&handler, &inStream);
-  
+
   ASSERT_TRUE(reader.readMsg());
-  
+
   // Verify received IDs
   ASSERT_EQ(handler.receivedEvictions.size(), 2);
   EXPECT_EQ(handler.receivedEvictions[0], ids[0]);
@@ -97,18 +111,18 @@ TEST(PersistentCacheProtocol, EvictionRoundTripBasic)
 
 TEST(PersistentCacheProtocol, EvictionEmptyList)
 {
-  std::vector<uint64_t> ids;  // Empty
-  
+  std::vector<CacheKey> keys;  // Empty
+
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  writer.writePersistentCacheEviction(ids);
-  
+  writer.writePersistentCacheEviction(keys);
+
   // Read back via SMsgReader and verify we receive an empty eviction list
   rdr::MemInStream inStream(outStream.data(), outStream.length());
   MockSMsgHandler handler;
   SMsgReader reader(&handler, &inStream);
-  
+
   ASSERT_TRUE(reader.readMsg());
   EXPECT_TRUE(handler.receivedEvictions.empty());
 }
@@ -116,20 +130,20 @@ TEST(PersistentCacheProtocol, EvictionEmptyList)
 TEST(PersistentCacheProtocol, EvictionMaxIds)
 {
   // Test with maximum allowed IDs (1000)
-  std::vector<uint64_t> ids;
+  std::vector<CacheKey> keys;
   for (int i = 0; i < 1000; i++) {
-    ids.push_back((uint64_t)i + 1);
+    keys.push_back(makeKeyFromU64((uint64_t)i + 1));
   }
-  
+
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  writer.writePersistentCacheEviction(ids);
-  
+  writer.writePersistentCacheEviction(keys);
+
   rdr::MemInStream inStream(outStream.data(), outStream.length());
   MockSMsgHandler handler;
   SMsgReader reader(&handler, &inStream);
-  
+
   ASSERT_TRUE(reader.readMsg());
   EXPECT_EQ(handler.receivedEvictions.size(), 1000);
 }
@@ -187,70 +201,70 @@ TEST(PersistentCacheProtocol, EvictionMaxIds)
 TEST(PersistentCacheProtocol, EvictionBatchedLargeSet)
 {
   // Test batching with 350 IDs (should create 4 messages: 100+100+100+50)
-  std::vector<uint64_t> ids;
+  std::vector<CacheKey> keys;
   for (int i = 0; i < 350; i++) {
-    ids.push_back((uint64_t)i + 1);
+    keys.push_back(makeKeyFromU64((uint64_t)i + 1));
   }
-  
+
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  
-  writer.writePersistentCacheEvictionBatched(ids);
-  
+
+  writer.writePersistentCacheEvictionBatched(keys);
+
   // Should have written 4 separate messages
   rdr::MemInStream inStream(outStream.data(), outStream.length());
-  
+
   int totalReceived = 0;
   while (inStream.avail() > 0) {
     uint8_t msgType = inStream.readU8();
     EXPECT_EQ(msgType, msgTypePersistentCacheEviction);
-    
+
     inStream.skip(1);  // padding
     uint16_t count = inStream.readU16();
-    
+
     // Each batch should have at most 100
     EXPECT_LE(count, 100);
-    
-    // Skip ID data (each is two U32 values)
+
+    // Skip ID data (16 bytes per key)
     for (uint16_t i = 0; i < count; i++) {
-      inStream.skip(8);
+      inStream.skip(16);
     }
-    
+
     totalReceived += count;
   }
-  
+
   EXPECT_EQ(totalReceived, 350);
 }
 
 TEST(PersistentCacheProtocol, EvictionBatchedSingle)
 {
   // Small set (< 100) should be single message
-  std::vector<uint64_t> ids;
+  std::vector<CacheKey> keys;
   for (int i = 0; i < 50; i++) {
-    ids.push_back((uint64_t)i + 1);
+    keys.push_back(makeKeyFromU64((uint64_t)i + 1));
   }
-  
+
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  
-  writer.writePersistentCacheEvictionBatched(ids);
-  
+
+  writer.writePersistentCacheEvictionBatched(keys);
+
   // Should be single message
   rdr::MemInStream inStream(outStream.data(), outStream.length());
   uint8_t msgType = inStream.readU8();
   EXPECT_EQ(msgType, msgTypePersistentCacheEviction);
-  
+
   inStream.skip(1);
   uint16_t count = inStream.readU16();
   EXPECT_EQ(count, 50);
-  
-  // Should be no more data; skip 8 bytes per ID
+
+  // Should be no more data; skip 16 bytes per ID
   for (int i = 0; i < 50; i++) {
-    inStream.skip(8);
+    inStream.skip(16);
   }
-  
+
   EXPECT_EQ(inStream.avail(), 0);
 }
 
@@ -258,77 +272,64 @@ TEST(PersistentCacheProtocol, EvictionBatchedSingle)
 // Wire Format Validation
 // ============================================================================
 //
-// Note: On the wire, PersistentCache uses fixed 64-bit IDs derived from
-// a 128-bit hash of the canonical 32-bpp RGB pixel stream for each
-// rectangle. Width and height are carried only in the rectangle header
-// and are not duplicated inside the ID. The cache engine therefore
-// treats (width, height, id64) as the logical identity, while this test
-// focuses purely on verifying the byte-level encoding of the 64-bit IDs.
+// Note: On the wire, PersistentCache uses fixed 16-byte CacheKey values
+// derived from the canonical 32-bpp RGB pixel stream for each rectangle.
+// Width and height are included in the hash domain and are not duplicated
+// inside the key. This test focuses purely on verifying the byte-level
+// encoding of the 16-byte keys.
 
 TEST(PersistentCacheProtocol, WireFormatExact)
 {
-  std::vector<uint64_t> ids;
-  ids.push_back(0x1234567890ABCDEFULL);
-  
+  CacheKey key = makeKeyFromU64(0x1234567890ABCDEFULL);
+
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  
-  writer.writePersistentCacheEviction(ids);
-  
+
+  writer.writePersistentCacheEviction({key});
+
   const uint8_t* data = outStream.data();
   size_t length = outStream.length();
-  
-  // Expected: msgType(1) + pad(1) + count(2) + ID(8) = 12 bytes
-  ASSERT_EQ(length, 12);
-  
+
+  // Expected: msgType(1) + pad(1) + count(2) + key(16) = 20 bytes
+  ASSERT_EQ(length, 20);
+
   EXPECT_EQ(data[0], msgTypePersistentCacheEviction);  // msgType
   EXPECT_EQ(data[1], 0);                               // padding
   EXPECT_EQ(data[2], 0);                               // count high byte
   EXPECT_EQ(data[3], 1);                               // count low byte (1 ID)
-  // Next 8 bytes should be the 64-bit ID in big-endian (two U32s)
-  uint64_t hi = ((uint64_t)data[4] << 24) | ((uint64_t)data[5] << 16) |
-                ((uint64_t)data[6] << 8) | (uint64_t)data[7];
-  uint64_t lo = ((uint64_t)data[8] << 24) | ((uint64_t)data[9] << 16) |
-                ((uint64_t)data[10] << 8) | (uint64_t)data[11];
-  uint64_t reconstructed = (hi << 32) | lo;
-  EXPECT_EQ(reconstructed, ids[0]);
+  // Next 16 bytes should match the CacheKey bytes
+  for (size_t i = 0; i < key.bytes.size(); i++) {
+    EXPECT_EQ(data[4 + i], key.bytes[i]);
+  }
 }
 
 TEST(PersistentCacheProtocol, WireFormatMultiple)
 {
-  std::vector<uint64_t> ids;
-  ids.push_back(0x00000000000000AAULL);
-  ids.push_back(0x000000000000BBCCULL);
-  
+  CacheKey key1 = makeKeyFromU64(0x00000000000000AAULL);
+  CacheKey key2 = makeKeyFromU64(0x000000000000BBCCULL);
+
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  
-  writer.writePersistentCacheEviction(ids);
-  
+
+  writer.writePersistentCacheEviction({key1, key2});
+
   const uint8_t* data = outStream.data();
-  
+
   EXPECT_EQ(data[0], msgTypePersistentCacheEviction);
   EXPECT_EQ(data[1], 0);     // padding
   EXPECT_EQ(data[3], 2);     // count = 2
-  
-  // First ID high/low
-  uint64_t hi1 = ((uint64_t)data[4] << 24) | ((uint64_t)data[5] << 16) |
-                 ((uint64_t)data[6] << 8) | (uint64_t)data[7];
-  uint64_t lo1 = ((uint64_t)data[8] << 24) | ((uint64_t)data[9] << 16) |
-                 ((uint64_t)data[10] << 8) | (uint64_t)data[11];
-  uint64_t id1 = (hi1 << 32) | lo1;
-  
-  // Second ID high/low
-  uint64_t hi2 = ((uint64_t)data[12] << 24) | ((uint64_t)data[13] << 16) |
-                 ((uint64_t)data[14] << 8) | (uint64_t)data[15];
-  uint64_t lo2 = ((uint64_t)data[16] << 24) | ((uint64_t)data[17] << 16) |
-                 ((uint64_t)data[18] << 8) | (uint64_t)data[19];
-  uint64_t id2 = (hi2 << 32) | lo2;
-  
-  EXPECT_EQ(id1, ids[0]);
-  EXPECT_EQ(id2, ids[1]);
+
+  // First key bytes
+  for (size_t i = 0; i < key1.bytes.size(); i++) {
+    EXPECT_EQ(data[4 + i], key1.bytes[i]);
+  }
+
+  // Second key bytes
+  for (size_t i = 0; i < key2.bytes.size(); i++) {
+    EXPECT_EQ(data[20 + i], key2.bytes[i]);
+  }
 }
 
 // ============================================================================
@@ -344,31 +345,31 @@ TEST(PersistentCacheProtocol, WireFormatMultiple)
 TEST(PersistentCacheProtocol, EvictionExactBatchBoundary)
 {
   // Exactly 100 IDs - should be single batch
-  std::vector<uint64_t> ids;
+  std::vector<CacheKey> keys;
   for (int i = 0; i < 100; i++) {
-    ids.push_back((uint64_t)i + 1);
+    keys.push_back(makeKeyFromU64((uint64_t)i + 1));
   }
-  
+
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  
-  writer.writePersistentCacheEvictionBatched(ids);
-  
+
+  writer.writePersistentCacheEvictionBatched(keys);
+
   rdr::MemInStream inStream(outStream.data(), outStream.length());
-  
+
   uint8_t msgType = inStream.readU8();
   EXPECT_EQ(msgType, msgTypePersistentCacheEviction);
-  
+
   inStream.skip(1);
   uint16_t count = inStream.readU16();
   EXPECT_EQ(count, 100);
-  
-  // Skip all IDs (8 bytes each)
+
+  // Skip all IDs (16 bytes each)
   for (int i = 0; i < 100; i++) {
-    inStream.skip(8);
+    inStream.skip(16);
   }
-  
+
   // Should be exactly one message
   EXPECT_EQ(inStream.avail(), 0);
 }
@@ -376,34 +377,37 @@ TEST(PersistentCacheProtocol, EvictionExactBatchBoundary)
 TEST(PersistentCacheProtocol, EvictionExactBatchBoundaryPlusOne)
 {
   // 101 IDs - should be 2 batches (100 + 1)
-  std::vector<uint64_t> ids;
+  std::vector<CacheKey> keys;
   for (int i = 0; i < 101; i++) {
-    ids.push_back((uint64_t)i + 1);
+    keys.push_back(makeKeyFromU64((uint64_t)i + 1));
   }
-  
+
   rdr::MemOutStream outStream;
   ServerParams serverParams;
   CMsgWriter writer(&serverParams, &outStream);
-  
-  writer.writePersistentCacheEvictionBatched(ids);
-  
+
+  writer.writePersistentCacheEvictionBatched(keys);
+
   rdr::MemInStream inStream(outStream.data(), outStream.length());
-  
+
   // First batch: 100
   uint8_t msgType1 = inStream.readU8();
   EXPECT_EQ(msgType1, msgTypePersistentCacheEviction);
   inStream.skip(1);
   uint16_t count1 = inStream.readU16();
   EXPECT_EQ(count1, 100);
-  
+
   for (int i = 0; i < 100; i++) {
-    inStream.skip(8);
+    inStream.skip(16);
   }
-  
+
   // Second batch: 1
   uint8_t msgType2 = inStream.readU8();
   EXPECT_EQ(msgType2, msgTypePersistentCacheEviction);
   inStream.skip(1);
   uint16_t count2 = inStream.readU16();
   EXPECT_EQ(count2, 1);
+  inStream.skip(16);
+
+  EXPECT_EQ(inStream.avail(), 0);
 }

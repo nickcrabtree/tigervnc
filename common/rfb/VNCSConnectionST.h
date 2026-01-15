@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2019 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -155,7 +155,8 @@ namespace rfb {
                                   uint16_t chunkIndex,
                                   const std::vector<uint64_t>& cacheIds) override;
     void handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds) override;
-    void handlePersistentCacheHashReport(uint64_t canonicalId, uint64_t lossyId) override;
+    void handlePersistentCacheHashReport(const CacheKey& canonicalKey,
+                                         const CacheKey& actualKey) override;
     void handleDebugDumpRequest(uint32_t timestamp) override;
 
     // PersistentCache request helpers used by encoder
@@ -180,20 +181,20 @@ namespace rfb {
       knownPersistentIds_.insert(id);
       knownCacheIds_.insert(id);
     }
-    
+
     // Lossy hash cache management
-    void cacheLossyHash(uint64_t canonical, uint64_t lossy) override {
-      lossyHashCache_[canonical] = lossy;
+    void cacheLossyHash(uint64_t canonical, const CacheKey& lossyKey) override {
+      lossyHashCache_[canonical] = lossyKey;
     }
-    bool hasLossyHash(uint64_t canonical, uint64_t& lossy) const override {
+    bool hasLossyHash(uint64_t canonical, CacheKey& lossyKey) const override {
       auto it = lossyHashCache_.find(canonical);
       if (it != lossyHashCache_.end()) {
-        lossy = it->second;
+        lossyKey = it->second;
         return true;
       }
       return false;
     }
-    
+
     // Viewer confirmation tracking
     bool viewerHasConfirmed(uint64_t id) const {
       return viewerConfirmedCache_.find(id) != viewerConfirmedCache_.end();
@@ -216,21 +217,21 @@ namespace rfb {
 
   private:
     std::unordered_set<uint64_t> clientRequestedPersistentIds_;
-    
+
     // Session-scoped tracking of persistent IDs known by client
     // (from initial inventory OR sent via PersistentCachedRectInit this session)
     std::unordered_set<uint64_t> knownPersistentIds_;
-    
+
     // Lossy hash cache: canonical hash (lossless) -> lossy hash (post-decode)
     // Used when encoding with lossy compression (e.g. JPEG) to map from
     // server's lossless content hash to the hash the client will compute
     // after decoding the lossy data.
-    std::unordered_map<uint64_t, uint64_t> lossyHashCache_;
-    
+    std::unordered_map<uint64_t, CacheKey> lossyHashCache_;
+
     // Viewer confirmed cache: IDs that viewer has explicitly confirmed having
     // (by not sending RequestCachedData after receiving a reference)
     std::unordered_set<uint64_t> viewerConfirmedCache_;
-    
+
     // Viewer pending confirmation: IDs sent to viewer, awaiting confirmation
     // Moved to viewerConfirmedCache_ after successful frame update
     std::unordered_set<uint64_t> viewerPendingConfirmation_;
@@ -301,7 +302,7 @@ namespace rfb {
     std::unordered_map<uint64_t, core::Rect> lastCachedRectRef_;
     std::vector<std::pair<uint64_t, core::Rect>> pendingCacheInit_;
     std::unordered_set<uint64_t> knownCacheIds_;
-    
+
     // Update counter for periodic cache statistics logging
     unsigned updateCount_;
 

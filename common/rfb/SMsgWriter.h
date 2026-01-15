@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2019 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -25,6 +25,8 @@
 
 #include <stdint.h>
 #include <vector>
+
+#include <rfb/CacheKey.h>
 
 namespace core { struct Rect; }
 
@@ -81,7 +83,7 @@ namespace rfb {
     void writeSetDesktopName();
 
     // Like setDesktopSize, we can't just write out a cursor message
-    // immediately. 
+    // immediately.
     void writeCursor();
 
     // Notifies the client that the cursor pointer was moved by the server.
@@ -119,24 +121,24 @@ namespace rfb {
     // There is no explicit encoder for CopyRect rects.
     void writeCopyRect(const core::Rect& r, int srcX, int srcY);
 
-    // Cache protocol extension: reference to cached content
-    void writeCachedRect(const core::Rect& r, uint64_t cacheId);
-    
-    // Cache protocol extension: initial transmission with cache ID
-    void writeCachedRectInit(const core::Rect& r, uint64_t cacheId, int encoding);
+    // Cache protocol extension: reference to cached content (16-byte CacheKey)
+    void writeCachedRect(const core::Rect& r, const CacheKey& key);
 
-    // PersistentCache protocol extension: reference by 64-bit content ID
-    void writePersistentCachedRect(const core::Rect& r, uint64_t cacheId);
-    
-    // PersistentCache protocol extension: initial transmission with 64-bit ID
-    void writePersistentCachedRectInit(const core::Rect& r, uint64_t cacheId,
+    // Cache protocol extension: initial transmission with cache ID (16-byte CacheKey)
+    void writeCachedRectInit(const core::Rect& r, const CacheKey& key, int encoding);
+
+    // PersistentCache protocol extension: reference by 16-byte CacheKey
+    void writePersistentCachedRect(const core::Rect& r, const CacheKey& key);
+
+    // PersistentCache protocol extension: initial transmission with 16-byte CacheKey
+    void writePersistentCachedRectInit(const core::Rect& r, const CacheKey& key,
                                        int encoding, uint8_t flags = 0,
                                        const PixelFormat* pf = nullptr,
                                        bool includeFlags = false);
-    
+
     // Cache seed: tell client to associate existing framebuffer pixels at rect R
-    // with cache ID. No pixel payload follows - client uses its own framebuffer.
-    void writeCachedRectSeed(const core::Rect& r, uint64_t cacheId);
+    // with CacheKey. No pixel payload follows - client uses its own framebuffer.
+    void writeCachedRectSeed(const core::Rect& r, const CacheKey& key);
 
     // Encoders should call these to mark the start and stop of individual
     // rects.

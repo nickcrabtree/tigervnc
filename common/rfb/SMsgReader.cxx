@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2019 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -299,7 +299,7 @@ bool SMsgReader::readFence()
   }
 
   is->readBytes(data, len);
-  
+
   handler->fence(flags, len, data);
 
   return true;
@@ -688,12 +688,12 @@ bool SMsgReader::readPersistentCacheHashReport()
     return false;
 
   uint64_t canonicalId = cacheKeyFirstU64(canonicalKey);
-  uint64_t lossyId = cacheKeyFirstU64(actualKey);
+  uint64_t actualId = cacheKeyFirstU64(actualKey);
 
-  vlog.debug("Client reported lossy hash: canonical=%llu, lossy=%llu",
+  vlog.debug("Client reported lossy hash: canonical=%llu, actual=%llu",
              (unsigned long long)canonicalId,
-             (unsigned long long)lossyId);
-  handler->handlePersistentCacheHashReport(canonicalId, lossyId);
+             (unsigned long long)actualId);
+  handler->handlePersistentCacheHashReport(canonicalKey, actualKey);
   return true;
 }
 

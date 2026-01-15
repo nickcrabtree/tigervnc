@@ -1,17 +1,17 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2019 Pierre Ossman for Cendio AB
  * Copyright 2018 Peter Astrand for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -222,7 +222,7 @@ void VNCSConnectionST::processMessages()
     inProcessMessages = false;
 
     // If there were anything requiring an update, try to send it here.
-    // We wait until now with this to aggregate responses and to give 
+    // We wait until now with this to aggregate responses and to give
     // higher priority to user actions such as keyboard and pointer events.
     writeFramebufferUpdate();
   } catch (rdr::end_of_stream&) {
@@ -466,7 +466,7 @@ void VNCSConnectionST::desktopReady()
                        server->getScreenLayout());
   client.setName(server->getName());
   client.setLEDState(server->getLEDState());
-  
+
   // - Set the default pixel format
   client.setPF(server->getPixelBuffer()->getPF());
   char buffer[256];
@@ -522,7 +522,7 @@ void VNCSConnectionST::clientReady(bool shared)
 void VNCSConnectionST::setEncodings(int nEncodings, const int32_t* encodings)
 {
   SConnection::setEncodings(nEncodings, encodings);
-  
+
   // Decide whether to use the cache protocol based on the client's
   // PersistentCache pseudo-encoding. ContentCache is now a viewer-side
   // alias that reuses the same on-wire protocol.
@@ -547,13 +547,13 @@ void VNCSConnectionST::setPixelFormat(const PixelFormat& pf)
 {
   // Get old format before updating
   PixelFormat oldPf = client.pf();
-  
+
   SConnection::setPixelFormat(pf);
   char buffer[256];
   pf.print(buffer, 256);
   vlog.info("Client pixel format %s (was %dbpp)", buffer, oldPf.bpp);
   setCursor();
-  
+
   // Notify EncodeManager of pixel format change.
   // This handles refresh of regions sent at reduced depth when upgrading.
   encodeManager.handlePixelFormatChange(pf.bpp);
@@ -888,7 +888,7 @@ void VNCSConnectionST::handleRequestCachedData(uint64_t cacheId)
 {
   vlog.debug("Client requested cached data for ID %llu",
              (unsigned long long)cacheId);
-  
+
   // Client doesn't have this ID - remove from pending/confirmed sets
   removePendingId(cacheId);
 
@@ -914,7 +914,7 @@ void VNCSConnectionST::handleRequestCachedData(uint64_t cacheId)
 void VNCSConnectionST::handleCacheEviction(const std::vector<uint64_t>& cacheIds)
 {
   vlog.debug("Client evicted %u cache entries (ContentCache policy)", (unsigned)cacheIds.size());
-  
+
   // Remove evicted cache IDs from all unified tracking sets so future
   // lookups will treat them as misses regardless of protocol flavour.
   for (uint64_t cacheId : cacheIds) {
@@ -926,7 +926,7 @@ void VNCSConnectionST::handleCacheEviction(const std::vector<uint64_t>& cacheIds
     if (it != clientRequestedPersistentIds_.end())
       clientRequestedPersistentIds_.erase(it);
   }
-  
+
   vlog.info("Updated cache ID tracking after ContentCache eviction: removed %u IDs (session-known IDs may be fewer due to prior evictions)",
             (unsigned)cacheIds.size());
 }
@@ -962,13 +962,13 @@ void VNCSConnectionST::handlePersistentCacheQuery(const std::vector<uint64_t>& c
   // Track requested IDs so the encoder can choose to send inits
   for (uint64_t id : cacheIds) {
     clientRequestedPersistentIds_.insert(id);
-    
+
     // Trigger targeted refresh if we know where this ID was used.
     // This ensures the encoder revisits the region and sends an INIT.
     auto it = lastCachedRectRef_.find(id);
     if (it != lastCachedRectRef_.end()) {
       add_changed(core::Region(it->second));
-      vlog.debug("Triggering refresh for queried ID %llu at %dx%d", 
+      vlog.debug("Triggering refresh for queried ID %llu at %dx%d",
                  (unsigned long long)id, it->second.tl.x, it->second.tl.y);
     }
   }
@@ -980,17 +980,17 @@ void VNCSConnectionST::handlePersistentHashList(uint32_t sequenceId, uint16_t to
 {
   vlog.debug("Client advertised %d persistent cache IDs (chunk %d/%d, seq %u)",
              (int)cacheIds.size(), chunkIndex + 1, totalChunks, sequenceId);
-  
+
   // Forward to EncodeManager to track client's known IDs
   for (uint64_t id : cacheIds) {
     encodeManager.addClientKnownHash(id);
   }
-  
+
   // Also populate session tracking (for within-session hit detection)
   for (uint64_t id : cacheIds) {
     knownPersistentIds_.insert(id);
   }
-  
+
   vlog.info("Received ID list: %d IDs (session tracking now has %zu total)",
             (int)cacheIds.size(), knownPersistentIds_.size());
 }
@@ -1016,7 +1016,16 @@ void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<uint64_t>
   vlog.info("PersistentCache eviction: removed %zu IDs from unified tracking sets", removed);
 }
 
-void VNCSConnectionST::handlePersistentCacheHashReport(uint64_t canonicalId, uint64_t actualId)
+namespace {
+  inline uint64_t cacheKeyFirstU64(const rfb::CacheKey& key) {
+    uint64_t v = 0;
+    memcpy(&v, key.bytes.data(), sizeof(v));
+    return v;
+  }
+}
+
+void VNCSConnectionST::handlePersistentCacheHashReport(const CacheKey& canonicalKey,
+                                                       const CacheKey& actualKey)
 {
   // NEW DESIGN: The viewer reports hash type for ALL cache interactions:
   // - Lossless: canonical == actual (viewer has lossless pixels)
@@ -1025,9 +1034,11 @@ void VNCSConnectionST::handlePersistentCacheHashReport(uint64_t canonicalId, uin
   //
   // The viewer always looks up by canonical hash and stores both hashes.
   // Server must track the canonical ID as known, not the actual ID.
-  
+
+  uint64_t canonicalId = cacheKeyFirstU64(canonicalKey);
+  uint64_t actualId = cacheKeyFirstU64(actualKey);
   bool isLossless = (canonicalId == actualId);
-  
+
   if (isLossless) {
     vlog.debug("Client confirmed LOSSLESS cache entry: canonical=%llu",
                (unsigned long long)canonicalId);
@@ -1035,15 +1046,17 @@ void VNCSConnectionST::handlePersistentCacheHashReport(uint64_t canonicalId, uin
     vlog.debug("Client confirmed LOSSY cache entry: canonical=%llu actual=%llu",
                (unsigned long long)canonicalId,
                (unsigned long long)actualId);
-    
+
     // Store the canonical->lossy mapping for future reference
     // (may be useful for diagnostics or lazy lossless refresh)
-    cacheLossyHash(canonicalId, actualId);
+    cacheLossyHash(canonicalId, actualKey);
   }
 
   // Mark the canonical ID as known since the viewer looks up by canonical
   markPersistentIdKnown(canonicalId);
-  
+  // Also mark actual ID as known so lossy references can be emitted safely.
+  markPersistentIdKnown(actualId);
+
   vlog.info("Hash type report: canonical=%llu actual=%llu%s (marked canonical as known)",
             (unsigned long long)canonicalId,
             (unsigned long long)actualId,
@@ -1055,20 +1068,20 @@ void VNCSConnectionST::handleDebugDumpRequest(uint32_t timestamp)
   // Create output directory with timestamp to match client
   char outputDir[256];
   snprintf(outputDir, sizeof(outputDir), "/tmp/corruption_debug_%u", timestamp);
-  
+
   // Create directory if it doesn't exist
   struct stat st;
   memset(&st, 0, sizeof(st));
   if (stat(outputDir, &st) == -1) {
     mkdir(outputDir, 0755);
   }
-  
+
   vlog.info("Debug dump requested by client (timestamp=%u), dumping to %s",
             timestamp, outputDir);
-  
+
   // Dump EncodeManager state
   encodeManager.dumpDebugState(outputDir);
-  
+
   // Also dump VNCSConnectionST state
   char filepath[512];
   snprintf(filepath, sizeof(filepath), "%s/server_connection_state.txt", outputDir);
@@ -1085,7 +1098,7 @@ void VNCSConnectionST::handleDebugDumpRequest(uint32_t timestamp)
     fprintf(f, "viewerConfirmedCache: %zu\n", viewerConfirmedCache_.size());
     fprintf(f, "viewerPendingConfirmation: %zu\n", viewerPendingConfirmation_.size());
     fprintf(f, "lastCachedRectRef: %zu\n", lastCachedRectRef_.size());
-    
+
     // Dump first 50 known persistent IDs
     fprintf(f, "\n=== Known Persistent IDs (first 50) ===\n");
     int count = 0;
@@ -1096,20 +1109,21 @@ void VNCSConnectionST::handleDebugDumpRequest(uint32_t timestamp)
         break;
       }
     }
-    
+
     // Dump lossy hash mappings
     fprintf(f, "\n=== Lossy Hash Cache (first 50) ===\n");
     count = 0;
     for (const auto& kv : lossyHashCache_) {
+      uint64_t lossyId = cacheKeyFirstU64(kv.second);
       fprintf(f, "  canonical=%016llx -> lossy=%016llx\n",
               (unsigned long long)kv.first,
-              (unsigned long long)kv.second);
+              (unsigned long long)lossyId);
       if (++count >= 50) {
         fprintf(f, "  ... (%zu total)\n", lossyHashCache_.size());
         break;
       }
     }
-    
+
     fclose(f);
     vlog.info("Server connection state dumped to: %s", filepath);
   }
@@ -1347,11 +1361,11 @@ void VNCSConnectionST::writeDataUpdate()
   updates.subtract(req);
 
   requested.clear();
-  
+
   // Frame update completed successfully - confirm any pending cache IDs
   // (viewer didn't send RequestCachedData, so it has these IDs)
   confirmPendingIds();
-  
+
   // Periodic cache tracking logging (every 100 updates)
   updateCount_++;
   if (updateCount_ % 100 == 0) {

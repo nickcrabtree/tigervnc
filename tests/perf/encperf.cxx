@@ -143,7 +143,7 @@ public:
   void pointerEvent(const core::Point& pos,
                     uint16_t buttonMask) override;
 
-  void handlePersistentCacheHashReport(uint64_t, uint64_t) override {}
+  void handlePersistentCacheHashReport(const rfb::CacheKey&, const rfb::CacheKey&) override {}
 
 protected:
   DummyOutStream *out;
