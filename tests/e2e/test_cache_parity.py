@@ -32,6 +32,8 @@ import time
 import argparse
 import subprocess
 import os
+import shutil
+import re
 from pathlib import Path
 
 # Add parent directory to path for imports
@@ -44,6 +46,57 @@ from framework import (
 )
 from scenarios import ScenarioRunner
 from log_parser import parse_cpp_log, compute_metrics
+
+def _try_copy_debug_logs(log_path: Path, artifacts, name: str, timeout_sec: float = 2.0):
+    """Best-effort: copy ephemeral debug logs (under /tmp) into artifacts.
+
+    Some viewer builds write a secondary debug log under /tmp/vncviewer and may
+    delete it on clean shutdown. We therefore copy it while the viewer is still
+    running, based on the path printed to stdout.
+    """
+    t0 = time.time()
+    viewer_dbg_src = None
+    pc_dbg_src = None
+    # Patterns in viewer stdout:
+    #   Viewer debug log: /tmp/vncviewer/...
+    #   PersistentCache debug log: /tmp/persistentcache_debug_....log
+    re_viewer = re.compile(r'^\s*Viewer debug log:\s*(\S+)\s*$', re.M)
+    re_pc = re.compile(r'^\s*PersistentCache debug log:\s*(\S+)\s*$', re.M)
+
+    while time.time() - t0 < timeout_sec:
+        try:
+            txt = log_path.read_text(encoding='utf-8', errors='ignore')
+        except Exception:
+            txt = ''
+        if viewer_dbg_src is None:
+            m = re_viewer.search(txt)
+            if m:
+                viewer_dbg_src = m.group(1)
+        if pc_dbg_src is None:
+            m = re_pc.search(txt)
+            if m:
+                pc_dbg_src = m.group(1)
+        if viewer_dbg_src or pc_dbg_src:
+            break
+        time.sleep(0.05)
+
+    def _copy(src: str, suffix: str):
+        if not src:
+            return
+        dst = artifacts.logs_dir / f'{name}.{suffix}.log'
+        # Retry briefly in case the file is created slightly after the path is printed
+        for _ in range(40):
+            try:
+                if os.path.exists(src):
+                    shutil.copy2(src, dst)
+                    return
+            except Exception:
+                pass
+            time.sleep(0.05)
+
+    _copy(viewer_dbg_src, 'viewer_debug')
+    _copy(pc_dbg_src, 'persistentcache_debug')
+
 
 
 def run_viewer(viewer_path, port, artifacts, tracker, name, params=None, display_for_viewer=None):
@@ -65,6 +118,8 @@ def run_viewer(viewer_path, port, artifacts, tracker, name, params=None, display
                             preexec_fn=os.setpgrp, env=env)
     tracker.register(name, proc)
     time.sleep(2.0)
+    # Copy ephemeral /tmp debug logs into artifacts (best-effort)
+    _try_copy_debug_logs(log_path, artifacts, name)
     return proc
 
 
@@ -169,6 +224,7 @@ def main():
         runner = ScenarioRunner(args.display_content, verbose=args.verbose)
         runner.cache_hits_minimal(duration_sec=args.duration)
         time.sleep(3.0)
+        _try_copy_debug_logs(artifacts.logs_dir / 'parity_cc_viewer.log', artifacts, 'parity_cc_viewer', timeout_sec=1.0)
         tracker.cleanup('parity_cc_viewer')
         log_cc = artifacts.logs_dir / 'parity_cc_viewer.log'
         parsed_cc = parse_cpp_log(log_cc)
@@ -230,6 +286,7 @@ def main():
         time.sleep(3.0)
         runner.cache_hits_minimal(duration_sec=args.duration)
         time.sleep(3.0)
+        _try_copy_debug_logs(artifacts.logs_dir / 'parity_pc_viewer.log', artifacts, 'parity_pc_viewer', timeout_sec=1.0)
         tracker.cleanup('parity_pc_viewer')
         log_pc = artifacts.logs_dir / 'parity_pc_viewer.log'
         parsed_pc = parse_cpp_log(log_pc)
@@ -244,7 +301,7 @@ def main():
         pc_init_count = 0
         with open(log_pc, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                if "Received PersistentCachedRectInit" in line:
+                if "Received PersistentCachedRectInit" in line or "PersistentCachedRectInit" in line:
                     pc_init_count += 1
         pc_hits = parsed_pc.persistent_hits
         pc_misses = pc_init_count
@@ -257,12 +314,14 @@ def main():
         cc_init_count = 0
         with open(log_cc, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                if "Received PersistentCachedRectInit" in line:
+                if "Received PersistentCachedRectInit" in line or "PersistentCachedRectInit" in line:
                     cc_init_count += 1
         cc_hits = parsed_cc.persistent_hits
         cc_lookups = cc_hits + cc_init_count
         cc_hit_rate = (100.0 * cc_hits / cc_lookups) if cc_lookups > 0 else 0.0
  
+        print(f"  ContentCache lookups:       {cc_lookups} (hits={cc_hits}, misses={cc_init_count})")
+        print(f"  PersistentCache lookups:    {pc_lookups} (hits={pc_hits}, misses={pc_misses})")
         print(f"  ContentCache hit rate:      {cc_hit_rate:.1f}%")
         print(f"  PersistentCache hit rate:   {pc_hit_rate:.1f}%")
  
@@ -271,9 +330,9 @@ def main():
 
         # If PersistentCache is not active at all, this is a hard failure: the
         # purpose of this test is to exercise and compare both caches.
-        if pc_hit_rate == 0.0:
+        if pc_lookups == 0:
             print("\n✗ TEST FAILED")
-            print("  • PersistentCache activity not observed (hit rate 0.0%)")
+            print("  • PersistentCache activity not observed (0 cache lookups)")
             print("  • Cannot compare hit rates between ContentCache and PersistentCache")
             print("\n" + "=" * 70)
             print("ARTIFACTS")
