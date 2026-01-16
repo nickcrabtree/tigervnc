@@ -96,19 +96,70 @@ repos:
         # Disable line-length rule so it doesn't conflict with 200-char preference
         args: ["--disable", "MD013"]
 
-  # ---------------------------------------------------------
-  # 6) OPTIONAL local hooks (uncomment per repo as needed)
-  # ---------------------------------------------------------
+  # C++ checks:
 
-  # --- make_millions: custom "fail-fast" compliance linter ---
+  - repo: git@github.com:pre-commit/mirrors-clang-format
+    rev: v17.0.6 # <-- pin to your toolchain version
+    hooks:
+      - id: clang-format
+        name: clang-format (C/C++)
+        files: \.(c|cc|cpp|cxx|h|hh|hpp|hxx)$
+        args: ["-style=file", "-i"]
+
   - repo: local
     hooks:
-      - id: fail-fast-compliance
-        name: Fail-Fast Policy Compliance
-        entry: python tools/fail_fast_linter.py
+      - id: clang-tidy
+        name: clang-tidy (C/C++)
+        entry: clang-tidy
         language: system
-        files: \.py$
-        args: ["--quiet", "--exit-code"]
+        files: \.(c|cc|cpp|cxx)$
+        args: ["-p", "build", "--quiet"]
+        # Consider making it manual or pre-push if it’s slow:
+        # stages: [pre-push]
+
+  - repo: local
+    hooks:
+      - id: cppcheck
+        name: cppcheck (static analysis)
+        entry: cppcheck
+        language: system
+        files: \.(c|cc|cpp|cxx|h|hh|hpp|hxx)$
+        args: ["--enable=warning,style,performance,portability", "--inline-suppr", "--quiet", "--error-exitcode=1", "--language=c++", "--std=c++17"]
+        # Often better as pre-push or manual:
+        stages: [manual]
+
+  - repo: https://github.com/cpplint/cpplint
+    rev: 2.0.2
+    hooks:
+      - id: cpplint
+        name: cpplint (C/C++)
+        files: \.(c|cc|cpp|cxx|h|hh|hpp|hxx)$
+        args: ["--filter=-whitespace/braces,-whitespace/line_length"]
+        stages: [manual]
+
+  - repo: local
+    hooks:
+      - id: iwyu
+        name: include-what-you-use
+        entry: include-what-you-use
+        language: system
+        files: \.(cc|cpp|cxx)$
+        args: ["-p", "build"]
+        stages: [manual]
+
+  - repo: https://github.com/cheshirekow/cmake-format-precommit
+    rev: v0.6.13
+    hooks:
+      - id: cmake-format
+        name: cmake-format
+        files: (CMakeLists\.txt|\.cmake)$
+      - id: cmake-lint
+        name: cmake-lint
+        files: (CMakeLists\.txt|\.cmake)$
+
+  # ---------------------------------------------------------
+  # OPTIONAL local hooks (uncomment per repo as needed)
+  # ---------------------------------------------------------
 
   # --- withdean: run your existing .githooks/pre-commit script ---
   # - repo: local
