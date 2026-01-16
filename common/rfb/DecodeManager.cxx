@@ -17,6 +17,10 @@
  */
 #include <rfb/DecodeManager.h>
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <assert.h>
 #include <inttypes.h>
 #include <stdint.h>
@@ -48,10 +52,6 @@
 #include <rfb/Exception.h>
 #include <rfb/PixelBuffer.h>
 #include <rfb/encodings.h>
-
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
 
 namespace rfb {
 
