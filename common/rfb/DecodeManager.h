@@ -1,3 +1,4 @@
+// cppcheck-suppress-file unusedStructMember
 /* Copyright 2015 Pierre Ossman for Cendio AB
  *
  * This is free software; you can redistribute it and/or modify
@@ -19,7 +20,6 @@
 #ifndef COMMON_RFB_DECODEMANAGER_H_
 #define COMMON_RFB_DECODEMANAGER_H_
 
-// cppcheck-suppress-file unusedStructMember
 #include <cstddef>
 #include <cstdint>
 
@@ -35,7 +35,6 @@
 #include <vector>
 
 #include <core/Region.h>
-
 #include <rfb/CacheKey.h>
 #include <rfb/GlobalClientPersistentCache.h>
 #include <rfb/ServerParams.h>
