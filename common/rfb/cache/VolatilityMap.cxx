@@ -38,6 +38,7 @@ void rfb::cache::VolatilityMap::resize(int fbWidth, int fbHeight) {
 }
 
 void rfb::cache::VolatilityMap::noteDamage(const core::Rect& /*bbox*/, uint64_t /*nowMs*/) {
+  (void)windowMs_;
   // Stub implementation (Phase 0 scaffolding).
 }
 
