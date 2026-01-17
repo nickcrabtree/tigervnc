@@ -45,6 +45,7 @@
 #include <rfb/UpdateTracker.h>
 #include <rfb/encodings.h>
 
+#include <rfb/cache/ShiftTolerantScan.h>
 #include <rfb/cache/TilingIntegration.h>
 
 #include <rfb/HextileEncoder.h>
@@ -801,121 +802,64 @@ void EncodeManager::runShiftTolerantCacheScan(core::Region* changed, const Pixel
   if (!pb || !changed || changed->is_empty())
     return;
 
-  // Budgeting knobs (microseconds and block cap).
-  const int budgetUs = rfb::Server::cacheScanBudgetUs;
-  const int maxBlocks = rfb::Server::cacheScanMaxBlocks;
-  const int pad = rfb::Server::cacheScanPadPixels;
+  rfb::cache::ScanConfig cfg;
+  cfg.tileSizes.clear();
+  for (auto it = rfb::Server::cacheScanTileSizes.begin(); it != rfb::Server::cacheScanTileSizes.end(); ++it)
+    cfg.tileSizes.push_back(*it);
+  cfg.phaseSet =
+      (rfb::Server::cacheScanPhaseSet == "minimal") ? rfb::cache::PhaseSet::Minimal : rfb::cache::PhaseSet::Quarter;
+  cfg.padPixels = rfb::Server::cacheScanPadPixels;
+  cfg.budgetUs = rfb::Server::cacheScanBudgetUs;
+  cfg.maxBlocks = rfb::Server::cacheScanMaxBlocks;
+  cfg.minPackedArea = rfb::Server::cacheScanMinPackedArea;
+  cfg.coverageThresholdPermille = rfb::Server::cacheScanCoverageThresholdPermille;
+  cfg.preferLargestFirst = rfb::Server::cacheScanPreferLargestFirst;
+  cfg.logStats = rfb::Server::cacheScanLogStats;
 
-  // Phase set selection.
-  const bool phaseMinimal = (rfb::Server::cacheScanPhaseSet == "minimal");
+  rfb::cache::ShiftTolerantScanner scanner(cfg);
+  rfb::cache::ScanStats scanStats;
 
-  core::Rect fbRect = pb->getRect();
-  core::Rect bbox = changed->get_bounding_rect();
-  // Expand bbox by pad to allow some translation recovery; clamp to framebuffer.
-  core::Rect scan = core::Rect(bbox.tl.x - pad, bbox.tl.y - pad, bbox.br.x + pad, bbox.br.y + pad).intersect(fbRect);
-  if (scan.is_empty())
-    return;
+  auto clientKnowsKey = [&](const CacheKey& key) -> bool {
+    const uint64_t id = cacheKeyToU64(key);
+    return conn->knowsPersistentId(id) && !conn->clientRequestedPersistent(id);
+  };
 
-  const double t0 = getEpochTime();
-  unsigned long long blocksHashed = 0;
-  unsigned long long hits = 0;
-  unsigned long long emitted = 0;
+  std::vector<rfb::cache::KeyedRect> hits = scanner.scanAndPack(*changed, pb, nullptr, clientKnowsKey, &scanStats);
 
-  // Iterate configured tile sizes.
-  for (auto it = rfb::Server::cacheScanTileSizes.begin(); it != rfb::Server::cacheScanTileSizes.end(); ++it) {
-    const int T = *it;
-    if (T <= 0)
-      continue;
+  // Account scan hash computations as cache lookups.
+  persistentCacheStats.cacheLookups += (unsigned)scanStats.blocksHashed;
+  persistentCacheStats.cacheLookups += (unsigned)scanStats.rectsHashed;
 
-    // Phase offsets.
-    const int q = T / 4;
-    const int h = T / 2;
-    const int phases[4][2] = {
-        {0, 0},
-        {phaseMinimal ? h : q, 0},
-        {0, phaseMinimal ? h : q},
-        {phaseMinimal ? h : q, phaseMinimal ? h : q},
-    };
-    const int numPhases = phaseMinimal ? 2 : 4;
+  for (const auto& kr : hits) {
+    const int before = conn->getOutStream()->length();
+    conn->writer()->writePersistentCachedRect(kr.rect, kr.key);
+    const int after = conn->getOutStream()->length();
 
-    for (int pi = 0; pi < numPhases; ++pi) {
-      const int ox = phases[pi][0];
-      const int oy = phases[pi][1];
+    changed->assign_subtract(core::Region(kr.rect));
 
-      // Snap start to grid with phase.
-      int x0 = scan.tl.x - ((scan.tl.x - ox) % T);
-      int y0 = scan.tl.y - ((scan.tl.y - oy) % T);
-      if (x0 > scan.tl.x)
-        x0 -= T;
-      if (y0 > scan.tl.y)
-        y0 -= T;
+    persistentCacheStats.cacheHits++;
+    const int equiv = 12 + kr.rect.area() * (conn->client.pf().bpp / 8);
+    persistentCacheStats.bytesSaved += (unsigned long long)(equiv - 20);
 
-      for (int y = y0; y < scan.br.y; y += T) {
-        for (int x = x0; x < scan.br.x; x += T) {
-          const double now = getEpochTime();
-          const int elapsedUs = (int)((now - t0) * 1000000.0);
-          if ((budgetUs > 0 && elapsedUs >= budgetUs) || (maxBlocks > 0 && (int)blocksHashed >= maxBlocks)) {
-            goto done;
-          }
+    copyStats.rects++;
+    copyStats.pixels += kr.rect.area();
+    copyStats.equivalent += equiv;
+    copyStats.bytes += (unsigned long long)(after - before);
 
-          core::Rect r(x, y, x + T, y + T);
-          r = r.intersect(fbRect);
-          if (r.is_empty())
-            continue;
-
-          // Only consider blocks that intersect the damaged region.
-          if (changed->intersect(r).is_empty())
-            continue;
-
-          std::vector<uint8_t> hash = ContentHash::computeRect(pb, r);
-          CacheKey key = cacheKeyFromHash(hash);
-          uint64_t id = cacheKeyToU64(key);
-          ++blocksHashed;
-          persistentCacheStats.cacheLookups++;
-
-          if (!conn->knowsPersistentId(id) || conn->clientRequestedPersistent(id))
-            continue;
-
-          // Emit cached rect reference and subtract from remaining work.
-          const int before = conn->getOutStream()->length();
-          conn->writer()->writePersistentCachedRect(r, key);
-          const int after = conn->getOutStream()->length();
-
-          changed->assign_subtract(core::Region(r));
-          ++hits;
-          ++emitted;
-
-          // Stats: mirror tryPersistentCacheLookup accounting.
-          persistentCacheStats.cacheHits++;
-          const int equiv = 12 + r.area() * (conn->client.pf().bpp / 8);
-          persistentCacheStats.bytesSaved += (unsigned long long)(equiv - 20);
-
-          copyStats.rects++;
-          copyStats.pixels += r.area();
-          copyStats.equivalent += equiv;
-          copyStats.bytes += (unsigned long long)(after - before);
-
-          // Clear lossless-tracking for this region (cache hit is treated as lossless).
-          lossyRegion.assign_subtract(r);
-          pendingRefreshRegion.assign_subtract(r);
-        }
-      }
-    }
+    lossyRegion.assign_subtract(kr.rect);
+    pendingRefreshRegion.assign_subtract(kr.rect);
   }
 
-done:
-  const double t1 = getEpochTime();
-  const int elapsedUs = (int)((t1 - t0) * 1000000.0);
-  vlog.info("CACHESCAN emit: bbox=[%d,%d-%d,%d] scan=[%d,%d-%d,%d] tiles=%zu phases=%s hashed=%llu hit=%llu "
-            "emitted=%llu timeUs=%d",
-            bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y, scan.tl.x, scan.tl.y, scan.br.x, scan.br.y, (size_t)([]() {
-              size_t n = 0;
-              for (auto it = rfb::Server::cacheScanTileSizes.begin(); it != rfb::Server::cacheScanTileSizes.end(); ++it)
-                ++n;
-              return n;
-            }()),
-            phaseMinimal ? "minimal" : "quarter", blocksHashed, hits, emitted, elapsedUs);
+  if (cfg.logStats) {
+    vlog.info("CACHESCAN pack: blocksHashed=%llu rectsHashed=%llu blocksHit=%llu packed=%llu verified=%llu "
+              "emitted=%llu timeUs=%llu",
+              (unsigned long long)scanStats.blocksHashed, (unsigned long long)scanStats.rectsHashed,
+              (unsigned long long)scanStats.blocksHit, (unsigned long long)scanStats.packedRects,
+              (unsigned long long)scanStats.rectHitsVerified, (unsigned long long)scanStats.rectHitsEmitted,
+              (unsigned long long)scanStats.timeUs);
+  }
 }
+
 void EncodeManager::prepareEncoders(bool allowLossy) {
   enum EncoderClass solid, bitmap, bitmapRLE;
   enum EncoderClass indexed, indexedRLE, fullColour;

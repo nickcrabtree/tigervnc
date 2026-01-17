@@ -21,10 +21,10 @@
 
 #include <core/Rect.h>
 #include <core/Region.h>
+#include <functional>
 #include <rfb/CacheKey.h>
 #include <stdint.h>
 #include <vector>
-
 namespace rfb {
 
 class PixelBuffer;
@@ -63,6 +63,7 @@ struct ScanConfig {
 struct ScanStats {
   uint64_t blocksConsidered;
   uint64_t blocksHashed;
+  uint64_t rectsHashed;
   uint64_t blocksHit;
   uint64_t packedRects;
   uint64_t rectHitsVerified;
@@ -70,8 +71,8 @@ struct ScanStats {
   uint64_t timeUs;
 
   ScanStats()
-      : blocksConsidered(0), blocksHashed(0), blocksHit(0), packedRects(0), rectHitsVerified(0), rectHitsEmitted(0),
-        timeUs(0) {}
+      : blocksConsidered(0), blocksHashed(0), rectsHashed(0), blocksHit(0), packedRects(0), rectHitsVerified(0),
+        rectHitsEmitted(0), timeUs(0) {}
 };
 
 struct KeyedRect {
@@ -86,13 +87,15 @@ public:
   explicit ShiftTolerantScanner(const ScanConfig& cfg);
 
   template <typename ClientKnowsFn>
-  std::vector<KeyedRect> scanAndPack(const core::Region& /*damage*/, const PixelBuffer* /*pb*/, VolatilityMap* /*vol*/,
-                                     ClientKnowsFn /*clientKnows*/, ScanStats* /*outStats*/) {
-    // Stub implementation (Phase 0 scaffolding): no behaviour change.
-    return std::vector<KeyedRect>();
+  std::vector<KeyedRect> scanAndPack(const core::Region& damage, const PixelBuffer* pb, VolatilityMap* vol,
+                                     ClientKnowsFn clientKnows, ScanStats* outStats) {
+    std::function<bool(const CacheKey&)> fn = clientKnows;
+    return this->scanAndPackImpl(damage, pb, vol, fn, outStats);
   }
 
 private:
+  std::vector<KeyedRect> scanAndPackImpl(const core::Region& damage, const PixelBuffer* pb, VolatilityMap* vol,
+                                         const std::function<bool(const CacheKey&)>& clientKnows, ScanStats* outStats);
   ScanConfig cfg_;
 };
 
