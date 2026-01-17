@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -21,43 +21,52 @@
 // This header will define the Server interface, from which ServerMT and
 // ServerST will be derived.
 
-#ifndef __RFB_SERVER_CORE_H__
-#define __RFB_SERVER_CORE_H__
+#ifndef COMMON_RFB_SERVERCORE_H_
+#define COMMON_RFB_SERVERCORE_H_
 
 #include <core/Configuration.h>
 
 namespace rfb {
 
-  class Server {
-  public:
+class Server {
+public:
+  static core::IntParameter idleTimeout;
+  static core::IntParameter maxDisconnectionTime;
+  static core::IntParameter maxConnectionTime;
+  static core::IntParameter maxIdleTime;
+  static core::IntParameter compareFB;
+  static core::IntParameter frameRate;
+  static core::BoolParameter protocol3_3;
+  static core::BoolParameter alwaysShared;
+  static core::BoolParameter neverShared;
+  static core::BoolParameter disconnectClients;
+  static core::BoolParameter acceptKeyEvents;
+  static core::BoolParameter acceptPointerEvents;
+  static core::BoolParameter acceptCutText;
+  static core::BoolParameter sendCutText;
+  static core::BoolParameter acceptSetDesktopSize;
+  static core::BoolParameter queryConnect;
 
-    static core::IntParameter idleTimeout;
-    static core::IntParameter maxDisconnectionTime;
-    static core::IntParameter maxConnectionTime;
-    static core::IntParameter maxIdleTime;
-    static core::IntParameter compareFB;
-    static core::IntParameter frameRate;
-    static core::BoolParameter protocol3_3;
-    static core::BoolParameter alwaysShared;
-    static core::BoolParameter neverShared;
-    static core::BoolParameter disconnectClients;
-    static core::BoolParameter acceptKeyEvents;
-    static core::BoolParameter acceptPointerEvents;
-    static core::BoolParameter acceptCutText;
-    static core::BoolParameter sendCutText;
-    static core::BoolParameter acceptSetDesktopSize;
-    static core::BoolParameter queryConnect;
+  // PersistentCache parameters (cross-session, content hashes)
+  static core::BoolParameter enablePersistentCache;
+  static core::IntParameter persistentCacheMinRectSize;
 
-    // PersistentCache parameters (cross-session, content hashes)
-    static core::BoolParameter enablePersistentCache;
-    static core::IntParameter persistentCacheMinRectSize;
-    
-    // Tiling optimization (EnableBBoxCache)
-    static core::BoolParameter enableBBoxCache;
+  // Tiling optimization (EnableBBoxCache)
+  static core::BoolParameter enableBBoxCache;
 
-  };
-
+  // Shift-tolerant cache scan (server-side candidate discovery)
+  static core::BoolParameter enableShiftTolerantCacheScan;
+  static core::IntListParameter cacheScanTileSizes;
+  static core::EnumParameter cacheScanPhaseSet;
+  static core::IntParameter cacheScanBudgetUs;
+  static core::IntParameter cacheScanMaxBlocks;
+  static core::IntParameter cacheScanPadPixels;
+  static core::IntParameter cacheScanMinPackedArea;
+  static core::IntParameter cacheScanCoverageThresholdPermille;
+  static core::BoolParameter cacheScanPreferLargestFirst;
+  static core::BoolParameter cacheScanLogStats;
 };
 
-#endif // __RFB_SERVER_CORE_H__
+}; // namespace rfb
 
+#endif // COMMON_RFB_SERVERCORE_H_
