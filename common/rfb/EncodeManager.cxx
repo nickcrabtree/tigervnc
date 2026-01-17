@@ -23,36 +23,36 @@
 #include <config.h>
 #endif
 
-#include <stdlib.h>
 #include <assert.h>
 #include <ctime>
-#include <sys/time.h>
+#include <stdlib.h>
 #include <string>
+#include <sys/time.h>
 
 #include <core/LogWriter.h>
 #include <core/string.h>
 
-#include <rfb/ContentHash.h>
 #include <rfb/CacheKey.h>
+#include <rfb/ContentHash.h>
 #include <rfb/Cursor.h>
 #include <rfb/EncodeManager.h>
 #include <rfb/Encoder.h>
 #include <rfb/Palette.h>
 #include <rfb/PixelBuffer.h>
 #include <rfb/SConnection.h>
-#include <rfb/ServerCore.h>
 #include <rfb/SMsgWriter.h>
+#include <rfb/ServerCore.h>
 #include <rfb/UpdateTracker.h>
 #include <rfb/encodings.h>
 
 #include <rfb/cache/TilingIntegration.h>
 
-#include <rfb/RawEncoder.h>
-#include <rfb/RREEncoder.h>
 #include <rfb/HextileEncoder.h>
-#include <rfb/ZRLEEncoder.h>
+#include <rfb/RREEncoder.h>
+#include <rfb/RawEncoder.h>
 #include <rfb/TightEncoder.h>
 #include <rfb/TightJPEGEncoder.h>
+#include <rfb/ZRLEEncoder.h>
 
 // For lossy hash computation
 #include <rdr/MemInStream.h>
@@ -71,148 +71,139 @@ static const int SubRectMaxWidth = 2048;
 
 // ContentCache debug logging helpers (anonymous namespace)
 namespace {
-  // Format a rectangle as "x,y wxh"
-  inline const char* strRect(const core::Rect& r) {
-    static thread_local char buf[64];
-    snprintf(buf, sizeof(buf), "%d,%d %dx%d",
-             r.tl.x, r.tl.y, r.width(), r.height());
-    return buf;
-  }
-
-  // Format a region summary as "bbox:(x,y wxh) rects:N"
-  inline const char* strRegionSummary(const core::Region& reg) {
-    static thread_local char buf[96];
-    if (reg.is_empty()) {
-      snprintf(buf, sizeof(buf), "bbox:(empty) rects:0");
-    } else {
-      core::Rect bbox = reg.get_bounding_rect();
-      int numRects = reg.numRects();
-      snprintf(buf, sizeof(buf), "bbox:(%s) rects:%d",
-               strRect(bbox), numRects);
-    }
-    return buf;
-  }
-
-  // Format a 64-bit hash as hex
-  inline const char* hex64(uint64_t hash) {
-    static thread_local char buf[17];
-    snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)hash);
-    return buf;
-  }
-
-  // Convert a 16-byte content hash into a CacheKey (returns zero key on failure).
-  inline CacheKey cacheKeyFromHash(const std::vector<uint8_t>& hash) {
-    if (hash.size() < 16)
-      return CacheKey();
-    return CacheKey(hash.data());
-  }
-
-  // Extract the first 64 bits of a CacheKey for legacy tracking.
-  inline uint64_t cacheKeyToU64(const CacheKey& key) {
-    uint64_t v = 0;
-    memcpy(&v, key.bytes.data(), sizeof(v));
-    return v;
-  }
-
-  // Format yes/no
-  inline const char* yesNo(bool b) {
-    return b ? "yes" : "no";
-  }
-  // Canonical 32bpp/24-depth truecolour format used for native-format cache upgrades.
-  static const PixelFormat canonicalNativePF(32, 24,
-                                             false,  // little-endian buffer
-                                             true,   // trueColour
-                                             255, 255, 255,
-                                             16, 8, 0);
-
-  // Get current time as epoch.milliseconds (matches viewer log format)
-  inline double getEpochTime() {
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    return tv.tv_sec + tv.tv_usec / 1000000.0;
-  }
-
-  // Format timestamp for logging
-  inline const char* strTimestamp() {
-    static thread_local char buf[32];
-    snprintf(buf, sizeof(buf), "[%.3f]", getEpochTime());
-    return buf;
-  }
-
-  // Helper: when TIGERVNC_FB_HASH_DEBUG is set, dump the first few bytes
-  // of the canonical 32bpp little-endian representation for a rectangle
-  // together with its 64-bit cache ID. This lets us compare server/client
-  // hashing domains directly from logs.
-  inline bool isFBHashDebugEnabled() {
-    const char* env = getenv("TIGERVNC_FB_HASH_DEBUG");
-    return env && env[0] != '\0' && env[0] != '0';
-  }
-
-  inline void logFBHashDebug(const char* tag,
-                             const core::Rect& r,
-                             uint64_t cacheId,
-                             const PixelBuffer* pb) {
-    if (!isFBHashDebugEnabled() || !pb)
-      return;
-
-    int width = r.width();
-    int height = r.height();
-    if (width <= 0 || height <= 0)
-      return;
-
-    // Canonical 32bpp format (must match ContentHash::computeRect and
-    // client-side debug helpers).
-    static const PixelFormat canonicalPF(32, 24,
-                                         false,  // little-endian buffer
-                                         true,   // trueColour
-                                         255, 255, 255,
-                                         16, 8, 0);
-
-    const int bppBytes = canonicalPF.bpp / 8; // 4
-    const size_t rowBytes = static_cast<size_t>(width) * bppBytes;
-
-    // Limit to a reasonably small buffer; if the rectangle is huge we
-    // still only need the first few rows for debugging.
-    const int maxRows = 8;
-    int rows = height < maxRows ? height : maxRows;
-
-    std::vector<uint8_t> tmp;
-    try {
-      tmp.resize(static_cast<size_t>(rows) * rowBytes);
-    } catch (...) {
-      return;
-    }
-
-    try {
-      // Use getImage() in canonical format with stride=width so data is
-      // tightly packed; we only copy the top rows into our smaller buffer.
-      std::vector<uint8_t> full;
-      full.resize(static_cast<size_t>(height) * rowBytes);
-      pb->getImage(canonicalPF, full.data(), r, width);
-
-      size_t bytesToCopy = tmp.size();
-      if (bytesToCopy > full.size())
-        bytesToCopy = full.size();
-      memcpy(tmp.data(), full.data(), bytesToCopy);
-    } catch (...) {
-      return;
-    }
-
-    size_t n = tmp.size() < 32 ? tmp.size() : 32;
-    char hexBuf[32 * 2 + 1];
-    for (size_t i = 0; i < n; ++i)
-      snprintf(hexBuf + i * 2, 3, "%02x", tmp[i]);
-    hexBuf[n * 2] = '\0';
-
-    vlog.info("FBHASH %s: rect=[%d,%d-%d,%d] id=%s bytes[0:%zu]=%s",
-              tag,
-              r.tl.x, r.tl.y, r.br.x, r.br.y,
-              hex64(cacheId), n, hexBuf);
-  }
-
-  // (strContentKey helper removed: unified cache path now logs IDs via hex64
-  // directly where needed.)
+// Format a rectangle as "x,y wxh"
+inline const char* strRect(const core::Rect& r) {
+  static thread_local char buf[64];
+  snprintf(buf, sizeof(buf), "%d,%d %dx%d", r.tl.x, r.tl.y, r.width(), r.height());
+  return buf;
 }
+
+// Format a region summary as "bbox:(x,y wxh) rects:N"
+inline const char* strRegionSummary(const core::Region& reg) {
+  static thread_local char buf[96];
+  if (reg.is_empty()) {
+    snprintf(buf, sizeof(buf), "bbox:(empty) rects:0");
+  } else {
+    core::Rect bbox = reg.get_bounding_rect();
+    int numRects = reg.numRects();
+    snprintf(buf, sizeof(buf), "bbox:(%s) rects:%d", strRect(bbox), numRects);
+  }
+  return buf;
+}
+
+// Format a 64-bit hash as hex
+inline const char* hex64(uint64_t hash) {
+  static thread_local char buf[17];
+  snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)hash);
+  return buf;
+}
+
+// Convert a 16-byte content hash into a CacheKey (returns zero key on failure).
+inline CacheKey cacheKeyFromHash(const std::vector<uint8_t>& hash) {
+  if (hash.size() < 16)
+    return CacheKey();
+  return CacheKey(hash.data());
+}
+
+// Extract the first 64 bits of a CacheKey for legacy tracking.
+inline uint64_t cacheKeyToU64(const CacheKey& key) {
+  uint64_t v = 0;
+  memcpy(&v, key.bytes.data(), sizeof(v));
+  return v;
+}
+
+// Format yes/no
+inline const char* yesNo(bool b) {
+  return b ? "yes" : "no";
+}
+// Canonical 32bpp/24-depth truecolour format used for native-format cache upgrades.
+static const PixelFormat canonicalNativePF(32, 24,
+                                           false, // little-endian buffer
+                                           true,  // trueColour
+                                           255, 255, 255, 16, 8, 0);
+
+// Get current time as epoch.milliseconds (matches viewer log format)
+inline double getEpochTime() {
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  return tv.tv_sec + tv.tv_usec / 1000000.0;
+}
+
+// Format timestamp for logging
+inline const char* strTimestamp() {
+  static thread_local char buf[32];
+  snprintf(buf, sizeof(buf), "[%.3f]", getEpochTime());
+  return buf;
+}
+
+// Helper: when TIGERVNC_FB_HASH_DEBUG is set, dump the first few bytes
+// of the canonical 32bpp little-endian representation for a rectangle
+// together with its 64-bit cache ID. This lets us compare server/client
+// hashing domains directly from logs.
+inline bool isFBHashDebugEnabled() {
+  const char* env = getenv("TIGERVNC_FB_HASH_DEBUG");
+  return env && env[0] != '\0' && env[0] != '0';
+}
+
+inline void logFBHashDebug(const char* tag, const core::Rect& r, uint64_t cacheId, const PixelBuffer* pb) {
+  if (!isFBHashDebugEnabled() || !pb)
+    return;
+
+  int width = r.width();
+  int height = r.height();
+  if (width <= 0 || height <= 0)
+    return;
+
+  // Canonical 32bpp format (must match ContentHash::computeRect and
+  // client-side debug helpers).
+  static const PixelFormat canonicalPF(32, 24,
+                                       false, // little-endian buffer
+                                       true,  // trueColour
+                                       255, 255, 255, 16, 8, 0);
+
+  const int bppBytes = canonicalPF.bpp / 8; // 4
+  const size_t rowBytes = static_cast<size_t>(width) * bppBytes;
+
+  // Limit to a reasonably small buffer; if the rectangle is huge we
+  // still only need the first few rows for debugging.
+  const int maxRows = 8;
+  int rows = height < maxRows ? height : maxRows;
+
+  std::vector<uint8_t> tmp;
+  try {
+    tmp.resize(static_cast<size_t>(rows) * rowBytes);
+  } catch (...) {
+    return;
+  }
+
+  try {
+    // Use getImage() in canonical format with stride=width so data is
+    // tightly packed; we only copy the top rows into our smaller buffer.
+    std::vector<uint8_t> full;
+    full.resize(static_cast<size_t>(height) * rowBytes);
+    pb->getImage(canonicalPF, full.data(), r, width);
+
+    size_t bytesToCopy = tmp.size();
+    if (bytesToCopy > full.size())
+      bytesToCopy = full.size();
+    memcpy(tmp.data(), full.data(), bytesToCopy);
+  } catch (...) {
+    return;
+  }
+
+  size_t n = tmp.size() < 32 ? tmp.size() : 32;
+  char hexBuf[32 * 2 + 1];
+  for (size_t i = 0; i < n; ++i)
+    snprintf(hexBuf + i * 2, 3, "%02x", tmp[i]);
+  hexBuf[n * 2] = '\0';
+
+  vlog.info("FBHASH %s: rect=[%d,%d-%d,%d] id=%s bytes[0:%zu]=%s", tag, r.tl.x, r.tl.y, r.br.x, r.br.y, hex64(cacheId),
+            n, hexBuf);
+}
+
+// (strContentKey helper removed: unified cache path now logs IDs via hex64
+// directly where needed.)
+} // namespace
 
 // The size in pixels of either side of each block tested when looking
 // for solid blocks.
@@ -225,8 +216,7 @@ static const int RecentChangeTimeout = 50;
 
 namespace rfb {
 
-static const char *encoderClassName(EncoderClass klass)
-{
+static const char* encoderClassName(EncoderClass klass) {
   switch (klass) {
   case encoderRaw:
     return "Raw";
@@ -247,8 +237,7 @@ static const char *encoderClassName(EncoderClass klass)
   return "Unknown Encoder Class";
 }
 
-static const char *encoderTypeName(EncoderType type)
-{
+static const char* encoderTypeName(EncoderType type) {
   switch (type) {
   case encoderSolid:
     return "Solid";
@@ -270,8 +259,7 @@ static const char *encoderTypeName(EncoderType type)
 }
 
 // Enable extra ContentCache/encoding debug when this env var is set
-static bool isCCDebugEnabled()
-{
+static bool isCCDebugEnabled() {
   const char* env = getenv("TIGERVNC_CC_DEBUG");
   return env && env[0] != '\0' && env[0] != '0';
 }
@@ -280,16 +268,14 @@ static bool isCCDebugEnabled()
 // changing on-wire behaviour. When enabled, EncodeManager will run a
 // log-only tiling pass on large dirty regions and report what fraction
 // could have been served from cache.
-static bool isCCTilingDebugEnabled()
-{
+static bool isCCTilingDebugEnabled() {
   const char* env = getenv("TIGERVNC_CC_TILING_DEBUG");
   return env && env[0] != '\0' && env[0] != '0';
 }
 
 EncodeManager::EncodeManager(SConnection* conn_)
-  : conn(conn_), lastSentBpp(0), recentChangeTimer(this), cacheStatsTimer(this),
-    usePersistentCache(false), nativeFormatCacheSupported(false)
-{
+    : conn(conn_), lastSentBpp(0), recentChangeTimer(this), cacheStatsTimer(this), usePersistentCache(false),
+      nativeFormatCacheSupported(false) {
   StatsVector::iterator iter;
 
   if (isCCDebugEnabled()) {
@@ -310,10 +296,10 @@ EncodeManager::EncodeManager(SConnection* conn_)
   memset(&copyStats, 0, sizeof(copyStats));
   memset(&persistentCacheStats, 0, sizeof(persistentCacheStats));
   stats.resize(encoderClassMax);
-  for (iter = stats.begin();iter != stats.end();++iter) {
+  for (iter = stats.begin(); iter != stats.end(); ++iter) {
     StatsVector::value_type::iterator iter2;
     iter->resize(encoderTypeMax);
-    for (iter2 = iter->begin();iter2 != iter->end();++iter2)
+    for (iter2 = iter->begin(); iter2 != iter->end(); ++iter2)
       memset(&*iter2, 0, sizeof(EncoderStats));
   }
 
@@ -323,16 +309,14 @@ EncodeManager::EncodeManager(SConnection* conn_)
   // persistentCacheStats.
 }
 
-EncodeManager::~EncodeManager()
-{
+EncodeManager::~EncodeManager() {
   logStats();
 
   for (Encoder* encoder : encoders)
     delete encoder;
 }
 
-bool EncodeManager::isLossyEncoding(int encoding) const
-{
+bool EncodeManager::isLossyEncoding(int encoding) const {
   // This function is used for optimization hints only. The actual lossy vs
   // lossless determination happens on the client side via hash comparison:
   // - Client decodes rect and computes hash of decoded pixels
@@ -355,9 +339,7 @@ bool EncodeManager::isLossyEncoding(int encoding) const
   return false;
 }
 
-
-void EncodeManager::logStats()
-{
+void EncodeManager::logStats() {
   size_t i, j;
 
   unsigned rects;
@@ -380,17 +362,15 @@ void EncodeManager::logStats()
 
     ratio = (double)copyStats.equivalent / copyStats.bytes;
 
-    vlog.info("    %s: %s, %s", "Copies",
-              core::siPrefix(copyStats.rects, "rects").c_str(),
+    vlog.info("    %s: %s, %s", "Copies", core::siPrefix(copyStats.rects, "rects").c_str(),
               core::siPrefix(copyStats.pixels, "pixels").c_str());
-    vlog.info("    %*s  %s (1:%g ratio)",
-              (int)strlen("Copies"), "",
-              core::iecPrefix(copyStats.bytes, "B").c_str(), ratio);
+    vlog.info("    %*s  %s (1:%g ratio)", (int)strlen("Copies"), "", core::iecPrefix(copyStats.bytes, "B").c_str(),
+              ratio);
   }
 
-  for (i = 0;i < stats.size();i++) {
+  for (i = 0; i < stats.size(); i++) {
     // Did this class do anything at all?
-    for (j = 0;j < stats[i].size();j++) {
+    for (j = 0; j < stats[i].size(); j++) {
       if (stats[i][j].rects != 0)
         break;
     }
@@ -399,7 +379,7 @@ void EncodeManager::logStats()
 
     vlog.info("  %s:", encoderClassName((EncoderClass)i));
 
-    for (j = 0;j < stats[i].size();j++) {
+    for (j = 0; j < stats[i].size(); j++) {
       if (stats[i][j].rects == 0)
         continue;
 
@@ -410,22 +390,17 @@ void EncodeManager::logStats()
 
       ratio = (double)stats[i][j].equivalent / stats[i][j].bytes;
 
-      vlog.info("    %s: %s, %s", encoderTypeName((EncoderType)j),
-                core::siPrefix(stats[i][j].rects, "rects").c_str(),
+      vlog.info("    %s: %s, %s", encoderTypeName((EncoderType)j), core::siPrefix(stats[i][j].rects, "rects").c_str(),
                 core::siPrefix(stats[i][j].pixels, "pixels").c_str());
-      vlog.info("    %*s  %s (1:%g ratio)",
-                (int)strlen(encoderTypeName((EncoderType)j)), "",
+      vlog.info("    %*s  %s (1:%g ratio)", (int)strlen(encoderTypeName((EncoderType)j)), "",
                 core::iecPrefix(stats[i][j].bytes, "B").c_str(), ratio);
     }
   }
 
   ratio = (double)equivalent / bytes;
 
-  vlog.info("  Total: %s, %s",
-            core::siPrefix(rects, "rects").c_str(),
-            core::siPrefix(pixels, "pixels").c_str());
-  vlog.info("         %s (1:%g ratio)",
-            core::iecPrefix(bytes, "B").c_str(), ratio);
+  vlog.info("  Total: %s, %s", core::siPrefix(rects, "rects").c_str(), core::siPrefix(pixels, "pixels").c_str());
+  vlog.info("         %s (1:%g ratio)", core::iecPrefix(bytes, "B").c_str(), ratio);
 
   // Unified cache statistics (covers both ContentCache and PersistentCache
   // protocols on the wire). Preserve the original "Lookups: N, References
@@ -435,14 +410,10 @@ void EncodeManager::logStats()
   unsigned cacheHits = persistentCacheStats.cacheHits;
   double hitPct = cacheLookups ? (100.0 * (double)cacheHits / (double)cacheLookups) : 0.0;
 
-  vlog.info("Lookups: %u, References sent: %u (%.1f%%)",
-            cacheLookups,
-            cacheHits,
-            hitPct);
+  vlog.info("Lookups: %u, References sent: %u (%.1f%%)", cacheLookups, cacheHits, hitPct);
 }
 
-void EncodeManager::dumpDebugState(const char* outputDir)
-{
+void EncodeManager::dumpDebugState(const char* outputDir) {
   std::string filepath = std::string(outputDir) + "/server_cache_state.txt";
   FILE* f = fopen(filepath.c_str(), "w");
   if (!f) {
@@ -467,8 +438,9 @@ void EncodeManager::dumpDebugState(const char* outputDir)
   fprintf(f, "Hits: %u\n", persistentCacheStats.cacheHits);
   fprintf(f, "Misses: %u\n", persistentCacheStats.cacheMisses);
   fprintf(f, "Bytes saved: %llu\n", (unsigned long long)persistentCacheStats.bytesSaved);
-  double hitPct = persistentCacheStats.cacheLookups > 0 ?
-    (100.0 * persistentCacheStats.cacheHits / persistentCacheStats.cacheLookups) : 0.0;
+  double hitPct = persistentCacheStats.cacheLookups > 0
+                      ? (100.0 * persistentCacheStats.cacheHits / persistentCacheStats.cacheLookups)
+                      : 0.0;
   fprintf(f, "Hit rate: %.1f%%\n", hitPct);
 
   fprintf(f, "\n=== Client Known IDs (ServerHashSet) ===\n");
@@ -484,16 +456,14 @@ void EncodeManager::dumpDebugState(const char* outputDir)
   fprintf(f, "Lossy region: %s\n", strRegionSummary(lossyRegion));
   fprintf(f, "Recently changed region: %s\n", strRegionSummary(recentlyChangedRegion));
   fprintf(f, "Pending refresh region: %s\n", strRegionSummary(pendingRefreshRegion));
-  fprintf(f, "Last framebuffer rect: [%d,%d-%d,%d]\n",
-          lastFramebufferRect.tl.x, lastFramebufferRect.tl.y,
+  fprintf(f, "Last framebuffer rect: [%d,%d-%d,%d]\n", lastFramebufferRect.tl.x, lastFramebufferRect.tl.y,
           lastFramebufferRect.br.x, lastFramebufferRect.br.y);
 
   fclose(f);
   vlog.info("Server cache state dumped to: %s", filepath.c_str());
 }
 
-bool EncodeManager::supported(int encoding)
-{
+bool EncodeManager::supported(int encoding) {
   switch (encoding) {
   case encodingRaw:
   case encodingRRE:
@@ -506,13 +476,11 @@ bool EncodeManager::supported(int encoding)
   }
 }
 
-bool EncodeManager::needsLosslessRefresh(const core::Region& req)
-{
+bool EncodeManager::needsLosslessRefresh(const core::Region& req) {
   return !lossyRegion.intersect(req).is_empty();
 }
 
-int EncodeManager::getNextLosslessRefresh(const core::Region& req)
-{
+int EncodeManager::getNextLosslessRefresh(const core::Region& req) {
   // Do we have something we can send right away?
   if (!pendingRefreshRegion.intersect(req).is_empty())
     return 0;
@@ -523,21 +491,18 @@ int EncodeManager::getNextLosslessRefresh(const core::Region& req)
   return recentChangeTimer.getNextTimeout();
 }
 
-void EncodeManager::pruneLosslessRefresh(const core::Region& limits)
-{
+void EncodeManager::pruneLosslessRefresh(const core::Region& limits) {
   lossyRegion.assign_intersect(limits);
   pendingRefreshRegion.assign_intersect(limits);
 }
 
-void EncodeManager::forceRefresh(const core::Region& req)
-{
+void EncodeManager::forceRefresh(const core::Region& req) {
   lossyRegion.assign_union(req);
   if (!recentChangeTimer.isStarted())
     pendingRefreshRegion.assign_union(req);
 }
 
-void EncodeManager::forceImmediateRefresh(const core::Region& req)
-{
+void EncodeManager::forceImmediateRefresh(const core::Region& req) {
   // Force refresh without waiting for recently-changed timeout.
   // Used when pixel format upgrades to higher quality - we must
   // re-send content immediately, bypassing recent-change protection.
@@ -548,15 +513,14 @@ void EncodeManager::forceImmediateRefresh(const core::Region& req)
   recentlyChangedRegion.clear();
 }
 
-void EncodeManager::handlePixelFormatChange(int newBpp)
-{
+void EncodeManager::handlePixelFormatChange(int newBpp) {
   // When pixel format upgrades to higher quality, schedule refresh of
   // regions that were sent at reduced depth (e.g., 8bpp -> 32bpp).
   // This prevents purple corruption from displaying 8bpp content at 32bpp.
   if (newBpp >= 24 && lastSentBpp > 0 && lastSentBpp < 24) {
     if (!reducedDepthRegion.is_empty()) {
-      vlog.info("Pixel format upgrade %dbpp -> %dbpp: scheduling refresh of %s",
-                lastSentBpp, newBpp, strRegionSummary(reducedDepthRegion));
+      vlog.info("Pixel format upgrade %dbpp -> %dbpp: scheduling refresh of %s", lastSentBpp, newBpp,
+                strRegionSummary(reducedDepthRegion));
       // Add to lossyRegion for refresh
       lossyRegion.assign_union(reducedDepthRegion);
       pendingRefreshRegion.assign_union(reducedDepthRegion);
@@ -569,9 +533,7 @@ void EncodeManager::handlePixelFormatChange(int newBpp)
   lastSentBpp = newBpp;
 }
 
-void EncodeManager::writeUpdate(const UpdateInfo& ui, const PixelBuffer* pb,
-                                const RenderedCursor* renderedCursor)
-{
+void EncodeManager::writeUpdate(const UpdateInfo& ui, const PixelBuffer* pb, const RenderedCursor* renderedCursor) {
   doUpdate(true, ui.changed, ui.copied, ui.copy_delta, pb, renderedCursor);
 
   recentlyChangedRegion.assign_union(ui.changed);
@@ -580,11 +542,8 @@ void EncodeManager::writeUpdate(const UpdateInfo& ui, const PixelBuffer* pb,
     recentChangeTimer.start(RecentChangeTimeout);
 }
 
-void EncodeManager::writeLosslessRefresh(const core::Region& req,
-                                         const PixelBuffer* pb,
-                                         const RenderedCursor* renderedCursor,
-                                         size_t maxUpdateSize)
-{
+void EncodeManager::writeLosslessRefresh(const core::Region& req, const PixelBuffer* pb,
+                                         const RenderedCursor* renderedCursor, size_t maxUpdateSize) {
   core::Region refresh = getLosslessRefresh(req, maxUpdateSize);
 
   // Step 1: If the client negotiated native-format cache (-327) and we have
@@ -616,10 +575,8 @@ void EncodeManager::writeLosslessRefresh(const core::Region& req,
         Encoder* payloadEnc = encoders[activeEncoders[type]];
 
         // Emit PersistentCachedRectInit with native_format flag + canonical PF
-        uint8_t flags = 0x01;  // native_format
-        conn->writer()->writePersistentCachedRectInit(rect, cacheKey,
-                                                      payloadEnc->encoding,
-                                                      flags, &canonicalNativePF,
+        uint8_t flags = 0x01; // native_format
+        conn->writer()->writePersistentCachedRectInit(rect, cacheKey, payloadEnc->encoding, flags, &canonicalNativePF,
                                                       /*includeFlags=*/true);
         payloadEnc->writeRect(ppb, info.palette);
         conn->writer()->endRect();
@@ -646,8 +603,7 @@ void EncodeManager::writeLosslessRefresh(const core::Region& req,
   }
 }
 
-void EncodeManager::handleTimeout(core::Timer* t)
-{
+void EncodeManager::handleTimeout(core::Timer* t) {
   if (t == &recentChangeTimer) {
     // Any lossy region that wasn't recently updated can
     // now be scheduled for a refresh
@@ -660,184 +616,283 @@ void EncodeManager::handleTimeout(core::Timer* t)
   } else if (t == &cacheStatsTimer) {
     // Periodic cache statistics/logging hook kept for future use with
     // persistentCacheStats; currently a no-op beyond timer rescheduling.
-    t->repeat();  // Continue hourly logging
+    t->repeat(); // Continue hourly logging
   }
 }
 
-void EncodeManager::doUpdate(bool allowLossy, const
-                             core::Region& changed_,
-                             const core::Region& copied,
-                             const core::Point& copyDelta,
-                             const PixelBuffer* pb,
-                             const RenderedCursor* renderedCursor)
-{
-    int nRects;
-    core::Region changed, cursorRegion;
+void EncodeManager::doUpdate(bool allowLossy, const core::Region& changed_, const core::Region& copied,
+                             const core::Point& copyDelta, const PixelBuffer* pb,
+                             const RenderedCursor* renderedCursor) {
+  int nRects;
+  core::Region changed, cursorRegion;
 
-    // CC: Log update boundaries
-    vlog.info("CC doUpdate begin: changed %s, copied %s, allowLossy=%s",
-              strRegionSummary(changed_), strRegionSummary(copied), yesNo(allowLossy));
+  // CC: Log update boundaries
+  vlog.info("CC doUpdate begin: changed %s, copied %s, allowLossy=%s", strRegionSummary(changed_),
+            strRegionSummary(copied), yesNo(allowLossy));
 
-    updates++;
+  updates++;
 
-    // Check for resolution change; lastFramebufferRect is still tracked so
-    // diagnostics and future policies can react, but there is no longer a
-    // server-side ContentCache to clear.
-    if (pb != nullptr) {
-      core::Rect fbRect = pb->getRect();
-      if (fbRect != lastFramebufferRect) {
-        if (!lastFramebufferRect.is_empty()) {
-          vlog.info("Framebuffer size changed from [%d,%d-%d,%d] to [%d,%d-%d,%d]",
-                    lastFramebufferRect.tl.x, lastFramebufferRect.tl.y,
-                    lastFramebufferRect.br.x, lastFramebufferRect.br.y,
-                    fbRect.tl.x, fbRect.tl.y, fbRect.br.x, fbRect.br.y);
-        }
-        lastFramebufferRect = fbRect;
+  // Check for resolution change; lastFramebufferRect is still tracked so
+  // diagnostics and future policies can react, but there is no longer a
+  // server-side ContentCache to clear.
+  if (pb != nullptr) {
+    core::Rect fbRect = pb->getRect();
+    if (fbRect != lastFramebufferRect) {
+      if (!lastFramebufferRect.is_empty()) {
+        vlog.info("Framebuffer size changed from [%d,%d-%d,%d] to [%d,%d-%d,%d]", lastFramebufferRect.tl.x,
+                  lastFramebufferRect.tl.y, lastFramebufferRect.br.x, lastFramebufferRect.br.y, fbRect.tl.x,
+                  fbRect.tl.y, fbRect.br.x, fbRect.br.y);
       }
+      lastFramebufferRect = fbRect;
     }
+  }
 
-    prepareEncoders(allowLossy);
+  prepareEncoders(allowLossy);
 
-    // Track if this update will use lossy encoding (for seeding decisions)
-    // If allowLossy is true and client supports Tight, assume lossy until proven otherwise
-    currentEncodingIsLossy = allowLossy &&
-                             conn->client.supportsEncoding(encodingTight);
-    currentEncoding = conn->getPreferredEncoding();
+  // Track if this update will use lossy encoding (for seeding decisions)
+  // If allowLossy is true and client supports Tight, assume lossy until proven otherwise
+  currentEncodingIsLossy = allowLossy && conn->client.supportsEncoding(encodingTight);
+  currentEncoding = conn->getPreferredEncoding();
 
-    changed = changed_;
+  changed = changed_;
 
-    // Optional experimental tiling analysis (log-only). This does not
-    // change encoding behaviour; it just logs what portion of the
-    // bounding dirty region could be satisfied purely from cache based
-    // on current PersistentCache state.
-    if (isCCTilingDebugEnabled() && pb != nullptr && !changed.is_empty()) {
-      int tileSize = 128;
-      if (const char* envTile = getenv("TIGERVNC_CC_TILE_SIZE")) {
-        int v = atoi(envTile);
-        if (v > 0)
-          tileSize = v;
-      }
-      int minTiles = 4; // require at least a 2x2 region by default
-
-      // Under the unified cache engine, both pseudoEncodingContentCache and
-      // pseudoEncodingPersistentCache map to the same 64-bit ID protocol on
-      // the wire. Tiling diagnostics should therefore run whenever the
-      // client has negotiated *any* cache encoding and the server has
-      // caching enabled.
-      if (usePersistentCache &&
-          (conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
-           conn->client.supportsEncoding(pseudoEncodingContentCache))) {
-        cache::PersistentCacheQuery pq(conn);
-        cache::analyzeRegionTilingLogOnly(changed, tileSize, minTiles, pb, pq);
-      }
+  // Optional experimental tiling analysis (log-only). This does not
+  // change encoding behaviour; it just logs what portion of the
+  // bounding dirty region could be satisfied purely from cache based
+  // on current PersistentCache state.
+  if (isCCTilingDebugEnabled() && pb != nullptr && !changed.is_empty()) {
+    int tileSize = 128;
+    if (const char* envTile = getenv("TIGERVNC_CC_TILE_SIZE")) {
+      int v = atoi(envTile);
+      if (v > 0)
+        tileSize = v;
     }
+    int minTiles = 4; // require at least a 2x2 region by default
 
-    if (!conn->client.supportsEncoding(encodingCopyRect))
-      changed.assign_union(copied);
-
-    /*
-     * We need to render the cursor seperately as it has its own
-     * magical pixel buffer, so split it out from the changed region.
-     */
-    if (renderedCursor != nullptr) {
-      cursorRegion = changed.intersect(renderedCursor->getEffectiveRect());
-      changed.assign_subtract(renderedCursor->getEffectiveRect());
+    // Under the unified cache engine, both pseudoEncodingContentCache and
+    // pseudoEncodingPersistentCache map to the same 64-bit ID protocol on
+    // the wire. Tiling diagnostics should therefore run whenever the
+    // client has negotiated *any* cache encoding and the server has
+    // caching enabled.
+    if (usePersistentCache && (conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
+                               conn->client.supportsEncoding(pseudoEncodingContentCache))) {
+      cache::PersistentCacheQuery pq(conn);
+      cache::analyzeRegionTilingLogOnly(changed, tileSize, minTiles, pb, pq);
     }
+  }
 
-    if (conn->client.supportsEncoding(pseudoEncodingLastRect))
-      nRects = 0xFFFF;
-    else {
-      nRects = 0;
-      if (conn->client.supportsEncoding(encodingCopyRect))
-        nRects += copied.numRects();
-      nRects += computeNumRects(changed);
-      nRects += computeNumRects(cursorRegion);
+  // Shift-tolerant cache scan (log-only). Enable via Server::enableShiftTolerantCacheScan.
+  if (rfb::Server::enableShiftTolerantCacheScan && pb != nullptr && !changed.is_empty()) {
+    runShiftTolerantCacheScanLogOnly(changed, pb,
+                                     (conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
+                                      conn->client.supportsEncoding(pseudoEncodingContentCache)));
+  }
+
+  if (!conn->client.supportsEncoding(encodingCopyRect))
+    changed.assign_union(copied);
+
+  /*
+   * We need to render the cursor seperately as it has its own
+   * magical pixel buffer, so split it out from the changed region.
+   */
+  if (renderedCursor != nullptr) {
+    cursorRegion = changed.intersect(renderedCursor->getEffectiveRect());
+    changed.assign_subtract(renderedCursor->getEffectiveRect());
+  }
+
+  if (conn->client.supportsEncoding(pseudoEncodingLastRect))
+    nRects = 0xFFFF;
+  else {
+    nRects = 0;
+    if (conn->client.supportsEncoding(encodingCopyRect))
+      nRects += copied.numRects();
+    nRects += computeNumRects(changed);
+    nRects += computeNumRects(cursorRegion);
+  }
+
+  conn->writer()->writeFramebufferUpdateStart(nRects);
+
+  // Allow disabling CopyRect via environment for diagnostics
+  const char* disableCopyRect = getenv("TIGERVNC_DISABLE_COPYRECT");
+  if (conn->client.supportsEncoding(encodingCopyRect) && !disableCopyRect)
+    writeCopyRects(copied, copyDelta);
+
+  /*
+   * We start by searching for solid rects, which are then removed
+   * from the changed region.
+   */
+  if (conn->client.supportsEncoding(pseudoEncodingLastRect))
+    writeSolidRects(&changed, pb);
+
+  writeRects(changed, pb);
+  writeRects(cursorRegion, renderedCursor);
+
+  // Respond to any pending CachedRectInit requests for this connection
+  if (conn->client.supportsEncoding(pseudoEncodingLastRect)) {
+    std::vector<std::pair<uint64_t, core::Rect>> pend;
+    conn->drainPendingCachedInits(pend);
+    if (!pend.empty()) {
+      vlog.info("Processing %d pending CachedRectInit messages", (int)pend.size());
     }
+    for (const auto& item : pend) {
+      const uint64_t cacheId = item.first;
+      const core::Rect& r = item.second;
 
-    conn->writer()->writeFramebufferUpdateStart(nRects);
-
-    // Allow disabling CopyRect via environment for diagnostics
-    const char* disableCopyRect = getenv("TIGERVNC_DISABLE_COPYRECT");
-    if (conn->client.supportsEncoding(encodingCopyRect) && !disableCopyRect)
-      writeCopyRects(copied, copyDelta);
-
-    /*
-     * We start by searching for solid rects, which are then removed
-     * from the changed region.
-     */
-    if (conn->client.supportsEncoding(pseudoEncodingLastRect))
-      writeSolidRects(&changed, pb);
-
-    writeRects(changed, pb);
-    writeRects(cursorRegion, renderedCursor);
-
-    // Respond to any pending CachedRectInit requests for this connection
-    if (conn->client.supportsEncoding(pseudoEncodingLastRect)) {
-      std::vector<std::pair<uint64_t, core::Rect>> pend;
-      conn->drainPendingCachedInits(pend);
-      if (!pend.empty()) {
-        vlog.info("Processing %d pending CachedRectInit messages", (int)pend.size());
-      }
-      for (const auto& item : pend) {
-          const uint64_t cacheId = item.first;
-          const core::Rect& r = item.second;
-
-          // Recompute canonical CacheKey for this rect so we can emit
-          // the full 16-byte protocol key. In the common case, this
-          // matches the requested cacheId (first 64 bits).
-          std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, r);
-          CacheKey cacheKey = cacheKeyFromHash(fullHash);
-          uint64_t computedId = cacheKeyToU64(cacheKey);
-          if (cacheId != 0 && computedId != cacheId) {
-            vlog.debug("CachedRectInit requested id=%s differs from recomputed id=%s",
-                       hex64(cacheId), hex64(computedId));
-          }
-
-          // Encode this rect now and send as CachedRectInit
-          // Reuse the same selection logic as normal rectangles
-          PixelBuffer *ppb;
-          struct RectInfo info;
-          EncoderType type;
-
-          selectEncoderForRect(r, pb, ppb, &info, type);
-
-          Encoder* payloadEnc = encoders[activeEncoders[type]];
-          // Emit CachedRectInit header (cacheId + encoding)
-          conn->writer()->writePersistentCachedRectInit(r, cacheKey, payloadEnc->encoding,
-                                                        /*flags=*/0, /*pf=*/nullptr,
-                                                        /*includeFlags=*/nativeFormatCacheSupported);
-          // Prepare pixel buffer respecting native-PF usage for the payload encoder
-          if (payloadEnc->flags & EncoderUseNativePF)
-            ppb = preparePixelBuffer(r, pb, false);
-          // Write the encoded pixel payload
-          payloadEnc->writeRect(ppb, info.palette);
-          // Close the CachedRectInit rectangle
-          conn->writer()->endRect();
-          // Mark this cacheId as known to this client
-          conn->markCacheIdKnown(computedId);
-        }
+      // Recompute canonical CacheKey for this rect so we can emit
+      // the full 16-byte protocol key. In the common case, this
+      // matches the requested cacheId (first 64 bits).
+      std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, r);
+      CacheKey cacheKey = cacheKeyFromHash(fullHash);
+      uint64_t computedId = cacheKeyToU64(cacheKey);
+      if (cacheId != 0 && computedId != cacheId) {
+        vlog.debug("CachedRectInit requested id=%s differs from recomputed id=%s", hex64(cacheId), hex64(computedId));
       }
 
-    conn->writer()->writeFramebufferUpdateEnd();
+      // Encode this rect now and send as CachedRectInit
+      // Reuse the same selection logic as normal rectangles
+      PixelBuffer* ppb;
+      struct RectInfo info;
+      EncoderType type;
 
-    // Track regions sent at reduced pixel depth (< 24 bpp).
-    // These need refresh when pixel format upgrades to higher quality.
-    int currentBpp = conn->client.pf().bpp;
-    core::Region sentRegion = changed_;
-    sentRegion.assign_union(copied);
+      selectEncoderForRect(r, pb, ppb, &info, type);
 
-    if (currentBpp < 24) {
-      // Sending at reduced depth - track for later refresh
-      reducedDepthRegion.assign_union(sentRegion);
-    } else {
-      // Sending at full depth - clear from reduced depth tracking
-      reducedDepthRegion.assign_subtract(sentRegion);
+      Encoder* payloadEnc = encoders[activeEncoders[type]];
+      // Emit CachedRectInit header (cacheId + encoding)
+      conn->writer()->writePersistentCachedRectInit(r, cacheKey, payloadEnc->encoding,
+                                                    /*flags=*/0, /*pf=*/nullptr,
+                                                    /*includeFlags=*/nativeFormatCacheSupported);
+      // Prepare pixel buffer respecting native-PF usage for the payload encoder
+      if (payloadEnc->flags & EncoderUseNativePF)
+        ppb = preparePixelBuffer(r, pb, false);
+      // Write the encoded pixel payload
+      payloadEnc->writeRect(ppb, info.palette);
+      // Close the CachedRectInit rectangle
+      conn->writer()->endRect();
+      // Mark this cacheId as known to this client
+      conn->markCacheIdKnown(computedId);
     }
-    lastSentBpp = currentBpp;
+  }
+
+  conn->writer()->writeFramebufferUpdateEnd();
+
+  // Track regions sent at reduced pixel depth (< 24 bpp).
+  // These need refresh when pixel format upgrades to higher quality.
+  int currentBpp = conn->client.pf().bpp;
+  core::Region sentRegion = changed_;
+  sentRegion.assign_union(copied);
+
+  if (currentBpp < 24) {
+    // Sending at reduced depth - track for later refresh
+    reducedDepthRegion.assign_union(sentRegion);
+  } else {
+    // Sending at full depth - clear from reduced depth tracking
+    reducedDepthRegion.assign_subtract(sentRegion);
+  }
+  lastSentBpp = currentBpp;
 }
 
-void EncodeManager::prepareEncoders(bool allowLossy)
-{
+void EncodeManager::runShiftTolerantCacheScanLogOnly(const core::Region& changed, const PixelBuffer* pb,
+                                                     bool clientSupportsCache) {
+  // Log-only stage: do not alter encoding behaviour.
+  if (!rfb::Server::enableShiftTolerantCacheScan)
+    return;
+  if (!clientSupportsCache)
+    return;
+  if (!pb || changed.is_empty())
+    return;
+
+  // Budgeting knobs (microseconds and block cap).
+  const int budgetUs = rfb::Server::cacheScanBudgetUs;
+  const int maxBlocks = rfb::Server::cacheScanMaxBlocks;
+  const int pad = rfb::Server::cacheScanPadPixels;
+
+  // Phase set selection.
+  const bool phaseMinimal = (rfb::Server::cacheScanPhaseSet == "minimal");
+
+  core::Rect fbRect = pb->getRect();
+  core::Rect bbox = changed.get_bounding_rect();
+  // Expand bbox by pad to allow some translation recovery; clamp to framebuffer.
+  core::Rect scan = core::Rect(bbox.tl.x - pad, bbox.tl.y - pad, bbox.br.x + pad, bbox.br.y + pad).intersect(fbRect);
+  if (scan.is_empty())
+    return;
+
+  const double t0 = getEpochTime();
+  unsigned long long blocksHashed = 0;
+  unsigned long long blocksHit = 0;
+
+  // Iterate configured tile sizes.
+  for (auto it = rfb::Server::cacheScanTileSizes.begin(); it != rfb::Server::cacheScanTileSizes.end(); ++it) {
+    const int T = *it;
+    if (T <= 0)
+      continue;
+
+    // Phase offsets.
+    const int q = T / 4;
+    const int h = T / 2;
+    const int phases[4][2] = {
+        {0, 0},
+        {phaseMinimal ? h : q, 0},
+        {0, phaseMinimal ? h : q},
+        {phaseMinimal ? h : q, phaseMinimal ? h : q},
+    };
+    const int numPhases = phaseMinimal ? 2 : 4;
+
+    for (int pi = 0; pi < numPhases; ++pi) {
+      const int ox = phases[pi][0];
+      const int oy = phases[pi][1];
+
+      // Snap start to grid with phase.
+      int x0 = scan.tl.x - ((scan.tl.x - ox) % T);
+      int y0 = scan.tl.y - ((scan.tl.y - oy) % T);
+      if (x0 > scan.tl.x)
+        x0 -= T;
+      if (y0 > scan.tl.y)
+        y0 -= T;
+
+      for (int y = y0; y < scan.br.y; y += T) {
+        for (int x = x0; x < scan.br.x; x += T) {
+          const double now = getEpochTime();
+          const int elapsedUs = (int)((now - t0) * 1000000.0);
+          if ((budgetUs > 0 && elapsedUs >= budgetUs) || (maxBlocks > 0 && (int)blocksHashed >= maxBlocks)) {
+            goto done;
+          }
+
+          core::Rect r(x, y, x + T, y + T);
+          r = r.intersect(fbRect);
+          if (r.is_empty())
+            continue;
+
+          // Only consider blocks that intersect the damaged region.
+          if (changed.intersect(r).is_empty())
+            continue;
+
+          std::vector<uint8_t> hash = ContentHash::computeRect(pb, r);
+          CacheKey key = cacheKeyFromHash(hash);
+          uint64_t id = cacheKeyToU64(key);
+          ++blocksHashed;
+
+          // Estimate "would-be hit" if the viewer already knows this ID.
+          if (conn->knowsPersistentId(id) && !conn->clientRequestedPersistent(id))
+            ++blocksHit;
+        }
+      }
+    }
+  }
+
+done:
+  const double t1 = getEpochTime();
+  const int elapsedUs = (int)((t1 - t0) * 1000000.0);
+  vlog.info(
+      "CACHESCAN log-only: bbox=[%d,%d-%d,%d] scan=[%d,%d-%d,%d] tiles=%zu phases=%s hashed=%llu hit=%llu timeUs=%d",
+      bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y, scan.tl.x, scan.tl.y, scan.br.x, scan.br.y, (size_t)([]() {
+        size_t n = 0;
+        for (auto it = rfb::Server::cacheScanTileSizes.begin(); it != rfb::Server::cacheScanTileSizes.end(); ++it)
+          ++n;
+        return n;
+      }()),
+      phaseMinimal ? "minimal" : "quarter", blocksHashed, blocksHit, elapsedUs);
+}
+void EncodeManager::prepareEncoders(bool allowLossy) {
   enum EncoderClass solid, bitmap, bitmapRLE;
   enum EncoderClass indexed, indexedRLE, fullColour;
 
@@ -936,8 +991,7 @@ void EncodeManager::prepareEncoders(bool allowLossy)
     }
 
     // JPEG is the only encoder that can reduce things to grayscale
-    if ((conn->client.subsampling == subsampleGray) &&
-        encoders[encoderTightJPEG]->isSupported()) {
+    if ((conn->client.subsampling == subsampleGray) && encoders[encoderTightJPEG]->isSupported()) {
       solid = bitmap = bitmapRLE = encoderTightJPEG;
       indexed = indexedRLE = fullColour = encoderTightJPEG;
     }
@@ -951,7 +1005,7 @@ void EncodeManager::prepareEncoders(bool allowLossy)
   activeEncoders[encoderFullColour] = fullColour;
 
   for (iter = activeEncoders.begin(); iter != activeEncoders.end(); ++iter) {
-    Encoder *encoder;
+    Encoder* encoder;
 
     encoder = encoders[*iter];
 
@@ -959,14 +1013,12 @@ void EncodeManager::prepareEncoders(bool allowLossy)
 
     if (allowLossy) {
       encoder->setQualityLevel(conn->client.qualityLevel);
-      encoder->setFineQualityLevel(conn->client.fineQualityLevel,
-                                   conn->client.subsampling);
+      encoder->setFineQualityLevel(conn->client.fineQualityLevel, conn->client.subsampling);
     } else {
       // Lossless refresh path: ensure any encoder that supports a
       // "losslessQuality" level uses it, and disable fine-quality
       // overrides such as subsampling.
-      if (encoder->losslessQuality != -1 &&
-          conn->client.qualityLevel < encoder->losslessQuality)
+      if (encoder->losslessQuality != -1 && conn->client.qualityLevel < encoder->losslessQuality)
         encoder->setQualityLevel(encoder->losslessQuality);
       else
         encoder->setQualityLevel(conn->client.qualityLevel);
@@ -975,9 +1027,7 @@ void EncodeManager::prepareEncoders(bool allowLossy)
   }
 }
 
-core::Region EncodeManager::getLosslessRefresh(const core::Region& req,
-                                               size_t maxUpdateSize)
-{
+core::Region EncodeManager::getLosslessRefresh(const core::Region& req, size_t maxUpdateSize) {
   std::vector<core::Rect> rects;
   core::Region refresh;
   size_t area;
@@ -1028,8 +1078,7 @@ core::Region EncodeManager::getLosslessRefresh(const core::Region& req,
   return refresh;
 }
 
-int EncodeManager::computeNumRects(const core::Region& changed)
-{
+int EncodeManager::computeNumRects(const core::Region& changed) {
   int numRects;
   std::vector<core::Rect> rects;
   std::vector<core::Rect>::const_iterator rect;
@@ -1043,7 +1092,7 @@ int EncodeManager::computeNumRects(const core::Region& changed)
     h = rect->height();
 
     // No split necessary?
-    if (((w*h) < SubRectMaxArea) && (w < SubRectMaxWidth)) {
+    if (((w * h) < SubRectMaxArea) && (w < SubRectMaxWidth)) {
       numRects += 1;
       continue;
     }
@@ -1056,15 +1105,14 @@ int EncodeManager::computeNumRects(const core::Region& changed)
     sh = SubRectMaxArea / sw;
 
     // ceil(w/sw) * ceil(h/sh)
-    numRects += (((w - 1)/sw) + 1) * (((h - 1)/sh) + 1);
+    numRects += (((w - 1) / sw) + 1) * (((h - 1) / sh) + 1);
   }
 
   return numRects;
 }
 
-Encoder* EncodeManager::startRect(const core::Rect& rect, int type)
-{
-  Encoder *encoder;
+Encoder* EncodeManager::startRect(const core::Rect& rect, int type) {
+  Encoder* encoder;
   int klass, equiv;
 
   activeType = type;
@@ -1074,7 +1122,7 @@ Encoder* EncodeManager::startRect(const core::Rect& rect, int type)
 
   stats[klass][activeType].rects++;
   stats[klass][activeType].pixels += rect.area();
-  equiv = 12 + rect.area() * (conn->client.pf().bpp/8);
+  equiv = 12 + rect.area() * (conn->client.pf().bpp / 8);
   stats[klass][activeType].equivalent += equiv;
 
   encoder = encoders[klass];
@@ -1092,8 +1140,7 @@ Encoder* EncodeManager::startRect(const core::Rect& rect, int type)
   // - Instead, we handle 8bpp via the cache path: skip lossy cache references
   //   when pixel format is now full quality (see tryPersistentCacheLookup)
   bool encoderIsLossy = (encoder->flags & EncoderLossy) &&
-                        ((encoder->losslessQuality == -1) ||
-                         (encoder->getQualityLevel() < encoder->losslessQuality));
+                        ((encoder->losslessQuality == -1) || (encoder->getQualityLevel() < encoder->losslessQuality));
 
   if (encoderIsLossy)
     lossyRegion.assign_union(rect);
@@ -1107,8 +1154,7 @@ Encoder* EncodeManager::startRect(const core::Rect& rect, int type)
   return encoder;
 }
 
-void EncodeManager::endRect()
-{
+void EncodeManager::endRect() {
   int klass;
   int length;
 
@@ -1120,9 +1166,7 @@ void EncodeManager::endRect()
   stats[klass][activeType].bytes += length;
 }
 
-void EncodeManager::writeCopyRects(const core::Region& copied,
-                                   const core::Point& delta)
-{
+void EncodeManager::writeCopyRects(const core::Region& copied, const core::Point& delta) {
   std::vector<core::Rect> rects;
   std::vector<core::Rect>::const_iterator rect;
 
@@ -1136,11 +1180,10 @@ void EncodeManager::writeCopyRects(const core::Region& copied,
 
     copyStats.rects++;
     copyStats.pixels += rect->area();
-    equiv = 12 + rect->area() * (conn->client.pf().bpp/8);
+    equiv = 12 + rect->area() * (conn->client.pf().bpp / 8);
     copyStats.equivalent += equiv;
 
-    conn->writer()->writeCopyRect(*rect, rect->tl.x - delta.x,
-                                   rect->tl.y - delta.y);
+    conn->writer()->writeCopyRect(*rect, rect->tl.x - delta.x, rect->tl.y - delta.y);
   }
 
   copyStats.bytes += conn->getOutStream()->length() - beforeLength;
@@ -1155,9 +1198,7 @@ void EncodeManager::writeCopyRects(const core::Region& copied,
   pendingRefreshRegion.assign_subtract(copied);
 }
 
-void EncodeManager::writeSolidRects(core::Region* changed,
-                                    const PixelBuffer* pb)
-{
+void EncodeManager::writeSolidRects(core::Region* changed, const PixelBuffer* pb) {
   std::vector<core::Rect> rects;
   std::vector<core::Rect>::const_iterator rect;
 
@@ -1166,10 +1207,7 @@ void EncodeManager::writeSolidRects(core::Region* changed,
     findSolidRect(*rect, changed, pb);
 }
 
-void EncodeManager::findSolidRect(const core::Rect& rect,
-                                  core::Region* changed,
-                                  const PixelBuffer* pb)
-{
+void EncodeManager::findSolidRect(const core::Rect& rect, core::Region* changed, const PixelBuffer* pb) {
   core::Rect sr;
   int dx, dy, dw, dh;
 
@@ -1189,13 +1227,13 @@ void EncodeManager::findSolidRect(const core::Rect& rect,
       if (dx + dw > rect.br.x)
         dw = rect.br.x - dx;
 
-      pb->getImage(colourValue, {dx, dy, dx+1, dy+1});
+      pb->getImage(colourValue, {dx, dy, dx + 1, dy + 1});
 
       sr.setXYWH(dx, dy, dw, dh);
       if (checkSolidTile(sr, colourValue, pb)) {
         core::Rect erb, erp;
 
-        Encoder *encoder;
+        Encoder* encoder;
 
         // We then try extending the area by adding more blocks
         // in both directions and pick the combination that gives
@@ -1219,17 +1257,14 @@ void EncodeManager::findSolidRect(const core::Rect& rect,
         // Send solid-color rectangle.
         encoder = startRect(erp, encoderSolid);
         if (encoder->flags & EncoderUseNativePF) {
-          encoder->writeSolidRect(erp.width(), erp.height(),
-                                  pb->getPF(), colourValue);
+          encoder->writeSolidRect(erp.width(), erp.height(), pb->getPF(), colourValue);
         } else {
           uint32_t _buffer2;
           uint8_t* converted = (uint8_t*)&_buffer2;
 
-          conn->client.pf().bufferFromBuffer(converted, pb->getPF(),
-                                         colourValue, 1);
+          conn->client.pf().bufferFromBuffer(converted, pb->getPF(), colourValue, 1);
 
-          encoder->writeSolidRect(erp.width(), erp.height(),
-                                  conn->client.pf(), converted);
+          encoder->writeSolidRect(erp.width(), erp.height(), conn->client.pf(), converted);
         }
         endRect();
 
@@ -1241,8 +1276,7 @@ void EncodeManager::findSolidRect(const core::Rect& rect,
         // Left? (Note that we've already searched a SolidSearchBlock
         //        pixels high strip here)
         if ((erp.tl.x != rect.tl.x) && (erp.height() > SolidSearchBlock)) {
-          sr.setXYWH(rect.tl.x, erp.tl.y + SolidSearchBlock,
-                     erp.tl.x - rect.tl.x, erp.height() - SolidSearchBlock);
+          sr.setXYWH(rect.tl.x, erp.tl.y + SolidSearchBlock, erp.tl.x - rect.tl.x, erp.height() - SolidSearchBlock);
           findSolidRect(sr, changed, pb);
         }
 
@@ -1269,9 +1303,7 @@ void EncodeManager::findSolidRect(const core::Rect& rect,
 // Set higher than the subrect split threshold to only catch "large" rects.
 static const int WholeRectCacheMinArea = 10000;
 
-void EncodeManager::writeRects(const core::Region& changed,
-                               const PixelBuffer* pb)
-{
+void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* pb) {
   std::vector<core::Rect> rects;
   std::vector<core::Rect>::const_iterator rect;
 
@@ -1282,9 +1314,8 @@ void EncodeManager::writeRects(const core::Region& changed,
   // Unified cache protocol: we may see either the PersistentCache pseudo-encoding
   // (-321) or the legacy ContentCache pseudo-encoding (-320). In this fork they
   // both map to the same 64-bit ID wire format; the difference is viewer policy.
-  bool clientSupportsCache =
-    conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
-    conn->client.supportsEncoding(pseudoEncodingContentCache);
+  bool clientSupportsCache = conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
+                             conn->client.supportsEncoding(pseudoEncodingContentCache);
 
   // Work on a mutable copy of the damage so cache hits can remove regions that
   // are fully satisfied by references while still allowing other dirty areas in
@@ -1295,14 +1326,10 @@ void EncodeManager::writeRects(const core::Region& changed,
   // damage bounding box intersects y in ~[20,100), log a concise summary
   // of this update, including whether the client supports cache.
   core::Rect damageBbox = changed.get_bounding_rect();
-  bool topBandUpdate = !damageBbox.is_empty() &&
-                       damageBbox.tl.y < 100 && damageBbox.br.y > 20;
+  bool topBandUpdate = !damageBbox.is_empty() && damageBbox.tl.y < 100 && damageBbox.br.y > 20;
   if (topBandUpdate) {
-    vlog.info("PCSRV TOPBAND_UPDATE: conn=%p supportsCache=%s bbox=[%d,%d-%d,%d]",
-              (void*)conn,
-              yesNo(clientSupportsCache),
-              damageBbox.tl.x, damageBbox.tl.y,
-              damageBbox.br.x, damageBbox.br.y);
+    vlog.info("PCSRV TOPBAND_UPDATE: conn=%p supportsCache=%s bbox=[%d,%d-%d,%d]", (void*)conn,
+              yesNo(clientSupportsCache), damageBbox.tl.x, damageBbox.tl.y, damageBbox.br.x, damageBbox.br.y);
   }
 
   // TILING ENHANCEMENT: Before processing individual damage rects, detect
@@ -1320,13 +1347,12 @@ void EncodeManager::writeRects(const core::Region& changed,
   // 1. Client supports cache
   // 2. The damage region is large enough to potentially be a content area change
   // (Note: We always try detection to seed the perceptual hash index on first pass)
-  bool shouldDetectBorderedRegions = clientSupportsCache &&
-                                      !changed.is_empty() &&
-                                      changed.get_bounding_rect().area() > 10000;
+  bool shouldDetectBorderedRegions =
+      clientSupportsCache && !changed.is_empty() && changed.get_bounding_rect().area() > 10000;
 
   if (shouldDetectBorderedRegions) {
-    vlog.info("BORDERED: Attempting detection on %dx%d framebuffer (damage bbox area=%d)",
-              pb->width(), pb->height(), damageBbox.area());
+    vlog.info("BORDERED: Attempting detection on %dx%d framebuffer (damage bbox area=%d)", pb->width(), pb->height(),
+              damageBbox.area());
 
     // Detect bordered regions in the full framebuffer
     borderedRegions = ContentHash::detectBorderedRegions(pb, 5, 50000);
@@ -1334,10 +1360,8 @@ void EncodeManager::writeRects(const core::Region& changed,
     if (!borderedRegions.empty()) {
       vlog.info("BORDERED: Detected %d bordered regions", (int)borderedRegions.size());
       for (const auto& r : borderedRegions) {
-        vlog.info("BORDERED:   Region [%d,%d-%d,%d] border=%d/%d/%d/%d",
-                  r.contentRect.tl.x, r.contentRect.tl.y,
-                  r.contentRect.br.x, r.contentRect.br.y,
-                  r.borderTop, r.borderBottom, r.borderLeft, r.borderRight);
+        vlog.info("BORDERED:   Region [%d,%d-%d,%d] border=%d/%d/%d/%d", r.contentRect.tl.x, r.contentRect.tl.y,
+                  r.contentRect.br.x, r.contentRect.br.y, r.borderTop, r.borderBottom, r.borderLeft, r.borderRight);
       }
     } else {
       vlog.info("BORDERED: No regions detected (minBorder=5, minArea=50000)");
@@ -1374,14 +1398,12 @@ void EncodeManager::writeRects(const core::Region& changed,
           uint32_t tlPixel = 0, trPixel = 0, cPixel = 0, blPixel = 0;
           if (bpp == 4) {
             tlPixel = *(uint32_t*)(buf);
-            trPixel = *(uint32_t*)(buf + (w-1)*bpp);
-            cPixel = *(uint32_t*)(buf + (h/2)*stride*bpp + (w/2)*bpp);
-            blPixel = *(uint32_t*)(buf + (h-1)*stride*bpp);
+            trPixel = *(uint32_t*)(buf + (w - 1) * bpp);
+            cPixel = *(uint32_t*)(buf + (h / 2) * stride * bpp + (w / 2) * bpp);
+            blPixel = *(uint32_t*)(buf + (h - 1) * stride * bpp);
           }
           vlog.info("%s BORDERED: Hash debug [%d,%d-%d,%d] id=%s pixels: TL=%08x TR=%08x C=%08x BL=%08x",
-                    strTimestamp(),
-                    contentRect.tl.x, contentRect.tl.y,
-                    contentRect.br.x, contentRect.br.y,
+                    strTimestamp(), contentRect.tl.x, contentRect.tl.y, contentRect.br.x, contentRect.br.y,
                     hex64(contentId), tlPixel, trPixel, cPixel, blPixel);
         }
       }
@@ -1401,16 +1423,13 @@ void EncodeManager::writeRects(const core::Region& changed,
 
       const core::Rect damageBboxInContent = damageInContent.get_bounding_rect();
       const int damageAreaInContent = damageBboxInContent.area();
-      const double coverage = static_cast<double>(damageAreaInContent) /
-                              static_cast<double>(contentArea);
+      const double coverage = static_cast<double>(damageAreaInContent) / static_cast<double>(contentArea);
 
       // For very large bordered regions with low coverage, skip cache lookup
       // to avoid potential visual corruption from hash collisions or races
       if (contentArea > WholeRectCacheMinArea && coverage < 0.5) {
         vlog.info("%s BORDERED: Skipping cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)%s",
-                  strTimestamp(),
-                  contentRect.tl.x, contentRect.tl.y,
-                  contentRect.br.x, contentRect.br.y, coverage,
+                  strTimestamp(), contentRect.tl.x, contentRect.tl.y, contentRect.br.x, contentRect.br.y, coverage,
                   alreadyKnown ? " - hash known but coverage too low" : "");
         continue;
       }
@@ -1422,7 +1441,7 @@ void EncodeManager::writeRects(const core::Region& changed,
       // connection believes the viewer can satisfy this canonical ID.
       bool clientRequested = conn->clientRequestedPersistent(contentId);
       bool hasMatch = alreadyKnown && !clientRequested;
-      uint64_t matchedId = contentId;  // Always canonical
+      uint64_t matchedId = contentId; // Always canonical
 
       // Check for lossy hash mapping (encoder-lossy cache entry)
       CacheKey lossyContentKey;
@@ -1432,11 +1451,9 @@ void EncodeManager::writeRects(const core::Region& changed,
       // skip the cache reference - client's minBpp filter would reject anyway
       bool pixelFormatIsFullQuality = (conn->client.pf().bpp >= 24);
       if (hasLossyContentMapping && pixelFormatIsFullQuality) {
-        hasMatch = false;  // Force miss, send fresh data
-        vlog.debug("BORDERED: Skipping lossy match for [%d,%d-%d,%d] - format now %dbpp",
-                   contentRect.tl.x, contentRect.tl.y,
-                   contentRect.br.x, contentRect.br.y,
-                   conn->client.pf().bpp);
+        hasMatch = false; // Force miss, send fresh data
+        vlog.debug("BORDERED: Skipping lossy match for [%d,%d-%d,%d] - format now %dbpp", contentRect.tl.x,
+                   contentRect.tl.y, contentRect.br.x, contentRect.br.y, conn->client.pf().bpp);
       }
 
       // Count this bordered-region attempt as a cache lookup.
@@ -1454,10 +1471,8 @@ void EncodeManager::writeRects(const core::Region& changed,
         conn->writer()->writePersistentCachedRect(contentRect, contentKey);
         copyStats.bytes += conn->getOutStream()->length() - beforeLength;
 
-        vlog.info("%s BORDERED: Cache HIT for content region [%d,%d-%d,%d] id=%s cov=%.3f",
-                  strTimestamp(),
-                  contentRect.tl.x, contentRect.tl.y,
-                  contentRect.br.x, contentRect.br.y, hex64(matchedId), coverage);
+        vlog.info("%s BORDERED: Cache HIT for content region [%d,%d-%d,%d] id=%s cov=%.3f", strTimestamp(),
+                  contentRect.tl.x, contentRect.tl.y, contentRect.br.x, contentRect.br.y, hex64(matchedId), coverage);
 
         conn->onCachedRectRef(matchedId, contentRect);
 
@@ -1483,11 +1498,8 @@ void EncodeManager::writeRects(const core::Region& changed,
       }
 
       // Miss - will seed after encoding
-      vlog.info("%s BORDERED: Content region [%d,%d-%d,%d] id=%s - will seed (cov=%.3f)",
-                strTimestamp(),
-                contentRect.tl.x, contentRect.tl.y,
-                contentRect.br.x, contentRect.br.y,
-                hex64(contentId), coverage);
+      vlog.info("%s BORDERED: Content region [%d,%d-%d,%d] id=%s - will seed (cov=%.3f)", strTimestamp(),
+                contentRect.tl.x, contentRect.tl.y, contentRect.br.x, contentRect.br.y, hex64(contentId), coverage);
       persistentCacheStats.cacheMisses++;
     }
   }
@@ -1516,8 +1528,7 @@ void EncodeManager::writeRects(const core::Region& changed,
       const core::Rect damageBboxForCoverage = changed.get_bounding_rect();
       const int damageArea = damageBboxForCoverage.area();
       if (damageArea > 0) {
-        const double bboxCoverage = static_cast<double>(damageArea) /
-                                    static_cast<double>(bboxArea);
+        const double bboxCoverage = static_cast<double>(damageArea) / static_cast<double>(bboxArea);
         if (bboxCoverage < 0.5) {
           attemptBboxHit = false;
           if (isCCDebugEnabled()) {
@@ -1539,7 +1550,7 @@ void EncodeManager::writeRects(const core::Region& changed,
         // Decide if we can safely send a reference for this bounding box.
         bool clientRequested = conn->clientRequestedPersistent(bboxId);
         bool hasHit = conn->knowsPersistentId(bboxId) && !clientRequested;
-        uint64_t matchedBboxId = bboxId;  // Always canonical
+        uint64_t matchedBboxId = bboxId; // Always canonical
 
         // Check for lossy hash mapping (encoder-lossy cache entry)
         CacheKey lossyBboxKeyCheck;
@@ -1550,14 +1561,13 @@ void EncodeManager::writeRects(const core::Region& changed,
         bool pixelFormatIsFullQuality = (conn->client.pf().bpp >= 24);
         if (hasLossyBboxMappingCheck && pixelFormatIsFullQuality && !hasHit) {
           // hasHit is already false in this case, but add logging
-          vlog.debug("TILING: Would skip lossy match for bbox [%d,%d-%d,%d]",
-                     bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y);
+          vlog.debug("TILING: Would skip lossy match for bbox [%d,%d-%d,%d]", bbox.tl.x, bbox.tl.y, bbox.br.x,
+                     bbox.br.y);
         }
         if (hasLossyBboxMappingCheck && pixelFormatIsFullQuality) {
-          hasHit = false;  // Force miss, send fresh data
-          vlog.debug("TILING: Skipping lossy match for bbox [%d,%d-%d,%d] - format now %dbpp",
-                     bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
-                     conn->client.pf().bpp);
+          hasHit = false; // Force miss, send fresh data
+          vlog.debug("TILING: Skipping lossy match for bbox [%d,%d-%d,%d] - format now %dbpp", bbox.tl.x, bbox.tl.y,
+                     bbox.br.x, bbox.br.y, conn->client.pf().bpp);
         }
 
         // Count this bbox attempt as a cache lookup.
@@ -1568,10 +1578,8 @@ void EncodeManager::writeRects(const core::Region& changed,
           persistentCacheStats.cacheHits++;
 
           if (bboxTopBand) {
-            vlog.info("PCSRV TOPBAND_BBOX_HIT: conn=%p bbox=[%d,%d-%d,%d] id=%s",
-                      (void*)conn,
-                      bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
-                      hex64(matchedBboxId));
+            vlog.info("PCSRV TOPBAND_BBOX_HIT: conn=%p bbox=[%d,%d-%d,%d] id=%s", (void*)conn, bbox.tl.x, bbox.tl.y,
+                      bbox.br.x, bbox.br.y, hex64(matchedBboxId));
           }
 
           int equiv = 12 + bboxArea * (conn->client.pf().bpp / 8);
@@ -1584,8 +1592,7 @@ void EncodeManager::writeRects(const core::Region& changed,
           copyStats.bytes += conn->getOutStream()->length() - beforeLength;
 
           vlog.info("TILING: Bounding-box cache HIT [%d,%d-%d,%d] id=%s (saved %d bytes, %d damage rects coalesced)",
-                    bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
-                    hex64(matchedBboxId), equiv - 20, changed.numRects());
+                    bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y, hex64(matchedBboxId), equiv - 20, changed.numRects());
 
           conn->onCachedRectRef(matchedBboxId, bbox);
 
@@ -1603,13 +1610,12 @@ void EncodeManager::writeRects(const core::Region& changed,
           if (hasLossyBboxMapping && !recentChangeTimer.isStarted()) {
             pendingRefreshRegion.assign_union(bbox);
           }
-          return;  // Entire region handled by one cache hit!
+          return; // Entire region handled by one cache hit!
         }
 
         // Bounding box not in cache - we'll seed it after encoding
-        vlog.info("TILING: Bounding-box cache MISS [%d,%d-%d,%d] id=%s - will seed after encoding %d rects",
-                  bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y,
-                  hex64(bboxId), changed.numRects());
+        vlog.info("TILING: Bounding-box cache MISS [%d,%d-%d,%d] id=%s - will seed after encoding %d rects", bbox.tl.x,
+                  bbox.tl.y, bbox.br.x, bbox.br.y, hex64(bboxId), changed.numRects());
 
         persistentCacheStats.cacheMisses++;
       }
@@ -1635,13 +1641,9 @@ void EncodeManager::writeRects(const core::Region& changed,
         // Debug: log canonical bytes for the seeding domain.
         logFBHashDebug("bboxSeed", bboxForSeeding, bboxIdForSeeding, pb);
 
-        if (!bboxForSeeding.is_empty() &&
-            bboxForSeeding.tl.y < 100 && bboxForSeeding.br.y > 20) {
-          vlog.info("PCSRV TOPBAND_BBOX_SEED: conn=%p bbox=[%d,%d-%d,%d] id=%s",
-                    (void*)conn,
-                    bboxForSeeding.tl.x, bboxForSeeding.tl.y,
-                    bboxForSeeding.br.x, bboxForSeeding.br.y,
-                    hex64(bboxIdForSeeding));
+        if (!bboxForSeeding.is_empty() && bboxForSeeding.tl.y < 100 && bboxForSeeding.br.y > 20) {
+          vlog.info("PCSRV TOPBAND_BBOX_SEED: conn=%p bbox=[%d,%d-%d,%d] id=%s", (void*)conn, bboxForSeeding.tl.x,
+                    bboxForSeeding.tl.y, bboxForSeeding.br.x, bboxForSeeding.br.y, hex64(bboxIdForSeeding));
         }
       }
     }
@@ -1656,8 +1658,8 @@ void EncodeManager::writeRects(const core::Region& changed,
     h = rect->height();
 
     // No split necessary?
-    if (((w*h) < SubRectMaxArea) && (w < SubRectMaxWidth)) {
-      vlog.debug("CC rect no-split: (%s) area=%d", strRect(*rect), w*h);
+    if (((w * h) < SubRectMaxArea) && (w < SubRectMaxWidth)) {
+      vlog.debug("CC rect no-split: (%s) area=%d", strRect(*rect), w * h);
       writeSubRect(*rect, pb);
       continue;
     }
@@ -1698,8 +1700,7 @@ void EncodeManager::writeRects(const core::Region& changed,
     conn->markPersistentIdKnown(bboxIdForSeeding);
 
     vlog.info("TILING: Seeded bounding-box hash [%d,%d-%d,%d] id=%s (client will report lossy hash if needed)",
-              bboxForSeeding.tl.x, bboxForSeeding.tl.y,
-              bboxForSeeding.br.x, bboxForSeeding.br.y,
+              bboxForSeeding.tl.x, bboxForSeeding.tl.y, bboxForSeeding.br.x, bboxForSeeding.br.y,
               hex64(bboxIdForSeeding));
   }
 
@@ -1724,27 +1725,21 @@ void EncodeManager::writeRects(const core::Region& changed,
       conn->markPersistentIdKnown(contentId);
 
       vlog.info("BORDERED: Seeded content region [%d,%d-%d,%d] id=%s (client will report lossy hash if needed)",
-                contentRect.tl.x, contentRect.tl.y,
-                contentRect.br.x, contentRect.br.y,
-                hex64(contentId));
+                contentRect.tl.x, contentRect.tl.y, contentRect.br.x, contentRect.br.y, hex64(contentId));
     }
   }
 }
 
-void EncodeManager::writeSubRect(const core::Rect& rect,
-                                 const PixelBuffer* pb)
-{
+void EncodeManager::writeSubRect(const core::Rect& rect, const PixelBuffer* pb) {
   // Cache protocol selection: Use at most one cache per connection.
   // PersistentCache (64-bit ID protocol) is the only remaining cache
   // engine on the server side; the legacy ContentCache pseudo-encoding
   // now aliases the same engine via viewer/server policy.
 
-  bool clientSupportsUnifiedCache =
-    conn->client.supportsEncoding(pseudoEncodingPersistentCache);
+  bool clientSupportsUnifiedCache = conn->client.supportsEncoding(pseudoEncodingPersistentCache);
 
   if (isCCDebugEnabled()) {
-    vlog.info("CCDBG writeSubRect: rect=%s area=%d clientCache=%s",
-              strRect(rect), rect.area(),
+    vlog.info("CCDBG writeSubRect: rect=%s area=%d clientCache=%s", strRect(rect), rect.area(),
               yesNo(clientSupportsUnifiedCache));
   }
 
@@ -1755,17 +1750,16 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
 
     bool topBandRect = (rect.tl.y < 100 && rect.br.y > 20);
     if (topBandRect) {
-      vlog.info("PCSRV TOPBAND_SUBRECT_LOOKUP: conn=%p rect=[%d,%d-%d,%d]",
-                (void*)conn,
-                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
+      vlog.info("PCSRV TOPBAND_SUBRECT_LOOKUP: conn=%p rect=[%d,%d-%d,%d]", (void*)conn, rect.tl.x, rect.tl.y,
+                rect.br.x, rect.br.y);
     }
 
     if (tryPersistentCacheLookup(rect, pb))
       return;
   }
 
-  PixelBuffer *ppb;
-  Encoder *encoder;
+  PixelBuffer* ppb;
+  Encoder* encoder;
   struct RectInfo info;
   EncoderType type;
 
@@ -1798,10 +1792,7 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
     if (payloadHash.size() >= 8) {
       memcpy(&payloadHash64, payloadHash.data(), 8);
     }
-    vlog.info("CCDBG PAYLOAD: conn=%p rect=%s enc=%d hash64=%s",
-              (void*)conn,
-              strRect(rect),
-              encoder->encoding,
+    vlog.info("CCDBG PAYLOAD: conn=%p rect=%s enc=%d hash64=%s", (void*)conn, strRect(rect), encoder->encoding,
               hex64(payloadHash64));
   }
 
@@ -1810,19 +1801,12 @@ void EncodeManager::writeSubRect(const core::Rect& rect,
   // server and client.
 
   if (isCCDebugEnabled() && inProblemRegion) {
-    vlog.info("CCDBG SERVER PATH: conn=%p rect=%s enc=%d path=%s hash64=%s",
-              (void*)conn,
-              strRect(rect),
-              encoder->encoding,
-              "NORMAL",
-              hex64(payloadHash64));
+    vlog.info("CCDBG SERVER PATH: conn=%p rect=%s enc=%d path=%s hash64=%s", (void*)conn, strRect(rect),
+              encoder->encoding, "NORMAL", hex64(payloadHash64));
   }
 }
 
-bool EncodeManager::checkSolidTile(const core::Rect& r,
-                                   const uint8_t* colourValue,
-                                   const PixelBuffer *pb)
-{
+bool EncodeManager::checkSolidTile(const core::Rect& r, const uint8_t* colourValue, const PixelBuffer* pb) {
   const uint8_t* buffer;
   int stride;
 
@@ -1830,25 +1814,16 @@ bool EncodeManager::checkSolidTile(const core::Rect& r,
 
   switch (pb->getPF().bpp) {
   case 32:
-    return checkSolidTile(r.width(), r.height(),
-                          (const uint32_t*)buffer, stride,
-                          *(const uint32_t*)colourValue);
+    return checkSolidTile(r.width(), r.height(), (const uint32_t*)buffer, stride, *(const uint32_t*)colourValue);
   case 16:
-    return checkSolidTile(r.width(), r.height(),
-                          (const uint16_t*)buffer, stride,
-                          *(const uint16_t*)colourValue);
+    return checkSolidTile(r.width(), r.height(), (const uint16_t*)buffer, stride, *(const uint16_t*)colourValue);
   default:
-    return checkSolidTile(r.width(), r.height(),
-                          (const uint8_t*)buffer, stride,
-                          *(const uint8_t*)colourValue);
+    return checkSolidTile(r.width(), r.height(), (const uint8_t*)buffer, stride, *(const uint8_t*)colourValue);
   }
 }
 
-void EncodeManager::extendSolidAreaByBlock(const core::Rect& r,
-                                           const uint8_t* colourValue,
-                                           const PixelBuffer* pb,
-                                           core::Rect* er)
-{
+void EncodeManager::extendSolidAreaByBlock(const core::Rect& r, const uint8_t* colourValue, const PixelBuffer* pb,
+                                           core::Rect* er) {
   int dx, dy, dw, dh;
   int w_prev;
   core::Rect sr;
@@ -1901,12 +1876,8 @@ void EncodeManager::extendSolidAreaByBlock(const core::Rect& r,
   er->br.y = er->tl.y + h_best;
 }
 
-void EncodeManager::extendSolidAreaByPixel(const core::Rect& r,
-                                           const core::Rect& sr,
-                                           const uint8_t* colourValue,
-                                           const PixelBuffer* pb,
-                                           core::Rect* er)
-{
+void EncodeManager::extendSolidAreaByPixel(const core::Rect& r, const core::Rect& sr, const uint8_t* colourValue,
+                                           const PixelBuffer* pb, core::Rect* er) {
   int cx, cy;
   core::Rect tr;
 
@@ -1943,10 +1914,7 @@ void EncodeManager::extendSolidAreaByPixel(const core::Rect& r,
   er->br.x = cx;
 }
 
-PixelBuffer* EncodeManager::preparePixelBuffer(const core::Rect& rect,
-                                               const PixelBuffer *pb,
-                                               bool convert)
-{
+PixelBuffer* EncodeManager::preparePixelBuffer(const core::Rect& rect, const PixelBuffer* pb, bool convert) {
   const uint8_t* buffer;
   int stride;
 
@@ -1956,9 +1924,7 @@ PixelBuffer* EncodeManager::preparePixelBuffer(const core::Rect& rect,
     convertedPixelBuffer.setSize(rect.width(), rect.height());
 
     buffer = pb->getBuffer(rect, &stride);
-    convertedPixelBuffer.imageRect(pb->getPF(),
-                                   convertedPixelBuffer.getRect(),
-                                   buffer, stride);
+    convertedPixelBuffer.imageRect(pb->getPF(), convertedPixelBuffer.getRect(), buffer, stride);
 
     return &convertedPixelBuffer;
   }
@@ -1968,15 +1934,12 @@ PixelBuffer* EncodeManager::preparePixelBuffer(const core::Rect& rect,
 
   buffer = pb->getBuffer(rect, &stride);
 
-  offsetPixelBuffer.update(pb->getPF(), rect.width(), rect.height(),
-                           buffer, stride);
+  offsetPixelBuffer.update(pb->getPF(), rect.width(), rect.height(), buffer, stride);
 
   return &offsetPixelBuffer;
 }
 
-bool EncodeManager::analyseRect(const PixelBuffer *pb,
-                                struct RectInfo *info, int maxColours)
-{
+bool EncodeManager::analyseRect(const PixelBuffer* pb, struct RectInfo* info, int maxColours) {
   const uint8_t* buffer;
   int stride;
 
@@ -1984,26 +1947,16 @@ bool EncodeManager::analyseRect(const PixelBuffer *pb,
 
   switch (pb->getPF().bpp) {
   case 32:
-    return analyseRect(pb->width(), pb->height(),
-                       (const uint32_t*)buffer, stride,
-                       info, maxColours);
+    return analyseRect(pb->width(), pb->height(), (const uint32_t*)buffer, stride, info, maxColours);
   case 16:
-    return analyseRect(pb->width(), pb->height(),
-                       (const uint16_t*)buffer, stride,
-                       info, maxColours);
+    return analyseRect(pb->width(), pb->height(), (const uint16_t*)buffer, stride, info, maxColours);
   default:
-    return analyseRect(pb->width(), pb->height(),
-                       (const uint8_t*)buffer, stride,
-                       info, maxColours);
+    return analyseRect(pb->width(), pb->height(), (const uint8_t*)buffer, stride, info, maxColours);
   }
 }
 
-void EncodeManager::selectEncoderForRect(const core::Rect& rect,
-                                         const PixelBuffer* pb,
-                                         PixelBuffer*& ppb,
-                                         struct RectInfo* info,
-                                         EncoderType& type)
-{
+void EncodeManager::selectEncoderForRect(const core::Rect& rect, const PixelBuffer* pb, PixelBuffer*& ppb,
+                                         struct RectInfo* info, EncoderType& type) {
   unsigned int divisor, maxColours;
   bool useRLE;
 
@@ -2065,24 +2018,18 @@ void EncodeManager::selectEncoderForRect(const core::Rect& rect,
   }
 }
 
-void EncodeManager::OffsetPixelBuffer::update(const PixelFormat& pf,
-                                              int width, int height,
-                                              const uint8_t* data_,
-                                              int stride_)
-{
+void EncodeManager::OffsetPixelBuffer::update(const PixelFormat& pf, int width, int height, const uint8_t* data_,
+                                              int stride_) {
   format = pf;
   // Forced cast. We never write anything though, so it should be safe.
   setBuffer(width, height, (uint8_t*)data_, stride_);
 }
 
-uint8_t* EncodeManager::OffsetPixelBuffer::getBufferRW(const core::Rect& /*r*/, int* /*stride*/)
-{
+uint8_t* EncodeManager::OffsetPixelBuffer::getBufferRW(const core::Rect& /*r*/, int* /*stride*/) {
   throw std::logic_error("Invalid write attempt to OffsetPixelBuffer");
 }
 
-bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
-                                             const PixelBuffer* pb)
-{
+bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect, const PixelBuffer* pb) {
   // NOTE: The unified cache engine is now driven purely by protocol
   // negotiation (client SetEncodings) rather than a separate
   // server-side on/off switch. The VNCSConnectionST::setEncodings
@@ -2101,10 +2048,8 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   // engine, pseudoEncodingContentCache and pseudoEncodingPersistentCache
   // are handled by the same 64-bit ID path; the difference is purely
   // policy (ephemeral vs persistent) on the viewer side.
-  bool clientSupportsPersistent =
-    conn->client.supportsEncoding(pseudoEncodingPersistentCache);
-  bool clientSupportsContentCache =
-    conn->client.supportsEncoding(pseudoEncodingContentCache);
+  bool clientSupportsPersistent = conn->client.supportsEncoding(pseudoEncodingPersistentCache);
+  bool clientSupportsContentCache = conn->client.supportsEncoding(pseudoEncodingContentCache);
   if (!clientSupportsPersistent && !clientSupportsContentCache)
     return false;
 
@@ -2119,7 +2064,6 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   // Optional framebuffer hash debug: log the canonical bytes used for
   // hashing at the exact point where the server computes cacheId.
   logFBHashDebug("tryLookup", rect, cacheId, pb);
-
 
   // Check if the client knows this content via either the canonical ID or a
   // lossy ID that it reported back via PersistentCacheHashReport.
@@ -2150,8 +2094,8 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     if (conn->knowsPersistentId(lossyId)) {
       hasLossyMatch = true;
       matchedId = lossyId;
-      vlog.debug("tryLookup: Using lossy hash match id=%s (canonical=%s not available)",
-                 hex64(lossyId), hex64(cacheId));
+      vlog.debug("tryLookup: Using lossy hash match id=%s (canonical=%s not available)", hex64(lossyId),
+                 hex64(cacheId));
     }
   }
 
@@ -2161,9 +2105,8 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   // Better to fall through and send fresh high-quality data via INIT.
   bool pixelFormatIsFullQuality = (conn->client.pf().bpp >= 24);
   if (hasLossyMatch && pixelFormatIsFullQuality) {
-    vlog.debug("tryLookup: Skipping lossy match (bpp=%d) - will send fresh INIT",
-               conn->client.pf().bpp);
-    hasLossyMatch = false;  // Force fallthrough to INIT path
+    vlog.debug("tryLookup: Skipping lossy match (bpp=%d) - will send fresh INIT", conn->client.pf().bpp);
+    hasLossyMatch = false; // Force fallthrough to INIT path
   }
 
   if (hasCanonicalMatch || hasLossyMatch) {
@@ -2172,12 +2115,10 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
 
     bool topBandRect = (rect.tl.y < 100 && rect.br.y > 20);
     if (topBandRect) {
-      vlog.info("PCSRV TOPBAND_CACHE_HIT: conn=%p rect=[%d,%d-%d,%d] id=%s",
-                (void*)conn,
-                rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-                hex64(matchedId));
+      vlog.info("PCSRV TOPBAND_CACHE_HIT: conn=%p rect=[%d,%d-%d,%d] id=%s", (void*)conn, rect.tl.x, rect.tl.y,
+                rect.br.x, rect.br.y, hex64(matchedId));
     }
-    int equiv = 12 + rect.area() * (conn->client.pf().bpp/8);
+    int equiv = 12 + rect.area() * (conn->client.pf().bpp / 8);
     // PersistentCachedRect overhead now matches CachedRect: 20 bytes
     persistentCacheStats.bytesSaved += equiv - 20;
     copyStats.rects++;
@@ -2188,11 +2129,8 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     conn->writer()->writePersistentCachedRect(rect, refKey);
     copyStats.bytes += conn->getOutStream()->length() - beforeLength;
 
-    vlog.debug("PersistentCache protocol HIT: rect [%d,%d-%d,%d] id=%s saved %d bytes%s",
-               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-               hex64(matchedId),
-               equiv - 20,
-               hasLossyMatch ? " (lossy)" : "");
+    vlog.debug("PersistentCache protocol HIT: rect [%d,%d-%d,%d] id=%s saved %d bytes%s", rect.tl.x, rect.tl.y,
+               rect.br.x, rect.br.y, hex64(matchedId), equiv - 20, hasLossyMatch ? " (lossy)" : "");
 
     // Remember that this client just referenced this matchedId for this
     // rectangle so that a subsequent RequestCachedData can trigger a
@@ -2222,15 +2160,13 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
 
   bool topBandRect = (rect.tl.y < 100 && rect.br.y > 20);
   if (topBandRect) {
-    vlog.info("PCSRV TOPBAND_CACHE_INIT: conn=%p rect=[%d,%d-%d,%d] id=%s",
-              (void*)conn,
-              rect.tl.x, rect.tl.y, rect.br.x, rect.br.y,
-              hex64(cacheId));
+    vlog.info("PCSRV TOPBAND_CACHE_INIT: conn=%p rect=[%d,%d-%d,%d] id=%s", (void*)conn, rect.tl.x, rect.tl.y,
+              rect.br.x, rect.br.y, hex64(cacheId));
   }
 
   // Choose payload encoder using the shared selection logic
-  PixelBuffer *ppb;
-  Encoder *payloadEnc;
+  PixelBuffer* ppb;
+  Encoder* payloadEnc;
   struct RectInfo info;
   EncoderType type;
 
@@ -2260,8 +2196,7 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   // native_format is not used so the client can parse v2 headers reliably.
   uint8_t initFlags = 0;
   bool includeFlags = nativeFormatCacheSupported;
-  conn->writer()->writePersistentCachedRectInit(rect, cacheKey, payloadEnc->encoding,
-                                                initFlags, nullptr, includeFlags);
+  conn->writer()->writePersistentCachedRectInit(rect, cacheKey, payloadEnc->encoding, initFlags, nullptr, includeFlags);
   // Prepare pixel buffer respecting native-PF usage for the payload encoder
   if (payloadEnc->flags & EncoderUseNativePF)
     ppb = preparePixelBuffer(rect, pb, false);
@@ -2283,9 +2218,9 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
   // If encoder produced lossy output (JPEG), keep in lossyRegion for later refresh.
   // Note: pixelFormatIsLossy is NOT considered here - 8bpp content is handled
   // via the "skip lossy cache references" logic, not via lossyRegion refresh.
-  bool payloadEncoderIsLossy = (payloadEnc->flags & EncoderLossy) &&
-                               ((payloadEnc->losslessQuality == -1) ||
-                                (payloadEnc->getQualityLevel() < payloadEnc->losslessQuality));
+  bool payloadEncoderIsLossy =
+      (payloadEnc->flags & EncoderLossy) &&
+      ((payloadEnc->losslessQuality == -1) || (payloadEnc->getQualityLevel() < payloadEnc->losslessQuality));
   if (!payloadEncoderIsLossy) {
     lossyRegion.assign_subtract(rect);
   }
@@ -2296,31 +2231,25 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect,
     pendingRefreshRegion.assign_union(rect);
   }
 
-  vlog.debug("PersistentCache INIT: rect [%d,%d-%d,%d] id=%s (now known for session)",
-             rect.tl.x, rect.tl.y, rect.br.x, rect.br.y, hex64(cacheId));
+  vlog.debug("PersistentCache INIT: rect [%d,%d-%d,%d] id=%s (now known for session)", rect.tl.x, rect.tl.y, rect.br.x,
+             rect.br.y, hex64(cacheId));
   return true;
 }
 
-void EncodeManager::addClientKnownHash(uint64_t cacheId)
-{
+void EncodeManager::addClientKnownHash(uint64_t cacheId) {
   clientKnownIds_.add(cacheId);
 }
 
-void EncodeManager::removeClientKnownHash(uint64_t cacheId)
-{
+void EncodeManager::removeClientKnownHash(uint64_t cacheId) {
   clientKnownIds_.remove(cacheId);
 }
 
-bool EncodeManager::clientKnowsHash(uint64_t cacheId) const
-{
+bool EncodeManager::clientKnowsHash(uint64_t cacheId) const {
   return clientKnownIds_.has(cacheId);
 }
 
-template<class T>
-inline bool EncodeManager::checkSolidTile(int width, int height,
-                                          const T* buffer, int stride,
-                                          const T colourValue)
-{
+template <class T>
+inline bool EncodeManager::checkSolidTile(int width, int height, const T* buffer, int stride, const T colourValue) {
   int pad;
 
   pad = stride - width;
@@ -2338,11 +2267,9 @@ inline bool EncodeManager::checkSolidTile(int width, int height,
   return true;
 }
 
-template<class T>
-inline bool EncodeManager::analyseRect(int width, int height,
-                                       const T* buffer, int stride,
-                                       struct RectInfo *info, int maxColours)
-{
+template <class T>
+inline bool EncodeManager::analyseRect(int width, int height, const T* buffer, int stride, struct RectInfo* info,
+                                       int maxColours) {
   int pad;
 
   T colour;
