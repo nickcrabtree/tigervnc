@@ -115,7 +115,7 @@ repos:
         files: \.(c|cc|cpp|cxx)$
         args: ["-p", "build", "--quiet"]
         # Consider making it manual or pre-push if it’s slow:
-        # stages: [pre-push]
+        stages: [manual]
 
   - repo: local
     hooks:

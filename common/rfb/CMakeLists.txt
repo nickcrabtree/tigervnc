@@ -1,4 +1,5 @@
-add_library(rfb STATIC
+add_library(
+  rfb STATIC
   AccessRights.cxx
   Blacklist.cxx
   Congestion.cxx
@@ -57,13 +58,15 @@ add_library(rfb STATIC
   cache/BandwidthStats.cxx
   cache/CacheCoordinator.cxx
   cache/TilingAnalysis.cxx
-  cache/TilingIntegration.cxx)
+  cache/TilingIntegration.cxx
+  cache/ShiftTolerantScan.cxx
+  cache/VolatilityMap.cxx
+  cache/ScanTelemetry.cxx)
 
 target_include_directories(rfb PUBLIC ${CMAKE_SOURCE_DIR}/common)
 target_include_directories(rfb SYSTEM PUBLIC ${JPEG_INCLUDE_DIR})
 target_link_libraries(rfb core rdr network)
 target_link_libraries(rfb ${JPEG_LIBRARIES} ${PIXMAN_LIBRARIES})
-
 
 if(ENABLE_H264 AND NOT H264_LIBS STREQUAL "NONE")
   target_sources(rfb PRIVATE H264Decoder.cxx H264DecoderContext.cxx)
@@ -97,9 +100,9 @@ if(GNUTLS_FOUND)
   endif()
 endif()
 
-if (NETTLE_FOUND)
+if(NETTLE_FOUND)
   target_sources(rfb PRIVATE CSecurityDH.cxx CSecurityMSLogonII.cxx
-                 CSecurityRSAAES.cxx SSecurityRSAAES.cxx)
+                             CSecurityRSAAES.cxx SSecurityRSAAES.cxx)
   target_include_directories(rfb SYSTEM PUBLIC ${NETTLE_INCLUDE_DIRS})
   target_link_libraries(rfb ${HOGWEED_LIBRARIES} ${NETTLE_LIBRARIES})
 endif()
