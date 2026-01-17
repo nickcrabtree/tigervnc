@@ -680,14 +680,6 @@ void EncodeManager::doUpdate(bool allowLossy, const core::Region& changed_, cons
       cache::analyzeRegionTilingLogOnly(changed, tileSize, minTiles, pb, pq);
     }
   }
-
-  // Shift-tolerant cache scan (log-only). Enable via Server::enableShiftTolerantCacheScan.
-  if (rfb::Server::enableShiftTolerantCacheScan && pb != nullptr && !changed.is_empty()) {
-    runShiftTolerantCacheScanLogOnly(changed, pb,
-                                     (conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
-                                      conn->client.supportsEncoding(pseudoEncodingContentCache)));
-  }
-
   if (!conn->client.supportsEncoding(encodingCopyRect))
     changed.assign_union(copied);
 
@@ -716,6 +708,15 @@ void EncodeManager::doUpdate(bool allowLossy, const core::Region& changed_, cons
   const char* disableCopyRect = getenv("TIGERVNC_DISABLE_COPYRECT");
   if (conn->client.supportsEncoding(encodingCopyRect) && !disableCopyRect)
     writeCopyRects(copied, copyDelta);
+
+  // Shift-tolerant cache scan (emit tiles). Enabled via Server::enableShiftTolerantCacheScan.
+  // Requires pseudoEncodingLastRect so the update rect count is not fixed.
+  if (rfb::Server::enableShiftTolerantCacheScan && conn->client.supportsEncoding(pseudoEncodingLastRect) &&
+      pb != nullptr && !changed.is_empty()) {
+    const bool scanClientSupportsCache = conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
+                                         conn->client.supportsEncoding(pseudoEncodingContentCache);
+    runShiftTolerantCacheScan(&changed, pb, scanClientSupportsCache);
+  }
 
   /*
    * We start by searching for solid rects, which are then removed
@@ -791,14 +792,13 @@ void EncodeManager::doUpdate(bool allowLossy, const core::Region& changed_, cons
   lastSentBpp = currentBpp;
 }
 
-void EncodeManager::runShiftTolerantCacheScanLogOnly(const core::Region& changed, const PixelBuffer* pb,
-                                                     bool clientSupportsCache) {
-  // Log-only stage: do not alter encoding behaviour.
+void EncodeManager::runShiftTolerantCacheScan(core::Region* changed, const PixelBuffer* pb, bool clientSupportsCache) {
+  // Emit stage: may write CachedRect references and shrink *changed.
   if (!rfb::Server::enableShiftTolerantCacheScan)
     return;
   if (!clientSupportsCache)
     return;
-  if (!pb || changed.is_empty())
+  if (!pb || !changed || changed->is_empty())
     return;
 
   // Budgeting knobs (microseconds and block cap).
@@ -810,7 +810,7 @@ void EncodeManager::runShiftTolerantCacheScanLogOnly(const core::Region& changed
   const bool phaseMinimal = (rfb::Server::cacheScanPhaseSet == "minimal");
 
   core::Rect fbRect = pb->getRect();
-  core::Rect bbox = changed.get_bounding_rect();
+  core::Rect bbox = changed->get_bounding_rect();
   // Expand bbox by pad to allow some translation recovery; clamp to framebuffer.
   core::Rect scan = core::Rect(bbox.tl.x - pad, bbox.tl.y - pad, bbox.br.x + pad, bbox.br.y + pad).intersect(fbRect);
   if (scan.is_empty())
@@ -818,7 +818,8 @@ void EncodeManager::runShiftTolerantCacheScanLogOnly(const core::Region& changed
 
   const double t0 = getEpochTime();
   unsigned long long blocksHashed = 0;
-  unsigned long long blocksHit = 0;
+  unsigned long long hits = 0;
+  unsigned long long emitted = 0;
 
   // Iterate configured tile sizes.
   for (auto it = rfb::Server::cacheScanTileSizes.begin(); it != rfb::Server::cacheScanTileSizes.end(); ++it) {
@@ -863,17 +864,40 @@ void EncodeManager::runShiftTolerantCacheScanLogOnly(const core::Region& changed
             continue;
 
           // Only consider blocks that intersect the damaged region.
-          if (changed.intersect(r).is_empty())
+          if (changed->intersect(r).is_empty())
             continue;
 
           std::vector<uint8_t> hash = ContentHash::computeRect(pb, r);
           CacheKey key = cacheKeyFromHash(hash);
           uint64_t id = cacheKeyToU64(key);
           ++blocksHashed;
+          persistentCacheStats.cacheLookups++;
 
-          // Estimate "would-be hit" if the viewer already knows this ID.
-          if (conn->knowsPersistentId(id) && !conn->clientRequestedPersistent(id))
-            ++blocksHit;
+          if (!conn->knowsPersistentId(id) || conn->clientRequestedPersistent(id))
+            continue;
+
+          // Emit cached rect reference and subtract from remaining work.
+          const int before = conn->getOutStream()->length();
+          conn->writer()->writePersistentCachedRect(r, key);
+          const int after = conn->getOutStream()->length();
+
+          changed->assign_subtract(core::Region(r));
+          ++hits;
+          ++emitted;
+
+          // Stats: mirror tryPersistentCacheLookup accounting.
+          persistentCacheStats.cacheHits++;
+          const int equiv = 12 + r.area() * (conn->client.pf().bpp / 8);
+          persistentCacheStats.bytesSaved += (unsigned long long)(equiv - 20);
+
+          copyStats.rects++;
+          copyStats.pixels += r.area();
+          copyStats.equivalent += equiv;
+          copyStats.bytes += (unsigned long long)(after - before);
+
+          // Clear lossless-tracking for this region (cache hit is treated as lossless).
+          lossyRegion.assign_subtract(r);
+          pendingRefreshRegion.assign_subtract(r);
         }
       }
     }
@@ -882,15 +906,15 @@ void EncodeManager::runShiftTolerantCacheScanLogOnly(const core::Region& changed
 done:
   const double t1 = getEpochTime();
   const int elapsedUs = (int)((t1 - t0) * 1000000.0);
-  vlog.info(
-      "CACHESCAN log-only: bbox=[%d,%d-%d,%d] scan=[%d,%d-%d,%d] tiles=%zu phases=%s hashed=%llu hit=%llu timeUs=%d",
-      bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y, scan.tl.x, scan.tl.y, scan.br.x, scan.br.y, (size_t)([]() {
-        size_t n = 0;
-        for (auto it = rfb::Server::cacheScanTileSizes.begin(); it != rfb::Server::cacheScanTileSizes.end(); ++it)
-          ++n;
-        return n;
-      }()),
-      phaseMinimal ? "minimal" : "quarter", blocksHashed, blocksHit, elapsedUs);
+  vlog.info("CACHESCAN emit: bbox=[%d,%d-%d,%d] scan=[%d,%d-%d,%d] tiles=%zu phases=%s hashed=%llu hit=%llu "
+            "emitted=%llu timeUs=%d",
+            bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y, scan.tl.x, scan.tl.y, scan.br.x, scan.br.y, (size_t)([]() {
+              size_t n = 0;
+              for (auto it = rfb::Server::cacheScanTileSizes.begin(); it != rfb::Server::cacheScanTileSizes.end(); ++it)
+                ++n;
+              return n;
+            }()),
+            phaseMinimal ? "minimal" : "quarter", blocksHashed, hits, emitted, elapsedUs);
 }
 void EncodeManager::prepareEncoders(bool allowLossy) {
   enum EncoderClass solid, bitmap, bitmapRLE;

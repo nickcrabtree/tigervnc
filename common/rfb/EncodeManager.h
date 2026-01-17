@@ -131,11 +131,9 @@ protected:
 
   // Unified cache protocol support (PersistentCache-style, 64-bit IDs)
   bool tryPersistentCacheLookup(const core::Rect& rect, const PixelBuffer* pb);
-
-  // Shift-tolerant cache scan (log-only): estimate cache hit opportunities
-  // for translated/reappearing content without changing on-wire behaviour.
-  void runShiftTolerantCacheScanLogOnly(const core::Region& changed, const PixelBuffer* pb, bool clientSupportsCache);
-
+  // Shift-tolerant cache scan (emit tiles): attempt to emit cache references
+  // for translated/reappearing content and subtract emitted regions from work.
+  void runShiftTolerantCacheScan(core::Region* changed, const PixelBuffer* pb, bool clientSupportsCache);
   // Check if encoding produces lossy output
   bool isLossyEncoding(int encoding) const;
 
