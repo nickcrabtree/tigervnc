@@ -63,7 +63,7 @@ static inline CacheKey makeCacheKeyFromU64(uint64_t id) {
   return k;
 }
 
-static inline uint64_t cacheKeyFirstU64(const CacheKey &key) {
+static inline uint64_t cacheKeyFirstU64(const CacheKey& key) {
   uint64_t v = 0;
   memcpy(&v, key.bytes.data(), sizeof(v));
   return v;
@@ -73,24 +73,24 @@ namespace {
 // Lightweight view over a cache stats struct so we can share the same
 // accounting logic between ContentCache and PersistentCache.
 struct CacheStatsView {
-  unsigned *hits;
-  unsigned *lookups;
-  unsigned *misses;
-  unsigned *stores;
+  unsigned* hits;
+  unsigned* lookups;
+  unsigned* misses;
+  unsigned* stores;
 };
 
-inline void recordCacheInit(const CacheStatsView &stats) {
+inline void recordCacheInit(const CacheStatsView& stats) {
   (*stats.stores)++;
   (*stats.lookups)++;
   (*stats.misses)++;
 }
 
-inline void recordCacheHit(const CacheStatsView &stats) {
+inline void recordCacheHit(const CacheStatsView& stats) {
   (*stats.lookups)++;
   (*stats.hits)++;
 }
 
-inline void recordCacheMiss(const CacheStatsView &stats) {
+inline void recordCacheMiss(const CacheStatsView& stats) {
   (*stats.lookups)++;
   (*stats.misses)++;
 }
@@ -103,8 +103,7 @@ static uint64_t bytesFromMBClamped(uint64_t mb) {
 }
 
 #if !defined(WIN32)
-static bool getFilesystemFreeBytes(const std::string &path,
-                                   uint64_t *freeBytes) {
+static bool getFilesystemFreeBytes(const std::string& path, uint64_t* freeBytes) {
   if (!freeBytes)
     return false;
 
@@ -112,24 +111,23 @@ static bool getFilesystemFreeBytes(const std::string &path,
   if (statvfs(path.c_str(), &vfs) != 0)
     return false;
 
-  *freeBytes =
-      static_cast<uint64_t>(vfs.f_bavail) * static_cast<uint64_t>(vfs.f_frsize);
+  *freeBytes = static_cast<uint64_t>(vfs.f_bavail) * static_cast<uint64_t>(vfs.f_frsize);
   return true;
 }
 
-static uint64_t getDirectorySizeBytes(const std::string &path) {
+static uint64_t getDirectorySizeBytes(const std::string& path) {
   struct stat st;
   if (stat(path.c_str(), &st) != 0)
     return 0;
   if (!S_ISDIR(st.st_mode))
     return 0;
 
-  DIR *dir = opendir(path.c_str());
+  DIR* dir = opendir(path.c_str());
   if (!dir)
     return 0;
 
   uint64_t total = 0;
-  const struct dirent *de;
+  const struct dirent* de;
   while ((de = readdir(dir)) != nullptr) {
     if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
       continue;
@@ -154,15 +152,14 @@ static uint64_t getDirectorySizeBytes(const std::string &path) {
 
 // Optional framebuffer hash debug helper (mirrors CConnection)
 static bool isFBHashDebugEnabled() {
-  const char *env = getenv("TIGERVNC_FB_HASH_DEBUG");
+  const char* env = getenv("TIGERVNC_FB_HASH_DEBUG");
   return env && env[0] != '\0' && env[0] != '0';
 }
 
 // Dump the first few bytes of the canonical 32bpp little-endian
 // representation for a rectangle together with its 64-bit cache ID so
 // we can compare server vs client hashing domains directly in logs.
-static void logFBHashDebug(const char *tag, const core::Rect &r,
-                           uint64_t cacheId, const PixelBuffer *pb) {
+static void logFBHashDebug(const char* tag, const core::Rect& r, uint64_t cacheId, const PixelBuffer* pb) {
   if (!isFBHashDebugEnabled() || !pb)
     return;
 
@@ -209,14 +206,13 @@ static void logFBHashDebug(const char *tag, const core::Rect &r,
   }
   hexBuf[n * 2] = '\0';
 
-  vlog.debug("FBHASH %s: rect=[%d,%d-%d,%d] id=%" PRIu64 " bytes[0:%zu]=%s",
-             tag, r.tl.x, r.tl.y, r.br.x, r.br.y, cacheId, n, hexBuf);
+  vlog.debug("FBHASH %s: rect=[%d,%d-%d,%d] id=%" PRIu64 " bytes[0:%zu]=%s", tag, r.tl.x, r.tl.y, r.br.x, r.br.y,
+             cacheId, n, hexBuf);
 }
 
-DecodeManager::DecodeManager(CConnection *conn_)
-    : conn(conn_), threadException(nullptr), persistentCache(nullptr),
-      persistentHashListSent(false), persistentCacheLoadTriggered(false),
-      arcEvictionLogInitialized_(false), lastArcEvictions_(0) {
+DecodeManager::DecodeManager(CConnection* conn_)
+    : conn(conn_), threadException(nullptr), persistentCache(nullptr), persistentHashListSent(false),
+      persistentCacheLoadTriggered(false), arcEvictionLogInitialized_(false), lastArcEvictions_(0) {
   size_t cpuCount;
 
   memset(decoders, 0, sizeof(decoders));
@@ -227,22 +223,19 @@ DecodeManager::DecodeManager(CConnection *conn_)
   persistentCacheBandwidthStats = {};
   contentCacheStats_ = {}; // Cache configuration
   bool enablePersistentCache = true;
-  if (auto *p = core::Configuration::getParam("PersistentCache")) {
-    if (const auto *bp = dynamic_cast<const core::BoolParameter *>(p))
+  if (auto* p = core::Configuration::getParam("PersistentCache")) {
+    if (const auto* bp = dynamic_cast<const core::BoolParameter*>(p))
       enablePersistentCache = static_cast<bool>(*bp);
   }
   bool enableContentCache = true;
-  if (auto *p = core::Configuration::getParam("ContentCache")) {
-    if (const auto *bp = dynamic_cast<const core::BoolParameter *>(p))
+  if (auto* p = core::Configuration::getParam("ContentCache")) {
+    if (const auto* bp = dynamic_cast<const core::BoolParameter*>(p))
       enableContentCache = static_cast<bool>(*bp);
   }
 
-  vlog.info("Cache config: enablePersistentCache=%s enableContentCache=%s",
-            enablePersistentCache ? "true" : "false",
-            enableContentCache
-                ? "true"
-                : "false"); // Unified client-side cache engine: a single
-                            // GlobalClientPersistentCache
+  vlog.info("Cache config: enablePersistentCache=%s enableContentCache=%s", enablePersistentCache ? "true" : "false",
+            enableContentCache ? "true" : "false"); // Unified client-side cache engine: a single
+                                                    // GlobalClientPersistentCache
   // instance backs both PersistentCache (cross-session, optionally disk-backed)
   // and session-only ContentCache (no disk). When only ContentCache is
   // enabled (PersistentCache=0, ContentCache=1) we still create the unified
@@ -253,13 +246,13 @@ DecodeManager::DecodeManager(CConnection *conn_)
     // PersistentCache is enabled, otherwise fall back to ContentCacheSize.
     size_t pcMemSizeMB = 2048;
     if (enablePersistentCache) {
-      if (auto *v = core::Configuration::getParam("PersistentCacheSize")) {
-        if (const auto *ip = dynamic_cast<const core::IntParameter *>(v))
+      if (auto* v = core::Configuration::getParam("PersistentCacheSize")) {
+        if (const auto* ip = dynamic_cast<const core::IntParameter*>(v))
           pcMemSizeMB = static_cast<size_t>(*ip);
       }
     } else {
-      if (auto *v = core::Configuration::getParam("ContentCacheSize")) {
-        if (const auto *ip = dynamic_cast<const core::IntParameter *>(v))
+      if (auto* v = core::Configuration::getParam("ContentCacheSize")) {
+        if (const auto* ip = dynamic_cast<const core::IntParameter*>(v))
           pcMemSizeMB = static_cast<size_t>(*ip);
       }
     }
@@ -270,19 +263,17 @@ DecodeManager::DecodeManager(CConnection *conn_)
     // payloads are ever flushed to disk.
     size_t pcDiskSizeMB = 0;
     if (enablePersistentCache) {
-      if (auto *v = core::Configuration::getParam("PersistentCacheDiskSize")) {
-        if (const auto *ip = dynamic_cast<const core::IntParameter *>(v))
+      if (auto* v = core::Configuration::getParam("PersistentCacheDiskSize")) {
+        if (const auto* ip = dynamic_cast<const core::IntParameter*>(v))
           pcDiskSizeMB = static_cast<size_t>(*ip);
       }
       // Disk persistence is only enabled when the PersistentCache option
       // itself is enabled. In pure "ContentCache alias" mode we still
       // negotiate the PersistentCache protocol but keep all storage
       // memory-only.
-      persistentCacheDiskEnabled_ =
-          (pcDiskSizeMB != std::numeric_limits<size_t>::max());
-      vlog.info(
-          "Cache config: pcDiskSizeMB=%zu -> persistentCacheDiskEnabled_=%s",
-          pcDiskSizeMB, persistentCacheDiskEnabled_ ? "true" : "false");
+      persistentCacheDiskEnabled_ = (pcDiskSizeMB != std::numeric_limits<size_t>::max());
+      vlog.info("Cache config: pcDiskSizeMB=%zu -> persistentCacheDiskEnabled_=%s", pcDiskSizeMB,
+                persistentCacheDiskEnabled_ ? "true" : "false");
     } else {
       persistentCacheDiskEnabled_ = false;
       vlog.info("Cache config: PersistentCache disabled -> "
@@ -292,8 +283,8 @@ DecodeManager::DecodeManager(CConnection *conn_)
     // Shard size (default 64MB)
     size_t pcShardSizeMB = 64;
     if (enablePersistentCache) {
-      if (auto *v = core::Configuration::getParam("PersistentCacheShardSize")) {
-        if (const auto *ip = dynamic_cast<const core::IntParameter *>(v))
+      if (auto* v = core::Configuration::getParam("PersistentCacheShardSize")) {
+        if (const auto* ip = dynamic_cast<const core::IntParameter*>(v))
           pcShardSizeMB = static_cast<size_t>(*ip);
       }
     }
@@ -301,8 +292,8 @@ DecodeManager::DecodeManager(CConnection *conn_)
     // Optional override of the on-disk cache location via PersistentCachePath
     std::string pcPathOverride;
     if (enablePersistentCache) {
-      if (auto *p = core::Configuration::getParam("PersistentCachePath")) {
-        if (const auto *sp = dynamic_cast<const core::StringParameter *>(p)) {
+      if (auto* p = core::Configuration::getParam("PersistentCachePath")) {
+        if (const auto* sp = dynamic_cast<const core::StringParameter*>(p)) {
           std::string val = sp->getValueStr();
           if (!val.empty())
             pcPathOverride = val;
@@ -310,37 +301,29 @@ DecodeManager::DecodeManager(CConnection *conn_)
       }
     }
 
-    persistentCache = new GlobalClientPersistentCache(
-        pcMemSizeMB, pcDiskSizeMB, pcShardSizeMB, pcPathOverride);
+    persistentCache = new GlobalClientPersistentCache(pcMemSizeMB, pcDiskSizeMB, pcShardSizeMB, pcPathOverride);
     if (enablePersistentCache) {
       // Calculate effective disk size for logging (0 means 2x memory)
-      const size_t effectiveDiskMB =
-          (pcDiskSizeMB == 0) ? pcMemSizeMB * 2 : pcDiskSizeMB;
+      const size_t effectiveDiskMB = (pcDiskSizeMB == 0) ? pcMemSizeMB * 2 : pcDiskSizeMB;
 
-      vlog.info(
-          "Client PersistentCache v3: mem=%zuMB, disk=%zuMB, shard=%zuMB%s",
-          pcMemSizeMB, effectiveDiskMB, pcShardSizeMB,
-          pcPathOverride.empty() ? "" : " (custom path)");
+      vlog.info("Client PersistentCache v3: mem=%zuMB, disk=%zuMB, shard=%zuMB%s", pcMemSizeMB, effectiveDiskMB,
+                pcShardSizeMB, pcPathOverride.empty() ? "" : " (custom path)");
 
 #if !defined(WIN32)
       // Warn if the requested disk cache size would likely fill the
       // filesystem (taking into account that deleting the existing cache
       // would recover space). We warn but continue.
-      const std::string &cacheDir = persistentCache->getCacheDirectory();
+      const std::string& cacheDir = persistentCache->getCacheDirectory();
       uint64_t freeBytes = 0;
       uint64_t existingCacheBytes = getDirectorySizeBytes(cacheDir);
       if (getFilesystemFreeBytes(cacheDir, &freeBytes)) {
-        uint64_t requestedBytes =
-            bytesFromMBClamped(static_cast<uint64_t>(effectiveDiskMB));
+        uint64_t requestedBytes = bytesFromMBClamped(static_cast<uint64_t>(effectiveDiskMB));
         uint64_t maxReasonableBytes = freeBytes + existingCacheBytes;
-        if (requestedBytes != UINT64_MAX &&
-            requestedBytes > maxReasonableBytes) {
-          vlog.info(
-              "PersistentCacheDiskSize warning: requested=%zuMB but filesystem "
-              "has only %s free + %s current cache (cache dir %s)",
-              effectiveDiskMB, core::iecPrefix(freeBytes, "B").c_str(),
-              core::iecPrefix(existingCacheBytes, "B").c_str(),
-              cacheDir.c_str());
+        if (requestedBytes != UINT64_MAX && requestedBytes > maxReasonableBytes) {
+          vlog.info("PersistentCacheDiskSize warning: requested=%zuMB but filesystem "
+                    "has only %s free + %s current cache (cache dir %s)",
+                    effectiveDiskMB, core::iecPrefix(freeBytes, "B").c_str(),
+                    core::iecPrefix(existingCacheBytes, "B").c_str(), cacheDir.c_str());
         }
       }
 #endif
@@ -350,8 +333,7 @@ DecodeManager::DecodeManager(CConnection *conn_)
       // I/O when connecting to servers that don't support PersistentCache.
       // See triggerPersistentCacheLoad() which is called from CConnection
       // when PersistentCache is first negotiated.
-      vlog.debug(
-          "PersistentCache disk loading deferred until protocol negotiation");
+      vlog.debug("PersistentCache disk loading deferred until protocol negotiation");
     } else {
       vlog.info("Client-side ContentCache enabled (session-only) using unified "
                 "cache engine: mem=%zuMB, disk=0MB",
@@ -400,7 +382,7 @@ DecodeManager::~DecodeManager() {
     freeBuffers.pop_back();
   }
 
-  for (Decoder *decoder : decoders)
+  for (Decoder* decoder : decoders)
     delete decoder;
 
   if (persistentCache) {
@@ -408,15 +390,13 @@ DecodeManager::~DecodeManager() {
   }
 }
 
-bool DecodeManager::decodeRect(const core::Rect &r, int encoding,
-                               ModifiablePixelBuffer *pb,
-                               const ServerParams *serverOverride) {
-  Decoder *decoder;
-  rdr::MemOutStream *bufferStream;
+bool DecodeManager::decodeRect(const core::Rect& r, int encoding, ModifiablePixelBuffer* pb,
+                               const ServerParams* serverOverride) {
+  Decoder* decoder;
+  rdr::MemOutStream* bufferStream;
   int equiv;
 
-  QueueEntry
-      *entry; // Optional framebuffer hash debug: track how normal decoded rects
+  QueueEntry* entry; // Optional framebuffer hash debug: track how normal decoded rects
   // affect the problematic xterm region when ContentCache is enabled.
   core::Rect problemRegion(100, 100, 586, 443);
   core::Rect fbRect = pb ? pb->getRect() : core::Rect();
@@ -424,8 +404,7 @@ bool DecodeManager::decodeRect(const core::Rect &r, int encoding,
   uint64_t before64 = 0;
   bool haveBeforeHash = false;
   if (isFBHashDebugEnabled() && pb != nullptr && !hashRect.is_empty()) {
-    std::vector<uint8_t> beforeHash =
-        ContentHash::computeRect(static_cast<PixelBuffer *>(pb), hashRect);
+    std::vector<uint8_t> beforeHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), hashRect);
     size_t n = std::min<size_t>(8, beforeHash.size());
     for (size_t i = 0; i < n; ++i)
       before64 = (before64 << 8) | beforeHash[i];
@@ -447,20 +426,17 @@ bool DecodeManager::decodeRect(const core::Rect &r, int encoding,
     }
   }
 
-  decoder = decoders[encoding]; // Wait for an available memory buffer
-  std::unique_lock<std::mutex> lock(
-      queueMutex); // FIXME: Should we return and let other things run here?
+  decoder = decoders[encoding];                  // Wait for an available memory buffer
+  std::unique_lock<std::mutex> lock(queueMutex); // FIXME: Should we return and let other things run here?
   while (freeBuffers.empty())
-    producerCond.wait(
-        lock); // Don't pop the buffer in case we throw an exception
+    producerCond.wait(lock); // Don't pop the buffer in case we throw an exception
   // whilst reading
   bufferStream = freeBuffers.front();
 
   lock.unlock();          // First check if any thread has encountered a problem
   throwThreadException(); // Read the rect
   bufferStream->clear();
-  const ServerParams &serverParams =
-      serverOverride ? *serverOverride : conn->server;
+  const ServerParams& serverParams = serverOverride ? *serverOverride : conn->server;
 
   if (!decoder->readRect(r, conn->getInStream(), serverParams, bufferStream))
     return false;
@@ -469,10 +445,9 @@ bool DecodeManager::decodeRect(const core::Rect &r, int encoding,
   stats[encoding].bytes += 12 + bufferStream->length();
   stats[encoding].pixels += r.area();
   equiv = 12 + r.area() * (serverParams.pf().bpp / 8);
-  stats[encoding].equivalent += equiv; // Track last decoded bytes for
-                                       // CachedRectInit bandwidth calculation
-  lastDecodedRectBytes =
-      12 + bufferStream->length(); // Then try to put it on the queue
+  stats[encoding].equivalent += equiv;                // Track last decoded bytes for
+                                                      // CachedRectInit bandwidth calculation
+  lastDecodedRectBytes = 12 + bufferStream->length(); // Then try to put it on the queue
   entry = new QueueEntry;
 
   entry->active = false;
@@ -487,32 +462,27 @@ bool DecodeManager::decodeRect(const core::Rect &r, int encoding,
   }
   entry->pb = pb;
   entry->bufferStream = bufferStream;
-  decoder->getAffectedRegion(
-      r, bufferStream->data(), bufferStream->length(), *entry->server,
-      &entry->affectedRegion); // If we captured a BEFORE hash, capture AFTER
-                               // now that the decoded
+  decoder->getAffectedRegion(r, bufferStream->data(), bufferStream->length(), *entry->server,
+                             &entry->affectedRegion); // If we captured a BEFORE hash, capture AFTER
+                                                      // now that the decoded
   // rect bytes are available (workers will apply them shortly).
-  if (isFBHashDebugEnabled() && pb != nullptr && !hashRect.is_empty() &&
-      haveBeforeHash) {
-    std::vector<uint8_t> afterHash =
-        ContentHash::computeRect(static_cast<PixelBuffer *>(pb), hashRect);
+  if (isFBHashDebugEnabled() && pb != nullptr && !hashRect.is_empty() && haveBeforeHash) {
+    std::vector<uint8_t> afterHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), hashRect);
     uint64_t after64 = 0;
     size_t n2 = std::min<size_t>(8, afterHash.size());
     for (size_t i = 0; i < n2; ++i)
       after64 = (after64 << 8) | afterHash[i];
     vlog.debug("FBDBG DECODE encoding=%d rect=[%d,%d-%d,%d] "
-               "region=[%d,%d-%d,%d] before=%016" PRIx64 " after=%016" PRIx64
-               "",
-               encoding, r.tl.x, r.tl.y, r.br.x, r.br.y, hashRect.tl.x,
-               hashRect.tl.y, hashRect.br.x, hashRect.br.y, before64, after64);
+               "region=[%d,%d-%d,%d] before=%016" PRIx64 " after=%016" PRIx64 "",
+               encoding, r.tl.x, r.tl.y, r.br.x, r.br.y, hashRect.tl.x, hashRect.tl.y, hashRect.br.x, hashRect.br.y,
+               before64, after64);
   }
 
   lock.lock(); // The workers add buffers to the end so it's safe to assume
   // the front is still the same buffer
   freeBuffers.pop_front();
 
-  workQueue.push_back(
-      entry); // We only put a single entry on the queue so waking a single
+  workQueue.push_back(entry); // We only put a single entry on the queue so waking a single
   // thread is sufficient
   consumerCond.notify_one();
 
@@ -552,14 +522,10 @@ void DecodeManager::flush() {
 }
 
 void DecodeManager::triggerPersistentCacheLoad() {
-  vlog.info(
-      "triggerPersistentCacheLoad called: triggered=%s cache=%p diskEnabled=%s",
-      persistentCacheLoadTriggered ? "true" : "false",
-      reinterpret_cast<void *>(persistentCache),
-      persistentCacheDiskEnabled_
-          ? "true"
-          : "false"); // Only load once per connection, and only if disk
-                      // persistence is enabled
+  vlog.info("triggerPersistentCacheLoad called: triggered=%s cache=%p diskEnabled=%s",
+            persistentCacheLoadTriggered ? "true" : "false", reinterpret_cast<void*>(persistentCache),
+            persistentCacheDiskEnabled_ ? "true" : "false"); // Only load once per connection, and only if disk
+                                                             // persistence is enabled
   // for this connection. Ephemeral "ContentCache alias" sessions still use
   // the PersistentCache protocol on the wire but must not touch disk.
   if (persistentCacheLoadTriggered) {
@@ -568,15 +534,13 @@ void DecodeManager::triggerPersistentCacheLoad() {
   }
   if (!persistentCache || !persistentCacheDiskEnabled_) {
     vlog.info("triggerPersistentCacheLoad: skipping - cache=%p diskEnabled=%s",
-              reinterpret_cast<void *>(persistentCache),
-              persistentCacheDiskEnabled_ ? "true" : "false");
+              reinterpret_cast<void*>(persistentCache), persistentCacheDiskEnabled_ ? "true" : "false");
     return;
   }
 
-  persistentCacheLoadTriggered =
-      true; // Log the concrete cache directory and index file path so users and
+  persistentCacheLoadTriggered = true; // Log the concrete cache directory and index file path so users and
   // tests can see exactly where PersistentCache state will be read from.
-  const std::string &cacheDir = persistentCache->getCacheDirectory();
+  const std::string& cacheDir = persistentCache->getCacheDirectory();
   std::string indexPath = persistentCache->getIndexFilePath();
   vlog.info("PersistentCache: protocol negotiated, loading index from %s "
             "(directory %s)",
@@ -589,8 +553,7 @@ void DecodeManager::triggerPersistentCacheLoad() {
               "on-demand/background)",
               indexPath.c_str());
   } else {
-    vlog.debug("PersistentCache starting fresh (no index at %s or load failed)",
-               indexPath.c_str());
+    vlog.debug("PersistentCache starting fresh (no index at %s or load failed)", indexPath.c_str());
   }
 
   // After loading index, advertise our hashes to the server
@@ -626,8 +589,7 @@ void DecodeManager::advertisePersistentCacheHashes() {
   while (offset < keys.size()) {
     size_t end = std::min(offset + batchSize, keys.size());
     std::vector<CacheKey> chunk(keys.begin() + offset, keys.begin() + end);
-    conn->writer()->writePersistentHashList(sequenceId, totalChunks, chunkIndex,
-                                            chunk);
+    conn->writer()->writePersistentHashList(sequenceId, totalChunks, chunkIndex, chunk);
     offset = end;
     chunkIndex++;
   }
@@ -658,18 +620,15 @@ void DecodeManager::logStats() {
 
     ratio = static_cast<double>(stats[i].equivalent) / stats[i].bytes;
 
-    vlog.info("    %s: %s, %s", encodingName(i),
-              core::siPrefix(stats[i].rects, "rects").c_str(),
+    vlog.info("    %s: %s, %s", encodingName(i), core::siPrefix(stats[i].rects, "rects").c_str(),
               core::siPrefix(stats[i].pixels, "pixels").c_str());
-    vlog.info("    %*s  %s (1:%g ratio)",
-              static_cast<int>(strlen(encodingName(i))), "",
+    vlog.info("    %*s  %s (1:%g ratio)", static_cast<int>(strlen(encodingName(i))), "",
               core::iecPrefix(stats[i].bytes, "B").c_str(), ratio);
   }
 
   ratio = static_cast<double>(equivalent) / bytes;
 
-  vlog.info("  Total: %s, %s", core::siPrefix(rects, "rects").c_str(),
-            core::siPrefix(pixels, "pixels").c_str());
+  vlog.info("  Total: %s, %s", core::siPrefix(rects, "rects").c_str(), core::siPrefix(pixels, "pixels").c_str());
   vlog.info("         %s (1:%g ratio)", core::iecPrefix(bytes, "B").c_str(),
             ratio); // High-level cache summary: highlight real bandwidth
                     // savings for the
@@ -691,10 +650,7 @@ void DecodeManager::logStats() {
     unsigned lookups = contentCacheStats_.cache_lookups;
     unsigned hits = contentCacheStats_.cache_hits;
     unsigned misses = contentCacheStats_.cache_misses;
-    double hitRate =
-        lookups
-            ? (100.0 * static_cast<double>(hits) / static_cast<double>(lookups))
-            : 0.0;
+    double hitRate = lookups ? (100.0 * static_cast<double>(hits) / static_cast<double>(lookups)) : 0.0;
 
     vlog.info(" ");
     vlog.info("Client-side ContentCache statistics:");
@@ -707,8 +663,8 @@ void DecodeManager::logStats() {
     double fullBytesPerRect = 1000.0;
     double refBytesPerRect = 20.0;
     double bytesNoCache = fullBytesPerRect * static_cast<double>(lookups);
-    double bytesWithCache = fullBytesPerRect * static_cast<double>(misses) +
-                            refBytesPerRect * static_cast<double>(hits);
+    double bytesWithCache =
+        fullBytesPerRect * static_cast<double>(misses) + refBytesPerRect * static_cast<double>(hits);
     double reductionPct = 0.0;
     if (bytesNoCache > 0.0 && bytesWithCache < bytesNoCache) {
       reductionPct = 100.0 * (bytesNoCache - bytesWithCache) / bytesNoCache;
@@ -721,57 +677,43 @@ void DecodeManager::logStats() {
               lookups, hits, hitRate, misses, reductionPct);
   }
 
-  if (conn && conn->isPersistentCacheNegotiated() &&
-      persistentCacheBandwidthStats.alternativeBytes > 0) {
+  if (conn && conn->isPersistentCacheNegotiated() && persistentCacheBandwidthStats.alternativeBytes > 0) {
     ensureCacheSummaryHeader();
-    const auto ps =
-        persistentCacheBandwidthStats.formatSummary("PersistentCache");
+    const auto ps = persistentCacheBandwidthStats.formatSummary("PersistentCache");
     vlog.info("  %s", ps.c_str());
   }
 
   // Log client-side PersistentCache statistics only if that protocol was
   // actually negotiated for this connection.
-  if (persistentCache != nullptr && conn &&
-      conn->isPersistentCacheNegotiated()) {
+  if (persistentCache != nullptr && conn && conn->isPersistentCacheNegotiated()) {
     auto pcStats = persistentCache->getStats();
     vlog.info(" ");
     vlog.info("Client-side PersistentCache statistics:");
     vlog.info("  Protocol operations (PersistentCachedRect received):");
-    vlog.info("    Lookups: %u, Hits: %u (%.1f%%)",
-              persistentCacheStats.cache_lookups,
-              persistentCacheStats.cache_hits,
+    vlog.info("    Lookups: %u, Hits: %u (%.1f%%)", persistentCacheStats.cache_lookups, persistentCacheStats.cache_hits,
               persistentCacheStats.cache_lookups > 0
-                  ? (100.0 * persistentCacheStats.cache_hits /
-                     persistentCacheStats.cache_lookups)
+                  ? (100.0 * persistentCacheStats.cache_hits / persistentCacheStats.cache_lookups)
                   : 0.0);
-    vlog.info("    Misses: %u, Queries sent: %u",
-              persistentCacheStats.cache_misses,
-              persistentCacheStats.queries_sent);
+    vlog.info("    Misses: %u, Queries sent: %u", persistentCacheStats.cache_misses, persistentCacheStats.queries_sent);
     vlog.info("  ARC cache performance:");
     vlog.info("    Total entries: %zu, Total bytes: %s", pcStats.totalEntries,
               core::iecPrefix(pcStats.totalBytes, "B").c_str());
-    vlog.info("    Cache hits: %" PRIu64 ", Cache misses: %" PRIu64
-              ", Evictions: %" PRIu64 "",
-              pcStats.cacheHits, pcStats.cacheMisses, pcStats.evictions);
-    vlog.info("    T1 (recency): %zu entries, T2 (frequency): %zu entries",
-              pcStats.t1Size, pcStats.t2Size);
-    vlog.info("    B1 (ghost-T1): %zu entries, B2 (ghost-T2): %zu entries",
-              pcStats.b1Size, pcStats.b2Size);
+    vlog.info("    Cache hits: %" PRIu64 ", Cache misses: %" PRIu64 ", Evictions: %" PRIu64 "", pcStats.cacheHits,
+              pcStats.cacheMisses, pcStats.evictions);
+    vlog.info("    T1 (recency): %zu entries, T2 (frequency): %zu entries", pcStats.t1Size, pcStats.t2Size);
+    vlog.info("    B1 (ghost-T1): %zu entries, B2 (ghost-T2): %zu entries", pcStats.b1Size, pcStats.b2Size);
     vlog.info("    ARC parameter p (target T1 bytes): %s",
-              core::iecPrefix(pcStats.targetT1Size, "B")
-                  .c_str()); // PersistentCache bandwidth summary in detail
-                             // block as well
-    if (persistentCacheBandwidthStats.cachedRectCount ||
-        persistentCacheBandwidthStats.cachedRectInitCount) {
-      const auto ps =
-          persistentCacheBandwidthStats.formatSummary("PersistentCache");
+              core::iecPrefix(pcStats.targetT1Size, "B").c_str()); // PersistentCache bandwidth summary in detail
+                                                                   // block as well
+    if (persistentCacheBandwidthStats.cachedRectCount || persistentCacheBandwidthStats.cachedRectInitCount) {
+      const auto ps = persistentCacheBandwidthStats.formatSummary("PersistentCache");
       vlog.info("  %s", ps.c_str());
     }
 
     // Log final stats to debug file
-    PersistentCacheDebugLogger::getInstance().logStats(
-        persistentCacheStats.cache_hits, persistentCacheStats.cache_misses,
-        persistentCacheStats.stores, pcStats.totalEntries, pcStats.totalBytes);
+    PersistentCacheDebugLogger::getInstance().logStats(persistentCacheStats.cache_hits,
+                                                       persistentCacheStats.cache_misses, persistentCacheStats.stores,
+                                                       pcStats.totalEntries, pcStats.totalBytes);
   }
 
   // Ensure any accumulated PersistentCache entries are flushed to disk when
@@ -779,16 +721,13 @@ void DecodeManager::logStats() {
   // PersistentCache protocol *and* have disk persistence enabled. Pure
   // "ContentCache alias" sessions share the unified cache engine but never
   // persist entries to disk.
-  if (persistentCache != nullptr && conn &&
-      conn->isPersistentCacheNegotiated() && persistentCacheDiskEnabled_) {
-    const std::string &cacheDir = persistentCache->getCacheDirectory();
+  if (persistentCache != nullptr && conn && conn->isPersistentCacheNegotiated() && persistentCacheDiskEnabled_) {
+    const std::string& cacheDir = persistentCache->getCacheDirectory();
     std::string indexPath = persistentCache->getIndexFilePath();
     if (persistentCache->saveToDisk()) {
-      vlog.info("PersistentCache saved index to %s (directory %s)",
-                indexPath.c_str(), cacheDir.c_str());
+      vlog.info("PersistentCache saved index to %s (directory %s)", indexPath.c_str(), cacheDir.c_str());
     } else {
-      vlog.error("Failed to save PersistentCache to disk at %s (directory %s)",
-                 indexPath.c_str(), cacheDir.c_str());
+      vlog.error("Failed to save PersistentCache to disk at %s (directory %s)", indexPath.c_str(), cacheDir.c_str());
     }
   }
 }
@@ -816,7 +755,7 @@ void DecodeManager::throwThreadException() {
   }
 }
 
-DecodeManager::DecodeThread::DecodeThread(DecodeManager *manager_)
+DecodeManager::DecodeThread::DecodeThread(DecodeManager* manager_)
     : manager(manager_), thread(nullptr), stopRequested(false) {
   start();
 }
@@ -849,8 +788,7 @@ void DecodeManager::DecodeThread::worker() {
   std::unique_lock<std::mutex> lock(manager->queueMutex);
 
   while (!stopRequested) {
-    DecodeManager::QueueEntry
-        *entry; // Look for an available entry in the work queue
+    DecodeManager::QueueEntry* entry; // Look for an available entry in the work queue
     entry = findEntry();
     if (entry == nullptr) {
       // Wait and try again
@@ -863,10 +801,9 @@ void DecodeManager::DecodeThread::worker() {
 
     lock.unlock(); // Do the actual decoding
     try {
-      entry->decoder->decodeRect(entry->rect, entry->bufferStream->data(),
-                                 entry->bufferStream->length(), *entry->server,
-                                 entry->pb);
-    } catch (std::exception &e) {
+      entry->decoder->decodeRect(entry->rect, entry->bufferStream->data(), entry->bufferStream->length(),
+                                 *entry->server, entry->pb);
+    } catch (std::exception& e) {
       manager->setThreadException();
     } catch (...) {
       assert(false);
@@ -876,8 +813,8 @@ void DecodeManager::DecodeThread::worker() {
                  // buffer
     manager->freeBuffers.push_back(entry->bufferStream);
     manager->workQueue.remove(entry);
-    delete entry; // Wake the main thread in case it is waiting for a memory
-                  // buffer
+    delete entry;                       // Wake the main thread in case it is waiting for a memory
+                                        // buffer
     manager->producerCond.notify_one(); // This rect might have been blocking
                                         // multiple other rects, so
     // wake up every worker thread
@@ -886,7 +823,7 @@ void DecodeManager::DecodeThread::worker() {
   }
 }
 
-DecodeManager::QueueEntry *DecodeManager::DecodeThread::findEntry() {
+DecodeManager::QueueEntry* DecodeManager::DecodeThread::findEntry() {
   core::Region lockedRegion;
 
   if (manager->workQueue.empty())
@@ -895,14 +832,14 @@ DecodeManager::QueueEntry *DecodeManager::DecodeThread::findEntry() {
   if (!manager->workQueue.front()->active)
     return manager->workQueue.front();
 
-  for (DecodeManager::QueueEntry *entry : manager->workQueue) {
+  for (DecodeManager::QueueEntry* entry : manager->workQueue) {
     // Another thread working on this?
     if (entry->active)
       goto next; // If this is an ordered decoder then make sure this is the
                  // first
     // rectangle in the queue for that decoder
     if (entry->decoder->flags & DecoderOrdered) {
-      for (const DecodeManager::QueueEntry *entry2 : manager->workQueue) {
+      for (const DecodeManager::QueueEntry* entry2 : manager->workQueue) {
         if (entry2 == entry)
           break;
         if (entry->encoding == entry2->encoding)
@@ -913,16 +850,14 @@ DecodeManager::QueueEntry *DecodeManager::DecodeThread::findEntry() {
     // For a partially ordered decoder we must ask the decoder for each
     // pair of rectangles.
     if (entry->decoder->flags & DecoderPartiallyOrdered) {
-      for (const DecodeManager::QueueEntry *entry2 : manager->workQueue) {
+      for (const DecodeManager::QueueEntry* entry2 : manager->workQueue) {
         if (entry2 == entry)
           break;
         if (entry->encoding != entry2->encoding)
           continue;
-        if (entry->decoder->doRectsConflict(
-                entry->rect, entry->bufferStream->data(),
-                entry->bufferStream->length(), entry2->rect,
-                entry2->bufferStream->data(), entry2->bufferStream->length(),
-                *entry->server))
+        if (entry->decoder->doRectsConflict(entry->rect, entry->bufferStream->data(), entry->bufferStream->length(),
+                                            entry2->rect, entry2->bufferStream->data(), entry2->bufferStream->length(),
+                                            *entry->server))
           goto next;
       }
     }
@@ -940,8 +875,7 @@ DecodeManager::QueueEntry *DecodeManager::DecodeThread::findEntry() {
   return nullptr;
 }
 
-void DecodeManager::handleCachedRect(const core::Rect &r, const CacheKey &key,
-                                     ModifiablePixelBuffer *pb) {
+void DecodeManager::handleCachedRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb) {
   // Legacy ContentCache entry point. In the unified implementation this is
   // backed by the same GlobalClientPersistentCache engine as PersistentCache
   // but inserts are flagged as non-persistent so they never hit disk.
@@ -949,8 +883,7 @@ void DecodeManager::handleCachedRect(const core::Rect &r, const CacheKey &key,
   handleContentCacheRect(r, key, pb);
 }
 
-void DecodeManager::storeCachedRect(const core::Rect &r, const CacheKey &key,
-                                    ModifiablePixelBuffer *pb) {
+void DecodeManager::storeCachedRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb) {
   // Legacy ContentCache INIT path. Store decoded pixels in the unified cache
   // engine but mark them as non-persistent so they never hit disk. This keeps
   // ContentCache behaviour session-only even when PersistentCache is enabled
@@ -959,9 +892,7 @@ void DecodeManager::storeCachedRect(const core::Rect &r, const CacheKey &key,
   storeContentCacheRect(r, key, pb);
 }
 
-void DecodeManager::handlePersistentCachedRect(const core::Rect &r,
-                                               const CacheKey &key,
-                                               ModifiablePixelBuffer *pb) {
+void DecodeManager::handlePersistentCachedRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb) {
   // Ensure all pending decodes have completed before we blit cached
   // content into the framebuffer so that we preserve the same ordering
   // semantics as the vanilla decode path (including CopyRect and ContentCache).
@@ -985,14 +916,12 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect &r,
 
   // Track bandwidth for this PersistentCachedRect reference (regardless of
   // hit/miss)
-  rfb::cache::trackPersistentCacheRef(persistentCacheBandwidthStats, r,
-                                      conn->server.pf());
+  rfb::cache::trackPersistentCacheRef(persistentCacheBandwidthStats, r, conn->server.pf());
 
-  CacheStatsView pcStats{
-      &persistentCacheStats.cache_hits, &persistentCacheStats.cache_lookups,
-      &persistentCacheStats.cache_misses,
-      &persistentCacheStats.stores}; // Treat every PersistentCachedRect
-                                     // reference as a cache lookup. The
+  CacheStatsView pcStats{&persistentCacheStats.cache_hits, &persistentCacheStats.cache_lookups,
+                         &persistentCacheStats.cache_misses,
+                         &persistentCacheStats.stores}; // Treat every PersistentCachedRect
+                                                        // reference as a cache lookup. The
   // outcome (hit vs miss) is determined below once we consult the
   // GlobalClientPersistentCache.
 
@@ -1002,17 +931,15 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect &r,
 
   // Cast dimensions to match CacheKey type (uint16_t)
   uint16_t w = static_cast<uint16_t>(r.width());
-  uint16_t h = static_cast<uint16_t>(
-      r.height()); // Pass viewer's current bpp as minBpp to prevent quality
-                   // loss from upscaling.
+  uint16_t h = static_cast<uint16_t>(r.height()); // Pass viewer's current bpp as minBpp to prevent quality
+                                                  // loss from upscaling.
   // If cache only has lower-bpp entries than the viewer needs, we prefer to
   // miss and request fresh high-quality data from the server rather than
   // upscale low-quality cached data (which causes visible artifacts).
   uint8_t minBpp = pb->getPF().bpp;
-  vlog.debug("Cache lookup: cacheId=%" PRIx64 " rect=[%d,%d-%d,%d] minBpp=%d",
-             cacheId, r.tl.x, r.tl.y, r.br.x, r.br.y, minBpp);
-  const GlobalClientPersistentCache::CachedPixels *cached =
-      persistentCache->getByCanonicalHash(cacheId, w, h, minBpp);
+  vlog.debug("Cache lookup: cacheId=%" PRIx64 " rect=[%d,%d-%d,%d] minBpp=%d", cacheId, r.tl.x, r.tl.y, r.br.x, r.br.y,
+             minBpp);
+  const GlobalClientPersistentCache::CachedPixels* cached = persistentCache->getByCanonicalHash(cacheId, w, h, minBpp);
 
   if (cached == nullptr) {
     // Cache miss - queue request for later batching
@@ -1020,16 +947,13 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect &r,
 
     char pbFmtStr[256];
     pb->getPF().print(pbFmtStr, sizeof(pbFmtStr));
-    vlog.debug("Cache MISS: cacheId=%" PRIx64
-               " rect=[%d,%d-%d,%d] fb_format=[%s] "
+    vlog.debug("Cache MISS: cacheId=%" PRIx64 " rect=[%d,%d-%d,%d] fb_format=[%s] "
                "minBpp=%d (no matching entry or filtered)",
                cacheId, r.tl.x, r.tl.y, r.br.x, r.br.y, pbFmtStr,
                minBpp); // Log to debug file (less verbose than console)
-    PersistentCacheDebugLogger::getInstance().logCacheMiss(
-        "PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(),
-        cacheId); // Add to pending queries for batching
-    pendingQueries.push_back(
-        cacheId); // Flush if we have enough queries (batch size: 10)
+    PersistentCacheDebugLogger::getInstance().logCacheMiss("PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(),
+                                                           cacheId); // Add to pending queries for batching
+    pendingQueries.push_back(cacheId);                               // Flush if we have enough queries (batch size: 10)
     if (pendingQueries.size() >= 10) {
       flushPendingQueries();
     }
@@ -1044,10 +968,10 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect &r,
   bool isLossless = cached->isLossless();
 
   recordCacheHit(pcStats); // Log to debug file
-  PersistentCacheDebugLogger::getInstance().logCacheHit(
-      "PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(), cacheId,
-      isLossless); // IMPORTANT: We do NOT send PersistentCacheHashReport on
-                   // every cache hit.
+  PersistentCacheDebugLogger::getInstance().logCacheHit("PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(),
+                                                        cacheId,
+                                                        isLossless); // IMPORTANT: We do NOT send
+                                                                     // PersistentCacheHashReport on every cache hit.
   // Hash reports are only needed when the viewer detects a canonical!=actual
   // mismatch while storing or seeding a rect (i.e. lossy decode). Emitting a
   // report for every hit adds protocol noise and breaks tests that expect
@@ -1059,19 +983,16 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect &r,
   cached->format.print(cachedFmtStr, sizeof(cachedFmtStr));
   pb->getPF().print(pbFmtStr, sizeof(pbFmtStr));
   if (cached->format != pb->getPF()) {
-    vlog.debug(
-        "Cache HIT format MISMATCH! cached=[%s] fb=[%s] rect=[%d,%d-%d,%d]",
-        cachedFmtStr, pbFmtStr, r.tl.x, r.tl.y, r.br.x, r.br.y);
+    vlog.debug("Cache HIT format MISMATCH! cached=[%s] fb=[%s] rect=[%d,%d-%d,%d]", cachedFmtStr, pbFmtStr, r.tl.x,
+               r.tl.y, r.br.x, r.br.y);
   } else {
-    vlog.debug("Cache HIT format OK: bpp=%d rect=[%d,%d-%d,%d]",
-               cached->format.bpp, r.tl.x, r.tl.y, r.br.x, r.br.y);
+    vlog.debug("Cache HIT format OK: bpp=%d rect=[%d,%d-%d,%d]", cached->format.bpp, r.tl.x, r.tl.y, r.br.x, r.br.y);
   }
   pb->imageRect(cached->format, r, cached->pixels.data(), cached->stridePixels);
 }
 
-void DecodeManager::storePersistentCachedRect(const core::Rect &r,
-                                              const CacheKey &key, int encoding,
-                                              ModifiablePixelBuffer *pb) {
+void DecodeManager::storePersistentCachedRect(const core::Rect& r, const CacheKey& key, int encoding,
+                                              ModifiablePixelBuffer* pb) {
   // Ensure all pending decodes that might affect this rect have completed
   // before we snapshot pixels into the cache. This must mirror the
   // semantics used for ContentCache so that the cached content reflects the
@@ -1090,35 +1011,31 @@ void DecodeManager::storePersistentCachedRect(const core::Rect &r,
     return;
   }
 
-  CacheStatsView pcStats{
-      &persistentCacheStats.cache_hits, &persistentCacheStats.cache_lookups,
-      &persistentCacheStats.cache_misses,
-      &persistentCacheStats.stores}; // A PersistentCachedRectInit represents a
-                                     // cache lookup that missed and
+  CacheStatsView pcStats{&persistentCacheStats.cache_hits, &persistentCacheStats.cache_lookups,
+                         &persistentCacheStats.cache_misses,
+                         &persistentCacheStats.stores}; // A PersistentCachedRectInit represents a
+                                                        // cache lookup that missed and
   // caused the server to send full pixel data for this ID.
   recordCacheInit(pcStats); // Get pixel data from framebuffer
   // CRITICAL: stride from getBuffer() is in pixels, not bytes
   int stridePixels;
-  const uint8_t *pixels = pb->getBuffer(r, &stridePixels);
+  const uint8_t* pixels = pb->getBuffer(r, &stridePixels);
 
   size_t bppBytes = static_cast<size_t>(pb->getPF().bpp) / 8;
-  size_t pixelBytes = static_cast<size_t>(r.height()) *
-                      static_cast<size_t>(stridePixels) *
-                      bppBytes; // Debug: log format being stored
+  size_t pixelBytes =
+      static_cast<size_t>(r.height()) * static_cast<size_t>(stridePixels) * bppBytes; // Debug: log format being stored
   {
     char fmtStr[256];
     pb->getPF().print(fmtStr, sizeof(fmtStr));
     vlog.debug("STORE: rect=[%d,%d-%d,%d] cacheId=%" PRIx64 " encoding=%d "
                "fb_format=[%s] bpp=%d",
-               r.tl.x, r.tl.y, r.br.x, r.br.y, cacheId, encoding, fmtStr,
-               pb->getPF().bpp);
+               r.tl.x, r.tl.y, r.br.x, r.br.y, cacheId, encoding, fmtStr, pb->getPF().bpp);
   }
 
   // Track bandwidth for this PersistentCachedRectInit (ID + encoded data)
-  rfb::cache::trackPersistentCacheInit(
-      persistentCacheBandwidthStats,
-      lastDecodedRectBytes); // Compute full hash over the decoded pixels. If
-                             // this does not match the
+  rfb::cache::trackPersistentCacheInit(persistentCacheBandwidthStats,
+                                       lastDecodedRectBytes); // Compute full hash over the decoded pixels. If
+                                                              // this does not match the
   // server-provided cacheId then the decoded rect is not bit-identical to the
   // server's canonical content (e.g. truncated transfer, corruption, or
   // mismatched hashing configuration). In that case we MUST NOT cache it,  //
@@ -1130,8 +1047,7 @@ void DecodeManager::storePersistentCachedRect(const core::Rect &r,
   ManagedPixelBuffer tempPB(pb->getPF(), r.width(), r.height());
   tempPB.imageRect(pb->getPF(), tempPB.getRect(), pixels, stridePixels);
 
-  std::vector<uint8_t> contentHash = ContentHash::computeRect(
-      static_cast<PixelBuffer *>(&tempPB), tempPB.getRect());
+  std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(&tempPB), tempPB.getRect());
   uint64_t hashId = 0;
   if (!contentHash.empty()) {
     size_t n = std::min(contentHash.size(), sizeof(uint64_t));
@@ -1140,8 +1056,7 @@ void DecodeManager::storePersistentCachedRect(const core::Rect &r,
 
   // Debug: log canonical bytes for this INIT rect at the viewer.
   logFBHashDebug("STORE_INIT", r, cacheId,
-                 static_cast<PixelBuffer *>(
-                     pb)); // Hash comparison determines if data is lossless:
+                 static_cast<PixelBuffer*>(pb)); // Hash comparison determines if data is lossless:
   // - Hash match: bit-identical (lossless)
   // - Hash mismatch: compression artifacts (lossy)
   bool hashMatch = (hashId == cacheId);
@@ -1183,8 +1098,7 @@ void DecodeManager::storePersistentCachedRect(const core::Rect &r,
   // actualHash = hashId (client's computed hash, may differ if lossy)
   // Always persist (isPersistable=true), even for lossy entries.
   uint64_t canonicalHash = cacheId;
-  uint64_t actualHash =
-      hashId; // Build a stable disk key from actualHash (used for indexing)
+  uint64_t actualHash = hashId; // Build a stable disk key from actualHash (used for indexing)
   std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
   uint64_t id64 = actualHash;
   memcpy(diskKey.data(), &id64, sizeof(uint64_t));
@@ -1192,32 +1106,28 @@ void DecodeManager::storePersistentCachedRect(const core::Rect &r,
     diskKey.resize(16, 0); // Store in persistent cache with both hashes.
   // Use the pixel data from our temporary buffer to ensure the same layout
   // that we computed the hash on, preventing validation failures.
-  const uint8_t *storedPixels =
-      tempPB.getBuffer(tempPB.getRect(), &stridePixels);
+  const uint8_t* storedPixels = tempPB.getBuffer(tempPB.getRect(), &stridePixels);
 
-  persistentCache->insert(canonicalHash, actualHash, diskKey, storedPixels,
-                          tempPB.getPF(), r.width(), r.height(), stridePixels,
+  persistentCache->insert(canonicalHash, actualHash, diskKey, storedPixels, tempPB.getPF(), r.width(), r.height(),
+                          stridePixels,
                           /*isPersistable=*/true); // NEW: Always persist
 
   // Log to debug file
-  PersistentCacheDebugLogger::getInstance().logCacheStore(
-      "PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(), cacheId,
-      encoding, pixelBytes); // Proactively send any eviction notifications
-                             // triggered by this insert
+  PersistentCacheDebugLogger::getInstance().logCacheStore("PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(),
+                                                          cacheId, encoding,
+                                                          pixelBytes); // Proactively send any eviction notifications
+                                                                       // triggered by this insert
   flushPendingEvictions();
 }
 
-void DecodeManager::storePersistentCachedRect(const core::Rect &r,
-                                              const CacheKey &key,
-                                              ModifiablePixelBuffer *pb) {
+void DecodeManager::storePersistentCachedRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb) {
   // Legacy helper for callers that do not propagate an inner encoding
   // (e.g. unified ContentCache entry point). Treat these as effectively
   // lossless for policy purposes by using encodingRaw.
   storePersistentCachedRect(r, key, encodingRaw, pb);
 }
 
-void DecodeManager::seedCachedRect(const core::Rect &r, const CacheKey &key,
-                                   ModifiablePixelBuffer *pb) {
+void DecodeManager::seedCachedRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb) {
   // Cache seed: server tells us to take existing framebuffer pixels at rect R
   // and associate them with cache ID. This is used for whole-rectangle caching
   // where the subrect data was already sent via normal encoding.
@@ -1240,9 +1150,8 @@ void DecodeManager::seedCachedRect(const core::Rect &r, const CacheKey &key,
 
   // Get pixel data from existing framebuffer
   int stridePixels;
-  const uint8_t *pixels =
-      pb->getBuffer(r, &stridePixels); // When viewer's PersistentCache is
-                                       // disabled, fall back to ContentCache
+  const uint8_t* pixels = pb->getBuffer(r, &stridePixels); // When viewer's PersistentCache is
+                                                           // disabled, fall back to ContentCache
   if (persistentCache == nullptr) {
     // Unified cache engine disabled; nothing to seed.
     return;
@@ -1254,8 +1163,7 @@ void DecodeManager::seedCachedRect(const core::Rect &r, const CacheKey &key,
   // computed lossy ID and report the mapping to the server.
 
   if (persistentCache != nullptr) {
-    std::vector<uint8_t> contentHash =
-        ContentHash::computeRect(static_cast<PixelBuffer *>(pb), r);
+    std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
     if (contentHash.empty()) {
       vlog.error("seedCachedRect: failed to compute hash for rect "
                  "[%d,%d-%d,%d] canonical=%" PRIu64 "",
@@ -1267,7 +1175,7 @@ void DecodeManager::seedCachedRect(const core::Rect &r, const CacheKey &key,
     size_t n = std::min(contentHash.size(), sizeof(uint64_t));
     memcpy(&hashId, contentHash.data(),
            n); // Debug: log canonical bytes for this SEED rect at the viewer.
-    logFBHashDebug("SEED", r, cacheId, static_cast<PixelBuffer *>(pb));
+    logFBHashDebug("SEED", r, cacheId, static_cast<PixelBuffer*>(pb));
 
     bool hashMatch = (hashId == cacheId);
 
@@ -1287,8 +1195,7 @@ void DecodeManager::seedCachedRect(const core::Rect &r, const CacheKey &key,
 
     // NEW DESIGN: Store with BOTH canonical and actual hash
     uint64_t canonicalHash = cacheId;
-    uint64_t actualHash =
-        hashId; // Build disk key from actualHash (used for indexing)
+    uint64_t actualHash = hashId; // Build disk key from actualHash (used for indexing)
     std::vector<uint8_t> diskKey(sizeof(uint64_t), 0);
     uint64_t id64 = actualHash;
     memcpy(diskKey.data(), &id64, sizeof(uint64_t));
@@ -1297,20 +1204,19 @@ void DecodeManager::seedCachedRect(const core::Rect &r, const CacheKey &key,
     {
       char fmtStr[256];
       pb->getPF().print(fmtStr, sizeof(fmtStr));
-      vlog.debug("SEED: rect=[%d,%d-%d,%d] cacheId=%" PRIx64
-                 " actualHash=%" PRIx64 " "
+      vlog.debug("SEED: rect=[%d,%d-%d,%d] cacheId=%" PRIx64 " actualHash=%" PRIx64 " "
                  "format=[%s] bpp=%d hashMatch=%s",
-                 r.tl.x, r.tl.y, r.br.x, r.br.y, canonicalHash, actualHash,
-                 fmtStr, pb->getPF().bpp, hashMatch ? "yes" : "no");
+                 r.tl.x, r.tl.y, r.br.x, r.br.y, canonicalHash, actualHash, fmtStr, pb->getPF().bpp,
+                 hashMatch ? "yes" : "no");
     }
-    persistentCache->insert(canonicalHash, actualHash, diskKey, pixels,
-                            pb->getPF(), r.width(), r.height(), stridePixels,
+    persistentCache->insert(canonicalHash, actualHash, diskKey, pixels, pb->getPF(), r.width(), r.height(),
+                            stridePixels,
                             /*isPersistable=*/true); // NEW: Always persist
     persistentCacheStats.stores++;                   // Log to debug file
-    PersistentCacheDebugLogger::getInstance().logCacheSeed(
-        "PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(), cacheId,
-        hashMatch); // Proactively send any eviction notifications triggered by
-                    // this insert
+    PersistentCacheDebugLogger::getInstance().logCacheSeed("PersistentCache", r.tl.x, r.tl.y, r.width(), r.height(),
+                                                           cacheId,
+                                                           hashMatch); // Proactively send any eviction notifications
+                                                                       // triggered by this insert
     flushPendingEvictions();
     return;
   }
@@ -1325,8 +1231,7 @@ void DecodeManager::flushPendingQueries() {
     queryKeys.push_back(makeCacheKeyFromU64(id));
   conn->writer()->writePersistentCacheQuery(queryKeys);
 
-  persistentCacheStats.queries_sent +=
-      pendingQueries.size(); // Clear pending queries
+  persistentCacheStats.queries_sent += pendingQueries.size(); // Clear pending queries
   pendingQueries.clear();
 }
 
@@ -1351,15 +1256,12 @@ void DecodeManager::logArcEvictionsThrottled() {
   const uint64_t delta = ev - lastArcEvictions_;
   const auto now = std::chrono::steady_clock::now();
   constexpr auto kMinInterval = std::chrono::seconds(1);
-  constexpr uint64_t kBurst =
-      16; // Throttle by time, but still log large bursts promptly.
+  constexpr uint64_t kBurst = 16; // Throttle by time, but still log large bursts promptly.
   if ((now - lastArcEvictionLogTime_) < kMinInterval && delta < kBurst)
     return;
 
-  vlog.info("ARC evicted %" PRIu64 " entries (total=%" PRIu64
-            ", cache=%zu entries, bytes=%s)",
-            delta, ev, arcStats.totalEntries,
-            core::iecPrefix(arcStats.totalBytes, "B").c_str());
+  vlog.info("ARC evicted %" PRIu64 " entries (total=%" PRIu64 ", cache=%zu entries, bytes=%s)", delta, ev,
+            arcStats.totalEntries, core::iecPrefix(arcStats.totalBytes, "B").c_str());
 
   lastArcEvictionLogTime_ = now;
   lastArcEvictions_ = ev;
@@ -1367,24 +1269,17 @@ void DecodeManager::logArcEvictionsThrottled() {
 
 void DecodeManager::flushPendingEvictions() {
   // Emit throttled ARC eviction logs for production visibility.
-  logArcEvictionsThrottled(); // Forward any evictions from the unified cache
-                              // engine to the server.
-  if (persistentCache != nullptr && persistentCache->hasPendingEvictions() &&
-      conn && conn->writer()) {
+  logArcEvictionsThrottled();
+
+  // Forward any evictions from the unified cache engine to the server.
+  if (persistentCache != nullptr && persistentCache->hasPendingEvictions() && conn && conn->writer()) {
     auto evictions = persistentCache->getPendingEvictions();
     if (!evictions.empty()) {
       if (conn->isPersistentCacheNegotiated()) {
-        vlog.info(
-            "Sending %zu PersistentCache eviction notifications to server",
-            evictions.size());
+        vlog.info("Sending %zu PersistentCache eviction notifications to server", evictions.size());
         conn->writer()->writePersistentCacheEvictionBatched(evictions);
-      } else if (conn->isContentCacheNegotiated()) {
-        vlog.info("Sending %zu cache eviction notifications to server",
-                  evictions.size());
-        conn->writer()->writeCacheEviction(evictions);
       } else {
-        vlog.debug("Pending evictions (%zu) but no negotiated cache protocol",
-                   evictions.size());
+        vlog.debug("Pending evictions (%zu) but no negotiated cache protocol", evictions.size());
       }
     }
   }
@@ -1398,17 +1293,14 @@ void DecodeManager::flushPendingEvictions() {
 // received but the viewer's PersistentCache option is disabled. No disk I/O
 // or PersistentCache logging occurs via this path.
 
-void DecodeManager::handleContentCacheRect(const core::Rect &r,
-                                           const CacheKey &key,
-                                           ModifiablePixelBuffer *pb) {
+void DecodeManager::handleContentCacheRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb) {
   if (pb == nullptr) {
     vlog.error("handleContentCacheRect called with null framebuffer");
     return;
   }
 
-  CacheStatsView ccStats{
-      &contentCacheStats_.cache_hits, &contentCacheStats_.cache_lookups,
-      &contentCacheStats_.cache_misses, &contentCacheStats_.stores};
+  CacheStatsView ccStats{&contentCacheStats_.cache_hits, &contentCacheStats_.cache_lookups,
+                         &contentCacheStats_.cache_misses, &contentCacheStats_.stores};
   uint64_t cacheId = cacheKeyFirstU64(key);
   if (!persistentCache) {
     // Unified cache engine disabled; treat as a miss so tests can still
@@ -1417,21 +1309,20 @@ void DecodeManager::handleContentCacheRect(const core::Rect &r,
     return;
   }
 
-  const GlobalClientPersistentCache::CachedPixels *entry =
-      persistentCache->getByKey(key);
+  const GlobalClientPersistentCache::CachedPixels* entry = persistentCache->getByKey(key);
   if (!entry || entry->pixels.empty()) {
     recordCacheMiss(ccStats); // Log to debug file
-    PersistentCacheDebugLogger::getInstance().logCacheMiss(
-        "ContentCache", r.tl.x, r.tl.y, r.width(), r.height(),
-        cacheId); // Request missing data from server so we can populate the
-                  // cache.
+    PersistentCacheDebugLogger::getInstance().logCacheMiss("ContentCache", r.tl.x, r.tl.y, r.width(), r.height(),
+                                                           cacheId); // Request missing data from server so we can
+                                                                     // populate the cache.
     // Without this, the client stays out of sync and simply displays
     // nothing/garbage.
     if (conn && conn->writer()) {
-      conn->writer()->writeRequestCachedData(key);
+      std::vector<CacheKey> keys;
+      keys.push_back(key);
+      conn->writer()->writePersistentCacheQuery(keys);
     } else {
-      vlog.error("Cannot send RequestCachedData: conn=%p writer=%p", conn,
-                 conn ? conn->writer() : nullptr);
+      vlog.error("Cannot send RequestCachedData: conn=%p writer=%p", conn, conn ? conn->writer() : nullptr);
     }
     return;
   }
@@ -1448,8 +1339,8 @@ void DecodeManager::handleContentCacheRect(const core::Rect &r,
                "rect=[%d,%d-%d,%d]",
                cachedFmtStr, pbFmtStr, r.tl.x, r.tl.y, r.br.x, r.br.y);
   } else {
-    vlog.debug("ContentCache HIT format OK: bpp=%d rect=[%d,%d-%d,%d]",
-               entry->format.bpp, r.tl.x, r.tl.y, r.br.x, r.br.y);
+    vlog.debug("ContentCache HIT format OK: bpp=%d rect=[%d,%d-%d,%d]", entry->format.bpp, r.tl.x, r.tl.y, r.br.x,
+               r.br.y);
   }
 
   // Blit cached pixels to framebuffer at target position. CachedPixels
@@ -1457,9 +1348,7 @@ void DecodeManager::handleContentCacheRect(const core::Rect &r,
   pb->imageRect(entry->format, r, entry->pixels.data(), entry->stridePixels);
 }
 
-void DecodeManager::storeContentCacheRect(const core::Rect &r,
-                                          const CacheKey &key,
-                                          ModifiablePixelBuffer *pb) {
+void DecodeManager::storeContentCacheRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb) {
   if (pb == nullptr) {
     vlog.error("storeContentCacheRect called with null framebuffer");
     return;
@@ -1470,9 +1359,8 @@ void DecodeManager::storeContentCacheRect(const core::Rect &r,
   // pixel data for this ID because the client did not have it yet. This
   // ensures that cold-cache runs cannot report a misleading 100% hit rate
   // purely because only reference traffic is counted.
-  CacheStatsView ccStats{
-      &contentCacheStats_.cache_hits, &contentCacheStats_.cache_lookups,
-      &contentCacheStats_.cache_misses, &contentCacheStats_.stores};
+  CacheStatsView ccStats{&contentCacheStats_.cache_hits, &contentCacheStats_.cache_lookups,
+                         &contentCacheStats_.cache_misses, &contentCacheStats_.stores};
   uint64_t cacheId = cacheKeyFirstU64(key);
   recordCacheInit(ccStats);
 
@@ -1485,8 +1373,7 @@ void DecodeManager::storeContentCacheRect(const core::Rect &r,
   // PersistentCache: a rect is only cacheable if the client-side hash agrees
   // with the server's ID, which protects the cache from truncated or
   // corrupted transfers.
-  std::vector<uint8_t> contentHash =
-      ContentHash::computeRect(static_cast<PixelBuffer *>(pb), r);
+  std::vector<uint8_t> contentHash = ContentHash::computeRect(static_cast<PixelBuffer*>(pb), r);
   if (contentHash.size() < 16)
     return;
   if (memcmp(contentHash.data(), key.bytes.data(), 16) != 0) {
@@ -1497,15 +1384,13 @@ void DecodeManager::storeContentCacheRect(const core::Rect &r,
   // Snapshot pixels from the framebuffer. Stride returned by getBuffer()
   // is in pixels, not bytes.
   int stridePixels;
-  const uint8_t *pixels = pb->getBuffer(r, &stridePixels);
+  const uint8_t* pixels = pb->getBuffer(r, &stridePixels);
   if (!pixels) {
-    vlog.error(
-        "storeContentCacheRect: getBuffer() returned null for ID %" PRIu64 "",
-        cacheId);
+    vlog.error("storeContentCacheRect: getBuffer() returned null for ID %" PRIu64 "", cacheId);
     return;
   }
 
-  const PixelFormat &pf = pb->getPF();
+  const PixelFormat& pf = pb->getPF();
   const size_t bppBytes = static_cast<size_t>(pf.bpp) / 8;
   const size_t rowBytes = static_cast<size_t>(r.width()) * bppBytes;
   const size_t srcStrideBytes = static_cast<size_t>(stridePixels) * bppBytes;
@@ -1513,16 +1398,15 @@ void DecodeManager::storeContentCacheRect(const core::Rect &r,
   GlobalClientPersistentCache::CachedPixels entry;
   entry.format = pf;
   entry.width = static_cast<uint16_t>(r.width());
-  entry.height = static_cast<uint16_t>(
-      r.height()); // Store pixels tightly packed row-by-row; stridePixels
-                   // reflects this
+  entry.height = static_cast<uint16_t>(r.height()); // Store pixels tightly packed row-by-row; stridePixels
+                                                    // reflects this
   // contiguous representation.
   entry.stridePixels = entry.width;
   entry.lastAccessTime = 0; // Not currently used for session-only cache
 
   entry.pixels.resize(static_cast<size_t>(entry.height) * rowBytes);
-  const uint8_t *src = pixels;
-  uint8_t *dst = entry.pixels.data();
+  const uint8_t* src = pixels;
+  uint8_t* dst = entry.pixels.data();
   for (uint16_t y = 0; y < entry.height; y++) {
     memcpy(dst, src, rowBytes);
     src += srcStrideBytes;
@@ -1538,8 +1422,7 @@ void DecodeManager::storeContentCacheRect(const core::Rect &r,
   if (diskKey.size() < 16)
     diskKey.resize(16, 0); // NEW: Both canonical and actual are cacheId
                            // (lossless for ContentCache)
-  persistentCache->insert(cacheId, cacheId, diskKey, entry.pixels.data(),
-                          entry.format, entry.width, entry.height,
+  persistentCache->insert(cacheId, cacheId, diskKey, entry.pixels.data(), entry.format, entry.width, entry.height,
                           entry.stridePixels,
                           /*isPersistable=*/false); // Session-only
 
@@ -1558,8 +1441,7 @@ void DecodeManager::storeContentCacheRect(const core::Rect &r,
 // ContentCache implementation; PersistentCache bandwidth stats are tracked via
 // trackPersistentCacheRef/trackPersistentCacheInit.
 
-std::string
-DecodeManager::dumpCacheDebugState(const std::string &outputDir) const {
+std::string DecodeManager::dumpCacheDebugState(const std::string& outputDir) const {
   if (persistentCache) {
     return persistentCache->dumpDebugState(outputDir);
   }

@@ -670,13 +670,12 @@ void EncodeManager::doUpdate(bool allowLossy, const core::Region& changed_, cons
     }
     int minTiles = 4; // require at least a 2x2 region by default
 
-    // Under the unified cache engine, both pseudoEncodingContentCache and
+    // Under the unified cache engine, both pseudoEncodingPersistentCache and
     // pseudoEncodingPersistentCache map to the same 64-bit ID protocol on
     // the wire. Tiling diagnostics should therefore run whenever the
     // client has negotiated *any* cache encoding and the server has
     // caching enabled.
-    if (usePersistentCache && (conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
-                               conn->client.supportsEncoding(pseudoEncodingContentCache))) {
+    if (usePersistentCache && (conn->client.supportsEncoding(pseudoEncodingPersistentCache))) {
       cache::PersistentCacheQuery pq(conn);
       cache::analyzeRegionTilingLogOnly(changed, tileSize, minTiles, pb, pq);
     }
@@ -714,8 +713,7 @@ void EncodeManager::doUpdate(bool allowLossy, const core::Region& changed_, cons
   // Requires pseudoEncodingLastRect so the update rect count is not fixed.
   if (rfb::Server::enableShiftTolerantCacheScan && conn->client.supportsEncoding(pseudoEncodingLastRect) &&
       pb != nullptr && !changed.is_empty()) {
-    const bool scanClientSupportsCache = conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
-                                         conn->client.supportsEncoding(pseudoEncodingContentCache);
+    const bool scanClientSupportsCache = conn->client.supportsEncoding(pseudoEncodingPersistentCache);
     runShiftTolerantCacheScan(&changed, pb, scanClientSupportsCache);
   }
 
@@ -728,53 +726,6 @@ void EncodeManager::doUpdate(bool allowLossy, const core::Region& changed_, cons
 
   writeRects(changed, pb);
   writeRects(cursorRegion, renderedCursor);
-
-  // Respond to any pending CachedRectInit requests for this connection
-  if (conn->client.supportsEncoding(pseudoEncodingLastRect)) {
-    std::vector<std::pair<uint64_t, core::Rect>> pend;
-    conn->drainPendingCachedInits(pend);
-    if (!pend.empty()) {
-      vlog.info("Processing %d pending CachedRectInit messages", (int)pend.size());
-    }
-    for (const auto& item : pend) {
-      const uint64_t cacheId = item.first;
-      const core::Rect& r = item.second;
-
-      // Recompute canonical CacheKey for this rect so we can emit
-      // the full 16-byte protocol key. In the common case, this
-      // matches the requested cacheId (first 64 bits).
-      std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, r);
-      CacheKey cacheKey = cacheKeyFromHash(fullHash);
-      uint64_t computedId = cacheKeyToU64(cacheKey);
-      if (cacheId != 0 && computedId != cacheId) {
-        vlog.debug("CachedRectInit requested id=%s differs from recomputed id=%s", hex64(cacheId), hex64(computedId));
-      }
-
-      // Encode this rect now and send as CachedRectInit
-      // Reuse the same selection logic as normal rectangles
-      PixelBuffer* ppb;
-      struct RectInfo info;
-      EncoderType type;
-
-      selectEncoderForRect(r, pb, ppb, &info, type);
-
-      Encoder* payloadEnc = encoders[activeEncoders[type]];
-      // Emit CachedRectInit header (cacheId + encoding)
-      conn->writer()->writePersistentCachedRectInit(r, cacheKey, payloadEnc->encoding,
-                                                    /*flags=*/0, /*pf=*/nullptr,
-                                                    /*includeFlags=*/nativeFormatCacheSupported);
-      // Prepare pixel buffer respecting native-PF usage for the payload encoder
-      if (payloadEnc->flags & EncoderUseNativePF)
-        ppb = preparePixelBuffer(r, pb, false);
-      // Write the encoded pixel payload
-      payloadEnc->writeRect(ppb, info.palette);
-      // Close the CachedRectInit rectangle
-      conn->writer()->endRect();
-      // Mark this cacheId as known to this client
-      conn->markCacheIdKnown(computedId);
-    }
-  }
-
   conn->writer()->writeFramebufferUpdateEnd();
 
   // Track regions sent at reduced pixel depth (< 24 bpp).
@@ -1282,8 +1233,7 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
   // Unified cache protocol: we may see either the PersistentCache pseudo-encoding
   // (-321) or the legacy ContentCache pseudo-encoding (-320). In this fork they
   // both map to the same 64-bit ID wire format; the difference is viewer policy.
-  bool clientSupportsCache = conn->client.supportsEncoding(pseudoEncodingPersistentCache) ||
-                             conn->client.supportsEncoding(pseudoEncodingContentCache);
+  bool clientSupportsCache = conn->client.supportsEncoding(pseudoEncodingPersistentCache);
 
   // Work on a mutable copy of the damage so cache hits can remove regions that
   // are fully satisfied by references while still allowing other dirty areas in
@@ -2013,11 +1963,11 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect, const Pixel
     return false;
 
   // Require client support for *some* cache protocol. Under the unified
-  // engine, pseudoEncodingContentCache and pseudoEncodingPersistentCache
+  // engine, pseudoEncodingPersistentCache and pseudoEncodingPersistentCache
   // are handled by the same 64-bit ID path; the difference is purely
   // policy (ephemeral vs persistent) on the viewer side.
   bool clientSupportsPersistent = conn->client.supportsEncoding(pseudoEncodingPersistentCache);
-  bool clientSupportsContentCache = conn->client.supportsEncoding(pseudoEncodingContentCache);
+  bool clientSupportsContentCache = conn->client.supportsEncoding(pseudoEncodingPersistentCache);
   if (!clientSupportsPersistent && !clientSupportsContentCache)
     return false;
 

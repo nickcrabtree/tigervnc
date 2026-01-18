@@ -22,8 +22,8 @@
 #include <config.h>
 #endif
 
-#include <sys/stat.h>
 #include <cstring>
+#include <sys/stat.h>
 
 #include <core/LogWriter.h>
 #include <core/string.h>
@@ -39,15 +39,15 @@
 #include <rfb/Exception.h>
 #include <rfb/KeyRemapper.h>
 #include <rfb/KeysymStr.h>
+#include <rfb/SMsgWriter.h>
 #include <rfb/Security.h>
 #include <rfb/ServerCore.h>
-#include <rfb/SMsgWriter.h>
-#include <rfb/VNCServerST.h>
 #include <rfb/VNCSConnectionST.h>
+#include <rfb/VNCServerST.h>
 #include <rfb/encodings.h>
-#include <rfb/screenTypes.h>
 #include <rfb/fenceTypes.h>
 #include <rfb/ledStates.h>
+#include <rfb/screenTypes.h>
 #define XK_LATIN1
 #define XK_MISCELLANY
 #define XK_XKB_KEYS
@@ -59,18 +59,11 @@ static core::LogWriter vlog("VNCSConnST");
 
 static Cursor emptyCursor(0, 0, {0, 0}, nullptr);
 
-VNCSConnectionST::VNCSConnectionST(VNCServerST* server_, network::Socket *s,
-                                   bool reverse, AccessRights ar)
-  : SConnection(ar),
-    sock(s), reverseConnection(reverse),
-    inProcessMessages(false),
-    pendingSyncFence(false), syncFence(false), fenceFlags(0),
-    fenceDataLen(0), fenceData(nullptr), congestionTimer(this),
-    losslessTimer(this), server(server_),
-    updateRenderedCursor(false), removeRenderedCursor(false),
-    continuousUpdates(false), encodeManager(this), updateCount_(0),
-    idleTimer(this), pointerEventTime(0), clientHasCursor(false)
-{
+VNCSConnectionST::VNCSConnectionST(VNCServerST* server_, network::Socket* s, bool reverse, AccessRights ar)
+    : SConnection(ar), sock(s), reverseConnection(reverse), inProcessMessages(false), pendingSyncFence(false),
+      syncFence(false), fenceFlags(0), fenceDataLen(0), fenceData(nullptr), congestionTimer(this), losslessTimer(this),
+      server(server_), updateRenderedCursor(false), removeRenderedCursor(false), continuousUpdates(false),
+      encodeManager(this), updateCount_(0), idleTimer(this), pointerEventTime(0), clientHasCursor(false) {
   // Record session start for aggregate per-client bandwidth statistics
   gettimeofday(&sessionStartTime_, nullptr);
 
@@ -87,22 +80,18 @@ VNCSConnectionST::VNCSConnectionST(VNCServerST* server_, network::Socket *s,
   }
 }
 
-
-VNCSConnectionST::~VNCSConnectionST()
-{
+VNCSConnectionST::~VNCSConnectionST() {
   // If we reach here then VNCServerST is deleting us!
   if (!closeReason.empty())
-    vlog.info("Closing %s: %s", peerEndpoint.c_str(),
-              closeReason.c_str());
+    vlog.info("Closing %s: %s", peerEndpoint.c_str(), closeReason.c_str());
 
   // Aggregate network statistics for this client session.
   if (sock) {
     struct timeval now;
     gettimeofday(&now, nullptr);
 
-    unsigned long long elapsedUsec =
-      (unsigned long long)(now.tv_sec - sessionStartTime_.tv_sec) * 1000000ULL +
-      (unsigned long long)(now.tv_usec - sessionStartTime_.tv_usec);
+    unsigned long long elapsedUsec = (unsigned long long)(now.tv_sec - sessionStartTime_.tv_sec) * 1000000ULL +
+                                     (unsigned long long)(now.tv_usec - sessionStartTime_.tv_usec);
     if (elapsedUsec == 0)
       elapsedUsec = 1;
     double seconds = (double)elapsedUsec / 1e6;
@@ -113,23 +102,17 @@ VNCSConnectionST::~VNCSConnectionST()
     double rxBitsPerSec = (double)rxBytes * 8.0 / seconds;
     double txBitsPerSec = (double)txBytes * 8.0 / seconds;
 
-    vlog.info("%s: network summary: duration=%.1fs, rx=%s, tx=%s",
-              peerEndpoint.c_str(),
-              seconds,
-              core::iecPrefix(rxBytes, "B").c_str(),
-              core::iecPrefix(txBytes, "B").c_str());
-    vlog.info("%s: network throughput: rx≈%d kbit/s, tx≈%d kbit/s",
-              peerEndpoint.c_str(),
-              (int)(rxBitsPerSec / 1000.0),
+    vlog.info("%s: network summary: duration=%.1fs, rx=%s, tx=%s", peerEndpoint.c_str(), seconds,
+              core::iecPrefix(rxBytes, "B").c_str(), core::iecPrefix(txBytes, "B").c_str());
+    vlog.info("%s: network throughput: rx≈%d kbit/s, tx≈%d kbit/s", peerEndpoint.c_str(), (int)(rxBitsPerSec / 1000.0),
               (int)(txBitsPerSec / 1000.0));
   }
 
   // Log cache cleanup
-  if (!knownCacheIds_.empty() || !lastCachedRectRef_.empty()) {
-    vlog.debug("Cleaning up cache tracking: %zu known cache IDs, %zu cached rect refs",
-               knownCacheIds_.size(), lastCachedRectRef_.size());
+  if (!knownPersistentIds_.empty() || !lastCachedRectRef_.empty()) {
+    vlog.debug("Cleaning up cache tracking: %zu known cache IDs, %zu cached rect refs", knownPersistentIds_.size(),
+               lastCachedRectRef_.size());
   }
-  // knownCacheIds_ and lastCachedRectRef_ will be automatically cleared
   // by their destructors (unordered_set and unordered_map)
 
   // Release any keys the client still had pressed
@@ -140,19 +123,16 @@ VNCSConnectionST::~VNCSConnectionST()
     keycode = pressedKeys.begin()->first;
     pressedKeys.erase(pressedKeys.begin());
 
-    vlog.debug("Releasing key 0x%04x / XK_%s (0x%04x) on client disconnect",
-               keycode, KeySymName(keysym), keysym);
+    vlog.debug("Releasing key 0x%04x / XK_%s (0x%04x) on client disconnect", keycode, KeySymName(keysym), keysym);
     server->keyEvent(keysym, keycode, false);
   }
 
-  delete [] fenceData;
+  delete[] fenceData;
 }
-
 
 // SConnection methods
 
-bool VNCSConnectionST::accessCheck(AccessRights ar) const
-{
+bool VNCSConnectionST::accessCheck(AccessRights ar) const {
   // Reverse connections are user initiated, so they are implicitly
   // allowed to bypass the query
   if (reverseConnection)
@@ -161,8 +141,7 @@ bool VNCSConnectionST::accessCheck(AccessRights ar) const
   return SConnection::accessCheck(ar);
 }
 
-void VNCSConnectionST::close(const char* reason)
-{
+void VNCSConnectionST::close(const char* reason) {
   SConnection::close(reason);
 
   // Log the reason for the close
@@ -177,11 +156,9 @@ void VNCSConnectionST::close(const char* reason)
   sock->shutdown();
 }
 
-
 // Methods called from VNCServerST
 
-bool VNCSConnectionST::init()
-{
+bool VNCSConnectionST::init() {
   try {
     initialiseProtocol();
   } catch (std::exception& e) {
@@ -191,10 +168,9 @@ bool VNCSConnectionST::init()
   return true;
 }
 
-
-void VNCSConnectionST::processMessages()
-{
-  if (state() == RFBSTATE_CLOSING) return;
+void VNCSConnectionST::processMessages() {
+  if (state() == RFBSTATE_CLOSING)
+    return;
   try {
     inProcessMessages = true;
 
@@ -232,9 +208,9 @@ void VNCSConnectionST::processMessages()
   }
 }
 
-void VNCSConnectionST::flushSocket()
-{
-  if (state() == RFBSTATE_CLOSING) return;
+void VNCSConnectionST::flushSocket() {
+  if (state() == RFBSTATE_CLOSING)
+    return;
   try {
     sock->outStream().flush();
     // Flushing the socket might release an update that was previously
@@ -246,34 +222,31 @@ void VNCSConnectionST::flushSocket()
   }
 }
 
-void VNCSConnectionST::pixelBufferChange()
-{
+void VNCSConnectionST::pixelBufferChange() {
   try {
     if (state() != RFBSTATE_NORMAL)
       return;
     if (client.width() && client.height() &&
         (server->getPixelBuffer()->width() != client.width() ||
-         server->getPixelBuffer()->height() != client.height()))
-    {
+         server->getPixelBuffer()->height() != client.height())) {
       // We need to clip the next update to the new size, but also add any
       // extra bits if it's bigger.  If we wanted to do this exactly, something
       // like the code below would do it, but at the moment we just update the
       // entire new size.  However, we do need to clip the damagedCursorRegion
       // because that might be added to updates in writeFramebufferUpdate().
 
-      //updates.intersect(server->pb->getRect());
+      // updates.intersect(server->pb->getRect());
       //
-      //if (server->pb->width() > client.width())
-      //  updates.add_changed({client.width(), 0, server->pb->width(),
-      //                       server->pb->height()});
-      //if (server->pb->height() > client.height())
-      //  updates.add_changed({0, client.height(), client.width(),
-      //                       server->pb->height()});
+      // if (server->pb->width() > client.width())
+      //   updates.add_changed({client.width(), 0, server->pb->width(),
+      //                        server->pb->height()});
+      // if (server->pb->height() > client.height())
+      //   updates.add_changed({0, client.height(), client.width(),
+      //                        server->pb->height()});
 
       damagedCursorRegion.assign_intersect(server->getPixelBuffer()->getRect());
 
-      client.setDimensions(server->getPixelBuffer()->width(),
-                           server->getPixelBuffer()->height(),
+      client.setDimensions(server->getPixelBuffer()->width(), server->getPixelBuffer()->height(),
                            server->getScreenLayout());
       if (state() == RFBSTATE_NORMAL) {
         if (!client.supportsDesktopSize()) {
@@ -291,125 +264,118 @@ void VNCSConnectionST::pixelBufferChange()
     updates.clear();
     updates.add_changed(server->getPixelBuffer()->getRect());
     writeFramebufferUpdate();
-  } catch(std::exception& e) {
+  } catch (std::exception& e) {
     close(e.what());
   }
 }
 
-void VNCSConnectionST::writeFramebufferUpdateOrClose()
-{
+void VNCSConnectionST::writeFramebufferUpdateOrClose() {
   try {
     writeFramebufferUpdate();
-  } catch(std::exception& e) {
+  } catch (std::exception& e) {
     close(e.what());
   }
 }
 
-void VNCSConnectionST::screenLayoutChangeOrClose(uint16_t reason)
-{
+void VNCSConnectionST::screenLayoutChangeOrClose(uint16_t reason) {
   try {
     screenLayoutChange(reason);
     writeFramebufferUpdate();
-  } catch(std::exception& e) {
+  } catch (std::exception& e) {
     close(e.what());
   }
 }
 
-void VNCSConnectionST::bellOrClose()
-{
+void VNCSConnectionST::bellOrClose() {
   try {
-    if (state() == RFBSTATE_NORMAL) writer()->writeBell();
-  } catch(std::exception& e) {
+    if (state() == RFBSTATE_NORMAL)
+      writer()->writeBell();
+  } catch (std::exception& e) {
     close(e.what());
   }
 }
 
-void VNCSConnectionST::setDesktopNameOrClose(const char *name)
-{
+void VNCSConnectionST::setDesktopNameOrClose(const char* name) {
   try {
     setDesktopName(name);
     writeFramebufferUpdate();
-  } catch(std::exception& e) {
+  } catch (std::exception& e) {
     close(e.what());
   }
 }
 
-void VNCSConnectionST::setCursorOrClose()
-{
+void VNCSConnectionST::setCursorOrClose() {
   try {
     setCursor();
     writeFramebufferUpdate();
-  } catch(std::exception& e) {
+  } catch (std::exception& e) {
     close(e.what());
   }
 }
 
-void VNCSConnectionST::setLEDStateOrClose(unsigned int state)
-{
+void VNCSConnectionST::setLEDStateOrClose(unsigned int state) {
   try {
     setLEDState(state);
     writeFramebufferUpdate();
-  } catch(std::exception& e) {
+  } catch (std::exception& e) {
     close(e.what());
   }
 }
 
-void VNCSConnectionST::requestClipboardOrClose()
-{
+void VNCSConnectionST::requestClipboardOrClose() {
   try {
-    if (state() != RFBSTATE_NORMAL) return;
+    if (state() != RFBSTATE_NORMAL)
+      return;
     requestClipboard();
-  } catch(std::exception& e) {
+  } catch (std::exception& e) {
     close(e.what());
   }
 }
 
-void VNCSConnectionST::announceClipboardOrClose(bool available)
-{
+void VNCSConnectionST::announceClipboardOrClose(bool available) {
   try {
-    if (state() != RFBSTATE_NORMAL) return;
+    if (state() != RFBSTATE_NORMAL)
+      return;
     announceClipboard(available);
-  } catch(std::exception& e) {
+  } catch (std::exception& e) {
     close(e.what());
   }
 }
 
-void VNCSConnectionST::sendClipboardDataOrClose(const char* data)
-{
+void VNCSConnectionST::sendClipboardDataOrClose(const char* data) {
   try {
-    if (state() != RFBSTATE_NORMAL) return;
+    if (state() != RFBSTATE_NORMAL)
+      return;
     sendClipboardData(data);
-  } catch(std::exception& e) {
+  } catch (std::exception& e) {
     close(e.what());
   }
 }
 
-void VNCSConnectionST::desktopReadyOrClose()
-{
+void VNCSConnectionST::desktopReadyOrClose() {
   try {
-    if (state() != RFBSTATE_CLIENT_READY) return;
+    if (state() != RFBSTATE_CLIENT_READY)
+      return;
     desktopReady();
-  } catch(std::exception& e) {
+  } catch (std::exception& e) {
     close(e.what());
   }
 }
 
-bool VNCSConnectionST::getComparerState()
-{
+bool VNCSConnectionST::getComparerState() {
   // We interpret a low compression level as an indication that the client
   // wants to prioritise CPU usage over bandwidth, and hence disable the
   // comparing update tracker.
   return (client.compressLevel == -1) || (client.compressLevel > 1);
 }
 
-
 // renderedCursorChange() is called whenever the server-side rendered cursor
 // changes shape or position.  It ensures that the next update will clean up
 // the old rendered cursor and if necessary draw the new rendered cursor.
 
-void VNCSConnectionST::renderedCursorChange()
-{
-  if (state() != RFBSTATE_NORMAL) return;
+void VNCSConnectionST::renderedCursorChange() {
+  if (state() != RFBSTATE_NORMAL)
+    return;
   // Are we switching between client-side and server-side cursor?
   if (clientHasCursor == needRenderedCursor())
     setCursorOrClose();
@@ -426,8 +392,7 @@ void VNCSConnectionST::renderedCursorChange()
 // the server.  If the client supports being informed about these changes then
 // it will arrange for the new cursor position to be sent to the client.
 
-void VNCSConnectionST::cursorPositionChange()
-{
+void VNCSConnectionST::cursorPositionChange() {
   setCursorPos();
 }
 
@@ -441,28 +406,24 @@ void VNCSConnectionST::cursorPositionChange()
 // second).  [ Ideally we should do finer-grained timing here and make the time
 // configurable, but I don't think it's that important. ]
 
-bool VNCSConnectionST::needRenderedCursor()
-{
+bool VNCSConnectionST::needRenderedCursor() {
   if (state() != RFBSTATE_NORMAL)
     return false;
 
   if (!client.supportsLocalCursor())
     return true;
-  if ((server->getCursorPos() != pointerEventPos) &&
-      (time(nullptr) - pointerEventTime) > 0)
+  if ((server->getCursorPos() != pointerEventPos) && (time(nullptr) - pointerEventTime) > 0)
     return true;
 
   return false;
 }
 
-void VNCSConnectionST::desktopReady()
-{
+void VNCSConnectionST::desktopReady() {
   if (state() != RFBSTATE_CLIENT_READY)
     return;
 
   // - Set the connection parameters appropriately
-  client.setDimensions(server->getPixelBuffer()->width(),
-                       server->getPixelBuffer()->height(),
+  client.setDimensions(server->getPixelBuffer()->width(), server->getPixelBuffer()->height(),
                        server->getScreenLayout());
   client.setName(server->getName());
   client.setLEDState(server->getLEDState());
@@ -479,10 +440,7 @@ void VNCSConnectionST::desktopReady()
   SConnection::desktopReady();
 }
 
-
-void VNCSConnectionST::approveConnectionOrClose(bool accept,
-                                                const char* reason)
-{
+void VNCSConnectionST::approveConnectionOrClose(bool accept, const char* reason) {
   try {
     approveConnection(accept, reason);
   } catch (std::exception& e) {
@@ -490,37 +448,34 @@ void VNCSConnectionST::approveConnectionOrClose(bool accept,
   }
 }
 
-
-
 // -=- Callbacks from SConnection
 
-void VNCSConnectionST::authSuccess()
-{
+void VNCSConnectionST::authSuccess() {
   if (rfb::Server::idleTimeout)
     idleTimer.start(core::secsToMillis(rfb::Server::idleTimeout));
 }
 
-void VNCSConnectionST::queryConnection(const char* userName)
-{
+void VNCSConnectionST::queryConnection(const char* userName) {
   server->queryConnection(this, userName);
 }
 
-void VNCSConnectionST::clientReady(bool shared)
-{
+void VNCSConnectionST::clientReady(bool shared) {
   if (rfb::Server::idleTimeout)
     idleTimer.start(core::secsToMillis(rfb::Server::idleTimeout));
 
-  if (rfb::Server::alwaysShared || reverseConnection) shared = true;
-  if (!accessCheck(AccessNonShared)) shared = true;
-  if (rfb::Server::neverShared) shared = false;
+  if (rfb::Server::alwaysShared || reverseConnection)
+    shared = true;
+  if (!accessCheck(AccessNonShared))
+    shared = true;
+  if (rfb::Server::neverShared)
+    shared = false;
   server->clientReady(this, shared);
 
   if (server->isDesktopReady())
     desktopReady();
 }
 
-void VNCSConnectionST::setEncodings(int nEncodings, const int32_t* encodings)
-{
+void VNCSConnectionST::setEncodings(int nEncodings, const int32_t* encodings) {
   SConnection::setEncodings(nEncodings, encodings);
 
   // Decide whether to use the cache protocol based on the client's
@@ -543,8 +498,7 @@ void VNCSConnectionST::setEncodings(int nEncodings, const int32_t* encodings)
   }
 }
 
-void VNCSConnectionST::setPixelFormat(const PixelFormat& pf)
-{
+void VNCSConnectionST::setPixelFormat(const PixelFormat& pf) {
   // Get old format before updating
   PixelFormat oldPf = client.pf();
 
@@ -559,22 +513,19 @@ void VNCSConnectionST::setPixelFormat(const PixelFormat& pf)
   encodeManager.handlePixelFormatChange(pf.bpp);
 }
 
-void VNCSConnectionST::pointerEvent(const core::Point& pos,
-                                    uint16_t buttonMask)
-{
+void VNCSConnectionST::pointerEvent(const core::Point& pos, uint16_t buttonMask) {
   if (rfb::Server::idleTimeout)
     idleTimer.start(core::secsToMillis(rfb::Server::idleTimeout));
   pointerEventTime = time(nullptr);
-  if (!accessCheck(AccessPtrEvents)) return;
+  if (!accessCheck(AccessPtrEvents))
+    return;
   pointerEventPos = pos;
   server->pointerEvent(this, pointerEventPos, buttonMask);
 }
 
-
 class VNCSConnectionSTShiftPresser {
 public:
-  VNCSConnectionSTShiftPresser(VNCServerST* server_)
-    : server(server_), pressed(false) {}
+  VNCSConnectionSTShiftPresser(VNCServerST* server_) : server(server_), pressed(false) {}
   ~VNCSConnectionSTShiftPresser() {
     if (pressed) {
       vlog.debug("Releasing fake Shift_L");
@@ -597,22 +548,20 @@ void VNCSConnectionST::keyEvent(uint32_t keysym, uint32_t keycode, bool down) {
 
   if (rfb::Server::idleTimeout)
     idleTimer.start(core::secsToMillis(rfb::Server::idleTimeout));
-  if (!accessCheck(AccessKeyEvents)) return;
+  if (!accessCheck(AccessKeyEvents))
+    return;
   // FIXME: This check isn't strictly needed, but we get a lot of
   //        confusing debug logging without it
-  if (!rfb::Server::acceptKeyEvents) return;
+  if (!rfb::Server::acceptKeyEvents)
+    return;
 
   if (down)
-    vlog.debug("Key pressed: 0x%04x / XK_%s (0x%04x)",
-               keycode, KeySymName(keysym), keysym);
+    vlog.debug("Key pressed: 0x%04x / XK_%s (0x%04x)", keycode, KeySymName(keysym), keysym);
   else
-    vlog.debug("Key released: 0x%04x / XK_%s (0x%04x)",
-               keycode, KeySymName(keysym), keysym);
+    vlog.debug("Key released: 0x%04x / XK_%s (0x%04x)", keycode, KeySymName(keysym), keysym);
 
   // Avoid lock keys if we don't know the server state
-  if ((server->getLEDState() == ledUnknown) &&
-      ((keysym == XK_Caps_Lock) ||
-       (keysym == XK_Num_Lock))) {
+  if ((server->getLEDState() == ledUnknown) && ((keysym == XK_Caps_Lock) || (keysym == XK_Num_Lock))) {
     vlog.debug("Ignoring lock key (e.g. caps lock)");
     return;
   }
@@ -624,8 +573,7 @@ void VNCSConnectionST::keyEvent(uint32_t keysym, uint32_t keycode, bool down) {
       // CapsLock synchronisation heuristic
       // (this assumes standard interaction between CapsLock the Shift
       // keys and normal characters)
-      if (((keysym >= XK_A) && (keysym <= XK_Z)) ||
-          ((keysym >= XK_a) && (keysym <= XK_z))) {
+      if (((keysym >= XK_A) && (keysym <= XK_Z)) || ((keysym >= XK_a) && (keysym <= XK_z))) {
         bool uppercase, shift, lock;
 
         uppercase = (keysym >= XK_A) && (keysym <= XK_Z);
@@ -642,13 +590,12 @@ void VNCSConnectionST::keyEvent(uint32_t keysym, uint32_t keycode, bool down) {
       // NumLock synchronisation heuristic
       // (this is more cautious because of the differences between Unix,
       // Windows and macOS)
-      if (((keysym >= XK_KP_Home) && (keysym <= XK_KP_Delete)) ||
-          ((keysym >= XK_KP_0) && (keysym <= XK_KP_9)) ||
+      if (((keysym >= XK_KP_Home) && (keysym <= XK_KP_Delete)) || ((keysym >= XK_KP_0) && (keysym <= XK_KP_9)) ||
           (keysym == XK_KP_Separator) || (keysym == XK_KP_Decimal)) {
         bool number, shift, lock;
 
-        number = ((keysym >= XK_KP_0) && (keysym <= XK_KP_9)) ||
-                  (keysym == XK_KP_Separator) || (keysym == XK_KP_Decimal);
+        number =
+            ((keysym >= XK_KP_0) && (keysym <= XK_KP_9)) || (keysym == XK_KP_Separator) || (keysym == XK_KP_Decimal);
         shift = isShiftPressed();
         lock = server->getLEDState() & ledNumLock;
 
@@ -701,20 +648,18 @@ void VNCSConnectionST::keyEvent(uint32_t keysym, uint32_t keycode, bool down) {
   server->keyEvent(keysym, keycode, down);
 }
 
-void VNCSConnectionST::framebufferUpdateRequest(const core::Rect& r,
-                                                bool incremental)
-{
+void VNCSConnectionST::framebufferUpdateRequest(const core::Rect& r, bool incremental) {
   core::Rect safeRect;
 
-  if (!accessCheck(AccessView)) return;
+  if (!accessCheck(AccessView))
+    return;
 
   SConnection::framebufferUpdateRequest(r, incremental);
 
   // Check that the client isn't sending crappy requests
   if (!r.enclosed_by({0, 0, client.width(), client.height()})) {
-    vlog.error("FramebufferUpdateRequest %dx%d at %d,%d exceeds framebuffer %dx%d",
-               r.width(), r.height(), r.tl.x, r.tl.y,
-               client.width(), client.height());
+    vlog.error("FramebufferUpdateRequest %dx%d at %d,%d exceeds framebuffer %dx%d", r.width(), r.height(), r.tl.x,
+               r.tl.y, client.width(), client.height());
     safeRect = r.intersect({0, 0, client.width(), client.height()});
   } else {
     safeRect = r;
@@ -742,14 +687,11 @@ void VNCSConnectionST::framebufferUpdateRequest(const core::Rect& r,
   }
 }
 
-void VNCSConnectionST::setDesktopSize(int fb_width, int fb_height,
-                                      const ScreenSet& layout)
-{
+void VNCSConnectionST::setDesktopSize(int fb_width, int fb_height, const ScreenSet& layout) {
   unsigned int result;
   char buffer[2048];
 
-  vlog.debug("Got request for framebuffer resize to %dx%d",
-             fb_width, fb_height);
+  vlog.debug("Got request for framebuffer resize to %dx%d", fb_width, fb_height);
   layout.print(buffer, sizeof(buffer));
   vlog.debug("%s", buffer);
 
@@ -763,8 +705,7 @@ void VNCSConnectionST::setDesktopSize(int fb_width, int fb_height,
   writer()->writeDesktopSize(reasonClient, result);
 }
 
-void VNCSConnectionST::fence(uint32_t flags, unsigned len, const uint8_t data[])
-{
+void VNCSConnectionST::fence(uint32_t flags, unsigned len, const uint8_t data[]) {
   uint8_t type;
 
   if (flags & fenceFlagRequest) {
@@ -773,7 +714,7 @@ void VNCSConnectionST::fence(uint32_t flags, unsigned len, const uint8_t data[])
 
       fenceFlags = flags & (fenceFlagBlockBefore | fenceFlagBlockAfter | fenceFlagSyncNext);
       fenceDataLen = len;
-      delete [] fenceData;
+      delete[] fenceData;
       fenceData = nullptr;
       if (len > 0) {
         fenceData = new uint8_t[len];
@@ -809,9 +750,7 @@ void VNCSConnectionST::fence(uint32_t flags, unsigned len, const uint8_t data[])
   }
 }
 
-void VNCSConnectionST::enableContinuousUpdates(bool enable,
-                                               int x, int y, int w, int h)
-{
+void VNCSConnectionST::enableContinuousUpdates(bool enable, int x, int y, int w, int h) {
   core::Rect rect;
 
   if (!accessCheck(AccessView))
@@ -832,18 +771,15 @@ void VNCSConnectionST::enableContinuousUpdates(bool enable,
   }
 }
 
-void VNCSConnectionST::handleClipboardRequest()
-{
+void VNCSConnectionST::handleClipboardRequest() {
   server->handleClipboardRequest(this);
 }
 
-void VNCSConnectionST::handleClipboardAnnounce(bool available)
-{
+void VNCSConnectionST::handleClipboardAnnounce(bool available) {
   server->handleClipboardAnnounce(this, available);
 }
 
-void VNCSConnectionST::handleClipboardData(const char* data)
-{
+void VNCSConnectionST::handleClipboardData(const char* data) {
   server->handleClipboardData(this, data);
 }
 
@@ -852,22 +788,19 @@ void VNCSConnectionST::handleClipboardData(const char* data)
 // cursor, we make sure that the old server-side rendered cursor is cleaned up
 // and the cursor is sent to the client.
 
-void VNCSConnectionST::supportsLocalCursor()
-{
+void VNCSConnectionST::supportsLocalCursor() {
   bool hasRenderedCursor = !damagedCursorRegion.is_empty();
   if (hasRenderedCursor && !needRenderedCursor())
     removeRenderedCursor = true;
   setCursor();
 }
 
-void VNCSConnectionST::supportsFence()
-{
+void VNCSConnectionST::supportsFence() {
   uint8_t type = 0;
   writer()->writeFence(fenceFlagRequest, sizeof(type), &type);
 }
 
-void VNCSConnectionST::supportsContinuousUpdates()
-{
+void VNCSConnectionST::supportsContinuousUpdates() {
   // We refuse to use continuous updates if we cannot monitor the buffer
   // usage using fences.
   if (!client.supportsFence())
@@ -876,66 +809,16 @@ void VNCSConnectionST::supportsContinuousUpdates()
   writer()->writeEndOfContinuousUpdates();
 }
 
-void VNCSConnectionST::supportsLEDState()
-{
+void VNCSConnectionST::supportsLEDState() {
   if (client.ledState() == ledUnknown)
     return;
 
   writer()->writeLEDState();
 }
 
-void VNCSConnectionST::handleRequestCachedData(uint64_t cacheId)
-{
-  vlog.debug("Client requested cached data for ID %llu",
-             (unsigned long long)cacheId);
-
-  // Client doesn't have this ID - remove from pending/confirmed sets
-  removePendingId(cacheId);
-
-  // If we know the specific rectangle that referenced this cacheId last,
-  // request a targeted refresh of exactly that region for this connection.
-  auto it = lastCachedRectRef_.find(cacheId);
-  if (it != lastCachedRectRef_.end()) {
-    const core::Rect& r = it->second;
-    core::Region rr(r);
-    add_changed(rr);
-    // Also queue a CachedRectInit for this region in the next update
-    queueCachedInit(cacheId, r);
-    vlog.info("Targeted refresh for cacheId=%llu at [%d,%d-%d,%d]",
-              (unsigned long long)cacheId, r.tl.x, r.tl.y, r.br.x, r.br.y);
-    // Do not erase immediately; keep mapping in case multiple references arrive
-    return;
-  }
-
-  // Fallback to server-level handling (full refresh workaround)
-  server->handleRequestCachedData(this, cacheId);
-}
-
-void VNCSConnectionST::handleCacheEviction(const std::vector<uint64_t>& cacheIds)
-{
-  vlog.debug("Client evicted %u cache entries (ContentCache policy)", (unsigned)cacheIds.size());
-
-  // Remove evicted cache IDs from all unified tracking sets so future
-  // lookups will treat them as misses regardless of protocol flavour.
-  for (uint64_t cacheId : cacheIds) {
-    knownCacheIds_.erase(cacheId);
-    knownPersistentIds_.erase(cacheId);
-    lastCachedRectRef_.erase(cacheId);
-    encodeManager.removeClientKnownHash(cacheId);
-    auto it = clientRequestedPersistentIds_.find(cacheId);
-    if (it != clientRequestedPersistentIds_.end())
-      clientRequestedPersistentIds_.erase(it);
-  }
-
-  vlog.info("Updated cache ID tracking after ContentCache eviction: removed %u IDs (session-known IDs may be fewer due to prior evictions)",
-            (unsigned)cacheIds.size());
-}
-
-void VNCSConnectionST::handleTimeout(core::Timer* t)
-{
+void VNCSConnectionST::handleTimeout(core::Timer* t) {
   try {
-    if ((t == &congestionTimer) ||
-        (t == &losslessTimer))
+    if ((t == &congestionTimer) || (t == &losslessTimer))
       writeFramebufferUpdate();
   } catch (std::exception& e) {
     close(e.what());
@@ -945,18 +828,15 @@ void VNCSConnectionST::handleTimeout(core::Timer* t)
     close("Idle timeout");
 }
 
-void VNCSConnectionST::recordCachedRectRef(uint64_t cacheId, const core::Rect& r)
-{
+void VNCSConnectionST::recordCachedRectRef(uint64_t cacheId, const core::Rect& r) {
   lastCachedRectRef_[cacheId] = r;
 }
 
-void VNCSConnectionST::onCachedRectRef(uint64_t cacheId, const core::Rect& r)
-{
+void VNCSConnectionST::onCachedRectRef(uint64_t cacheId, const core::Rect& r) {
   recordCachedRectRef(cacheId, r);
 }
 
-void VNCSConnectionST::handlePersistentCacheQuery(const std::vector<uint64_t>& cacheIds)
-{
+void VNCSConnectionST::handlePersistentCacheQuery(const std::vector<uint64_t>& cacheIds) {
   vlog.debug("Client queried %d persistent cache IDs", (int)cacheIds.size());
 
   // Track requested IDs so the encoder can choose to send inits
@@ -968,18 +848,16 @@ void VNCSConnectionST::handlePersistentCacheQuery(const std::vector<uint64_t>& c
     auto it = lastCachedRectRef_.find(id);
     if (it != lastCachedRectRef_.end()) {
       add_changed(core::Region(it->second));
-      vlog.debug("Triggering refresh for queried ID %llu at %dx%d",
-                 (unsigned long long)id, it->second.tl.x, it->second.tl.y);
+      vlog.debug("Triggering refresh for queried ID %llu at %dx%d", (unsigned long long)id, it->second.tl.x,
+                 it->second.tl.y);
     }
   }
 }
 
-void VNCSConnectionST::handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
-                                                uint16_t chunkIndex,
-                                                const std::vector<uint64_t>& cacheIds)
-{
-  vlog.debug("Client advertised %d persistent cache IDs (chunk %d/%d, seq %u)",
-             (int)cacheIds.size(), chunkIndex + 1, totalChunks, sequenceId);
+void VNCSConnectionST::handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks, uint16_t chunkIndex,
+                                                const std::vector<uint64_t>& cacheIds) {
+  vlog.debug("Client advertised %d persistent cache IDs (chunk %d/%d, seq %u)", (int)cacheIds.size(), chunkIndex + 1,
+             totalChunks, sequenceId);
 
   // Forward to EncodeManager to track client's known IDs
   for (uint64_t id : cacheIds) {
@@ -991,12 +869,11 @@ void VNCSConnectionST::handlePersistentHashList(uint32_t sequenceId, uint16_t to
     knownPersistentIds_.insert(id);
   }
 
-  vlog.info("Received ID list: %d IDs (session tracking now has %zu total)",
-            (int)cacheIds.size(), knownPersistentIds_.size());
+  vlog.info("Received ID list: %d IDs (session tracking now has %zu total)", (int)cacheIds.size(),
+            knownPersistentIds_.size());
 }
 
-void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds)
-{
+void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds) {
   vlog.debug("Client evicted %u persistent cache entries", (unsigned)cacheIds.size());
 
   // Remove IDs from all unified tracking sets so we stop sending references
@@ -1005,7 +882,6 @@ void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<uint64_t>
   for (uint64_t id : cacheIds) {
     encodeManager.removeClientKnownHash(id);
     knownPersistentIds_.erase(id);
-    knownCacheIds_.erase(id);
     lastCachedRectRef_.erase(id);
     auto it = clientRequestedPersistentIds_.find(id);
     if (it != clientRequestedPersistentIds_.end())
@@ -1017,16 +893,14 @@ void VNCSConnectionST::handlePersistentCacheEviction(const std::vector<uint64_t>
 }
 
 namespace {
-  inline uint64_t cacheKeyFirstU64(const rfb::CacheKey& key) {
-    uint64_t v = 0;
-    memcpy(&v, key.bytes.data(), sizeof(v));
-    return v;
-  }
+inline uint64_t cacheKeyFirstU64(const rfb::CacheKey& key) {
+  uint64_t v = 0;
+  memcpy(&v, key.bytes.data(), sizeof(v));
+  return v;
 }
+} // namespace
 
-void VNCSConnectionST::handlePersistentCacheHashReport(const CacheKey& canonicalKey,
-                                                       const CacheKey& actualKey)
-{
+void VNCSConnectionST::handlePersistentCacheHashReport(const CacheKey& canonicalKey, const CacheKey& actualKey) {
   // NEW DESIGN: The viewer reports hash type for ALL cache interactions:
   // - Lossless: canonical == actual (viewer has lossless pixels)
   // - Lossy: canonical != actual (viewer has lossy pixels)
@@ -1040,11 +914,9 @@ void VNCSConnectionST::handlePersistentCacheHashReport(const CacheKey& canonical
   bool isLossless = (canonicalId == actualId);
 
   if (isLossless) {
-    vlog.debug("Client confirmed LOSSLESS cache entry: canonical=%llu",
-               (unsigned long long)canonicalId);
+    vlog.debug("Client confirmed LOSSLESS cache entry: canonical=%llu", (unsigned long long)canonicalId);
   } else {
-    vlog.debug("Client confirmed LOSSY cache entry: canonical=%llu actual=%llu",
-               (unsigned long long)canonicalId,
+    vlog.debug("Client confirmed LOSSY cache entry: canonical=%llu actual=%llu", (unsigned long long)canonicalId,
                (unsigned long long)actualId);
 
     // Store the canonical->lossy mapping for future reference
@@ -1058,13 +930,10 @@ void VNCSConnectionST::handlePersistentCacheHashReport(const CacheKey& canonical
   markPersistentIdKnown(actualId);
 
   vlog.info("Hash type report: canonical=%llu actual=%llu%s (marked canonical as known)",
-            (unsigned long long)canonicalId,
-            (unsigned long long)actualId,
-            isLossless ? " LOSSLESS" : " LOSSY");
+            (unsigned long long)canonicalId, (unsigned long long)actualId, isLossless ? " LOSSLESS" : " LOSSY");
 }
 
-void VNCSConnectionST::handleDebugDumpRequest(uint32_t timestamp)
-{
+void VNCSConnectionST::handleDebugDumpRequest(uint32_t timestamp) {
   // Create output directory with timestamp to match client
   char outputDir[256];
   snprintf(outputDir, sizeof(outputDir), "/tmp/corruption_debug_%u", timestamp);
@@ -1076,8 +945,7 @@ void VNCSConnectionST::handleDebugDumpRequest(uint32_t timestamp)
     mkdir(outputDir, 0755);
   }
 
-  vlog.info("Debug dump requested by client (timestamp=%u), dumping to %s",
-            timestamp, outputDir);
+  vlog.info("Debug dump requested by client (timestamp=%u), dumping to %s", timestamp, outputDir);
 
   // Dump EncodeManager state
   encodeManager.dumpDebugState(outputDir);
@@ -1092,7 +960,6 @@ void VNCSConnectionST::handleDebugDumpRequest(uint32_t timestamp)
     fprintf(f, "Peer: %s\n", peerEndpoint.c_str());
     fprintf(f, "\n=== ID Tracking ===\n");
     fprintf(f, "knownPersistentIds: %zu\n", knownPersistentIds_.size());
-    fprintf(f, "knownCacheIds: %zu\n", knownCacheIds_.size());
     fprintf(f, "clientRequestedPersistentIds: %zu\n", clientRequestedPersistentIds_.size());
     fprintf(f, "lossyHashCache: %zu\n", lossyHashCache_.size());
     fprintf(f, "viewerConfirmedCache: %zu\n", viewerConfirmedCache_.size());
@@ -1115,9 +982,7 @@ void VNCSConnectionST::handleDebugDumpRequest(uint32_t timestamp)
     count = 0;
     for (const auto& kv : lossyHashCache_) {
       uint64_t lossyId = cacheKeyFirstU64(kv.second);
-      fprintf(f, "  canonical=%016llx -> lossy=%016llx\n",
-              (unsigned long long)kv.first,
-              (unsigned long long)lossyId);
+      fprintf(f, "  canonical=%016llx -> lossy=%016llx\n", (unsigned long long)kv.first, (unsigned long long)lossyId);
       if (++count >= 50) {
         fprintf(f, "  ... (%zu total)\n", lossyHashCache_.size());
         break;
@@ -1129,22 +994,20 @@ void VNCSConnectionST::handleDebugDumpRequest(uint32_t timestamp)
   }
 }
 
-bool VNCSConnectionST::isShiftPressed()
-{
-    std::map<uint32_t, uint32_t>::const_iterator iter;
+bool VNCSConnectionST::isShiftPressed() {
+  std::map<uint32_t, uint32_t>::const_iterator iter;
 
-    for (iter = pressedKeys.begin(); iter != pressedKeys.end(); ++iter) {
-      if (iter->second == XK_Shift_L)
-        return true;
-      if (iter->second == XK_Shift_R)
-        return true;
-    }
+  for (iter = pressedKeys.begin(); iter != pressedKeys.end(); ++iter) {
+    if (iter->second == XK_Shift_L)
+      return true;
+    if (iter->second == XK_Shift_R)
+      return true;
+  }
 
   return false;
 }
 
-void VNCSConnectionST::writeRTTPing()
-{
+void VNCSConnectionST::writeRTTPing() {
   uint8_t type;
 
   if (!client.supportsFence())
@@ -1156,14 +1019,12 @@ void VNCSConnectionST::writeRTTPing()
   // time we get the response back. This allows us to reliably throttle
   // back on client overload, as well as network overload.
   type = 1;
-  writer()->writeFence(fenceFlagRequest | fenceFlagBlockBefore,
-                       sizeof(type), &type);
+  writer()->writeFence(fenceFlagRequest | fenceFlagBlockBefore, sizeof(type), &type);
 
   congestion.sentPing();
 }
 
-bool VNCSConnectionST::isCongested()
-{
+bool VNCSConnectionST::isCongested() {
   int eta;
 
   congestionTimer.stop();
@@ -1195,9 +1056,7 @@ bool VNCSConnectionST::isCongested()
   return true;
 }
 
-
-void VNCSConnectionST::writeFramebufferUpdate()
-{
+void VNCSConnectionST::writeFramebufferUpdate() {
   congestion.updatePosition(sock->outStream().length());
 
   // We're in the middle of processing a command that's supposed to be
@@ -1240,8 +1099,7 @@ void VNCSConnectionST::writeFramebufferUpdate()
   congestion.updatePosition(sock->outStream().length());
 }
 
-void VNCSConnectionST::writeNoDataUpdate()
-{
+void VNCSConnectionST::writeNoDataUpdate() {
   if (!writer()->needNoDataUpdate())
     return;
 
@@ -1251,12 +1109,11 @@ void VNCSConnectionST::writeNoDataUpdate()
   requested.clear();
 }
 
-void VNCSConnectionST::writeDataUpdate()
-{
+void VNCSConnectionST::writeDataUpdate() {
   core::Region req;
   UpdateInfo ui;
   bool needNewUpdateInfo;
-  const RenderedCursor *cursor;
+  const RenderedCursor* cursor;
 
   // See what the client has requested (if anything)
   if (continuousUpdates)
@@ -1369,16 +1226,14 @@ void VNCSConnectionST::writeDataUpdate()
   // Periodic cache tracking logging (every 100 updates)
   updateCount_++;
   if (updateCount_ % 100 == 0) {
-    vlog.debug("%s: Sent %u updates, tracking %zu cache IDs, %zu cached rect refs",
-               peerEndpoint.c_str(), updateCount_,
-               knownCacheIds_.size(), lastCachedRectRef_.size());
+    vlog.debug("%s: Sent %u updates, tracking %zu cache IDs, %zu cached rect refs", peerEndpoint.c_str(), updateCount_,
+               knownPersistentIds_.size(), lastCachedRectRef_.size());
   }
 }
 
-void VNCSConnectionST::writeLosslessRefresh()
-{
+void VNCSConnectionST::writeLosslessRefresh() {
   core::Region req, pending;
-  const RenderedCursor *cursor;
+  const RenderedCursor* cursor;
 
   int nextRefresh, nextUpdate;
   size_t bandwidth, maxUpdateSize;
@@ -1441,33 +1296,27 @@ void VNCSConnectionST::writeLosslessRefresh()
 
   writeRTTPing();
 
-  encodeManager.writeLosslessRefresh(req, server->getPixelBuffer(),
-                                     cursor, maxUpdateSize);
+  encodeManager.writeLosslessRefresh(req, server->getPixelBuffer(), cursor, maxUpdateSize);
 
   writeRTTPing();
 
   requested.clear();
 }
 
-
-void VNCSConnectionST::screenLayoutChange(uint16_t reason)
-{
+void VNCSConnectionST::screenLayoutChange(uint16_t reason) {
   if (state() != RFBSTATE_NORMAL)
     return;
 
-  client.setDimensions(client.width(), client.height(),
-                       server->getScreenLayout());
+  client.setDimensions(client.width(), client.height(), server->getScreenLayout());
 
   writer()->writeDesktopSize(reason);
 }
-
 
 // setCursor() is called whenever the cursor has changed shape or pixel format.
 // If the client supports local cursor then it will arrange for the cursor to
 // be sent to the client.
 
-void VNCSConnectionST::setCursor()
-{
+void VNCSConnectionST::setCursor() {
   if (state() != RFBSTATE_NORMAL)
     return;
 
@@ -1488,8 +1337,7 @@ void VNCSConnectionST::setCursor()
 // server.  If the client supports being informed about these changes then it
 // will arrange for the new cursor position to be sent to the client.
 
-void VNCSConnectionST::setCursorPos()
-{
+void VNCSConnectionST::setCursorPos() {
   if (state() != RFBSTATE_NORMAL)
     return;
 
@@ -1499,8 +1347,7 @@ void VNCSConnectionST::setCursorPos()
   }
 }
 
-void VNCSConnectionST::setDesktopName(const char *name)
-{
+void VNCSConnectionST::setDesktopName(const char* name) {
   client.setName(name);
 
   if (state() != RFBSTATE_NORMAL)
@@ -1510,8 +1357,7 @@ void VNCSConnectionST::setDesktopName(const char *name)
     writer()->writeSetDesktopName();
 }
 
-void VNCSConnectionST::setLEDState(unsigned int ledstate)
-{
+void VNCSConnectionST::setLEDState(unsigned int ledstate) {
   if (state() != RFBSTATE_NORMAL)
     return;
 

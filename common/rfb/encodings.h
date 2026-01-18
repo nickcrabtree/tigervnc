@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyeight (C) 2011 D. R. Commander.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -21,85 +21,80 @@
 
 namespace rfb {
 
-  const int encodingRaw = 0;
-  const int encodingCopyRect = 1;
-  const int encodingRRE = 2;
-  const int encodingCoRRE = 4;
-  const int encodingHextile = 5;
-  const int encodingTight = 7;
-  const int encodingZRLE = 16;
+const int encodingRaw = 0;
+const int encodingCopyRect = 1;
+const int encodingRRE = 2;
+const int encodingCoRRE = 4;
+const int encodingHextile = 5;
+const int encodingTight = 7;
+const int encodingZRLE = 16;
 #ifdef HAVE_H264
-  const int encodingH264 = 50;
+const int encodingH264 = 50;
 #endif
 
-  // TigerVNC cache protocol (unified ContentCache/PersistentCache)
+// TigerVNC PersistentCache protocol
 //
-// In this fork, ContentCache and PersistentCache share identical semantics and
 // key type (content-addressable 16-byte hashes). The only behavioural difference
 // is whether the viewer preloads entries from disk and advertises an initial
-// inventory ("persistent" mode) or starts empty ("content" mode).
-const int encodingCachedRect = 100;       // Reference: payload is 16-byte CacheKey
-const int encodingCachedRectInit = 101;   // Init: 16-byte CacheKey + actual encoding + pixels
-const int encodingPersistentCachedRect = 102;     // Deprecated alias (kept for now)
-const int encodingPersistentCachedRectInit = 103; // Deprecated alias (kept for now)
-  
-  // TigerVNC cache eviction notification (client→server)
+const int encodingPersistentCachedRect = 102; // Reference: payload is 16-byte CacheKey
+const int encodingPersistentCachedRectInit =
+    103; // Init: 16-byte CacheKey + optional flags/PF + actual encoding + pixels
+
+// TigerVNC cache eviction notification (client→server)
 // Sent by client to notify server when cache entries are evicted.
 // Format: U32 count, followed by count *16-byte* CacheKey values.
-  const int encodingCacheEviction = 104;
-  
-  // TigerVNC cache seed encoding (server→client)
+
+// TigerVNC cache seed encoding (server→client)
 // Tells client to take pixels already in framebuffer at rect R and
 // associate them with a CacheKey. No pixel payload follows.
 // Wire format: rect header + 16-byte CacheKey
-  const int encodingCachedRectSeed = 105;
+const int encodingCachedRectSeed = 105;
 
-  const int encodingMax = 255;
+const int encodingMax = 255;
 
-  const int pseudoEncodingXCursor = -240;
-  const int pseudoEncodingCursor = -239;
-  const int pseudoEncodingExtendedMouseButtons = -316;
-  const int pseudoEncodingDesktopSize = -223;
-  const int pseudoEncodingLEDState = -261;
-  const int pseudoEncodingExtendedDesktopSize = -308;
-  const int pseudoEncodingDesktopName = -307;
-  const int pseudoEncodingFence = -312;
-  const int pseudoEncodingContinuousUpdates = -313;
-  const int pseudoEncodingCursorWithAlpha = -314;
-  const int pseudoEncodingQEMUKeyEvent = -258;
+const int pseudoEncodingXCursor = -240;
+const int pseudoEncodingCursor = -239;
+const int pseudoEncodingExtendedMouseButtons = -316;
+const int pseudoEncodingDesktopSize = -223;
+const int pseudoEncodingLEDState = -261;
+const int pseudoEncodingExtendedDesktopSize = -308;
+const int pseudoEncodingDesktopName = -307;
+const int pseudoEncodingFence = -312;
+const int pseudoEncodingContinuousUpdates = -313;
+const int pseudoEncodingCursorWithAlpha = -314;
+const int pseudoEncodingQEMUKeyEvent = -258;
 
-  // TigerVNC cache-based protocol extensions
-  const int pseudoEncodingContentCache = -320;      // Session-only, server-assigned IDs
-  const int pseudoEncodingPersistentCache = -321;   // Cross-session, content hashes
-  // Native-format (canonical 32bpp) cache init extension negotiated separately
-  const int pseudoEncodingNativeFormatCache = -327;
+// TigerVNC cache-based protocol extensions
+const int pseudoEncodingPersistentCache = -321; // Cross-session, content hashes
+// Native-format (canonical 32bpp) cache init extension negotiated separately
+const int pseudoEncodingNativeFormatCache = -327;
 
-  // TightVNC-specific
-  const int pseudoEncodingLastRect = -224;
-  const int pseudoEncodingQualityLevel0 = -32;
-  const int pseudoEncodingQualityLevel9 = -23;
-  const int pseudoEncodingCompressLevel0 = -256;
-  const int pseudoEncodingCompressLevel9 = -247;
+// TightVNC-specific
+const int pseudoEncodingLastRect = -224;
+const int pseudoEncodingQualityLevel0 = -32;
+const int pseudoEncodingQualityLevel9 = -23;
+const int pseudoEncodingCompressLevel0 = -256;
+const int pseudoEncodingCompressLevel9 = -247;
 
-  // TurboVNC-specific
-  const int pseudoEncodingFineQualityLevel0 = -512;
-  const int pseudoEncodingFineQualityLevel100 = -412;
-  const int pseudoEncodingSubsamp1X = -768;
-  const int pseudoEncodingSubsamp4X = -767;
-  const int pseudoEncodingSubsamp2X = -766;
-  const int pseudoEncodingSubsampGray = -765;
-  const int pseudoEncodingSubsamp8X = -764;
-  const int pseudoEncodingSubsamp16X = -763;
+// TurboVNC-specific
+const int pseudoEncodingFineQualityLevel0 = -512;
+const int pseudoEncodingFineQualityLevel100 = -412;
+const int pseudoEncodingSubsamp1X = -768;
+const int pseudoEncodingSubsamp4X = -767;
+const int pseudoEncodingSubsamp2X = -766;
+const int pseudoEncodingSubsampGray = -765;
+const int pseudoEncodingSubsamp8X = -764;
+const int pseudoEncodingSubsamp16X = -763;
 
-  // VMware-specific
-  const int pseudoEncodingVMwareCursor = 0x574d5664;
-  const int pseudoEncodingVMwareCursorPosition = 0x574d5666;
-  const int pseudoEncodingVMwareLEDState = 0x574d5668;
+// VMware-specific
+const int pseudoEncodingVMwareCursor = 0x574d5664;
+const int pseudoEncodingVMwareCursorPosition = 0x574d5666;
+const int pseudoEncodingVMwareLEDState = 0x574d5668;
 
-  // UltraVNC-specific
-  const int pseudoEncodingExtendedClipboard = 0xC0A1E5CE;
+// UltraVNC-specific
+const int pseudoEncodingExtendedClipboard = 0xC0A1E5CE;
 
-  int encodingNum(const char* name);
-  const char* encodingName(int num);
-}
+int encodingNum(const char* name);
+const char* encodingName(int num);
+} // namespace rfb
 #endif

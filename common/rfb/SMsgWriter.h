@@ -28,170 +28,157 @@
 
 #include <rfb/CacheKey.h>
 
-namespace core { struct Rect; }
+namespace core {
+struct Rect;
+}
 
-namespace rdr { class OutStream; }
+namespace rdr {
+class OutStream;
+}
 
 namespace rfb {
 
-  class ClientParams;
-  class PixelFormat;
-  struct ScreenSet;
+class ClientParams;
+class PixelFormat;
+struct ScreenSet;
 
-  class SMsgWriter {
-  public:
-    SMsgWriter(ClientParams* client, rdr::OutStream* os);
-    virtual ~SMsgWriter();
+class SMsgWriter {
+public:
+  SMsgWriter(ClientParams* client, rdr::OutStream* os);
+  virtual ~SMsgWriter();
 
-    // writeServerInit() must only be called at the appropriate time in the
-    // protocol initialisation.
-    void writeServerInit(uint16_t width, uint16_t height,
-                         const PixelFormat& pf, const char* name);
+  // writeServerInit() must only be called at the appropriate time in the
+  // protocol initialisation.
+  void writeServerInit(uint16_t width, uint16_t height, const PixelFormat& pf, const char* name);
 
-    // Methods to write normal protocol messages
+  // Methods to write normal protocol messages
 
-    // writeSetColourMapEntries() writes a setColourMapEntries message, using
-    // the given colour entries.
-    void writeSetColourMapEntries(int firstColour, int nColours,
-                                  const uint16_t red[],
-                                  const uint16_t green[],
-                                  const uint16_t blue[]);
+  // writeSetColourMapEntries() writes a setColourMapEntries message, using
+  // the given colour entries.
+  void writeSetColourMapEntries(int firstColour, int nColours, const uint16_t red[], const uint16_t green[],
+                                const uint16_t blue[]);
 
-    // writeBell() does the obvious thing.
-    void writeBell();
+  // writeBell() does the obvious thing.
+  void writeBell();
 
-    void writeServerCutText(const char* str);
+  void writeServerCutText(const char* str);
 
-    void writeClipboardCaps(uint32_t caps, const uint32_t* lengths);
-    void writeClipboardRequest(uint32_t flags);
-    void writeClipboardPeek(uint32_t flags);
-    void writeClipboardNotify(uint32_t flags);
-    void writeClipboardProvide(uint32_t flags, const size_t* lengths,
-                               const uint8_t* const* data);
+  void writeClipboardCaps(uint32_t caps, const uint32_t* lengths);
+  void writeClipboardRequest(uint32_t flags);
+  void writeClipboardPeek(uint32_t flags);
+  void writeClipboardNotify(uint32_t flags);
+  void writeClipboardProvide(uint32_t flags, const size_t* lengths, const uint8_t* const* data);
 
-    // writeFence() sends a new fence request or response to the client.
-    void writeFence(uint32_t flags, unsigned len, const uint8_t data[]);
+  // writeFence() sends a new fence request or response to the client.
+  void writeFence(uint32_t flags, unsigned len, const uint8_t data[]);
 
-    // writeEndOfContinuousUpdates() indicates that we have left continuous
-    // updates mode.
-    void writeEndOfContinuousUpdates();
+  // writeEndOfContinuousUpdates() indicates that we have left continuous
+  // updates mode.
+  void writeEndOfContinuousUpdates();
 
-    // writeDesktopSize() won't actually write immediately, but will
-    // write the relevant pseudo-rectangle as part of the next update.
-    void writeDesktopSize(uint16_t reason, uint16_t result=0);
+  // writeDesktopSize() won't actually write immediately, but will
+  // write the relevant pseudo-rectangle as part of the next update.
+  void writeDesktopSize(uint16_t reason, uint16_t result = 0);
 
-    void writeSetDesktopName();
+  void writeSetDesktopName();
 
-    // Like setDesktopSize, we can't just write out a cursor message
-    // immediately.
-    void writeCursor();
+  // Like setDesktopSize, we can't just write out a cursor message
+  // immediately.
+  void writeCursor();
 
-    // Notifies the client that the cursor pointer was moved by the server.
-    void writeCursorPos();
+  // Notifies the client that the cursor pointer was moved by the server.
+  void writeCursorPos();
 
-    // Same for LED state message
-    void writeLEDState();
+  // Same for LED state message
+  void writeLEDState();
 
-    // And QEMU keyboard event handshake
-    void writeQEMUKeyEvent();
+  // And QEMU keyboard event handshake
+  void writeQEMUKeyEvent();
 
-    // let the client know we support extended mouse button support
-    void writeExtendedMouseButtonsSupport();
+  // let the client know we support extended mouse button support
+  void writeExtendedMouseButtonsSupport();
 
-    // needFakeUpdate() returns true when an immediate update is needed in
-    // order to flush out pseudo-rectangles to the client.
-    bool needFakeUpdate();
+  // needFakeUpdate() returns true when an immediate update is needed in
+  // order to flush out pseudo-rectangles to the client.
+  bool needFakeUpdate();
 
-    // needNoDataUpdate() returns true when an update without any
-    // framebuffer changes need to be sent (using writeNoDataUpdate()).
-    // Commonly this is an update that modifies the size of the framebuffer
-    // or the screen layout.
-    bool needNoDataUpdate();
+  // needNoDataUpdate() returns true when an update without any
+  // framebuffer changes need to be sent (using writeNoDataUpdate()).
+  // Commonly this is an update that modifies the size of the framebuffer
+  // or the screen layout.
+  bool needNoDataUpdate();
 
-    // writeNoDataUpdate() write a framebuffer update containing only
-    // pseudo-rectangles.
-    void writeNoDataUpdate();
+  // writeNoDataUpdate() write a framebuffer update containing only
+  // pseudo-rectangles.
+  void writeNoDataUpdate();
 
-    // writeFramebufferUpdateStart() initiates an update which you can fill
-    // in using writeCopyRect() and encoders. Finishing the update by calling
-    // writeFramebufferUpdateEnd().
-    void writeFramebufferUpdateStart(int nRects);
-    void writeFramebufferUpdateEnd();
+  // writeFramebufferUpdateStart() initiates an update which you can fill
+  // in using writeCopyRect() and encoders. Finishing the update by calling
+  // writeFramebufferUpdateEnd().
+  void writeFramebufferUpdateStart(int nRects);
+  void writeFramebufferUpdateEnd();
 
-    // There is no explicit encoder for CopyRect rects.
-    void writeCopyRect(const core::Rect& r, int srcX, int srcY);
+  // There is no explicit encoder for CopyRect rects.
+  void writeCopyRect(const core::Rect& r, int srcX, int srcY);
 
-    // Cache protocol extension: reference to cached content (16-byte CacheKey)
-    void writeCachedRect(const core::Rect& r, const CacheKey& key);
+  // Cache protocol extension: reference to cached content (16-byte CacheKey)
 
-    // Cache protocol extension: initial transmission with cache ID (16-byte CacheKey)
-    void writeCachedRectInit(const core::Rect& r, const CacheKey& key, int encoding);
+  // Cache protocol extension: initial transmission with cache ID (16-byte CacheKey)
 
-    // PersistentCache protocol extension: reference by 16-byte CacheKey
-    void writePersistentCachedRect(const core::Rect& r, const CacheKey& key);
+  // PersistentCache protocol extension: reference by 16-byte CacheKey
+  void writePersistentCachedRect(const core::Rect& r, const CacheKey& key);
 
-    // PersistentCache protocol extension: initial transmission with 16-byte CacheKey
-    void writePersistentCachedRectInit(const core::Rect& r, const CacheKey& key,
-                                       int encoding, uint8_t flags = 0,
-                                       const PixelFormat* pf = nullptr,
-                                       bool includeFlags = false);
+  // PersistentCache protocol extension: initial transmission with 16-byte CacheKey
+  void writePersistentCachedRectInit(const core::Rect& r, const CacheKey& key, int encoding, uint8_t flags = 0,
+                                     const PixelFormat* pf = nullptr, bool includeFlags = false);
 
-    // Cache seed: tell client to associate existing framebuffer pixels at rect R
-    // with CacheKey. No pixel payload follows - client uses its own framebuffer.
-    void writeCachedRectSeed(const core::Rect& r, const CacheKey& key);
+  // Cache seed: tell client to associate existing framebuffer pixels at rect R
+  // with CacheKey. No pixel payload follows - client uses its own framebuffer.
+  void writeCachedRectSeed(const core::Rect& r, const CacheKey& key);
 
-    // Encoders should call these to mark the start and stop of individual
-    // rects.
-    void startRect(const core::Rect& r, int enc);
-    void endRect();
+  // Encoders should call these to mark the start and stop of individual
+  // rects.
+  void startRect(const core::Rect& r, int enc);
+  void endRect();
 
-  protected:
-    void startMsg(int type);
-    void endMsg();
+protected:
+  void startMsg(int type);
+  void endMsg();
 
-    void writePseudoRects();
-    void writeNoDataRects();
+  void writePseudoRects();
+  void writeNoDataRects();
 
-    void writeSetDesktopSizeRect(int width, int height);
-    void writeExtendedDesktopSizeRect(uint16_t reason, uint16_t result,
-                                      int fb_width, int fb_height,
-                                      const ScreenSet& layout);
-    void writeSetDesktopNameRect(const char *name);
-    void writeSetCursorRect(int width, int height,
-                            int hotspotX, int hotspotY,
-                            const uint8_t* data, const uint8_t* mask);
-    void writeSetXCursorRect(int width, int height,
-                             int hotspotX, int hotspotY,
-                             const uint8_t* data, const uint8_t* mask);
-    void writeSetCursorWithAlphaRect(int width, int height,
-                                     int hotspotX, int hotspotY,
-                                     const uint8_t* data);
-    void writeSetVMwareCursorRect(int width, int height,
-                                  int hotspotX, int hotspotY,
-                                  const uint8_t* data);
-    void writeSetVMwareCursorPositionRect(int hotspotX, int hotspotY);
-    void writeLEDStateRect(uint8_t state);
-    void writeQEMUKeyEventRect();
-    void writeExtendedMouseButtonsRect();
+  void writeSetDesktopSizeRect(int width, int height);
+  void writeExtendedDesktopSizeRect(uint16_t reason, uint16_t result, int fb_width, int fb_height,
+                                    const ScreenSet& layout);
+  void writeSetDesktopNameRect(const char* name);
+  void writeSetCursorRect(int width, int height, int hotspotX, int hotspotY, const uint8_t* data, const uint8_t* mask);
+  void writeSetXCursorRect(int width, int height, int hotspotX, int hotspotY, const uint8_t* data, const uint8_t* mask);
+  void writeSetCursorWithAlphaRect(int width, int height, int hotspotX, int hotspotY, const uint8_t* data);
+  void writeSetVMwareCursorRect(int width, int height, int hotspotX, int hotspotY, const uint8_t* data);
+  void writeSetVMwareCursorPositionRect(int hotspotX, int hotspotY);
+  void writeLEDStateRect(uint8_t state);
+  void writeQEMUKeyEventRect();
+  void writeExtendedMouseButtonsRect();
 
-    ClientParams* client;
-    rdr::OutStream* os;
+  ClientParams* client;
+  rdr::OutStream* os;
 
-    int nRectsInUpdate;
-    int nRectsInHeader;
+  int nRectsInUpdate;
+  int nRectsInHeader;
 
-    bool needSetDesktopName;
-    bool needCursor;
-    bool needCursorPos;
-    bool needLEDState;
-    bool needQEMUKeyEvent;
-    bool needExtMouseButtonsEvent;
+  bool needSetDesktopName;
+  bool needCursor;
+  bool needCursorPos;
+  bool needLEDState;
+  bool needQEMUKeyEvent;
+  bool needExtMouseButtonsEvent;
 
-    typedef struct {
-      uint16_t reason, result;
-    } ExtendedDesktopSizeMsg;
+  typedef struct {
+    uint16_t reason, result;
+  } ExtendedDesktopSizeMsg;
 
-    std::list<ExtendedDesktopSizeMsg> extendedDesktopSizeMsgs;
-  };
-}
+  std::list<ExtendedDesktopSizeMsg> extendedDesktopSizeMsgs;
+};
+} // namespace rfb
 #endif

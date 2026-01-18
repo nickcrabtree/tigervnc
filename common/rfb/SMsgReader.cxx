@@ -33,15 +33,15 @@
 #include <rdr/InStream.h>
 #include <rdr/ZlibInStream.h>
 
-#include <rfb/msgTypes.h>
-#include <rfb/qemuTypes.h>
-#include <rfb/clipboardTypes.h>
+#include <rfb/CacheKey.h>
 #include <rfb/Exception.h>
 #include <rfb/PixelFormat.h>
-#include <rfb/ScreenSet.h>
 #include <rfb/SMsgHandler.h>
 #include <rfb/SMsgReader.h>
-#include <rfb/CacheKey.h>
+#include <rfb/ScreenSet.h>
+#include <rfb/clipboardTypes.h>
+#include <rfb/msgTypes.h>
+#include <rfb/qemuTypes.h>
 
 using namespace rfb;
 
@@ -67,19 +67,13 @@ static inline uint64_t cacheKeyFirstU64(const rfb::CacheKey& key) {
 static core::IntParameter maxCutText("MaxCutText",
                                      "Maximum permitted length of an "
                                      "incoming clipboard update",
-                                     256*1024, 0, INT_MAX);
+                                     256 * 1024, 0, INT_MAX);
 
-SMsgReader::SMsgReader(SMsgHandler* handler_, rdr::InStream* is_)
-  : handler(handler_), is(is_), state(MSGSTATE_IDLE)
-{
-}
+SMsgReader::SMsgReader(SMsgHandler* handler_, rdr::InStream* is_) : handler(handler_), is(is_), state(MSGSTATE_IDLE) {}
 
-SMsgReader::~SMsgReader()
-{
-}
+SMsgReader::~SMsgReader() {}
 
-bool SMsgReader::readClientInit()
-{
+bool SMsgReader::readClientInit() {
   if (!is->hasData(1))
     return false;
   bool shared = is->readU8();
@@ -87,8 +81,7 @@ bool SMsgReader::readClientInit()
   return true;
 }
 
-bool SMsgReader::readMsg()
-{
+bool SMsgReader::readMsg() {
   bool ret;
 
   if (state == MSGSTATE_IDLE) {
@@ -127,12 +120,6 @@ bool SMsgReader::readMsg()
   case msgTypeClientCutText:
     ret = readClientCutText();
     break;
-  case msgTypeRequestCachedData:
-    ret = readRequestCachedData();
-    break;
-  case msgTypeCacheEviction:
-    ret = readCacheEviction();
-    break;
   case msgTypePersistentCacheQuery:
     ret = readPersistentCacheQuery();
     break;
@@ -162,8 +149,7 @@ bool SMsgReader::readMsg()
   return ret;
 }
 
-bool SMsgReader::readSetPixelFormat()
-{
+bool SMsgReader::readSetPixelFormat() {
   if (!is->hasData(3 + 16))
     return false;
   is->skip(3);
@@ -173,8 +159,7 @@ bool SMsgReader::readSetPixelFormat()
   return true;
 }
 
-bool SMsgReader::readSetEncodings()
-{
+bool SMsgReader::readSetEncodings() {
   if (!is->hasData(1 + 2))
     return false;
 
@@ -197,8 +182,7 @@ bool SMsgReader::readSetEncodings()
   return true;
 }
 
-bool SMsgReader::readSetDesktopSize()
-{
+bool SMsgReader::readSetDesktopSize() {
   int width, height;
   int screens, i;
   uint32_t id, flags;
@@ -222,7 +206,7 @@ bool SMsgReader::readSetDesktopSize()
     return false;
   is->clearRestorePoint();
 
-  for (i = 0;i < screens;i++) {
+  for (i = 0; i < screens; i++) {
     id = is->readU32();
     sx = is->readU16();
     sy = is->readU16();
@@ -238,8 +222,7 @@ bool SMsgReader::readSetDesktopSize()
   return true;
 }
 
-bool SMsgReader::readFramebufferUpdateRequest()
-{
+bool SMsgReader::readFramebufferUpdateRequest() {
   if (!is->hasData(1 + 2 + 2 + 2 + 2))
     return false;
   bool inc = is->readU8();
@@ -247,12 +230,11 @@ bool SMsgReader::readFramebufferUpdateRequest()
   int y = is->readU16();
   int w = is->readU16();
   int h = is->readU16();
-  handler->framebufferUpdateRequest({x, y, x+w, y+h}, inc);
+  handler->framebufferUpdateRequest({x, y, x + w, y + h}, inc);
   return true;
 }
 
-bool SMsgReader::readEnableContinuousUpdates()
-{
+bool SMsgReader::readEnableContinuousUpdates() {
   bool enable;
   int x, y, w, h;
 
@@ -271,8 +253,7 @@ bool SMsgReader::readEnableContinuousUpdates()
   return true;
 }
 
-bool SMsgReader::readFence()
-{
+bool SMsgReader::readFence() {
   uint32_t flags;
   uint8_t len;
   uint8_t data[64];
@@ -305,8 +286,7 @@ bool SMsgReader::readFence()
   return true;
 }
 
-bool SMsgReader::readKeyEvent()
-{
+bool SMsgReader::readKeyEvent() {
   if (!is->hasData(1 + 2 + 4))
     return false;
   bool down = is->readU8();
@@ -316,8 +296,7 @@ bool SMsgReader::readKeyEvent()
   return true;
 }
 
-bool SMsgReader::readPointerEvent()
-{
+bool SMsgReader::readPointerEvent() {
   int mask;
   int x;
   int y;
@@ -331,7 +310,7 @@ bool SMsgReader::readPointerEvent()
   x = is->readU16();
   y = is->readU16();
 
-  if (handler->client.supportsExtendedMouseButtons() && mask & 0x80 ) {
+  if (handler->client.supportsExtendedMouseButtons() && mask & 0x80) {
     int highBits;
     int lowBits;
 
@@ -348,9 +327,7 @@ bool SMsgReader::readPointerEvent()
   return true;
 }
 
-
-bool SMsgReader::readClientCutText()
-{
+bool SMsgReader::readClientCutText() {
   if (!is->hasData(3 + 4))
     return false;
 
@@ -392,8 +369,7 @@ bool SMsgReader::readClientCutText()
   return true;
 }
 
-bool SMsgReader::readExtendedClipboard(int32_t len)
-{
+bool SMsgReader::readExtendedClipboard(int32_t len) {
   uint32_t flags;
   uint32_t action;
 
@@ -417,16 +393,16 @@ bool SMsgReader::readExtendedClipboard(int32_t len)
     uint32_t lengths[16];
 
     num = 0;
-    for (i = 0;i < 16;i++) {
+    for (i = 0; i < 16; i++) {
       if (flags & (1 << i))
         num++;
     }
 
-    if (len < (int32_t)(4 + 4*num))
+    if (len < (int32_t)(4 + 4 * num))
       throw protocol_error("Invalid extended clipboard message");
 
     num = 0;
-    for (i = 0;i < 16;i++) {
+    for (i = 0; i < 16; i++) {
       if (flags & (1 << i))
         lengths[num++] = is->readU32();
     }
@@ -443,7 +419,7 @@ bool SMsgReader::readExtendedClipboard(int32_t len)
     zis.setUnderlying(is, len - 4);
 
     num = 0;
-    for (i = 0;i < 16;i++) {
+    for (i = 0; i < 16; i++) {
       if (!(flags & 1 << i))
         continue;
 
@@ -453,8 +429,7 @@ bool SMsgReader::readExtendedClipboard(int32_t len)
       lengths[num] = zis.readU32();
 
       if (lengths[num] > (size_t)maxCutText) {
-        vlog.error("Extended clipboard data too long (%d bytes) - ignoring",
-                   (unsigned)lengths[num]);
+        vlog.error("Extended clipboard data too long (%d bytes) - ignoring", (unsigned)lengths[num]);
 
         // Slowly (safely) drain away the data
         while (lengths[num] > 0) {
@@ -490,10 +465,10 @@ bool SMsgReader::readExtendedClipboard(int32_t len)
     handler->handleClipboardProvide(flags, lengths, buffers);
 
     num = 0;
-    for (i = 0;i < 16;i++) {
+    for (i = 0; i < 16; i++) {
       if (!(flags & 1 << i))
         continue;
-      delete [] buffers[num++];
+      delete[] buffers[num++];
     }
   } else {
     switch (action) {
@@ -514,8 +489,7 @@ bool SMsgReader::readExtendedClipboard(int32_t len)
   return true;
 }
 
-bool SMsgReader::readQEMUMessage()
-{
+bool SMsgReader::readQEMUMessage() {
   int subType;
   bool ret;
 
@@ -543,8 +517,7 @@ bool SMsgReader::readQEMUMessage()
   }
 }
 
-bool SMsgReader::readQEMUKeyEvent()
-{
+bool SMsgReader::readQEMUKeyEvent() {
   if (!is->hasData(2 + 4 + 4))
     return false;
   bool down = is->readU16();
@@ -558,44 +531,7 @@ bool SMsgReader::readQEMUKeyEvent()
   return true;
 }
 
-bool SMsgReader::readRequestCachedData()
-{
-  rfb::CacheKey key;
-  if (!readCacheKey(is, &key))
-    return false;
-  uint64_t cacheId = cacheKeyFirstU64(key);
-  vlog.debug("Client requested cached data for ID %llu",
-             (unsigned long long)cacheId);
-  handler->handleRequestCachedData(cacheId);
-  return true;
-}
-
-bool SMsgReader::readCacheEviction()
-{
-  if (!is->hasData(4))
-    return false;
-  is->setRestorePoint();
-  uint32_t count = is->readU32();
-  if (!is->hasDataOrRestore(count * 16))
-    return false;
-  is->clearRestorePoint();
-
-  std::vector<uint64_t> cacheIds;
-  cacheIds.reserve(count);
-  for (uint32_t i = 0; i < count; i++) {
-    rfb::CacheKey key;
-    if (!readCacheKey(is, &key))
-      return false;
-    cacheIds.push_back(cacheKeyFirstU64(key));
-  }
-
-  vlog.debug("Client evicted %u cache entries", count);
-  handler->handleCacheEviction(cacheIds);
-  return true;
-}
-
-bool SMsgReader::readPersistentCacheQuery()
-{
+bool SMsgReader::readPersistentCacheQuery() {
   if (!is->hasData(2))
     return false;
   is->setRestorePoint();
@@ -618,8 +554,7 @@ bool SMsgReader::readPersistentCacheQuery()
   return true;
 }
 
-bool SMsgReader::readPersistentHashList()
-{
+bool SMsgReader::readPersistentHashList() {
   if (!is->hasData(4 + 2 + 2 + 2))
     return false;
   is->setRestorePoint();
@@ -640,14 +575,13 @@ bool SMsgReader::readPersistentHashList()
   }
 
   is->clearRestorePoint();
-  vlog.debug("Client advertised %d persistent cache IDs (chunk %d/%d, seq %u)",
-             count, chunkIndex + 1, totalChunks, sequenceId);
+  vlog.debug("Client advertised %d persistent cache IDs (chunk %d/%d, seq %u)", count, chunkIndex + 1, totalChunks,
+             sequenceId);
   handler->handlePersistentHashList(sequenceId, totalChunks, chunkIndex, cacheIds);
   return true;
 }
 
-bool SMsgReader::readPersistentCacheEviction()
-{
+bool SMsgReader::readPersistentCacheEviction() {
   if (!is->hasData(1 + 2))
     return false;
   is->setRestorePoint();
@@ -675,8 +609,7 @@ bool SMsgReader::readPersistentCacheEviction()
   return true;
 }
 
-bool SMsgReader::readPersistentCacheHashReport()
-{
+bool SMsgReader::readPersistentCacheHashReport() {
   if (!is->hasData(32))
     return false;
 
@@ -690,15 +623,13 @@ bool SMsgReader::readPersistentCacheHashReport()
   uint64_t canonicalId = cacheKeyFirstU64(canonicalKey);
   uint64_t actualId = cacheKeyFirstU64(actualKey);
 
-  vlog.debug("Client reported lossy hash: canonical=%llu, actual=%llu",
-             (unsigned long long)canonicalId,
+  vlog.debug("Client reported lossy hash: canonical=%llu, actual=%llu", (unsigned long long)canonicalId,
              (unsigned long long)actualId);
   handler->handlePersistentCacheHashReport(canonicalKey, actualKey);
   return true;
 }
 
-bool SMsgReader::readDebugDumpRequest()
-{
+bool SMsgReader::readDebugDumpRequest() {
   // Message contains a U32 timestamp for correlation with client dump
   if (!is->hasData(4))
     return false;

@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2019 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -33,14 +33,14 @@
 #include <rdr/InStream.h>
 #include <rdr/ZlibInStream.h>
 
-#include <rfb/msgTypes.h>
-#include <rfb/clipboardTypes.h>
-#include <rfb/Exception.h>
 #include <rfb/CMsgHandler.h>
 #include <rfb/CMsgReader.h>
+#include <rfb/Exception.h>
 #include <rfb/PixelBuffer.h>
 #include <rfb/ScreenSet.h>
+#include <rfb/clipboardTypes.h>
 #include <rfb/encodings.h>
+#include <rfb/msgTypes.h>
 
 static core::LogWriter vlog("CMsgReader");
 
@@ -64,19 +64,17 @@ static inline uint64_t cacheKeyFirstU64(const rfb::CacheKey& key) {
 static core::IntParameter maxCutText("MaxCutText",
                                      "Maximum permitted length of an "
                                      "incoming clipboard update",
-                                     256*1024, 0, INT_MAX);
+                                     256 * 1024, 0, INT_MAX);
 
 using namespace rfb;
 
 CMsgReader::CMsgReader(CMsgHandler* handler_, rdr::InStream* is_)
-  : imageBufIdealSize(0), handler(handler_), is(is_),
-    state(MSGSTATE_IDLE), cursorEncoding(-1)
-{
+    : imageBufIdealSize(0), handler(handler_), is(is_), state(MSGSTATE_IDLE), cursorEncoding(-1) {
   // Initialize incremental CachedRectInit state
   pendingCacheInitActive = false;
   pendingCacheKey = CacheKey();
   pendingCacheEncoding = 0;
-  
+
   // Initialize PersistentCachedRectInit state
   pendingPersistentCacheInitActive = false;
   pendingPersistentCacheEncoding = 0;
@@ -84,12 +82,9 @@ CMsgReader::CMsgReader(CMsgHandler* handler_, rdr::InStream* is_)
   pendingPersistentCacheHasPF = false;
 }
 
-CMsgReader::~CMsgReader()
-{
-}
+CMsgReader::~CMsgReader() {}
 
-bool CMsgReader::readServerInit()
-{
+bool CMsgReader::readServerInit() {
   int width, height;
   uint32_t len;
 
@@ -115,14 +110,12 @@ bool CMsgReader::readServerInit()
   if (core::isValidUTF8(name.data()))
     handler->serverInit(width, height, pf, name.data());
   else
-    handler->serverInit(width, height, pf,
-                        core::latin1ToUTF8(name.data()).c_str());
+    handler->serverInit(width, height, pf, core::latin1ToUTF8(name.data()).c_str());
 
   return true;
 }
 
-bool CMsgReader::readMsg()
-{
+bool CMsgReader::readMsg() {
   if (state == MSGSTATE_IDLE) {
     if (!is->hasData(1))
       return false;
@@ -196,7 +189,7 @@ bool CMsgReader::readMsg()
 
     switch (rectEncoding) {
     case pseudoEncodingLastRect:
-      nUpdateRectsLeft = 1;     // this rectangle is the last one
+      nUpdateRectsLeft = 1; // this rectangle is the last one
       ret = true;
       break;
     case pseudoEncodingXCursor:
@@ -216,16 +209,14 @@ bool CMsgReader::readMsg()
       ret = true;
       break;
     case pseudoEncodingDesktopName:
-      ret = readSetDesktopName(dataRect.tl.x, dataRect.tl.y,
-                               dataRect.width(), dataRect.height());
+      ret = readSetDesktopName(dataRect.tl.x, dataRect.tl.y, dataRect.width(), dataRect.height());
       break;
     case pseudoEncodingDesktopSize:
       handler->setDesktopSize(dataRect.width(), dataRect.height());
       ret = true;
       break;
     case pseudoEncodingExtendedDesktopSize:
-      ret = readExtendedDesktopSize(dataRect.tl.x, dataRect.tl.y,
-                                    dataRect.width(), dataRect.height());
+      ret = readExtendedDesktopSize(dataRect.tl.x, dataRect.tl.y, dataRect.width(), dataRect.height());
       break;
     case pseudoEncodingLEDState:
       ret = readLEDState();
@@ -240,12 +231,6 @@ bool CMsgReader::readMsg()
     case pseudoEncodingExtendedMouseButtons:
       handler->supportsExtendedMouseButtons();
       ret = true;
-      break;
-    case encodingCachedRect:
-      ret = readCachedRect(dataRect);
-      break;
-    case encodingCachedRectInit:
-      ret = readCachedRectInit(dataRect);
       break;
     case encodingPersistentCachedRect:
       ret = readPersistentCachedRect(dataRect);
@@ -274,8 +259,7 @@ bool CMsgReader::readMsg()
   }
 }
 
-bool CMsgReader::readSetColourMapEntries()
-{
+bool CMsgReader::readSetColourMapEntries() {
   if (!is->hasData(1 + 2 + 2))
     return false;
 
@@ -297,14 +281,12 @@ bool CMsgReader::readSetColourMapEntries()
   return true;
 }
 
-bool CMsgReader::readBell()
-{
+bool CMsgReader::readBell() {
   handler->bell();
   return true;
 }
 
-bool CMsgReader::readServerCutText()
-{
+bool CMsgReader::readServerCutText() {
   if (!is->hasData(3 + 4))
     return false;
 
@@ -331,7 +313,7 @@ bool CMsgReader::readServerCutText()
 
   if (len > (size_t)maxCutText) {
     is->skip(len);
-    vlog.error("Cut text too long (%d bytes) - ignoring",len);
+    vlog.error("Cut text too long (%d bytes) - ignoring", len);
     return true;
   }
 
@@ -346,8 +328,7 @@ bool CMsgReader::readServerCutText()
   return true;
 }
 
-bool CMsgReader::readExtendedClipboard(int32_t len)
-{
+bool CMsgReader::readExtendedClipboard(int32_t len) {
   uint32_t flags;
   uint32_t action;
 
@@ -371,16 +352,16 @@ bool CMsgReader::readExtendedClipboard(int32_t len)
     uint32_t lengths[16];
 
     num = 0;
-    for (i = 0;i < 16;i++) {
+    for (i = 0; i < 16; i++) {
       if (flags & (1 << i))
         num++;
     }
 
-    if (len < (int32_t)(4 + 4*num))
+    if (len < (int32_t)(4 + 4 * num))
       throw protocol_error("Invalid extended clipboard message");
 
     num = 0;
-    for (i = 0;i < 16;i++) {
+    for (i = 0; i < 16; i++) {
       if (flags & (1 << i))
         lengths[num++] = is->readU32();
     }
@@ -397,7 +378,7 @@ bool CMsgReader::readExtendedClipboard(int32_t len)
     zis.setUnderlying(is, len - 4);
 
     num = 0;
-    for (i = 0;i < 16;i++) {
+    for (i = 0; i < 16; i++) {
       if (!(flags & 1 << i))
         continue;
 
@@ -407,8 +388,7 @@ bool CMsgReader::readExtendedClipboard(int32_t len)
       lengths[num] = zis.readU32();
 
       if (lengths[num] > (size_t)maxCutText) {
-        vlog.error("Extended clipboard data too long (%d bytes) - ignoring",
-                   (unsigned)lengths[num]);
+        vlog.error("Extended clipboard data too long (%d bytes) - ignoring", (unsigned)lengths[num]);
 
         // Slowly (safely) drain away the data
         while (lengths[num] > 0) {
@@ -444,10 +424,10 @@ bool CMsgReader::readExtendedClipboard(int32_t len)
     handler->handleClipboardProvide(flags, lengths, buffers);
 
     num = 0;
-    for (i = 0;i < 16;i++) {
+    for (i = 0; i < 16; i++) {
       if (!(flags & 1 << i))
         continue;
-      delete [] buffers[num++];
+      delete[] buffers[num++];
     }
   } else {
     switch (action) {
@@ -468,8 +448,7 @@ bool CMsgReader::readExtendedClipboard(int32_t len)
   return true;
 }
 
-bool CMsgReader::readFence()
-{
+bool CMsgReader::readFence() {
   uint32_t flags;
   uint8_t len;
   uint8_t data[64];
@@ -502,14 +481,12 @@ bool CMsgReader::readFence()
   return true;
 }
 
-bool CMsgReader::readEndOfContinuousUpdates()
-{
+bool CMsgReader::readEndOfContinuousUpdates() {
   handler->endOfContinuousUpdates();
   return true;
 }
 
-bool CMsgReader::readFramebufferUpdate()
-{
+bool CMsgReader::readFramebufferUpdate() {
   if (!is->hasData(1 + 2))
     return false;
 
@@ -520,14 +497,10 @@ bool CMsgReader::readFramebufferUpdate()
   return true;
 }
 
-bool CMsgReader::readRect(const core::Rect& r, int encoding,
-                          const ServerParams* serverOverride)
-{
-  if ((r.br.x > handler->server.width()) ||
-      (r.br.y > handler->server.height())) {
-    vlog.error("Rect too big: %dx%d at %d,%d exceeds %dx%d",
-	    r.width(), r.height(), r.tl.x, r.tl.y,
-            handler->server.width(), handler->server.height());
+bool CMsgReader::readRect(const core::Rect& r, int encoding, const ServerParams* serverOverride) {
+  if ((r.br.x > handler->server.width()) || (r.br.y > handler->server.height())) {
+    vlog.error("Rect too big: %dx%d at %d,%d exceeds %dx%d", r.width(), r.height(), r.tl.x, r.tl.y,
+               handler->server.width(), handler->server.height());
     throw protocol_error("Rect too big");
   }
 
@@ -537,19 +510,17 @@ bool CMsgReader::readRect(const core::Rect& r, int encoding,
   return handler->dataRect(r, encoding);
 }
 
-bool CMsgReader::readSetXCursor(int width, int height,
-                                const core::Point& hotspot)
-{
+bool CMsgReader::readSetXCursor(int width, int height, const core::Point& hotspot) {
   if (width > maxCursorSize || height > maxCursorSize)
     throw protocol_error("Too big cursor");
 
-  std::vector<uint8_t> rgba(width*height*4);
+  std::vector<uint8_t> rgba(width * height * 4);
 
   if (width * height > 0) {
     uint8_t pr, pg, pb;
     uint8_t sr, sg, sb;
-    int data_len = ((width+7)/8) * height;
-    int mask_len = ((width+7)/8) * height;
+    int data_len = ((width + 7) / 8) * height;
+    int mask_len = ((width + 7) / 8) * height;
     std::vector<uint8_t> data(data_len);
     std::vector<uint8_t> mask(mask_len);
 
@@ -570,10 +541,10 @@ bool CMsgReader::readSetXCursor(int width, int height,
     is->readBytes(data.data(), data.size());
     is->readBytes(mask.data(), mask.size());
 
-    int maskBytesPerRow = (width+7)/8;
+    int maskBytesPerRow = (width + 7) / 8;
     out = rgba.data();
-    for (y = 0;y < height;y++) {
-      for (x = 0;x < width;x++) {
+    for (y = 0; y < height; y++) {
+      for (x = 0; x < width; x++) {
         int byte = y * maskBytesPerRow + x / 8;
         int bit = 7 - x % 8;
 
@@ -602,19 +573,17 @@ bool CMsgReader::readSetXCursor(int width, int height,
   return true;
 }
 
-bool CMsgReader::readSetCursor(int width, int height,
-                               const core::Point& hotspot)
-{
+bool CMsgReader::readSetCursor(int width, int height, const core::Point& hotspot) {
   if (width > maxCursorSize || height > maxCursorSize)
     throw protocol_error("Too big cursor");
 
-  int data_len = width * height * (handler->server.pf().bpp/8);
-  int mask_len = ((width+7)/8) * height;
+  int data_len = width * height * (handler->server.pf().bpp / 8);
+  int mask_len = ((width + 7) / 8) * height;
   std::vector<uint8_t> data(data_len);
   std::vector<uint8_t> mask(mask_len);
 
   int x, y;
-  std::vector<uint8_t> rgba(width*height*4);
+  std::vector<uint8_t> rgba(width * height * 4);
   uint8_t* in;
   uint8_t* out;
 
@@ -624,11 +593,11 @@ bool CMsgReader::readSetCursor(int width, int height,
   is->readBytes(data.data(), data.size());
   is->readBytes(mask.data(), mask.size());
 
-  int maskBytesPerRow = (width+7)/8;
+  int maskBytesPerRow = (width + 7) / 8;
   in = data.data();
   out = rgba.data();
-  for (y = 0;y < height;y++) {
-    for (x = 0;x < width;x++) {
+  for (y = 0; y < height; y++) {
+    for (x = 0; x < width; x++) {
       int byte = y * maskBytesPerRow + x / 8;
       int bit = 7 - x % 8;
 
@@ -639,7 +608,7 @@ bool CMsgReader::readSetCursor(int width, int height,
       else
         out[3] = 0;
 
-      in += handler->server.pf().bpp/8;
+      in += handler->server.pf().bpp / 8;
       out += 4;
     }
   }
@@ -649,9 +618,7 @@ bool CMsgReader::readSetCursor(int width, int height,
   return true;
 }
 
-bool CMsgReader::readSetCursorWithAlpha(int width, int height,
-                                        const core::Point& hotspot)
-{
+bool CMsgReader::readSetCursorWithAlpha(int width, int height, const core::Point& hotspot) {
   if (width > maxCursorSize || height > maxCursorSize)
     throw protocol_error("Too big cursor");
 
@@ -689,31 +656,28 @@ bool CMsgReader::readSetCursorWithAlpha(int width, int height,
   buf = pb.getBufferRW(pb.getRect(), &stride);
   assert(stride == width);
 
-  for (int i = 0;i < pb.area();i++) {
+  for (int i = 0; i < pb.area(); i++) {
     uint8_t alpha;
 
     alpha = buf[3];
     if (alpha == 0)
       alpha = 1; // Avoid division by zero
 
-    buf[0] = (unsigned)buf[0] * 255/alpha;
-    buf[1] = (unsigned)buf[1] * 255/alpha;
-    buf[2] = (unsigned)buf[2] * 255/alpha;
+    buf[0] = (unsigned)buf[0] * 255 / alpha;
+    buf[1] = (unsigned)buf[1] * 255 / alpha;
+    buf[2] = (unsigned)buf[2] * 255 / alpha;
 
     buf += 4;
   }
 
   pb.commitBufferRW(pb.getRect());
 
-  handler->setCursor(width, height, hotspot,
-                     pb.getBuffer(pb.getRect(), &stride));
+  handler->setCursor(width, height, hotspot, pb.getBuffer(pb.getRect(), &stride));
 
   return true;
 }
 
-bool CMsgReader::readSetVMwareCursor(int width, int height,
-                                     const core::Point& hotspot)
-{
+bool CMsgReader::readSetVMwareCursor(int width, int height, const core::Point& hotspot) {
   if (width > maxCursorSize || height > maxCursorSize)
     throw protocol_error("Too big cursor");
 
@@ -728,11 +692,11 @@ bool CMsgReader::readSetVMwareCursor(int width, int height,
   is->skip(1);
 
   if (type == 0) {
-    int len = width * height * (handler->server.pf().bpp/8);
+    int len = width * height * (handler->server.pf().bpp / 8);
     std::vector<uint8_t> andMask(len);
     std::vector<uint8_t> xorMask(len);
 
-    std::vector<uint8_t> data(width*height*4);
+    std::vector<uint8_t> data(width * height * 4);
 
     uint8_t* andIn;
     uint8_t* xorIn;
@@ -749,9 +713,9 @@ bool CMsgReader::readSetVMwareCursor(int width, int height,
     andIn = andMask.data();
     xorIn = xorMask.data();
     out = data.data();
-    Bpp = handler->server.pf().bpp/8;
-    for (int y = 0;y < height;y++) {
-      for (int x = 0;x < width;x++) {
+    Bpp = handler->server.pf().bpp / 8;
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
         Pixel andPixel, xorPixel;
 
         andPixel = handler->server.pf().pixelFromBuffer(andIn);
@@ -798,9 +762,9 @@ bool CMsgReader::readSetVMwareCursor(int width, int height,
 
     handler->setCursor(width, height, hotspot, data.data());
   } else if (type == 1) {
-    std::vector<uint8_t> data(width*height*4);
+    std::vector<uint8_t> data(width * height * 4);
 
-    if (!is->hasDataOrRestore(width*height*4))
+    if (!is->hasDataOrRestore(width * height * 4))
       return false;
     is->clearRestorePoint();
 
@@ -815,8 +779,7 @@ bool CMsgReader::readSetVMwareCursor(int width, int height,
   return true;
 }
 
-bool CMsgReader::readSetDesktopName(int x, int y, int w, int h)
-{
+bool CMsgReader::readSetDesktopName(int x, int y, int w, int h) {
   uint32_t len;
 
   if (!is->hasData(4))
@@ -849,8 +812,7 @@ bool CMsgReader::readSetDesktopName(int x, int y, int w, int h)
   return true;
 }
 
-bool CMsgReader::readExtendedDesktopSize(int x, int y, int w, int h)
-{
+bool CMsgReader::readExtendedDesktopSize(int x, int y, int w, int h) {
   unsigned int screens, i;
   uint32_t id, flags;
   int sx, sy, sw, sh;
@@ -868,7 +830,7 @@ bool CMsgReader::readExtendedDesktopSize(int x, int y, int w, int h)
     return false;
   is->clearRestorePoint();
 
-  for (i = 0;i < screens;i++) {
+  for (i = 0; i < screens; i++) {
     id = is->readU32();
     sx = is->readU16();
     sy = is->readU16();
@@ -884,8 +846,7 @@ bool CMsgReader::readExtendedDesktopSize(int x, int y, int w, int h)
   return true;
 }
 
-bool CMsgReader::readLEDState()
-{
+bool CMsgReader::readLEDState() {
   uint8_t ledState;
 
   if (!is->hasData(1))
@@ -898,8 +859,7 @@ bool CMsgReader::readLEDState()
   return true;
 }
 
-bool CMsgReader::readVMwareLEDState()
-{
+bool CMsgReader::readVMwareLEDState() {
   uint32_t ledState;
 
   if (!is->hasData(4))
@@ -915,22 +875,19 @@ bool CMsgReader::readVMwareLEDState()
   return true;
 }
 
-bool CMsgReader::readCachedRect(const core::Rect& r)
-{
+bool CMsgReader::readCachedRect(const core::Rect& r) {
   rfb::CacheKey key;
   if (!readCacheKey(is, &key))
     return false;
 
-  vlog.debug("Received CachedRect: [%d,%d-%d,%d] cacheKey64=%llu",
-             r.tl.x, r.tl.y, r.br.x, r.br.y,
+  vlog.debug("Received CachedRect: [%d,%d-%d,%d] cacheKey64=%llu", r.tl.x, r.tl.y, r.br.x, r.br.y,
              (unsigned long long)cacheKeyFirstU64(key));
 
   handler->handleCachedRect(r, key);
   return true;
 }
 
-bool CMsgReader::readCachedRectInit(const core::Rect& r)
-{
+bool CMsgReader::readCachedRectInit(const core::Rect& r) {
   // Incremental decode without outer restore point to avoid nesting with decoder
   if (!pendingCacheInitActive) {
     // Need header: 16-byte CacheKey + 32-bit encoding
@@ -942,10 +899,8 @@ bool CMsgReader::readCachedRectInit(const core::Rect& r)
     pendingCacheEncoding = is->readS32();
     pendingCacheInitActive = true;
 
-    vlog.debug("Received CachedRectInit: [%d,%d-%d,%d] cacheKey64=%llu encoding=%d",
-               r.tl.x, r.tl.y, r.br.x, r.br.y,
-               (unsigned long long)cacheKeyFirstU64(pendingCacheKey),
-               pendingCacheEncoding);
+    vlog.debug("Received CachedRectInit: [%d,%d-%d,%d] cacheKey64=%llu encoding=%d", r.tl.x, r.tl.y, r.br.x, r.br.y,
+               (unsigned long long)cacheKeyFirstU64(pendingCacheKey), pendingCacheEncoding);
   }
 
   bool ret = readRect(r, pendingCacheEncoding);
@@ -958,8 +913,7 @@ bool CMsgReader::readCachedRectInit(const core::Rect& r)
   return ret;
 }
 
-bool CMsgReader::readPersistentCachedRect(const core::Rect& r)
-{
+bool CMsgReader::readPersistentCachedRect(const core::Rect& r) {
   rfb::CacheKey key;
   if (!readCacheKey(is, &key))
     return false;
@@ -968,8 +922,7 @@ bool CMsgReader::readPersistentCachedRect(const core::Rect& r)
   return true;
 }
 
-bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
-{
+bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r) {
   // Incremental decode without outer restore point to avoid nesting with decoder
   if (!pendingPersistentCacheInitActive) {
     bool supportsNative = handler->supportsNativeFormatCache();
@@ -999,11 +952,7 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
         if (!is->hasDataOrRestore(16 + 4))
           return false;
         pendingPersistentCachePF.read(is);
-        static const PixelFormat canonicalPF(32, 24,
-                                            false,
-                                            true,
-                                            255, 255, 255,
-                                            16, 8, 0);
+        static const PixelFormat canonicalPF(32, 24, false, true, 255, 255, 255, 16, 8, 0);
         if (pendingPersistentCachePF != canonicalPF)
           throw protocol_error("PersistentCachedRectInit: non-canonical PixelFormat in native_format");
         pendingPersistentCacheHasPF = true;
@@ -1029,9 +978,7 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
 
   bool ret = readRect(r, pendingPersistentCacheEncoding, serverOverride);
   if (ret) {
-    handler->storePersistentCachedRect(r,
-                                       pendingPersistentCacheKey,
-                                       pendingPersistentCacheEncoding);
+    handler->storePersistentCachedRect(r, pendingPersistentCacheKey, pendingPersistentCacheEncoding);
 
     pendingPersistentCacheInitActive = false;
     pendingPersistentCacheKey = CacheKey();
@@ -1042,8 +989,7 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r)
   return ret;
 }
 
-bool CMsgReader::readCachedRectSeed(const core::Rect& r)
-{
+bool CMsgReader::readCachedRectSeed(const core::Rect& r) {
   rfb::CacheKey key;
   if (!readCacheKey(is, &key))
     return false;

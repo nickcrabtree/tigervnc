@@ -172,6 +172,7 @@ run_ctest_all() {
     shortcuthandler
     unicode
     emulatemb
+ shifttolerantscan
     tiling_analysis
   )
   cmake --build "${BUILD_DIR}" --target "${unit_targets[@]}" >/dev/null 2>&1

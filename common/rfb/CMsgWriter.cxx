@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2019 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -21,27 +21,27 @@
 #include <config.h>
 #endif
 
-#include <stdio.h>
-#include <assert.h>
 #include <algorithm>
+#include <assert.h>
+#include <stdio.h>
 
+#include <core/LogWriter.h>
 #include <core/Rect.h>
 #include <core/string.h>
-#include <core/LogWriter.h>
 
-#include <rdr/OutStream.h>
 #include <rdr/MemOutStream.h>
+#include <rdr/OutStream.h>
 #include <rdr/ZlibOutStream.h>
 
-#include <rfb/msgTypes.h>
-#include <rfb/fenceTypes.h>
-#include <rfb/qemuTypes.h>
-#include <rfb/clipboardTypes.h>
+#include <rfb/CMsgWriter.h>
+#include <rfb/CacheKey.h>
 #include <rfb/PixelFormat.h>
 #include <rfb/ScreenSet.h>
 #include <rfb/ServerParams.h>
-#include <rfb/CMsgWriter.h>
-#include <rfb/CacheKey.h>
+#include <rfb/clipboardTypes.h>
+#include <rfb/fenceTypes.h>
+#include <rfb/msgTypes.h>
+#include <rfb/qemuTypes.h>
 
 using namespace rfb;
 
@@ -50,32 +50,23 @@ static inline void writeCacheKeyBytes(rdr::OutStream* os, const CacheKey& key) {
   os->writeBytes(key.bytes.data(), 16);
 }
 
+CMsgWriter::CMsgWriter(ServerParams* server_, rdr::OutStream* os_) : server(server_), os(os_) {}
 
-CMsgWriter::CMsgWriter(ServerParams* server_, rdr::OutStream* os_)
-  : server(server_), os(os_)
-{
-}
+CMsgWriter::~CMsgWriter() {}
 
-CMsgWriter::~CMsgWriter()
-{
-}
-
-void CMsgWriter::writeClientInit(bool shared)
-{
+void CMsgWriter::writeClientInit(bool shared) {
   os->writeU8(shared);
   endMsg();
 }
 
-void CMsgWriter::writeSetPixelFormat(const PixelFormat& pf)
-{
-  startMsg(msgTypeSetPixelFormat);                                 
+void CMsgWriter::writeSetPixelFormat(const PixelFormat& pf) {
+  startMsg(msgTypeSetPixelFormat);
   os->pad(3);
   pf.write(os);
   endMsg();
 }
 
-void CMsgWriter::writeSetEncodings(const std::list<uint32_t> encodings)
-{
+void CMsgWriter::writeSetEncodings(const std::list<uint32_t> encodings) {
   startMsg(msgTypeSetEncodings);
   os->pad(1);
   os->writeU16(encodings.size());
@@ -84,9 +75,7 @@ void CMsgWriter::writeSetEncodings(const std::list<uint32_t> encodings)
   endMsg();
 }
 
-void CMsgWriter::writeSetDesktopSize(int width, int height,
-                                     const ScreenSet& layout)
-{
+void CMsgWriter::writeSetDesktopSize(int width, int height, const ScreenSet& layout) {
   if (!server->supportsSetDesktopSize)
     throw std::logic_error("Server does not support SetDesktopSize");
 
@@ -100,7 +89,7 @@ void CMsgWriter::writeSetDesktopSize(int width, int height,
   os->pad(1);
 
   ScreenSet::const_iterator iter;
-  for (iter = layout.begin();iter != layout.end();++iter) {
+  for (iter = layout.begin(); iter != layout.end(); ++iter) {
     os->writeU32(iter->id);
     os->writeU16(iter->dimensions.tl.x);
     os->writeU16(iter->dimensions.tl.y);
@@ -112,9 +101,7 @@ void CMsgWriter::writeSetDesktopSize(int width, int height,
   endMsg();
 }
 
-void CMsgWriter::writeFramebufferUpdateRequest(const core::Rect& r,
-                                               bool incremental)
-{
+void CMsgWriter::writeFramebufferUpdateRequest(const core::Rect& r, bool incremental) {
   startMsg(msgTypeFramebufferUpdateRequest);
   os->writeU8(incremental);
   os->writeU16(r.tl.x);
@@ -124,9 +111,7 @@ void CMsgWriter::writeFramebufferUpdateRequest(const core::Rect& r,
   endMsg();
 }
 
-void CMsgWriter::writeEnableContinuousUpdates(bool enable,
-                                              int x, int y, int w, int h)
-{
+void CMsgWriter::writeEnableContinuousUpdates(bool enable, int x, int y, int w, int h) {
   if (!server->supportsContinuousUpdates)
     throw std::logic_error("Server does not support continuous updates");
 
@@ -142,8 +127,7 @@ void CMsgWriter::writeEnableContinuousUpdates(bool enable,
   endMsg();
 }
 
-void CMsgWriter::writeFence(uint32_t flags, unsigned len, const uint8_t data[])
-{
+void CMsgWriter::writeFence(uint32_t flags, unsigned len, const uint8_t data[]) {
   if (!server->supportsFence)
     throw std::logic_error("Server does not support fences");
   if (len > 64)
@@ -162,8 +146,7 @@ void CMsgWriter::writeFence(uint32_t flags, unsigned len, const uint8_t data[])
   endMsg();
 }
 
-void CMsgWriter::writeKeyEvent(uint32_t keysym, uint32_t keycode, bool down)
-{
+void CMsgWriter::writeKeyEvent(uint32_t keysym, uint32_t keycode, bool down) {
   if (!server->supportsQEMUKeyEvent || !keycode) {
     /* This event isn't meaningful without a valid keysym */
     if (!keysym)
@@ -184,17 +167,18 @@ void CMsgWriter::writeKeyEvent(uint32_t keysym, uint32_t keycode, bool down)
   }
 }
 
-
-void CMsgWriter::writePointerEvent(const core::Point& pos,
-                                   uint16_t buttonMask)
-{
+void CMsgWriter::writePointerEvent(const core::Point& pos, uint16_t buttonMask) {
   core::Point p(pos);
   bool extendedMouseButtons;
 
-  if (p.x < 0) p.x = 0;
-  if (p.y < 0) p.y = 0;
-  if (p.x >= server->width()) p.x = server->width() - 1;
-  if (p.y >= server->height()) p.y = server->height() - 1;
+  if (p.x < 0)
+    p.x = 0;
+  if (p.y < 0)
+    p.y = 0;
+  if (p.x >= server->width())
+    p.x = server->width() - 1;
+  if (p.y >= server->height())
+    p.y = server->height() - 1;
 
   /* The highest bit in buttonMask is never sent to the server */
   assert(!(buttonMask & 0x8000));
@@ -207,7 +191,7 @@ void CMsgWriter::writePointerEvent(const core::Point& pos,
     int higherBits;
     int lowerBits;
 
-    higherBits = (buttonMask  >> 7) & 0xff;
+    higherBits = (buttonMask >> 7) & 0xff;
     assert(!(higherBits & 0xfc)); /* Bits 2-7 are reserved */
 
     lowerBits = buttonMask & 0x7f;
@@ -221,7 +205,7 @@ void CMsgWriter::writePointerEvent(const core::Point& pos,
     /* Marker bit must be set to 0, otherwise the server might confuse
      * the marker bit with the highest bit in a normal PointerEvent
      * message.
-    */
+     */
     buttonMask &= 0x7f;
     os->writeU8(buttonMask);
     os->writeU16(p.x);
@@ -230,9 +214,7 @@ void CMsgWriter::writePointerEvent(const core::Point& pos,
   endMsg();
 }
 
-
-void CMsgWriter::writeClientCutText(const char* str)
-{
+void CMsgWriter::writeClientCutText(const char* str) {
   if (strchr(str, '\r') != nullptr)
     throw std::invalid_argument("Invalid carriage return in clipboard data");
 
@@ -245,27 +227,7 @@ void CMsgWriter::writeClientCutText(const char* str)
   endMsg();
 }
 
-void CMsgWriter::writeRequestCachedData(const CacheKey& key)
-{
-  startMsg(msgTypeRequestCachedData);
-  writeCacheKeyBytes(os, key);
-  endMsg();
-}
-
-void CMsgWriter::writeCacheEviction(const std::vector<CacheKey>& keys)
-{
-  if (keys.empty())
-    return;
-  startMsg(msgTypeCacheEviction);
-  os->writeU32(keys.size());
-  for (const auto& key : keys) {
-    writeCacheKeyBytes(os, key);
-  }
-  endMsg();
-}
-
-void CMsgWriter::writePersistentCacheQuery(const std::vector<CacheKey>& keys)
-{
+void CMsgWriter::writePersistentCacheQuery(const std::vector<CacheKey>& keys) {
   if (keys.empty())
     return;
   startMsg(msgTypePersistentCacheQuery);
@@ -276,10 +238,8 @@ void CMsgWriter::writePersistentCacheQuery(const std::vector<CacheKey>& keys)
   endMsg();
 }
 
-void CMsgWriter::writePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
- uint16_t chunkIndex,
- const std::vector<CacheKey>& keys)
-{
+void CMsgWriter::writePersistentHashList(uint32_t sequenceId, uint16_t totalChunks, uint16_t chunkIndex,
+                                         const std::vector<CacheKey>& keys) {
   if (keys.empty())
     return;
   startMsg(msgTypePersistentCacheHashList);
@@ -293,8 +253,7 @@ void CMsgWriter::writePersistentHashList(uint32_t sequenceId, uint16_t totalChun
   endMsg();
 }
 
-void CMsgWriter::writePersistentCacheEviction(const std::vector<CacheKey>& keys)
-{
+void CMsgWriter::writePersistentCacheEviction(const std::vector<CacheKey>& keys) {
   // Always emit a well-formed message, even for an empty list.
   size_t count = keys.size();
   if (count > 1000) {
@@ -310,8 +269,7 @@ void CMsgWriter::writePersistentCacheEviction(const std::vector<CacheKey>& keys)
   endMsg();
 }
 
-void CMsgWriter::writePersistentCacheEvictionBatched(const std::vector<CacheKey>& keys)
-{
+void CMsgWriter::writePersistentCacheEvictionBatched(const std::vector<CacheKey>& keys) {
   if (keys.empty())
     return;
   // Split into conservative batches to respect message size limits
@@ -323,31 +281,27 @@ void CMsgWriter::writePersistentCacheEvictionBatched(const std::vector<CacheKey>
   }
 }
 
-void CMsgWriter::writePersistentCacheHashReport(const CacheKey& canonicalKey, const CacheKey& actualKey)
-{
+void CMsgWriter::writePersistentCacheHashReport(const CacheKey& canonicalKey, const CacheKey& actualKey) {
   startMsg(msgTypePersistentCacheHashReport);
   writeCacheKeyBytes(os, canonicalKey);
   writeCacheKeyBytes(os, actualKey);
   endMsg();
 }
 
-void CMsgWriter::writeDebugDumpRequest(uint32_t timestamp)
-{
+void CMsgWriter::writeDebugDumpRequest(uint32_t timestamp) {
   startMsg(msgTypeDebugDumpRequest);
   os->writeU32(timestamp);
   endMsg();
 }
 
-void CMsgWriter::writeClipboardCaps(uint32_t caps,
-                                    const uint32_t* lengths)
-{
+void CMsgWriter::writeClipboardCaps(uint32_t caps, const uint32_t* lengths) {
   size_t i, count;
 
   if (!(server->clipboardFlags() & clipboardCaps))
     throw std::logic_error("Server does not support clipboard \"caps\" action");
 
   count = 0;
-  for (i = 0;i < 16;i++) {
+  for (i = 0; i < 16; i++) {
     if (caps & (1 << i))
       count++;
   }
@@ -359,7 +313,7 @@ void CMsgWriter::writeClipboardCaps(uint32_t caps,
   os->writeU32(caps | clipboardCaps);
 
   count = 0;
-  for (i = 0;i < 16;i++) {
+  for (i = 0; i < 16; i++) {
     if (caps & (1 << i))
       os->writeU32(lengths[count++]);
   }
@@ -367,8 +321,7 @@ void CMsgWriter::writeClipboardCaps(uint32_t caps,
   endMsg();
 }
 
-void CMsgWriter::writeClipboardRequest(uint32_t flags)
-{
+void CMsgWriter::writeClipboardRequest(uint32_t flags) {
   if (!(server->clipboardFlags() & clipboardRequest))
     throw std::logic_error("Server does not support clipboard \"request\" action");
 
@@ -379,8 +332,7 @@ void CMsgWriter::writeClipboardRequest(uint32_t flags)
   endMsg();
 }
 
-void CMsgWriter::writeClipboardPeek(uint32_t flags)
-{
+void CMsgWriter::writeClipboardPeek(uint32_t flags) {
   if (!(server->clipboardFlags() & clipboardPeek))
     throw std::logic_error("Server does not support clipboard \"peek\" action");
 
@@ -391,8 +343,7 @@ void CMsgWriter::writeClipboardPeek(uint32_t flags)
   endMsg();
 }
 
-void CMsgWriter::writeClipboardNotify(uint32_t flags)
-{
+void CMsgWriter::writeClipboardNotify(uint32_t flags) {
   if (!(server->clipboardFlags() & clipboardNotify))
     throw std::logic_error("Server does not support clipboard \"notify\" action");
 
@@ -403,10 +354,7 @@ void CMsgWriter::writeClipboardNotify(uint32_t flags)
   endMsg();
 }
 
-void CMsgWriter::writeClipboardProvide(uint32_t flags,
-                                      const size_t* lengths,
-                                      const uint8_t* const* data)
-{
+void CMsgWriter::writeClipboardProvide(uint32_t flags, const size_t* lengths, const uint8_t* const* data) {
   rdr::MemOutStream mos;
   rdr::ZlibOutStream zos;
 
@@ -418,7 +366,7 @@ void CMsgWriter::writeClipboardProvide(uint32_t flags,
   zos.setUnderlying(&mos);
 
   count = 0;
-  for (i = 0;i < 16;i++) {
+  for (i = 0; i < 16; i++) {
     if (!(flags & (1 << i)))
       continue;
     zos.writeU32(lengths[count]);
@@ -436,12 +384,10 @@ void CMsgWriter::writeClipboardProvide(uint32_t flags,
   endMsg();
 }
 
-void CMsgWriter::startMsg(int type)
-{
+void CMsgWriter::startMsg(int type) {
   os->writeU8(type);
 }
 
-void CMsgWriter::endMsg()
-{
+void CMsgWriter::endMsg() {
   os->flush();
 }

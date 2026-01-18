@@ -26,66 +26,50 @@
 #include <stdint.h>
 #include <vector>
 
-#include <rfb/ClientParams.h>
 #include <rfb/CacheKey.h>
+#include <rfb/ClientParams.h>
 
 namespace rfb {
 
-  class SMsgHandler {
-  public:
-    virtual ~SMsgHandler() {}
+class SMsgHandler {
+public:
+  virtual ~SMsgHandler() {}
 
-    // The following methods are called as corresponding messages are
-    // read. A derived class must override these methods.
+  // The following methods are called as corresponding messages are
+  // read. A derived class must override these methods.
 
-    virtual void clientInit(bool shared) = 0;
+  virtual void clientInit(bool shared) = 0;
 
-    virtual void setPixelFormat(const PixelFormat& pf) = 0;
-    virtual void setEncodings(int nEncodings,
-                              const int32_t* encodings) = 0;
-    virtual void framebufferUpdateRequest(const core::Rect& r,
-                                          bool incremental) = 0;
-    virtual void setDesktopSize(int fb_width, int fb_height,
-                                const ScreenSet& layout) = 0;
-    virtual void fence(uint32_t flags, unsigned len,
-                       const uint8_t data[]) = 0;
-    virtual void enableContinuousUpdates(bool enable,
-                                         int x, int y,
-                                         int w, int h) = 0;
+  virtual void setPixelFormat(const PixelFormat& pf) = 0;
+  virtual void setEncodings(int nEncodings, const int32_t* encodings) = 0;
+  virtual void framebufferUpdateRequest(const core::Rect& r, bool incremental) = 0;
+  virtual void setDesktopSize(int fb_width, int fb_height, const ScreenSet& layout) = 0;
+  virtual void fence(uint32_t flags, unsigned len, const uint8_t data[]) = 0;
+  virtual void enableContinuousUpdates(bool enable, int x, int y, int w, int h) = 0;
 
-    virtual void keyEvent(uint32_t keysym, uint32_t keycode,
-                          bool down) = 0;
-    virtual void pointerEvent(const core::Point& pos,
-                              uint16_t buttonMask) = 0;
+  virtual void keyEvent(uint32_t keysym, uint32_t keycode, bool down) = 0;
+  virtual void pointerEvent(const core::Point& pos, uint16_t buttonMask) = 0;
 
-    virtual void clientCutText(const char* str) = 0;
+  virtual void clientCutText(const char* str) = 0;
 
-    virtual void handleClipboardCaps(uint32_t flags,
-                                     const uint32_t* lengths) = 0;
-    virtual void handleClipboardRequest(uint32_t flags) = 0;
-    virtual void handleClipboardPeek() = 0;
-    virtual void handleClipboardNotify(uint32_t flags) = 0;
-    virtual void handleClipboardProvide(uint32_t flags,
-                                        const size_t* lengths,
-                                        const uint8_t* const* data) = 0;
+  virtual void handleClipboardCaps(uint32_t flags, const uint32_t* lengths) = 0;
+  virtual void handleClipboardRequest(uint32_t flags) = 0;
+  virtual void handleClipboardPeek() = 0;
+  virtual void handleClipboardNotify(uint32_t flags) = 0;
+  virtual void handleClipboardProvide(uint32_t flags, const size_t* lengths, const uint8_t* const* data) = 0;
 
-    virtual void handleRequestCachedData(uint64_t cacheId) = 0;
-    virtual void handleCacheEviction(const std::vector<uint64_t>& cacheIds) = 0;
+  // PersistentCache protocol (cross-session), now using the same 64-bit
+  // contentHash/cacheId identity as ContentCache for on-wire messages.
+  virtual void handlePersistentCacheQuery(const std::vector<uint64_t>& cacheIds) = 0;
+  virtual void handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks, uint16_t chunkIndex,
+                                        const std::vector<uint64_t>& cacheIds) = 0;
+  virtual void handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds) = 0;
+  virtual void handlePersistentCacheHashReport(const CacheKey& canonicalKey, const CacheKey& actualKey) = 0;
 
-    // PersistentCache protocol (cross-session), now using the same 64-bit
-    // contentHash/cacheId identity as ContentCache for on-wire messages.
-    virtual void handlePersistentCacheQuery(const std::vector<uint64_t>& cacheIds) = 0;
-    virtual void handlePersistentHashList(uint32_t sequenceId, uint16_t totalChunks,
-                                          uint16_t chunkIndex,
-                                          const std::vector<uint64_t>& cacheIds) = 0;
-    virtual void handlePersistentCacheEviction(const std::vector<uint64_t>& cacheIds) = 0;
-    virtual void handlePersistentCacheHashReport(const CacheKey& canonicalKey,
-                                                 const CacheKey& actualKey) = 0;
+  // Debug dump request (for corruption debugging)
+  virtual void handleDebugDumpRequest(uint32_t timestamp) = 0;
 
-    // Debug dump request (for corruption debugging)
-    virtual void handleDebugDumpRequest(uint32_t timestamp) = 0;
-
-    ClientParams client;
-  };
-}
+  ClientParams client;
+};
+} // namespace rfb
 #endif

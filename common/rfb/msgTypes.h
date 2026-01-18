@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -19,57 +19,53 @@
 #define __RFB_MSGTYPES_H__
 
 namespace rfb {
-  // server to client
+// server to client
 
-  const int msgTypeFramebufferUpdate = 0;
-  const int msgTypeSetColourMapEntries = 1;
-  const int msgTypeBell = 2;
-  const int msgTypeServerCutText = 3;
+const int msgTypeFramebufferUpdate = 0;
+const int msgTypeSetColourMapEntries = 1;
+const int msgTypeBell = 2;
+const int msgTypeServerCutText = 3;
 
-  const int msgTypeEndOfContinuousUpdates = 150;
+const int msgTypeEndOfContinuousUpdates = 150;
 
-  const int msgTypeServerFence = 248;
+const int msgTypeServerFence = 248;
 
-  // client to server
+// client to server
 
-  const int msgTypeSetPixelFormat = 0;
-  const int msgTypeFixColourMapEntries = 1;
-  const int msgTypeSetEncodings = 2;
-  const int msgTypeFramebufferUpdateRequest = 3;
-  const int msgTypeKeyEvent = 4;
-  const int msgTypePointerEvent = 5;
-  const int msgTypeClientCutText = 6;
+const int msgTypeSetPixelFormat = 0;
+const int msgTypeFixColourMapEntries = 1;
+const int msgTypeSetEncodings = 2;
+const int msgTypeFramebufferUpdateRequest = 3;
+const int msgTypeKeyEvent = 4;
+const int msgTypePointerEvent = 5;
+const int msgTypeClientCutText = 6;
 
-  const int msgTypeEnableContinuousUpdates = 150;
+const int msgTypeEnableContinuousUpdates = 150;
 
-  const int msgTypeClientFence = 248;
+const int msgTypeClientFence = 248;
 
-  const int msgTypeSetDesktopSize = 251;
+const int msgTypeSetDesktopSize = 251;
 
-  // ContentCache protocol (session-only)
-  const int msgTypeRequestCachedData = 254;
-  const int msgTypeCacheEviction = 250;
+// PersistentCache protocol (cross-session)
+const int msgTypePersistentCacheQuery = 253;
+const int msgTypePersistentCacheHashList = 252;
 
-  // PersistentCache protocol (cross-session)
-  const int msgTypePersistentCacheQuery = 253;
-  const int msgTypePersistentCacheHashList = 252;
-  
-  // PersistentCache eviction notification (client→server)
-  // Allows client to notify server when cache entries are evicted,
-  // so server stops sending PersistentCachedRect references for evicted hashes.
-  // Note: 251 is SetDesktopSize, 250 is ContentCache eviction.
-  const int msgTypePersistentCacheEviction = 249;
-  
-  // PersistentCache hash report (client→server)
-  // Allows client to report lossy hash after decoding, enabling server to
-  // learn canonical→lossy hash mappings for future cache hits on first occurrence.
-  const int msgTypePersistentCacheHashReport = 247;
-  
-  // Debug dump request (client→server)
-  // Requests server to dump its cache state to a file for debugging.
-  // Payload: U32 timestamp (seconds since epoch) to correlate with client dump
-  const int msgTypeDebugDumpRequest = 246;
+// PersistentCache eviction notification (client→server)
+// Allows client to notify server when cache entries are evicted,
+// so server stops sending PersistentCachedRect references for evicted hashes.
+// Note: 251 is SetDesktopSize.
+const int msgTypePersistentCacheEviction = 249;
 
-  const int msgTypeQEMUClientMessage = 255;
-}
+// PersistentCache hash report (client→server)
+// Allows client to report lossy hash after decoding, enabling server to
+// learn canonical→lossy hash mappings for future cache hits on first occurrence.
+const int msgTypePersistentCacheHashReport = 247;
+
+// Debug dump request (client→server)
+// Requests server to dump its cache state to a file for debugging.
+// Payload: U32 timestamp (seconds since epoch) to correlate with client dump
+const int msgTypeDebugDumpRequest = 246;
+
+const int msgTypeQEMUClientMessage = 255;
+} // namespace rfb
 #endif

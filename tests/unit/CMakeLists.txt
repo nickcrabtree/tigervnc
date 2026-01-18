@@ -18,8 +18,8 @@ gtest_discover_tests(arccache)
 
 add_executable(bandwidthstats bandwidthstats.cxx)
 target_link_libraries(bandwidthstats rfb core GTest::gtest_main)
- gtest_discover_tests(bandwidthstats)
- 
+gtest_discover_tests(bandwidthstats)
+
 add_executable(conv conv.cxx)
 target_link_libraries(conv rfb GTest::gtest_main)
 gtest_discover_tests(conv)
@@ -28,7 +28,8 @@ add_executable(convertlf convertlf.cxx)
 target_link_libraries(convertlf core GTest::gtest_main)
 gtest_discover_tests(convertlf)
 
-add_executable(gesturehandler gesturehandler.cxx ../../vncviewer/GestureHandler.cxx)
+add_executable(gesturehandler gesturehandler.cxx
+                              ../../vncviewer/GestureHandler.cxx)
 target_link_libraries(gesturehandler core GTest::gtest_main)
 gtest_discover_tests(gesturehandler)
 
@@ -45,11 +46,14 @@ target_link_libraries(serverhashset rfb core GTest::gtest_main)
 gtest_discover_tests(serverhashset)
 
 add_executable(persistentcache_protocol persistentcache_protocol.cxx)
-target_link_libraries(persistentcache_protocol rfb core rdr network GTest::gtest_main)
+target_link_libraries(persistentcache_protocol rfb core rdr network
+                      GTest::gtest_main)
 gtest_discover_tests(persistentcache_protocol)
 
-add_executable(global_client_persistent_cache_gc global_client_persistent_cache_gc.cxx)
-target_link_libraries(global_client_persistent_cache_gc rfb core GTest::gtest_main)
+add_executable(global_client_persistent_cache_gc
+               global_client_persistent_cache_gc.cxx)
+target_link_libraries(global_client_persistent_cache_gc rfb core
+                      GTest::gtest_main)
 gtest_discover_tests(global_client_persistent_cache_gc)
 
 add_executable(persistentcache_pixelformat persistentcache_pixelformat.cxx)
@@ -65,7 +69,8 @@ target_link_libraries(persistentcache_quality rfb core GTest::gtest_main)
 gtest_discover_tests(persistentcache_quality)
 
 add_executable(test_hash_report_protocol test_hash_report_protocol.cxx)
-target_link_libraries(test_hash_report_protocol rfb core rdr network GTest::gtest_main)
+target_link_libraries(test_hash_report_protocol rfb core rdr network
+                      GTest::gtest_main)
 gtest_discover_tests(test_hash_report_protocol)
 
 add_executable(decode_manager decode_manager.cxx)
@@ -77,7 +82,8 @@ add_executable(pixelformat pixelformat.cxx)
 target_link_libraries(pixelformat rfb GTest::gtest_main)
 gtest_discover_tests(pixelformat)
 
-add_executable(shortcuthandler shortcuthandler.cxx ../../vncviewer/ShortcutHandler.cxx)
+add_executable(shortcuthandler shortcuthandler.cxx
+                               ../../vncviewer/ShortcutHandler.cxx)
 target_link_libraries(shortcuthandler core ${Intl_LIBRARIES} GTest::gtest_main)
 gtest_discover_tests(shortcuthandler)
 
@@ -90,15 +96,26 @@ target_include_directories(emulatemb SYSTEM PUBLIC ${Intl_INCLUDE_DIR})
 target_link_libraries(emulatemb core ${Intl_LIBRARIES} GTest::gtest_main)
 gtest_discover_tests(emulatemb)
 
+add_executable(shifttolerantscan shifttolerantscan.cxx)
+target_link_libraries(shifttolerantscan rfb core GTest::gtest_main)
+gtest_discover_tests(shifttolerantscan)
 add_executable(tiling_analysis tiling_analysis.cxx)
 target_link_libraries(tiling_analysis rfb core GTest::gtest_main)
 gtest_discover_tests(tiling_analysis)
 if(APPLE)
-  add_executable(surface_osx_orientation surface_osx_orientation.cxx ../../vncviewer/Surface_OSX.cxx ../../vncviewer/Surface.cxx ../../vncviewer/cocoa.mm)
-  target_link_libraries(surface_osx_orientation GTest::gtest_main ${FLTK_LIBRARIES} ${COCOA_FRAMEWORKS})
+  add_executable(
+    surface_osx_orientation
+    surface_osx_orientation.cxx ../../vncviewer/Surface_OSX.cxx
+    ../../vncviewer/Surface.cxx ../../vncviewer/cocoa.mm)
+  target_link_libraries(surface_osx_orientation GTest::gtest_main
+                        ${FLTK_LIBRARIES} ${COCOA_FRAMEWORKS})
   gtest_discover_tests(surface_osx_orientation)
-  add_executable(surface_osx_window_orientation surface_osx_window_orientation.cxx ../../vncviewer/Surface_OSX.cxx ../../vncviewer/Surface.cxx ../../vncviewer/cocoa.mm)
-  target_link_libraries(surface_osx_window_orientation GTest::gtest_main ${FLTK_LIBRARIES} ${COCOA_FRAMEWORKS})
+  add_executable(
+    surface_osx_window_orientation
+    surface_osx_window_orientation.cxx ../../vncviewer/Surface_OSX.cxx
+    ../../vncviewer/Surface.cxx ../../vncviewer/cocoa.mm)
+  target_link_libraries(surface_osx_window_orientation GTest::gtest_main
+                        ${FLTK_LIBRARIES} ${COCOA_FRAMEWORKS})
   gtest_discover_tests(surface_osx_window_orientation)
 endif()
 add_executable(mac_coord_utils mac_coord_utils.cxx)
