@@ -66,7 +66,7 @@ gtest_discover_tests(persistentcache_crossbpp)
 
 add_executable(persistentcache_quality persistentcache_quality.cxx)
 target_link_libraries(persistentcache_quality rfb core GTest::gtest_main)
-gtest_discover_tests(persistentcache_quality)
+gtest_discover_tests(persistentcache_quality DISCOVERY_TIMEOUT 60)
 
 add_executable(test_hash_report_protocol test_hash_report_protocol.cxx)
 target_link_libraries(test_hash_report_protocol rfb core rdr network
@@ -76,11 +76,11 @@ gtest_discover_tests(test_hash_report_protocol)
 add_executable(decode_manager decode_manager.cxx)
 target_link_libraries(decode_manager rfb core GTest::gtest_main)
 target_compile_definitions(decode_manager PRIVATE UNIT_TEST)
-gtest_discover_tests(decode_manager)
+gtest_discover_tests(decode_manager DISCOVERY_TIMEOUT 60)
 
 add_executable(pixelformat pixelformat.cxx)
 target_link_libraries(pixelformat rfb GTest::gtest_main)
-gtest_discover_tests(pixelformat)
+gtest_discover_tests(pixelformat DISCOVERY_TIMEOUT 60)
 
 add_executable(shortcuthandler shortcuthandler.cxx
                                ../../vncviewer/ShortcutHandler.cxx)
@@ -98,7 +98,7 @@ gtest_discover_tests(emulatemb)
 
 add_executable(shifttolerantscan shifttolerantscan.cxx)
 target_link_libraries(shifttolerantscan rfb core GTest::gtest_main)
-gtest_discover_tests(shifttolerantscan)
+gtest_discover_tests(shifttolerantscan DISCOVERY_TIMEOUT 60)
 add_executable(tiling_analysis tiling_analysis.cxx)
 target_link_libraries(tiling_analysis rfb core GTest::gtest_main)
 gtest_discover_tests(tiling_analysis)
@@ -124,7 +124,7 @@ gtest_discover_tests(mac_coord_utils)
 
 add_executable(cachecoordinator cachecoordinator.cxx)
 target_link_libraries(cachecoordinator rfb core GTest::gtest_main)
-gtest_discover_tests(cachecoordinator)
+gtest_discover_tests(cachecoordinator DISCOVERY_TIMEOUT 60)
 
 # Standalone test for lossy cache hash behavior (not using GTest)
 add_executable(test_lossy_cache test_lossy_cache.cxx)
