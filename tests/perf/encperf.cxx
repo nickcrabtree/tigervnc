@@ -32,25 +32,25 @@
 
 #define __USE_MINGW_ANSI_STDIO 1
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <sys/time.h>
 
 #include <core/Configuration.h>
 
-#include <rdr/OutStream.h>
 #include <rdr/FileInStream.h>
+#include <rdr/OutStream.h>
 
 #include <rfb/AccessRights.h>
-#include <rfb/PixelFormat.h>
 #include <rfb/CConnection.h>
 #include <rfb/CMsgReader.h>
 #include <rfb/CMsgWriter.h>
-#include <rfb/UpdateTracker.h>
 #include <rfb/EncodeManager.h>
+#include <rfb/PixelFormat.h>
 #include <rfb/SConnection.h>
 #include <rfb/SMsgWriter.h>
+#include <rfb/UpdateTracker.h>
 
 #include "util.h"
 
@@ -60,19 +60,20 @@ static core::IntParameter count("count", "Number of benchmark iterations", 9);
 
 static core::StringParameter format("format", "Pixel format (e.g. bgr888)", "");
 
-static core::BoolParameter translate("translate",
-                                     "Translate 8-bit and 16-bit datasets into 24-bit",
-                                     true);
+static core::BoolParameter translate("translate", "Translate 8-bit and 16-bit datasets into 24-bit", true);
 
 // The frame buffer (and output) is always this format
 static const rfb::PixelFormat fbPF(32, 24, false, true, 255, 255, 255, 0, 8, 16);
 
 // Encodings to use
-static const int32_t encodings[] = {
-  rfb::encodingTight, rfb::encodingCopyRect, rfb::encodingRRE,
-  rfb::encodingHextile, rfb::encodingZRLE, rfb::pseudoEncodingLastRect,
-  rfb::pseudoEncodingQualityLevel0 + 8,
-  rfb::pseudoEncodingCompressLevel0 + 2};
+static const int32_t encodings[] = {rfb::encodingTight,
+                                    rfb::encodingCopyRect,
+                                    rfb::encodingRRE,
+                                    rfb::encodingHextile,
+                                    rfb::encodingZRLE,
+                                    rfb::pseudoEncodingLastRect,
+                                    rfb::pseudoEncodingQualityLevel0 + 8,
+                                    rfb::pseudoEncodingCompressLevel0 + 2};
 
 class DummyOutStream : public rdr::OutStream {
 public:
@@ -90,37 +91,36 @@ private:
 
 class CConn : public rfb::CConnection {
 public:
-  CConn(const char *filename);
+  CConn(const char* filename);
   ~CConn();
 
-  void getStats(double& ratio, unsigned long long& bytes,
-                unsigned long long& rawEquivalent);
+  void getStats(double& ratio, unsigned long long& bytes, unsigned long long& rawEquivalent);
 
-  void initDone() override {};
+  void initDone() override{};
   void resizeFramebuffer() override;
   void framebufferUpdateStart() override;
   void framebufferUpdateEnd() override;
-  bool dataRect(const core::Rect&, int) override;
+  bool dataRect(const core::Rect&, int, const rfb::ServerParams* = nullptr) override;
   void setColourMapEntries(int, int, uint16_t*) override;
   void bell() override;
   void serverCutText(const char*) override;
-  virtual void getUserPasswd(bool secure, std::string *user, std::string *password) override;
-  virtual bool showMsgBox(rfb::MsgBoxFlags flags, const char *title, const char *text) override;
+  virtual void getUserPasswd(bool secure, std::string* user, std::string* password) override;
+  virtual bool showMsgBox(rfb::MsgBoxFlags flags, const char* title, const char* text) override;
 
 public:
   double decodeTime;
   double encodeTime;
 
 protected:
-  rdr::FileInStream *in;
-  DummyOutStream *out;
+  rdr::FileInStream* in;
+  DummyOutStream* out;
   rfb::SimpleUpdateTracker updates;
-  class SConn *sc;
+  class SConn* sc;
 };
 
 class Manager : public rfb::EncodeManager {
 public:
-  Manager(class rfb::SConnection *conn);
+  Manager(class rfb::SConnection* conn);
 
   void getStats(double&, unsigned long long&, unsigned long long&);
 };
@@ -136,48 +136,43 @@ public:
 
   void setAccessRights(rfb::AccessRights ar) override;
 
-  void setDesktopSize(int fb_width, int fb_height,
-                      const rfb::ScreenSet& layout) override;
+  void setDesktopSize(int fb_width, int fb_height, const rfb::ScreenSet& layout) override;
 
   void keyEvent(uint32_t keysym, uint32_t keycode, bool down) override;
-  void pointerEvent(const core::Point& pos,
-                    uint16_t buttonMask) override;
+  void pointerEvent(const core::Point& pos, uint16_t buttonMask) override;
 
   void handlePersistentCacheHashReport(const rfb::CacheKey&, const rfb::CacheKey&) override {}
 
+  void handleDebugDumpRequest(uint32_t) override {}
+
 protected:
-  DummyOutStream *out;
-  Manager *manager;
+  DummyOutStream* out;
+  Manager* manager;
 };
 
-DummyOutStream::DummyOutStream()
-{
+DummyOutStream::DummyOutStream() {
   offset = 0;
   ptr = buf;
   end = buf + sizeof(buf);
 }
 
-size_t DummyOutStream::length()
-{
+size_t DummyOutStream::length() {
   flush();
   return offset;
 }
 
-void DummyOutStream::flush()
-{
+void DummyOutStream::flush() {
   offset += ptr - buf;
   ptr = buf;
 }
 
-void DummyOutStream::overrun(size_t needed)
-{
+void DummyOutStream::overrun(size_t needed) {
   flush();
   if (avail() < needed)
     throw std::out_of_range("Insufficient dummy output buffer");
 }
 
-CConn::CConn(const char *filename)
-{
+CConn::CConn(const char* filename) {
   decodeTime = 0.0;
   encodeTime = 0.0;
 
@@ -201,38 +196,31 @@ CConn::CConn(const char *filename)
   ((rfb::SMsgHandler*)sc)->setEncodings(sizeof(encodings) / sizeof(*encodings), encodings);
 }
 
-CConn::~CConn()
-{
+CConn::~CConn() {
   delete sc;
   delete in;
   delete out;
 }
 
-void CConn::getStats(double& ratio, unsigned long long& bytes,
-                     unsigned long long& rawEquivalent)
-{
+void CConn::getStats(double& ratio, unsigned long long& bytes, unsigned long long& rawEquivalent) {
   sc->getStats(ratio, bytes, rawEquivalent);
 }
 
-void CConn::resizeFramebuffer()
-{
-  rfb::ModifiablePixelBuffer *pb;
+void CConn::resizeFramebuffer() {
+  rfb::ModifiablePixelBuffer* pb;
 
-  pb = new rfb::ManagedPixelBuffer((bool)translate ? fbPF : server.pf(),
-                                   server.width(), server.height());
+  pb = new rfb::ManagedPixelBuffer((bool)translate ? fbPF : server.pf(), server.width(), server.height());
   setFramebuffer(pb);
 }
 
-void CConn::framebufferUpdateStart()
-{
+void CConn::framebufferUpdateStart() {
   CConnection::framebufferUpdateStart();
 
   updates.clear();
   startCpuCounter();
 }
 
-void CConn::framebufferUpdateEnd()
-{
+void CConn::framebufferUpdateEnd() {
   rfb::UpdateInfo ui;
   rfb::PixelBuffer* pb = getFramebuffer();
   core::Region clip(pb->getRect());
@@ -252,9 +240,8 @@ void CConn::framebufferUpdateEnd()
   encodeTime += getCpuCounter();
 }
 
-bool CConn::dataRect(const core::Rect& r, int encoding)
-{
-  if (!CConnection::dataRect(r, encoding))
+bool CConn::dataRect(const core::Rect& r, int encoding, const rfb::ServerParams* serverOverride) {
+  if (!CConnection::dataRect(r, encoding, serverOverride))
     return false;
 
   if (encoding != rfb::encodingCopyRect) // FIXME
@@ -263,35 +250,21 @@ bool CConn::dataRect(const core::Rect& r, int encoding)
   return true;
 }
 
-void CConn::setColourMapEntries(int, int, uint16_t*)
-{
+void CConn::setColourMapEntries(int, int, uint16_t*) {}
+
+void CConn::bell() {}
+
+void CConn::serverCutText(const char*) {}
+
+void CConn::getUserPasswd(bool, std::string*, std::string*) {}
+
+bool CConn::showMsgBox(rfb::MsgBoxFlags, const char*, const char*) {
+  return true;
 }
 
-void CConn::bell()
-{
-}
+Manager::Manager(class rfb::SConnection* conn_) : EncodeManager(conn_) {}
 
-void CConn::serverCutText(const char*)
-{
-}
-
-void CConn::getUserPasswd(bool, std::string *, std::string *)
-{
-}
-
-bool CConn::showMsgBox(rfb::MsgBoxFlags, const char *, const char *)
-{
-    return true;
-}
-
-Manager::Manager(class rfb::SConnection *conn_) :
-  EncodeManager(conn_)
-{
-}
-
-void Manager::getStats(double& ratio, unsigned long long& encodedBytes,
-                       unsigned long long& rawEquivalent)
-{
+void Manager::getStats(double& ratio, unsigned long long& encodedBytes, unsigned long long& rawEquivalent) {
   StatsVector::iterator iter;
   unsigned long long bytes, equivalent;
 
@@ -309,9 +282,7 @@ void Manager::getStats(double& ratio, unsigned long long& encodedBytes,
   rawEquivalent = equivalent;
 }
 
-SConn::SConn()
-: SConnection(rfb::AccessDefault)
-{
+SConn::SConn() : SConnection(rfb::AccessDefault) {
   out = new DummyOutStream;
   setStreams(nullptr, out);
 
@@ -320,41 +291,28 @@ SConn::SConn()
   manager = new Manager(this);
 }
 
-SConn::~SConn()
-{
+SConn::~SConn() {
   delete manager;
   delete out;
 }
 
-void SConn::writeUpdate(const rfb::UpdateInfo& ui, const rfb::PixelBuffer* pb)
-{
+void SConn::writeUpdate(const rfb::UpdateInfo& ui, const rfb::PixelBuffer* pb) {
   manager->writeUpdate(ui, pb, nullptr);
 }
 
-void SConn::getStats(double& ratio, unsigned long long& bytes,
-                     unsigned long long& rawEquivalent)
-{
+void SConn::getStats(double& ratio, unsigned long long& bytes, unsigned long long& rawEquivalent) {
   manager->getStats(ratio, bytes, rawEquivalent);
 }
 
-void SConn::setAccessRights(rfb::AccessRights)
-{
-}
+void SConn::setAccessRights(rfb::AccessRights) {}
 
-void SConn::setDesktopSize(int, int, const rfb::ScreenSet&)
-{
-}
+void SConn::setDesktopSize(int, int, const rfb::ScreenSet&) {}
 
-void SConn::keyEvent(uint32_t, uint32_t, bool)
-{
-}
+void SConn::keyEvent(uint32_t, uint32_t, bool) {}
 
-void SConn::pointerEvent(const core::Point&, uint16_t)
-{
-}
+void SConn::pointerEvent(const core::Point&, uint16_t) {}
 
-struct stats
-{
+struct stats {
   double decodeTime;
   double encodeTime;
   double realTime;
@@ -364,9 +322,8 @@ struct stats
   unsigned long long rawEquivalent;
 };
 
-static struct stats runTest(const char *fn)
-{
-  CConn *cc;
+static struct stats runTest(const char* fn) {
+  CConn* cc;
   struct stats s;
   struct timeval start, stop;
 
@@ -393,7 +350,7 @@ static struct stats runTest(const char *fn)
   s.decodeTime = cc->decodeTime;
   s.encodeTime = cc->encodeTime;
   s.realTime = (double)stop.tv_sec - start.tv_sec;
-  s.realTime += ((double)stop.tv_usec - start.tv_usec)/1000000.0;
+  s.realTime += ((double)stop.tv_usec - start.tv_usec) / 1000000.0;
   cc->getStats(s.ratio, s.bytes, s.rawEquivalent);
 
   delete cc;
@@ -401,14 +358,13 @@ static struct stats runTest(const char *fn)
   return s;
 }
 
-static void sort(double *array, int len)
-{
+static void sort(double* array, int len) {
   bool sorted;
   int i;
   do {
     sorted = true;
     for (i = 1; i < len; i++) {
-      if (array[i-1] > array[i]) {
+      if (array[i - 1] > array[i]) {
         double d;
         d = array[i];
         array[i] = array[i - 1];
@@ -419,19 +375,17 @@ static void sort(double *array, int len)
   } while (!sorted);
 }
 
-static void usage(const char *argv0)
-{
+static void usage(const char* argv0) {
   fprintf(stderr, "Syntax: %s [options] <rfb file>\n", argv0);
   fprintf(stderr, "Options:\n");
   core::Configuration::listParams(79, 14);
   exit(1);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char** argv) {
   int i;
 
-  const char *fn;
+  const char* fn;
 
   fn = nullptr;
   for (i = 1; i < argc; i++) {
@@ -453,9 +407,9 @@ int main(int argc, char **argv)
   }
 
   int runCount = count;
-  struct stats *runs = new struct stats[runCount];
-  double *values = new double[runCount];
-  double *dev = new double[runCount];
+  struct stats* runs = new struct stats[runCount];
+  double* values = new double[runCount];
+  double* dev = new double[runCount];
   double median, meddev;
 
   if (fn == nullptr) {
@@ -481,47 +435,47 @@ int main(int argc, char **argv)
     runs[i] = runTest(fn);
 
   // Calculate median and median deviation for CPU usage decoding
-  for (i = 0;i < runCount;i++)
+  for (i = 0; i < runCount; i++)
     values[i] = runs[i].decodeTime;
 
   sort(values, runCount);
-  median = values[runCount/2];
+  median = values[runCount / 2];
 
-  for (i = 0;i < runCount;i++)
+  for (i = 0; i < runCount; i++)
     dev[i] = fabs((values[i] - median) / median) * 100;
 
   sort(dev, runCount);
-  meddev = dev[runCount/2];
+  meddev = dev[runCount / 2];
 
   printf("CPU time (decoding): %g s (+/- %g %%)\n", median, meddev);
 
   // And for CPU usage encoding
-  for (i = 0;i < runCount;i++)
+  for (i = 0; i < runCount; i++)
     values[i] = runs[i].encodeTime;
 
   sort(values, runCount);
-  median = values[runCount/2];
+  median = values[runCount / 2];
 
-  for (i = 0;i < runCount;i++)
+  for (i = 0; i < runCount; i++)
     dev[i] = fabs((values[i] - median) / median) * 100;
 
   sort(dev, runCount);
-  meddev = dev[runCount/2];
+  meddev = dev[runCount / 2];
 
   printf("CPU time (encoding): %g s (+/- %g %%)\n", median, meddev);
 
   // And for CPU core usage encoding
-  for (i = 0;i < runCount;i++)
+  for (i = 0; i < runCount; i++)
     values[i] = (runs[i].decodeTime + runs[i].encodeTime) / runs[i].realTime;
 
   sort(values, runCount);
-  median = values[runCount/2];
+  median = values[runCount / 2];
 
-  for (i = 0;i < runCount;i++)
+  for (i = 0; i < runCount; i++)
     dev[i] = fabs((values[i] - median) / median) * 100;
 
   sort(dev, runCount);
-  meddev = dev[runCount/2];
+  meddev = dev[runCount / 2];
 
   printf("Core usage (total): %g (+/- %g %%)\n", median, meddev);
 

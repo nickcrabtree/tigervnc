@@ -8,19 +8,18 @@
 
 #include <gtest/gtest.h>
 
+#include <rdr/MemInStream.h>
+#include <rdr/MemOutStream.h>
 #include <rfb/CMsgWriter.h>
-#include <rfb/SMsgReader.h>
+#include <rfb/CacheKey.h>
 #include <rfb/SMsgHandler.h>
+#include <rfb/SMsgReader.h>
 #include <rfb/ServerParams.h>
 #include <rfb/msgTypes.h>
-#include <rfb/CacheKey.h>
-#include <rdr/MemOutStream.h>
-#include <rdr/MemInStream.h>
 
 using namespace rfb;
 
-static CacheKey makeKey(uint8_t seed)
-{
+static CacheKey makeKey(uint8_t seed) {
   CacheKey key;
   for (size_t i = 0; i < key.bytes.size(); i++) {
     key.bytes[i] = static_cast<uint8_t>(seed + i);
@@ -28,8 +27,7 @@ static CacheKey makeKey(uint8_t seed)
   return key;
 }
 
-static CacheKey makeKeyFill(uint8_t value)
-{
+static CacheKey makeKeyFill(uint8_t value) {
   CacheKey key;
   key.bytes.fill(value);
   return key;
@@ -65,18 +63,16 @@ public:
   void handleClipboardPeek() override {}
   void handleClipboardNotify(uint32_t) override {}
   void handleClipboardProvide(uint32_t, const size_t*, const uint8_t* const*) override {}
-  void handleRequestCachedData(uint64_t) override {}
-  void handleCacheEviction(const std::vector<uint64_t>&) override {}
   void handlePersistentCacheQuery(const std::vector<uint64_t>&) override {}
   void handlePersistentHashList(uint32_t, uint16_t, uint16_t, const std::vector<uint64_t>&) override {}
   void handlePersistentCacheEviction(const std::vector<uint64_t>&) override {}
+  void handleDebugDumpRequest(uint32_t) override {}
 };
 
-TEST(HashReportProtocol, LosslessReport)
-{
+TEST(HashReportProtocol, LosslessReport) {
   // Test case: Viewer has lossless pixels (canonical == actual)
   CacheKey canonical = makeKey(0x10);
-  CacheKey actual = canonical;  // Same = lossless
+  CacheKey actual = canonical; // Same = lossless
 
   // Write to stream
   rdr::MemOutStream outStream;
@@ -99,11 +95,10 @@ TEST(HashReportProtocol, LosslessReport)
   EXPECT_TRUE(isLossless);
 }
 
-TEST(HashReportProtocol, LossyReport)
-{
+TEST(HashReportProtocol, LossyReport) {
   // Test case: Viewer has lossy pixels (canonical != actual)
   CacheKey canonical = makeKey(0x20);
-  CacheKey actual = makeKey(0x40);  // Different = lossy
+  CacheKey actual = makeKey(0x40); // Different = lossy
 
   rdr::MemOutStream outStream;
   ServerParams serverParams;
@@ -124,8 +119,7 @@ TEST(HashReportProtocol, LossyReport)
   EXPECT_FALSE(isLossless);
 }
 
-TEST(HashReportProtocol, WireFormat)
-{
+TEST(HashReportProtocol, WireFormat) {
   // Verify exact wire format: type(1) + canonical(16) + actual(16) = 33 bytes
   CacheKey canonical = makeKey(0xAA);
   CacheKey actual = makeKey(0x11);
@@ -155,13 +149,12 @@ TEST(HashReportProtocol, WireFormat)
   }
 }
 
-TEST(HashReportProtocol, MultipleReports)
-{
+TEST(HashReportProtocol, MultipleReports) {
   // Test sending multiple hash reports in sequence
   std::vector<std::pair<CacheKey, CacheKey>> reports = {
-    {makeKey(0x01), makeKey(0x01)},  // Lossless
-    {makeKey(0x10), makeKey(0x20)},  // Lossy
-    {makeKey(0x30), makeKey(0x30)},  // Lossless
+      {makeKey(0x01), makeKey(0x01)}, // Lossless
+      {makeKey(0x10), makeKey(0x20)}, // Lossy
+      {makeKey(0x30), makeKey(0x30)}, // Lossless
   };
 
   rdr::MemOutStream outStream;
@@ -186,8 +179,7 @@ TEST(HashReportProtocol, MultipleReports)
   }
 }
 
-TEST(HashReportProtocol, ZeroHashes)
-{
+TEST(HashReportProtocol, ZeroHashes) {
   // Edge case: both hashes are zero
   CacheKey canonical;
   CacheKey actual;
@@ -207,8 +199,7 @@ TEST(HashReportProtocol, ZeroHashes)
   EXPECT_EQ(handler.receivedActual, actual);
 }
 
-TEST(HashReportProtocol, MaxHashes)
-{
+TEST(HashReportProtocol, MaxHashes) {
   // Edge case: all-0xFF vs all-0xFE bytes
   CacheKey canonical = makeKeyFill(0xFF);
   CacheKey actual = makeKeyFill(0xFE);

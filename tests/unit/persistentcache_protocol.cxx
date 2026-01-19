@@ -22,20 +22,19 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
+#include <rdr/MemInStream.h>
+#include <rdr/MemOutStream.h>
 #include <rfb/CMsgWriter.h>
-#include <rfb/SMsgReader.h>
+#include <rfb/CacheKey.h>
 #include <rfb/SMsgHandler.h>
+#include <rfb/SMsgReader.h>
 #include <rfb/ServerParams.h>
 #include <rfb/msgTypes.h>
-#include <rfb/CacheKey.h>
-#include <rdr/MemOutStream.h>
-#include <rdr/MemInStream.h>
-#include <cstring>
 
 using namespace rfb;
 
-static CacheKey makeKeyFromU64(uint64_t id)
-{
+static CacheKey makeKeyFromU64(uint64_t id) {
   CacheKey key;
   key.bytes.fill(0);
   std::memcpy(key.bytes.data(), &id, sizeof(id));
@@ -68,19 +67,17 @@ public:
   void handleClipboardPeek() override {}
   void handleClipboardNotify(uint32_t) override {}
   void handleClipboardProvide(uint32_t, const size_t*, const uint8_t* const*) override {}
-  void handleRequestCachedData(uint64_t) override {}
-  void handleCacheEviction(const std::vector<uint64_t>&) override {}
   void handlePersistentCacheQuery(const std::vector<uint64_t>&) override {}
   void handlePersistentHashList(uint32_t, uint16_t, uint16_t, const std::vector<uint64_t>&) override {}
   void handlePersistentCacheHashReport(const CacheKey&, const CacheKey&) override {}
+  void handleDebugDumpRequest(uint32_t) override {}
 };
 
 // ============================================================================
 // PersistentCacheEviction Message Tests
 // ============================================================================
 
-TEST(PersistentCacheProtocol, EvictionRoundTripBasic)
-{
+TEST(PersistentCacheProtocol, EvictionRoundTripBasic) {
   // Create test 64-bit IDs
   std::vector<uint64_t> ids;
   ids.push_back(0x0102030405060708ULL);
@@ -109,9 +106,8 @@ TEST(PersistentCacheProtocol, EvictionRoundTripBasic)
   EXPECT_EQ(handler.receivedEvictions[1], ids[1]);
 }
 
-TEST(PersistentCacheProtocol, EvictionEmptyList)
-{
-  std::vector<CacheKey> keys;  // Empty
+TEST(PersistentCacheProtocol, EvictionEmptyList) {
+  std::vector<CacheKey> keys; // Empty
 
   rdr::MemOutStream outStream;
   ServerParams serverParams;
@@ -127,8 +123,7 @@ TEST(PersistentCacheProtocol, EvictionEmptyList)
   EXPECT_TRUE(handler.receivedEvictions.empty());
 }
 
-TEST(PersistentCacheProtocol, EvictionMaxIds)
-{
+TEST(PersistentCacheProtocol, EvictionMaxIds) {
   // Test with maximum allowed IDs (1000)
   std::vector<CacheKey> keys;
   for (int i = 0; i < 1000; i++) {
@@ -198,8 +193,7 @@ TEST(PersistentCacheProtocol, EvictionMaxIds)
 // Batched Eviction Tests
 // ============================================================================
 
-TEST(PersistentCacheProtocol, EvictionBatchedLargeSet)
-{
+TEST(PersistentCacheProtocol, EvictionBatchedLargeSet) {
   // Test batching with 350 IDs (should create 4 messages: 100+100+100+50)
   std::vector<CacheKey> keys;
   for (int i = 0; i < 350; i++) {
@@ -220,7 +214,7 @@ TEST(PersistentCacheProtocol, EvictionBatchedLargeSet)
     uint8_t msgType = inStream.readU8();
     EXPECT_EQ(msgType, msgTypePersistentCacheEviction);
 
-    inStream.skip(1);  // padding
+    inStream.skip(1); // padding
     uint16_t count = inStream.readU16();
 
     // Each batch should have at most 100
@@ -237,8 +231,7 @@ TEST(PersistentCacheProtocol, EvictionBatchedLargeSet)
   EXPECT_EQ(totalReceived, 350);
 }
 
-TEST(PersistentCacheProtocol, EvictionBatchedSingle)
-{
+TEST(PersistentCacheProtocol, EvictionBatchedSingle) {
   // Small set (< 100) should be single message
   std::vector<CacheKey> keys;
   for (int i = 0; i < 50; i++) {
@@ -278,8 +271,7 @@ TEST(PersistentCacheProtocol, EvictionBatchedSingle)
 // inside the key. This test focuses purely on verifying the byte-level
 // encoding of the 16-byte keys.
 
-TEST(PersistentCacheProtocol, WireFormatExact)
-{
+TEST(PersistentCacheProtocol, WireFormatExact) {
   CacheKey key = makeKeyFromU64(0x1234567890ABCDEFULL);
 
   rdr::MemOutStream outStream;
@@ -294,18 +286,17 @@ TEST(PersistentCacheProtocol, WireFormatExact)
   // Expected: msgType(1) + pad(1) + count(2) + key(16) = 20 bytes
   ASSERT_EQ(length, 20);
 
-  EXPECT_EQ(data[0], msgTypePersistentCacheEviction);  // msgType
-  EXPECT_EQ(data[1], 0);                               // padding
-  EXPECT_EQ(data[2], 0);                               // count high byte
-  EXPECT_EQ(data[3], 1);                               // count low byte (1 ID)
+  EXPECT_EQ(data[0], msgTypePersistentCacheEviction); // msgType
+  EXPECT_EQ(data[1], 0);                              // padding
+  EXPECT_EQ(data[2], 0);                              // count high byte
+  EXPECT_EQ(data[3], 1);                              // count low byte (1 ID)
   // Next 16 bytes should match the CacheKey bytes
   for (size_t i = 0; i < key.bytes.size(); i++) {
     EXPECT_EQ(data[4 + i], key.bytes[i]);
   }
 }
 
-TEST(PersistentCacheProtocol, WireFormatMultiple)
-{
+TEST(PersistentCacheProtocol, WireFormatMultiple) {
   CacheKey key1 = makeKeyFromU64(0x00000000000000AAULL);
   CacheKey key2 = makeKeyFromU64(0x000000000000BBCCULL);
 
@@ -318,8 +309,8 @@ TEST(PersistentCacheProtocol, WireFormatMultiple)
   const uint8_t* data = outStream.data();
 
   EXPECT_EQ(data[0], msgTypePersistentCacheEviction);
-  EXPECT_EQ(data[1], 0);     // padding
-  EXPECT_EQ(data[3], 2);     // count = 2
+  EXPECT_EQ(data[1], 0); // padding
+  EXPECT_EQ(data[3], 2); // count = 2
 
   // First key bytes
   for (size_t i = 0; i < key1.bytes.size(); i++) {
@@ -342,8 +333,7 @@ TEST(PersistentCacheProtocol, WireFormatMultiple)
 //   ...
 // }
 
-TEST(PersistentCacheProtocol, EvictionExactBatchBoundary)
-{
+TEST(PersistentCacheProtocol, EvictionExactBatchBoundary) {
   // Exactly 100 IDs - should be single batch
   std::vector<CacheKey> keys;
   for (int i = 0; i < 100; i++) {
@@ -374,8 +364,7 @@ TEST(PersistentCacheProtocol, EvictionExactBatchBoundary)
   EXPECT_EQ(inStream.avail(), 0);
 }
 
-TEST(PersistentCacheProtocol, EvictionExactBatchBoundaryPlusOne)
-{
+TEST(PersistentCacheProtocol, EvictionExactBatchBoundaryPlusOne) {
   // 101 IDs - should be 2 batches (100 + 1)
   std::vector<CacheKey> keys;
   for (int i = 0; i < 101; i++) {
