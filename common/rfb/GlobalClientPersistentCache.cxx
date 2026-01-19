@@ -36,8 +36,11 @@
 #include <time.h>
 
 #ifdef HAVE_GNUTLS
-#include <gnutls/crypto.h>
+// clang-format off
+// Need to import in this order to prevent breakage on CentOS7; clang-format likes to have things in alphabetical order
 #include <gnutls/gnutls.h>
+#include <gnutls/crypto.h>
+// clang-format on
 #else
 // Fallback to a simple checksum if GnuTLS not available
 #include <zlib.h>
