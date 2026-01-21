@@ -57,43 +57,37 @@ class ServerParams;
 
 class DecodeManager {
 public:
-  explicit DecodeManager(CConnection *conn);
+  explicit DecodeManager(CConnection* conn);
   ~DecodeManager();
 
-  bool decodeRect(const core::Rect &r, int encoding, ModifiablePixelBuffer *pb,
-                  const ServerParams *serverOverride = nullptr);
+  bool decodeRect(const core::Rect& r, int encoding, ModifiablePixelBuffer* pb,
+                  const ServerParams* serverOverride = nullptr);
 
   void flush();
 
-  // Cache protocol extension (legacy ContentCache entry point).
+  // Cache protocol extension (legacy CachedRect entry point).
   // In the unified implementation this is backed by a session-only,
   // in-memory cache on the client. PersistentCache reuses the same
   // CacheKey space but adds disk-backed persistence and HashList
   // negotiation.
-  void handleCachedRect(const core::Rect &r, const CacheKey &key,
-                        ModifiablePixelBuffer *pb);
-  void storeCachedRect(const core::Rect &r, const CacheKey &key,
-                       ModifiablePixelBuffer *pb);
+  void handleCachedRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb);
+  void storeCachedRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb);
 
   // PersistentCache protocol extension (cross-session), using 64-bit
-  // contentHash/cacheId identifiers on the wire (shared with ContentCache).
-  void handlePersistentCachedRect(const core::Rect &r, const CacheKey &key,
-                                  ModifiablePixelBuffer *pb);
+  // contentHash/cacheId identifiers on the wire.
+  void handlePersistentCachedRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb);
   // PersistentCache INIT: encoding is the inner payload encoding used
   // for this rect. This allows the client cache to treat lossy and
   // lossless payloads differently for on-disk persistence.
-  void storePersistentCachedRect(const core::Rect &r, const CacheKey &key,
-                                 int encoding, ModifiablePixelBuffer *pb);
-  // Backwards-compatible helper used by the unified ContentCache entry
+  void storePersistentCachedRect(const core::Rect& r, const CacheKey& key, int encoding, ModifiablePixelBuffer* pb);
+  // Backwards-compatible helper used by the legacy CachedRect entry
   // point, which does not propagate an inner encoding. These rects are
   // treated as effectively lossless for the purposes of disk policy.
-  void storePersistentCachedRect(const core::Rect &r, const CacheKey &key,
-                                 ModifiablePixelBuffer *pb);
+  void storePersistentCachedRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb);
 
   // Cache seed: read existing framebuffer pixels at rect R and store
   // them in cache with the given ID. Used for whole-rectangle caching.
-  void seedCachedRect(const core::Rect &r, const CacheKey &key,
-                      ModifiablePixelBuffer *pb);
+  void seedCachedRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb);
 
   // Log end-of-session decode and cache statistics (client-side)
   void logStats();
@@ -111,29 +105,17 @@ public:
   // Debug dump: Write comprehensive cache state to a file for post-mortem
   // analysis of corruption issues. Returns the path to the dump file.
   // Call this when you notice corruption (e.g., via SIGUSR1 signal handler).
-  std::string dumpCacheDebugState(const std::string &outputDir = "/tmp") const;
+  std::string dumpCacheDebugState(const std::string& outputDir = "/tmp") const;
 
 private:
   void setThreadException();
   void throwThreadException();
 
-  // Session-only ContentCache helpers (no on-disk persistence). These are
-  // used both for true ContentCache protocol messages and as a fallback
-  // when PersistentCache protocol messages are received but the viewer's
-  // PersistentCache option is disabled (PersistentCache=0). In the unified
-  // implementation they are backed by the same GlobalClientPersistentCache
-  // engine as PersistentCache, but inserts are flagged as non-persistent so
-  // they never hit disk.
-  void handleContentCacheRect(const core::Rect &r, const CacheKey &key,
-                              ModifiablePixelBuffer *pb);
-  void storeContentCacheRect(const core::Rect &r, const CacheKey &key,
-                             ModifiablePixelBuffer *pb);
-
 private:
-  CConnection *conn;
+  CConnection* conn;
 
   static constexpr int kMaxEncodings = encodingMax + 1;
-  Decoder *decoders[kMaxEncodings];
+  Decoder* decoders[kMaxEncodings];
 
   struct DecoderStats {
     unsigned rects;
@@ -141,32 +123,29 @@ private:
     uint64_t pixels;
     uint64_t equivalent;
   };
-
   DecoderStats stats[kMaxEncodings];
 
   struct QueueEntry {
     bool active;
     core::Rect rect;
     int encoding;
-    Decoder *decoder;
+    Decoder* decoder;
     ServerParams serverParams;
-    const ServerParams *server;
-    ModifiablePixelBuffer *pb;
-    rdr::MemOutStream *bufferStream;
+    const ServerParams* server;
+    ModifiablePixelBuffer* pb;
+    rdr::MemOutStream* bufferStream;
     core::Region affectedRegion;
   };
 
-  std::list<rdr::MemOutStream *> freeBuffers;
-  std::list<QueueEntry *> workQueue;
-
+  std::list<rdr::MemOutStream*> freeBuffers;
+  std::list<QueueEntry*> workQueue;
   std::mutex queueMutex;
   std::condition_variable producerCond;
   std::condition_variable consumerCond;
 
-private:
   class DecodeThread {
   public:
-    explicit DecodeThread(DecodeManager *manager);
+    explicit DecodeThread(DecodeManager* manager);
     ~DecodeThread();
 
     void start();
@@ -174,31 +153,26 @@ private:
 
   protected:
     void worker();
-    DecodeManager::QueueEntry *findEntry();
+    DecodeManager::QueueEntry* findEntry();
 
   private:
-    DecodeManager *manager;
-
-    std::thread *thread;
+    DecodeManager* manager;
+    std::thread* thread;
     bool stopRequested;
   };
 
-  std::list<DecodeThread *> threads;
+  std::list<DecodeThread*> threads;
   std::exception_ptr threadException;
 
-  // Track bytes from last decoded rect so we can estimate cache INIT
-  // bandwidth (now used by the unified cache engine / PersistentCache).
+  // Track bytes from last decoded rect so we can estimate cache INIT bandwidth.
   size_t lastDecodedRectBytes;
 
-  // Client-side persistent cache engine. This single instance backs both
-  // PersistentCache (cross-session, optionally disk-backed) and session-only
-  // ContentCache (no disk). ContentCache operations share the same 64-bit ID
-  // space but mark inserts as non-persistent so they never produce disk I/O.
-  GlobalClientPersistentCache *persistentCache;
-  // Whether disk persistence is enabled for this connection. When false,
-  // the viewer will never read or write any PersistentCache files even
-  // though it may still negotiate the PersistentCache protocol on the wire.
+  // Client-side cache engine used for PersistentCache (cross-session, optionally disk-backed).
+  GlobalClientPersistentCache* persistentCache;
+
+  // Whether disk persistence is enabled for this connection.
   bool persistentCacheDiskEnabled_;
+
   struct PersistentCacheStats {
     unsigned cache_hits;
     unsigned cache_lookups;
@@ -208,18 +182,6 @@ private:
   };
   PersistentCacheStats persistentCacheStats;
 
-  // Session-only ContentCache statistics (no disk). These mirror the
-  // semantics of the legacy ContentCache implementation but are now
-  // measured on top of the unified GlobalClientPersistentCache engine
-  // instead of a separate ARC instance.
-  struct ContentCacheStats {
-    unsigned cache_hits;
-    unsigned cache_lookups;
-    unsigned cache_misses;
-    unsigned stores;
-  };
-  ContentCacheStats contentCacheStats_;
-
   // PersistentCache bandwidth savings tracking
   rfb::cache::CacheProtocolStats persistentCacheBandwidthStats;
 
@@ -227,20 +189,16 @@ private:
   std::vector<uint64_t> pendingQueries;
   void flushPendingQueries();
 
-  // Forward pending cache evictions to the server. Called during flush() and
-  // after each rectangle decode to ensure timely eviction notification.
+  // Forward pending cache evictions to the server.
   void flushPendingEvictions();
 
-  // Throttled real-time logging of ARC evictions. This gives users visibility
-  // into cache pressure in production where server logs are unavailable.
+  // Throttled real-time logging of ARC evictions.
   void logArcEvictionsThrottled();
 
-  // One-shot guard to avoid sending the PersistentCache HashList more than
-  // once per connection.
+  // One-shot guard to avoid sending the PersistentCache HashList more than once per connection.
   bool persistentHashListSent;
 
-  // Guard to ensure we only trigger PersistentCache disk load once per
-  // connection
+  // Guard to ensure we only trigger PersistentCache disk load once per connection.
   bool persistentCacheLoadTriggered;
 
   // ARC eviction log throttling state (viewer-side).
@@ -249,11 +207,9 @@ private:
   std::chrono::steady_clock::time_point lastArcEvictionLogTime_;
 
 #ifdef UNIT_TEST
-
 public:
-  // Test-only helper to introspect the unified cache pointer from unit tests
-  // without exposing it in production builds.
-  GlobalClientPersistentCache *getPersistentCacheForTest() const {
+  // Test-only helper to introspect the cache pointer from unit tests.
+  GlobalClientPersistentCache* getPersistentCacheForTest() const {
     return persistentCache;
   }
 #endif // UNIT_TEST
@@ -261,5 +217,4 @@ public:
 
 } // namespace rfb
 
-#endif // COMMON_RFB_DECODEMANAGER_H_diff --git a/common/rfb/DecodeManager.cxx
-       // b/common/rfb/DecodeManager.cxx
+#endif // COMMON_RFB_DECODEMANAGER_H_

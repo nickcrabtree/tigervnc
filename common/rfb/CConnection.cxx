@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011-2019 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -30,21 +30,21 @@
 #include <core/LogWriter.h>
 #include <core/string.h>
 
-#include <rfb/Exception.h>
-#include <rfb/clipboardTypes.h>
-#include <rfb/fenceTypes.h>
-#include <rfb/screenTypes.h>
+#include <rfb/CConnection.h>
 #include <rfb/CMsgReader.h>
 #include <rfb/CMsgWriter.h>
 #include <rfb/CSecurity.h>
+#include <rfb/ContentHash.h>
 #include <rfb/Cursor.h>
 #include <rfb/Decoder.h>
+#include <rfb/Exception.h>
 #include <rfb/KeysymStr.h>
 #include <rfb/PixelBuffer.h>
 #include <rfb/Security.h>
 #include <rfb/SecurityClient.h>
-#include <rfb/CConnection.h>
-#include <rfb/ContentHash.h>
+#include <rfb/clipboardTypes.h>
+#include <rfb/fenceTypes.h>
+#include <rfb/screenTypes.h>
 
 #define XK_MISCELLANY
 #define XK_XKB_KEYS
@@ -57,58 +57,43 @@ using namespace rfb;
 
 static core::LogWriter vlog("CConnection");
 
-// Client-side ContentCache / update tracing helper
-static bool isClientCCDebugEnabled()
-{
+// Client-side CachedRect / update tracing helper
+static bool isClientCCDebugEnabled() {
   const char* env = getenv("TIGERVNC_CC_CLIENT_DEBUG");
   return env && env[0] != '\0' && env[0] != '0';
 }
 
-// Optional framebuffer hash debug for a fixed region (ContentCache debugging)
-static bool isFBHashDebugEnabled()
-{
+// Optional framebuffer hash debug for a fixed region (CachedRect debugging)
+static bool isFBHashDebugEnabled() {
   const char* env = getenv("TIGERVNC_FB_HASH_DEBUG");
   return env && env[0] != '\0' && env[0] != '0';
 }
 
 CConnection::CConnection()
-  : csecurity(nullptr),
-    supportsLocalCursor(false), supportsCursorPosition(false),
-    supportsDesktopResize(false), supportsLEDState(false),
-    supportsContentCache(true), supportsPersistentCache(true), supportsNativeFormatCache_(true),
-    is(nullptr), os(nullptr), reader_(nullptr), writer_(nullptr),
-    shared(false),
-    state_(RFBSTATE_UNINITIALISED),
-    pendingPFChange(false), preferredEncoding(encodingTight),
-    compressLevel(2), qualityLevel(-1),
-    formatChange(false), encodingChange(false),
-    firstUpdate(true), pendingUpdate(false), continuousUpdates(false),
-    forceNonincremental(true),
-    framebuffer(nullptr), decoder(this),
-    hasRemoteClipboard(false), hasLocalClipboard(false)
-{
-}
+    : csecurity(nullptr), supportsLocalCursor(false), supportsCursorPosition(false), supportsDesktopResize(false),
+      supportsLEDState(false), supportsContentCache(true), supportsPersistentCache(true),
+      supportsNativeFormatCache_(true), is(nullptr), os(nullptr), reader_(nullptr), writer_(nullptr), shared(false),
+      state_(RFBSTATE_UNINITIALISED), pendingPFChange(false), preferredEncoding(encodingTight), compressLevel(2),
+      qualityLevel(-1), formatChange(false), encodingChange(false), firstUpdate(true), pendingUpdate(false),
+      continuousUpdates(false), forceNonincremental(true), framebuffer(nullptr), decoder(this),
+      hasRemoteClipboard(false), hasLocalClipboard(false) {}
 
-CConnection::~CConnection()
-{
+CConnection::~CConnection() {
   close();
 }
 
-void CConnection::setServerName(const char* name_)
-{
+void CConnection::setServerName(const char* name_) {
   if (name_ == nullptr)
     name_ = "";
   serverName = name_;
 }
 
-void CConnection::setStreams(rdr::InStream* is_, rdr::OutStream* os_)
-{
+void CConnection::setStreams(rdr::InStream* is_, rdr::OutStream* os_) {
   is = is_;
   os = os_;
 }
 
-void CConnection::setFramebuffer(ModifiablePixelBuffer* fb)
-{
+void CConnection::setFramebuffer(ModifiablePixelBuffer* fb) {
   decoder.flush();
 
   if (fb) {
@@ -122,56 +107,48 @@ void CConnection::setFramebuffer(ModifiablePixelBuffer* fb)
     const uint8_t* data;
     int stride;
 
-    const uint8_t black[4] = { 0, 0, 0, 0 };
+    const uint8_t black[4] = {0, 0, 0, 0};
 
-    vlog.debug("setFramebuffer: old %dx%d, new %dx%d",
-               framebuffer->width(), framebuffer->height(),
-               fb->width(), fb->height());
+    vlog.debug("setFramebuffer: old %dx%d, new %dx%d", framebuffer->width(), framebuffer->height(), fb->width(),
+               fb->height());
 
     // Copy still valid area
 
     rect = fb->getRect();
     rect = rect.intersect(framebuffer->getRect());
-    vlog.debug("setFramebuffer: copying overlap rect [%d,%d-%d,%d]",
-               rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
+    vlog.debug("setFramebuffer: copying overlap rect [%d,%d-%d,%d]", rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
     data = framebuffer->getBuffer(framebuffer->getRect(), &stride);
     vlog.debug("setFramebuffer: old framebuffer stride=%d, data ptr=%p", stride, data);
-    
+
     // Sample a few pixels from the old framebuffer before copy
     if (rect.width() >= 800 && rect.height() >= 860) {
       int bytesPerPixel = framebuffer->getPF().bpp / 8;
       const uint8_t* sample = data + (859 * stride + 797) * bytesPerPixel;
-      vlog.debug("setFramebuffer: sample old pixel (797,859) = (%d,%d,%d,%d)",
-                 sample[0], sample[1], sample[2], sample[3]);
+      vlog.debug("setFramebuffer: sample old pixel (797,859) = (%d,%d,%d,%d)", sample[0], sample[1], sample[2],
+                 sample[3]);
     }
-    
+
     fb->imageRect(rect, data, stride);
-    
+
     // Sample the same pixel after copy in new framebuffer
     if (rect.width() >= 800 && rect.height() >= 860) {
       int newStride;
       const uint8_t* newData = fb->getBuffer(core::Rect(797, 859, 798, 860), &newStride);
-      vlog.debug("setFramebuffer: sample new pixel (797,859) = (%d,%d,%d,%d)",
-                 newData[0], newData[1], newData[2], newData[3]);
+      vlog.debug("setFramebuffer: sample new pixel (797,859) = (%d,%d,%d,%d)", newData[0], newData[1], newData[2],
+                 newData[3]);
     }
 
     // Black out any new areas
 
     if (fb->width() > framebuffer->width()) {
-      rect.setXYWH(framebuffer->width(), 0,
-                   fb->width() - framebuffer->width(),
-                   fb->height());
-      vlog.debug("setFramebuffer: blacking out right strip [%d,%d-%d,%d]",
-                 rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
+      rect.setXYWH(framebuffer->width(), 0, fb->width() - framebuffer->width(), fb->height());
+      vlog.debug("setFramebuffer: blacking out right strip [%d,%d-%d,%d]", rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
       fb->fillRect(rect, black);
     }
 
     if (fb->height() > framebuffer->height()) {
-      rect.setXYWH(0, framebuffer->height(),
-                   framebuffer->width(),
-                   fb->height() - framebuffer->height());
-      vlog.debug("setFramebuffer: blacking out bottom strip [%d,%d-%d,%d]",
-                 rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
+      rect.setXYWH(0, framebuffer->height(), framebuffer->width(), fb->height() - framebuffer->height());
+      vlog.debug("setFramebuffer: blacking out bottom strip [%d,%d-%d,%d]", rect.tl.x, rect.tl.y, rect.br.x, rect.br.y);
       fb->fillRect(rect, black);
     }
   }
@@ -180,32 +157,42 @@ void CConnection::setFramebuffer(ModifiablePixelBuffer* fb)
   framebuffer = fb;
 }
 
-void CConnection::logDecodeStats()
-{
+void CConnection::logDecodeStats() {
   decoder.logStats();
 }
 
-void CConnection::dumpCacheDebugState(const char* outputDir)
-{
+void CConnection::dumpCacheDebugState(const char* outputDir) {
   decoder.dumpCacheDebugState(outputDir);
 }
 
-void CConnection::initialiseProtocol()
-{
+void CConnection::initialiseProtocol() {
   state_ = RFBSTATE_PROTOCOL_VERSION;
 }
 
-bool CConnection::processMsg()
-{
+bool CConnection::processMsg() {
   switch (state_) {
 
-  case RFBSTATE_PROTOCOL_VERSION: return processVersionMsg();        break;
-  case RFBSTATE_SECURITY_TYPES:   return processSecurityTypesMsg();  break;
-  case RFBSTATE_SECURITY:         return processSecurityMsg();       break;
-  case RFBSTATE_SECURITY_RESULT:  return processSecurityResultMsg(); break;
-  case RFBSTATE_SECURITY_REASON:  return processSecurityReasonMsg(); break;
-  case RFBSTATE_INITIALISATION:   return processInitMsg();           break;
-  case RFBSTATE_NORMAL:           return reader_->readMsg();         break;
+  case RFBSTATE_PROTOCOL_VERSION:
+    return processVersionMsg();
+    break;
+  case RFBSTATE_SECURITY_TYPES:
+    return processSecurityTypesMsg();
+    break;
+  case RFBSTATE_SECURITY:
+    return processSecurityMsg();
+    break;
+  case RFBSTATE_SECURITY_RESULT:
+    return processSecurityResultMsg();
+    break;
+  case RFBSTATE_SECURITY_REASON:
+    return processSecurityReasonMsg();
+    break;
+  case RFBSTATE_INITIALISATION:
+    return processInitMsg();
+    break;
+  case RFBSTATE_NORMAL:
+    return reader_->readMsg();
+    break;
   case RFBSTATE_CLOSING:
     throw std::logic_error("CConnection::processMsg: Called while closing");
   case RFBSTATE_UNINITIALISED:
@@ -215,8 +202,7 @@ bool CConnection::processMsg()
   }
 }
 
-bool CConnection::processVersionMsg()
-{
+bool CConnection::processVersionMsg() {
   char verStr[27]; // FIXME: gcc has some bug in format-overflow
   int majorVersion;
   int minorVersion;
@@ -229,47 +215,39 @@ bool CConnection::processVersionMsg()
   is->readBytes((uint8_t*)verStr, 12);
   verStr[12] = '\0';
 
-  if (sscanf(verStr, "RFB %03d.%03d\n",
-             &majorVersion, &minorVersion) != 2) {
+  if (sscanf(verStr, "RFB %03d.%03d\n", &majorVersion, &minorVersion) != 2) {
     state_ = RFBSTATE_INVALID;
     throw protocol_error("Reading version failed, not an RFB server?");
   }
 
   server.setVersion(majorVersion, minorVersion);
 
-  vlog.info("Server supports RFB protocol version %d.%d",
-            server.majorVersion, server.minorVersion);
+  vlog.info("Server supports RFB protocol version %d.%d", server.majorVersion, server.minorVersion);
 
   // The only official RFB protocol versions are currently 3.3, 3.7 and 3.8
-  if (server.beforeVersion(3,3)) {
-    vlog.error("Server gave unsupported RFB protocol version %d.%d",
-               server.majorVersion, server.minorVersion);
+  if (server.beforeVersion(3, 3)) {
+    vlog.error("Server gave unsupported RFB protocol version %d.%d", server.majorVersion, server.minorVersion);
     state_ = RFBSTATE_INVALID;
     throw protocol_error(
-      core::format("Server gave unsupported RFB protocol version %d.%d",
-                   server.majorVersion, server.minorVersion));
-  } else if (server.beforeVersion(3,7)) {
-    server.setVersion(3,3);
-  } else if (server.afterVersion(3,8)) {
-    server.setVersion(3,8);
+        core::format("Server gave unsupported RFB protocol version %d.%d", server.majorVersion, server.minorVersion));
+  } else if (server.beforeVersion(3, 7)) {
+    server.setVersion(3, 3);
+  } else if (server.afterVersion(3, 8)) {
+    server.setVersion(3, 8);
   }
 
-  sprintf(verStr, "RFB %03d.%03d\n",
-          server.majorVersion, server.minorVersion);
+  sprintf(verStr, "RFB %03d.%03d\n", server.majorVersion, server.minorVersion);
   os->writeBytes((const uint8_t*)verStr, 12);
   os->flush();
 
   state_ = RFBSTATE_SECURITY_TYPES;
 
-  vlog.info("Using RFB protocol version %d.%d",
-            server.majorVersion, server.minorVersion);
+  vlog.info("Using RFB protocol version %d.%d", server.majorVersion, server.minorVersion);
 
   return true;
 }
 
-
-bool CConnection::processSecurityTypesMsg()
-{
+bool CConnection::processSecurityTypesMsg() {
   vlog.debug("Processing security types message");
 
   int secType = secTypeInvalid;
@@ -277,7 +255,7 @@ bool CConnection::processSecurityTypesMsg()
   std::list<uint8_t> secTypes;
   secTypes = security.GetEnabledSecTypes();
 
-  if (server.isVersion(3,3)) {
+  if (server.isVersion(3, 3)) {
 
     // legacy 3.3 server may only offer "vnc authentication" or "none"
 
@@ -289,8 +267,7 @@ bool CConnection::processSecurityTypesMsg()
       state_ = RFBSTATE_SECURITY_REASON;
       return true;
     } else if (secType == secTypeNone || secType == secTypeVncAuth) {
-      if (std::find(secTypes.begin(), secTypes.end(),
-                    secType) == secTypes.end())
+      if (std::find(secTypes.begin(), secTypes.end(), secType) == secTypes.end())
         secType = secTypeInvalid;
     } else {
       vlog.error("Unknown 3.3 security type %d", secType);
@@ -319,16 +296,14 @@ bool CConnection::processSecurityTypesMsg()
 
     for (int i = 0; i < nServerSecTypes; i++) {
       uint8_t serverSecType = is->readU8();
-      vlog.debug("Server offers security type %s(%d)",
-                 secTypeName(serverSecType), serverSecType);
+      vlog.debug("Server offers security type %s(%d)", secTypeName(serverSecType), serverSecType);
 
       /*
        * Use the first type sent by server which matches client's type.
        * It means server's order specifies priority.
        */
       if (secType == secTypeInvalid) {
-        if (std::find(secTypes.begin(), secTypes.end(),
-                      serverSecType) != secTypes.end())
+        if (std::find(secTypes.begin(), secTypes.end(), serverSecType) != secTypes.end())
           secType = serverSecType;
       }
     }
@@ -337,7 +312,7 @@ bool CConnection::processSecurityTypesMsg()
     if (secType != secTypeInvalid) {
       os->writeU8(secType);
       os->flush();
-      vlog.info("Choosing security type %s(%d)",secTypeName(secType),secType);
+      vlog.info("Choosing security type %s(%d)", secTypeName(secType), secType);
     }
   }
 
@@ -353,8 +328,7 @@ bool CConnection::processSecurityTypesMsg()
   return true;
 }
 
-bool CConnection::processSecurityMsg()
-{
+bool CConnection::processSecurityMsg() {
   vlog.debug("Processing security message");
   if (!csecurity->processMsg())
     return false;
@@ -364,12 +338,11 @@ bool CConnection::processSecurityMsg()
   return true;
 }
 
-bool CConnection::processSecurityResultMsg()
-{
+bool CConnection::processSecurityResultMsg() {
   vlog.debug("Processing security result message");
   int result;
 
-  if (server.beforeVersion(3,8) && csecurity->getType() == secTypeNone) {
+  if (server.beforeVersion(3, 8) && csecurity->getType() == secTypeNone) {
     result = secResultOK;
   } else {
     if (!is->hasData(4))
@@ -391,7 +364,7 @@ bool CConnection::processSecurityResultMsg()
     throw protocol_error("Unknown security result from server");
   }
 
-  if (server.beforeVersion(3,8)) {
+  if (server.beforeVersion(3, 8)) {
     state_ = RFBSTATE_INVALID;
     throw auth_error("Authentication failed");
   }
@@ -400,8 +373,7 @@ bool CConnection::processSecurityResultMsg()
   return true;
 }
 
-bool CConnection::processSecurityReasonMsg()
-{
+bool CConnection::processSecurityReasonMsg() {
   vlog.debug("Processing security reason message");
 
   if (!is->hasData(4))
@@ -422,14 +394,12 @@ bool CConnection::processSecurityReasonMsg()
   throw auth_error(reason.data());
 }
 
-bool CConnection::processInitMsg()
-{
+bool CConnection::processInitMsg() {
   vlog.debug("Reading server initialisation");
   return reader_->readServerInit();
 }
 
-void CConnection::securityCompleted()
-{
+void CConnection::securityCompleted() {
   state_ = RFBSTATE_INITIALISATION;
   reader_ = new CMsgReader(this, is);
   writer_ = new CMsgWriter(&server, os);
@@ -442,8 +412,7 @@ void CConnection::securityCompleted()
   decoder.advertisePersistentCacheHashes();
 }
 
-void CConnection::close()
-{
+void CConnection::close() {
   state_ = RFBSTATE_CLOSING;
 
   /*
@@ -465,16 +434,13 @@ void CConnection::close()
   writer_ = nullptr;
 }
 
-void CConnection::setDesktopSize(int w, int h)
-{
+void CConnection::setDesktopSize(int w, int h) {
   decoder.flush();
 
   server.setDimensions(w, h);
 
   if (continuousUpdates)
-    writer()->writeEnableContinuousUpdates(true, 0, 0,
-                                           server.width(),
-                                           server.height());
+    writer()->writeEnableContinuousUpdates(true, 0, 0, server.width(), server.height());
 
   resizeFramebuffer();
   assert(framebuffer != nullptr);
@@ -482,11 +448,7 @@ void CConnection::setDesktopSize(int w, int h)
   assert(framebuffer->height() == server.height());
 }
 
-void CConnection::setExtendedDesktopSize(unsigned reason,
-                                         unsigned result,
-                                         int w, int h,
-                                         const ScreenSet& layout)
-{
+void CConnection::setExtendedDesktopSize(unsigned reason, unsigned result, int w, int h, const ScreenSet& layout) {
   decoder.flush();
 
   server.supportsSetDesktopSize = true;
@@ -500,9 +462,7 @@ void CConnection::setExtendedDesktopSize(unsigned reason,
   }
 
   if (continuousUpdates)
-    writer()->writeEnableContinuousUpdates(true, 0, 0,
-                                           server.width(),
-                                           server.height());
+    writer()->writeEnableContinuousUpdates(true, 0, 0, server.width(), server.height());
 
   resizeFramebuffer();
   assert(framebuffer != nullptr);
@@ -510,25 +470,18 @@ void CConnection::setExtendedDesktopSize(unsigned reason,
   assert(framebuffer->height() == server.height());
 }
 
-void CConnection::setCursor(int width, int height,
-                            const core::Point& hotspot,
-                            const uint8_t* data)
-{
+void CConnection::setCursor(int width, int height, const core::Point& hotspot, const uint8_t* data) {
   Cursor cursor(width, height, hotspot, data);
   server.setCursor(cursor);
 }
 
-void CConnection::setCursorPos(const core::Point& /*pos*/)
-{
-}
+void CConnection::setCursorPos(const core::Point& /*pos*/) {}
 
-void CConnection::setName(const char* name)
-{
+void CConnection::setName(const char* name) {
   server.setName(name);
 }
 
-void CConnection::fence(uint32_t flags, unsigned len, const uint8_t data[])
-{
+void CConnection::fence(uint32_t flags, unsigned len, const uint8_t data[]) {
   server.supportsFence = true;
 
   if (flags & fenceFlagRequest) {
@@ -542,8 +495,7 @@ void CConnection::fence(uint32_t flags, unsigned len, const uint8_t data[])
   }
 }
 
-void CConnection::endOfContinuousUpdates()
-{
+void CConnection::endOfContinuousUpdates() {
   server.supportsContinuousUpdates = true;
 
   // We've gotten the marker for a format change, so make the pending
@@ -558,20 +510,15 @@ void CConnection::endOfContinuousUpdates()
   }
 }
 
-void CConnection::supportsQEMUKeyEvent()
-{
+void CConnection::supportsQEMUKeyEvent() {
   server.supportsQEMUKeyEvent = true;
 }
 
-void CConnection::supportsExtendedMouseButtons()
-{
+void CConnection::supportsExtendedMouseButtons() {
   server.supportsExtendedMouseButtons = true;
 }
 
-void CConnection::serverInit(int width, int height,
-                             const PixelFormat& pf,
-                             const char* name)
-{
+void CConnection::serverInit(int width, int height, const PixelFormat& pf, const char* name) {
   server.setDimensions(width, height);
   server.setPF(pf);
   server.setName(name);
@@ -597,18 +544,15 @@ void CConnection::serverInit(int width, int height,
   }
 }
 
-bool CConnection::readAndDecodeRect(const core::Rect& r, int encoding,
-                                    ModifiablePixelBuffer* pb,
-                                    const ServerParams* serverOverride)
-{
+bool CConnection::readAndDecodeRect(const core::Rect& r, int encoding, ModifiablePixelBuffer* pb,
+                                    const ServerParams* serverOverride) {
   if (!decoder.decodeRect(r, encoding, pb, serverOverride))
     return false;
   decoder.flush();
   return true;
 }
 
-void CConnection::framebufferUpdateStart()
-{
+void CConnection::framebufferUpdateStart() {
   assert(framebuffer != nullptr);
 
   // Note: This might not be true if continuous updates are supported
@@ -617,12 +561,11 @@ void CConnection::framebufferUpdateStart()
   requestNewUpdate();
 }
 
-void CConnection::framebufferUpdateEnd()
-{
+void CConnection::framebufferUpdateEnd() {
   decoder.flush();
 
   // After all rects in this update have been applied, optionally hash
-  // a fixed framebuffer region to compare ContentCache vs. non-cache runs.
+  // a fixed framebuffer region to compare CachedRect vs. non-cache runs.
   if (isFBHashDebugEnabled() && framebuffer != nullptr) {
     // Problem region observed in black-box tests: [100,100-586,443]
     core::Rect problemRegion(100, 100, 586, 443);
@@ -636,10 +579,8 @@ void CConnection::framebufferUpdateEnd()
       for (size_t i = 0; i < n; ++i) {
         hash64 = (hash64 << 8) | hash[i];
       }
-      vlog.info("FBDBG HASH region=[%d,%d-%d,%d] hash64=%016llx",
-                hashRect.tl.x, hashRect.tl.y,
-                hashRect.br.x, hashRect.br.y,
-                (unsigned long long)hash64);
+      vlog.info("FBDBG HASH region=[%d,%d-%d,%d] hash64=%016llx", hashRect.tl.x, hashRect.tl.y, hashRect.br.x,
+                hashRect.br.y, (unsigned long long)hash64);
     }
   }
 
@@ -654,38 +595,29 @@ void CConnection::framebufferUpdateEnd()
     if (server.supportsContinuousUpdates) {
       vlog.info("Enabling continuous updates");
       continuousUpdates = true;
-      writer()->writeEnableContinuousUpdates(true, 0, 0,
-                                             server.width(),
-                                             server.height());
+      writer()->writeEnableContinuousUpdates(true, 0, 0, server.width(), server.height());
     }
 
     firstUpdate = false;
   }
 }
 
-bool CConnection::dataRect(const core::Rect& r, int encoding,
-                           const ServerParams* serverOverride)
-{
+bool CConnection::dataRect(const core::Rect& r, int encoding, const ServerParams* serverOverride) {
   // Optional client-side tracing of update ordering in the problematic region
   if (isClientCCDebugEnabled()) {
     core::Rect problemRegion(100, 100, 586, 443); // [100,100-586,443]
     if (!problemRegion.intersect(r).is_empty()) {
-      vlog.info("CCDBG CLIENT dataRect: rect=[%d,%d-%d,%d] enc=%d", 
-                r.tl.x, r.tl.y, r.br.x, r.br.y, encoding);
+      vlog.info("CCDBG CLIENT dataRect: rect=[%d,%d-%d,%d] enc=%d", r.tl.x, r.tl.y, r.br.x, r.br.y, encoding);
     }
   }
   return decoder.decodeRect(r, encoding, framebuffer, serverOverride);
 }
 
-void CConnection::setColourMapEntries(int /*firstColour*/,
-                                      int /*nColours*/,
-                                      uint16_t* /*rgbs*/)
-{
+void CConnection::setColourMapEntries(int /*firstColour*/, int /*nColours*/, uint16_t* /*rgbs*/) {
   vlog.error("Invalid SetColourMapEntries from server!");
 }
 
-void CConnection::serverCutText(const char* str)
-{
+void CConnection::serverCutText(const char* str) {
   hasLocalClipboard = false;
 
   serverClipboard = str;
@@ -694,64 +626,56 @@ void CConnection::serverCutText(const char* str)
   handleClipboardAnnounce(true);
 }
 
-void CConnection::setLEDState(unsigned int state)
-{
+void CConnection::setLEDState(unsigned int state) {
   server.setLEDState(state);
 }
 
-void CConnection::handleClipboardCaps(uint32_t flags,
-                                      const uint32_t* lengths)
-{
+void CConnection::handleClipboardCaps(uint32_t flags, const uint32_t* lengths) {
   int i;
-  uint32_t sizes[] = { 0 };
+  uint32_t sizes[] = {0};
 
   vlog.debug("Got server clipboard capabilities:");
-  for (i = 0;i < 16;i++) {
+  for (i = 0; i < 16; i++) {
     if (flags & (1 << i)) {
-      const char *type;
+      const char* type;
 
       switch (1 << i) {
-        case clipboardUTF8:
-          type = "Plain text";
-          break;
-        case clipboardRTF:
-          type = "Rich text";
-          break;
-        case clipboardHTML:
-          type = "HTML";
-          break;
-        case clipboardDIB:
-          type = "Images";
-          break;
-        case clipboardFiles:
-          type = "Files";
-          break;
-        default:
-          vlog.debug("    Unknown format 0x%x", 1 << i);
-          continue;
+      case clipboardUTF8:
+        type = "Plain text";
+        break;
+      case clipboardRTF:
+        type = "Rich text";
+        break;
+      case clipboardHTML:
+        type = "HTML";
+        break;
+      case clipboardDIB:
+        type = "Images";
+        break;
+      case clipboardFiles:
+        type = "Files";
+        break;
+      default:
+        vlog.debug("    Unknown format 0x%x", 1 << i);
+        continue;
       }
 
       if (lengths[i] == 0)
         vlog.debug("    %s (only notify)", type);
       else {
-        vlog.debug("    %s (automatically send up to %s)",
-                   type, core::iecPrefix(lengths[i], "B").c_str());
+        vlog.debug("    %s (automatically send up to %s)", type, core::iecPrefix(lengths[i], "B").c_str());
       }
     }
   }
 
   server.setClipboardCaps(flags, lengths);
 
-  writer()->writeClipboardCaps(rfb::clipboardUTF8 |
-                               rfb::clipboardRequest |
-                               rfb::clipboardPeek |
-                               rfb::clipboardNotify |
-                               rfb::clipboardProvide,
+  writer()->writeClipboardCaps(rfb::clipboardUTF8 | rfb::clipboardRequest | rfb::clipboardPeek | rfb::clipboardNotify |
+                                   rfb::clipboardProvide,
                                sizes);
 }
 
-void CConnection::handleClipboardRequest(uint32_t flags)
-{
+void CConnection::handleClipboardRequest(uint32_t flags) {
   if (!(flags & rfb::clipboardUTF8)) {
     vlog.debug("Ignoring clipboard request for unsupported formats 0x%x", flags);
     return;
@@ -763,14 +687,12 @@ void CConnection::handleClipboardRequest(uint32_t flags)
   handleClipboardRequest();
 }
 
-void CConnection::handleClipboardPeek()
-{
+void CConnection::handleClipboardPeek() {
   if (server.clipboardFlags() & rfb::clipboardNotify)
     writer()->writeClipboardNotify(hasLocalClipboard ? rfb::clipboardUTF8 : 0);
 }
 
-void CConnection::handleClipboardNotify(uint32_t flags)
-{
+void CConnection::handleClipboardNotify(uint32_t flags) {
   hasRemoteClipboard = false;
 
   if (flags & rfb::clipboardUTF8) {
@@ -781,10 +703,7 @@ void CConnection::handleClipboardNotify(uint32_t flags)
   }
 }
 
-void CConnection::handleClipboardProvide(uint32_t flags,
-                                         const size_t* lengths,
-                                         const uint8_t* const* data)
-{
+void CConnection::handleClipboardProvide(uint32_t flags, const size_t* lengths, const uint8_t* const* data) {
   if (!(flags & rfb::clipboardUTF8)) {
     vlog.debug("Ignoring clipboard provide with unsupported formats 0x%x", flags);
     return;
@@ -802,29 +721,19 @@ void CConnection::handleClipboardProvide(uint32_t flags,
   handleClipboardData(serverClipboard.c_str());
 }
 
-void CConnection::initDone()
-{
-}
+void CConnection::initDone() {}
 
-void CConnection::resizeFramebuffer()
-{
+void CConnection::resizeFramebuffer() {
   assert(false);
 }
 
-void CConnection::handleClipboardRequest()
-{
-}
+void CConnection::handleClipboardRequest() {}
 
-void CConnection::handleClipboardAnnounce(bool /*available*/)
-{
-}
+void CConnection::handleClipboardAnnounce(bool /*available*/) {}
 
-void CConnection::handleClipboardData(const char* /*data*/)
-{
-}
+void CConnection::handleClipboardData(const char* /*data*/) {}
 
-void CConnection::requestClipboard()
-{
+void CConnection::requestClipboard() {
   if (hasRemoteClipboard) {
     handleClipboardData(serverClipboard.c_str());
     return;
@@ -834,14 +743,12 @@ void CConnection::requestClipboard()
     writer()->writeClipboardRequest(rfb::clipboardUTF8);
 }
 
-void CConnection::announceClipboard(bool available)
-{
+void CConnection::announceClipboard(bool available) {
   hasLocalClipboard = available;
   unsolicitedClipboardAttempt = false;
 
   // Attempt an unsolicited transfer?
-  if (available &&
-      (server.clipboardSize(rfb::clipboardUTF8) > 0) &&
+  if (available && (server.clipboardSize(rfb::clipboardUTF8) > 0) &&
       (server.clipboardFlags() & rfb::clipboardProvide)) {
     vlog.debug("Attempting unsolicited clipboard transfer...");
     unsolicitedClipboardAttempt = true;
@@ -858,13 +765,12 @@ void CConnection::announceClipboard(bool available)
     handleClipboardRequest();
 }
 
-void CConnection::sendClipboardData(const char* data)
-{
+void CConnection::sendClipboardData(const char* data) {
   if (server.clipboardFlags() & rfb::clipboardProvide) {
     // FIXME: This conversion magic should be in CMsgWriter
     std::string filtered(core::convertCRLF(data));
-    size_t sizes[1] = { filtered.size() + 1 };
-    const uint8_t* datas[1] = { (const uint8_t*)filtered.c_str() };
+    size_t sizes[1] = {filtered.size() + 1};
+    const uint8_t* datas[1] = {(const uint8_t*)filtered.c_str()};
 
     if (unsolicitedClipboardAttempt) {
       unsolicitedClipboardAttempt = false;
@@ -882,9 +788,7 @@ void CConnection::sendClipboardData(const char* data)
   }
 }
 
-void CConnection::sendKeyPress(int systemKeyCode,
-                               uint32_t keyCode, uint32_t keySym)
-{
+void CConnection::sendKeyPress(int systemKeyCode, uint32_t keyCode, uint32_t keySym) {
   // For the first few years, there wasn't a good consensus on what the
   // Windows keys should be mapped to for X11. So we need to help out a
   // bit and map all variants to the same key...
@@ -931,14 +835,12 @@ void CConnection::sendKeyPress(int systemKeyCode,
   downKeys[systemKeyCode].keyCode = keyCode;
   downKeys[systemKeyCode].keySym = keySym;
 
-  vlog.debug("Key pressed: %d => 0x%02x / XK_%s (0x%04x)",
-             systemKeyCode, keyCode, KeySymName(keySym), keySym);
+  vlog.debug("Key pressed: %d => 0x%02x / XK_%s (0x%04x)", systemKeyCode, keyCode, KeySymName(keySym), keySym);
 
   writer()->writeKeyEvent(keySym, keyCode, true);
 }
 
-void CConnection::sendKeyRelease(int systemKeyCode)
-{
+void CConnection::sendKeyRelease(int systemKeyCode) {
   DownMap::iterator iter;
 
   iter = downKeys.find(systemKeyCode);
@@ -949,26 +851,22 @@ void CConnection::sendKeyRelease(int systemKeyCode)
     return;
   }
 
-  vlog.debug("Key released: %d => 0x%02x / XK_%s (0x%04x)",
-             systemKeyCode, iter->second.keyCode,
+  vlog.debug("Key released: %d => 0x%02x / XK_%s (0x%04x)", systemKeyCode, iter->second.keyCode,
              KeySymName(iter->second.keySym), iter->second.keySym);
 
-  writer()->writeKeyEvent(iter->second.keySym,
-                          iter->second.keyCode, false);
+  writer()->writeKeyEvent(iter->second.keySym, iter->second.keyCode, false);
 
   downKeys.erase(iter);
 }
 
-void CConnection::releaseAllKeys()
-{
+void CConnection::releaseAllKeys() {
   while (!downKeys.empty())
     sendKeyRelease(downKeys.begin()->first);
 }
 
-void CConnection::refreshFramebuffer()
-{
-  vlog.info("refreshFramebuffer: forceNonincremental=true, continuousUpdates=%d, pendingUpdate=%d",
-            continuousUpdates, pendingUpdate);
+void CConnection::refreshFramebuffer() {
+  vlog.info("refreshFramebuffer: forceNonincremental=true, continuousUpdates=%d, pendingUpdate=%d", continuousUpdates,
+            pendingUpdate);
   forceNonincremental = true;
 
   // Always request an update immediately. The previous logic only called
@@ -985,8 +883,7 @@ void CConnection::refreshFramebuffer()
   vlog.info("refreshFramebuffer: done");
 }
 
-void CConnection::setPreferredEncoding(int encoding)
-{
+void CConnection::setPreferredEncoding(int encoding) {
   if (preferredEncoding == encoding)
     return;
 
@@ -994,13 +891,11 @@ void CConnection::setPreferredEncoding(int encoding)
   encodingChange = true;
 }
 
-int CConnection::getPreferredEncoding()
-{
+int CConnection::getPreferredEncoding() {
   return preferredEncoding;
 }
 
-void CConnection::setCompressLevel(int level)
-{
+void CConnection::setCompressLevel(int level) {
   if (compressLevel == level)
     return;
 
@@ -1008,13 +903,11 @@ void CConnection::setCompressLevel(int level)
   encodingChange = true;
 }
 
-int CConnection::getCompressLevel()
-{
+int CConnection::getCompressLevel() {
   return compressLevel;
 }
 
-void CConnection::setQualityLevel(int level)
-{
+void CConnection::setQualityLevel(int level) {
   if (qualityLevel == level)
     return;
 
@@ -1022,13 +915,11 @@ void CConnection::setQualityLevel(int level)
   encodingChange = true;
 }
 
-int CConnection::getQualityLevel()
-{
+int CConnection::getQualityLevel() {
   return qualityLevel;
 }
 
-void CConnection::setPF(const PixelFormat& pf)
-{
+void CConnection::setPF(const PixelFormat& pf) {
   if (server.pf() == pf && !formatChange)
     return;
 
@@ -1036,25 +927,21 @@ void CConnection::setPF(const PixelFormat& pf)
   formatChange = true;
 }
 
-bool CConnection::isSecure() const
-{
+bool CConnection::isSecure() const {
   // SecurityClient does not expose a runtime "secure" state in this build;
   // keep the API but conservatively report false.
   return false;
 }
 
-bool CConnection::isContentCacheNegotiated() const
-{
+bool CConnection::isContentCacheNegotiated() const {
   return negotiatedCacheProtocol == CacheProtocolContent;
 }
 
-bool CConnection::isPersistentCacheNegotiated() const
-{
+bool CConnection::isPersistentCacheNegotiated() const {
   return negotiatedCacheProtocol == CacheProtocolPersistent;
 }
 
-void CConnection::disablePersistentCacheForSession()
-{
+void CConnection::disablePersistentCacheForSession() {
   // If PersistentCache was not enabled for this connection, nothing to do.
   if (!supportsPersistentCache && negotiatedCacheProtocol != CacheProtocolPersistent)
     return;
@@ -1071,16 +958,16 @@ void CConnection::disablePersistentCacheForSession()
   if (negotiatedCacheProtocol == CacheProtocolPersistent) {
     negotiatedCacheProtocol = CacheProtocolNone;
     negotiatedCacheLogged = false;
-    vlog.info("Cache protocol: disabling PersistentCache for this session due to client-side hash mismatches; will re-issue SetEncodings without -321");
+    vlog.info("Cache protocol: disabling PersistentCache for this session due to client-side hash mismatches; will "
+              "re-issue SetEncodings without -321");
   }
 }
 
 // requestNewUpdate() requests an update from the server, having set the
 // format and encoding appropriately.
-void CConnection::requestNewUpdate()
-{
-  vlog.debug("requestNewUpdate: forceNonincremental=%d, continuousUpdates=%d, pendingUpdate=%d",
-             forceNonincremental, continuousUpdates, pendingUpdate);
+void CConnection::requestNewUpdate() {
+  vlog.debug("requestNewUpdate: forceNonincremental=%d, continuousUpdates=%d, pendingUpdate=%d", forceNonincremental,
+             continuousUpdates, pendingUpdate);
   if (formatChange && !pendingPFChange) {
     /* Catch incorrect requestNewUpdate calls */
     assert(!pendingUpdate || continuousUpdates);
@@ -1101,9 +988,7 @@ void CConnection::requestNewUpdate()
     writer()->writeSetPixelFormat(pendingPF);
 
     if (continuousUpdates)
-      writer()->writeEnableContinuousUpdates(true, 0, 0,
-                                             server.width(),
-                                             server.height());
+      writer()->writeEnableContinuousUpdates(true, 0, 0, server.width(), server.height());
 
     formatChange = false;
   }
@@ -1115,10 +1000,7 @@ void CConnection::requestNewUpdate()
 
   if (forceNonincremental || !continuousUpdates) {
     pendingUpdate = true;
-    writer()->writeFramebufferUpdateRequest({0, 0,
-                                             server.width(),
-                                             server.height()},
-                                            !forceNonincremental);
+    writer()->writeFramebufferUpdateRequest({0, 0, server.width(), server.height()}, !forceNonincremental);
   }
 
   forceNonincremental = false;
@@ -1127,8 +1009,7 @@ void CConnection::requestNewUpdate()
 // Ask for encodings based on which decoders are supported.  Assumes higher
 // encoding numbers are more desirable.
 
-void CConnection::updateEncodings()
-{
+void CConnection::updateEncodings() {
   std::list<uint32_t> encodings;
 
   if (supportsLocalCursor) {
@@ -1156,9 +1037,9 @@ void CConnection::updateEncodings()
   encodings.push_back(pseudoEncodingFence);
   encodings.push_back(pseudoEncodingQEMUKeyEvent);
   encodings.push_back(pseudoEncodingExtendedMouseButtons);
-  
+
   // Cache protocol extension: we now advertise only the PersistentCache
-  // pseudo-encoding (-321). The "ContentCache" command-line/configuration
+  // pseudo-encoding (-321). The "CachedRect" command-line/configuration
   // option is treated as an alias that enables the same protocol but with
   // an ephemeral (memory-only) policy at the viewer.
   if (supportsPersistentCache) {
@@ -1187,37 +1068,34 @@ void CConnection::updateEncodings()
   }
 
   if (compressLevel >= 0 && compressLevel <= 9)
-      encodings.push_back(pseudoEncodingCompressLevel0 + compressLevel);
+    encodings.push_back(pseudoEncodingCompressLevel0 + compressLevel);
   if (qualityLevel >= 0 && qualityLevel <= 9)
-      encodings.push_back(pseudoEncodingQualityLevel0 + qualityLevel);
+    encodings.push_back(pseudoEncodingQualityLevel0 + qualityLevel);
 
   writer()->writeSetEncodings(encodings);
 }
 
-void CConnection::handleCachedRect(const core::Rect& r, const CacheKey& key)
-{
+void CConnection::handleCachedRect(const core::Rect& r, const CacheKey& key) {
   // On first use, record and log negotiated cache protocol
   if (negotiatedCacheProtocol == CacheProtocolNone) {
     negotiatedCacheProtocol = CacheProtocolContent;
     if (!negotiatedCacheLogged) {
-      vlog.info("Cache protocol: negotiated ContentCache (-320)");
+      vlog.info("Cache protocol: negotiated legacy CachedRect (-320)");
       negotiatedCacheLogged = true;
     }
   }
 
   // Forward to decoder manager to handle cache lookup and blit using the
-  // unified cache engine (ContentCache now aliases PersistentCache policy).
+  // unified cache engine (CachedRect now aliases PersistentCache policy).
   decoder.handleCachedRect(r, key, framebuffer);
 }
 
-void CConnection::storeCachedRect(const core::Rect& r, const CacheKey& key)
-{
+void CConnection::storeCachedRect(const core::Rect& r, const CacheKey& key) {
   // Forward to decoder manager to store decoded content with cache ID
   decoder.storeCachedRect(r, key, framebuffer);
 }
 
-void CConnection::handlePersistentCachedRect(const core::Rect& r, const CacheKey& key)
-{
+void CConnection::handlePersistentCachedRect(const core::Rect& r, const CacheKey& key) {
   // On first use, record and log negotiated cache protocol
   if (negotiatedCacheProtocol == CacheProtocolNone) {
     negotiatedCacheProtocol = CacheProtocolPersistent;
@@ -1234,8 +1112,7 @@ void CConnection::handlePersistentCachedRect(const core::Rect& r, const CacheKey
   decoder.handlePersistentCachedRect(r, key, framebuffer);
 }
 
-void CConnection::storePersistentCachedRect(const core::Rect& r, const CacheKey& key, int encoding)
-{
+void CConnection::storePersistentCachedRect(const core::Rect& r, const CacheKey& key, int encoding) {
   // On first use, record and log negotiated cache protocol and trigger disk load.
   // PersistentCachedRectInit may be the first message if server is sending new content,
   // so we must trigger disk load here too (not just in handlePersistentCachedRect).
@@ -1249,22 +1126,21 @@ void CConnection::storePersistentCachedRect(const core::Rect& r, const CacheKey&
     // from existing disk cache entries.
     decoder.triggerPersistentCacheLoad();
   }
-  
+
   // Forward to decoder manager to store decoded content with ID and
   // inner encoding so it can distinguish lossless vs lossy payloads for
   // persistence policy.
   decoder.storePersistentCachedRect(r, key, encoding, framebuffer);
 }
 
-void CConnection::seedCachedRect(const core::Rect& r, const CacheKey& key)
-{
+void CConnection::seedCachedRect(const core::Rect& r, const CacheKey& key) {
   // Server tells us to take existing framebuffer pixels at rect R and
   // associate them with cache ID. This is used for whole-rectangle caching
   // where subrect data was already sent via normal encoding.
   //
   // We read pixels from our current framebuffer and store them in the cache.
   // Logged to debug file via DecodeManager
-  
+
   // Forward to decoder manager to seed cache using existing framebuffer pixels.
   // Use encodingRaw as the "encoding" since we're reading raw pixels from framebuffer.
   decoder.seedCachedRect(r, key, framebuffer);
