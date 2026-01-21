@@ -22,7 +22,7 @@ gtest_discover_tests(bandwidthstats)
 
 add_executable(conv conv.cxx)
 target_link_libraries(conv rfb GTest::gtest_main)
-gtest_discover_tests(conv)
+gtest_discover_tests(conv DISCOVERY_TIMEOUT 60)
 
 add_executable(convertlf convertlf.cxx)
 target_link_libraries(convertlf core GTest::gtest_main)
@@ -85,7 +85,7 @@ gtest_discover_tests(pixelformat DISCOVERY_TIMEOUT 60)
 add_executable(shortcuthandler shortcuthandler.cxx
                                ../../vncviewer/ShortcutHandler.cxx)
 target_link_libraries(shortcuthandler core ${Intl_LIBRARIES} GTest::gtest_main)
-gtest_discover_tests(shortcuthandler)
+gtest_discover_tests(shortcuthandler DISCOVERY_TIMEOUT 60)
 
 add_executable(unicode unicode.cxx)
 target_link_libraries(unicode core GTest::gtest_main)

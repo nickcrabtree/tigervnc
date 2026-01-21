@@ -1,8 +1,8 @@
-/* TilingAnalysis unit tests for ContentCache/PersistentCache tiling core.
+/* TilingAnalysis unit tests for PersistentCache tiling core.
  *
  * These tests exercise buildTilingGrid() and findLargestHitRectangle()
  * using a synthetic CacheQueryInterface implementation that does not
- * depend on real ContentCache/PersistentCache state.
+ * depend on real PersistentCache state.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -22,8 +22,7 @@ namespace {
 // the PixelBuffer, so getBuffer() is never called.
 class DummyPixelBuffer : public rfb::PixelBuffer {
 public:
-  DummyPixelBuffer()
-    : rfb::PixelBuffer(rfb::PixelFormat(), /*width*/ 256, /*height*/ 256) {}
+  DummyPixelBuffer() : rfb::PixelBuffer(rfb::PixelFormat(), /*width*/ 256, /*height*/ 256) {}
 
   const uint8_t* getBuffer(const core::Rect& /*r*/, int* stride) const override {
     if (stride)
@@ -37,21 +36,16 @@ public:
 // masks without touching pixel data.
 class MaskCacheQuery : public CacheQueryInterface {
 public:
-  MaskCacheQuery(int tilesX, int tilesY)
-    : tilesX_(tilesX), tilesY_(tilesY)
-  {
+  MaskCacheQuery(int tilesX, int tilesY) : tilesX_(tilesX), tilesY_(tilesY) {
     mask_.assign(static_cast<size_t>(tilesX_ * tilesY_), TileCacheState::NotCacheable);
   }
 
   // Set state for tile at (tx, ty)
-  void setTileState(int tx, int ty, TileCacheState state)
-  {
+  void setTileState(int tx, int ty, TileCacheState state) {
     mask_[index(tx, ty)] = state;
   }
 
-  TileCacheState classifyTile(const core::Rect& /*tileRect*/,
-                              const rfb::PixelBuffer* /*pb*/) override
-  {
+  TileCacheState classifyTile(const core::Rect& /*tileRect*/, const rfb::PixelBuffer* /*pb*/) override {
     // Map tileRect back to (tx, ty) by assuming tiles are laid out
     // left-to-right, top-to-bottom in row-major order, and that
     // buildTilingGrid walks tiles in that exact order.
@@ -63,7 +57,9 @@ public:
     return mask_[curIndex_++];
   }
 
-  void reset() { curIndex_ = 0; }
+  void reset() {
+    curIndex_ = 0;
+  }
 
 private:
   size_t index(int tx, int ty) const {
@@ -82,8 +78,7 @@ private:
 // buildTilingGrid
 // ============================================================================
 
-TEST(TilingAnalysis, BuildGridDimensions)
-{
+TEST(TilingAnalysis, BuildGridDimensions) {
   core::Rect bounds(0, 0, 100, 50); // 100x50
   int tileSize = 16;
 
@@ -111,8 +106,7 @@ TEST(TilingAnalysis, BuildGridDimensions)
 // findLargestHitRectangle
 // ============================================================================
 
-TEST(TilingAnalysis, LargestHitRectFullGrid)
-{
+TEST(TilingAnalysis, LargestHitRectFullGrid) {
   core::Rect bounds(0, 0, 64, 64); // 4x4 tiles of 16x16
   int tileSize = 16;
 
@@ -145,8 +139,7 @@ TEST(TilingAnalysis, LargestHitRectFullGrid)
   EXPECT_EQ(mr.tilesHigh, static_cast<unsigned>(tilesYExpected));
 }
 
-TEST(TilingAnalysis, LargestHitRectThreshold)
-{
+TEST(TilingAnalysis, LargestHitRectThreshold) {
   core::Rect bounds(0, 0, 64, 64); // 4x4 grid
   int tileSize = 16;
 
@@ -156,8 +149,7 @@ TEST(TilingAnalysis, LargestHitRectThreshold)
   // Single 1x1 Hit at (1,1)
   for (int ty = 0; ty < 4; ++ty) {
     for (int tx = 0; tx < 4; ++tx) {
-      TileCacheState state = (tx == 1 && ty == 1) ?
-          TileCacheState::Hit : TileCacheState::NotCacheable;
+      TileCacheState state = (tx == 1 && ty == 1) ? TileCacheState::Hit : TileCacheState::NotCacheable;
       query.setTileState(tx, ty, state);
     }
   }
@@ -182,8 +174,7 @@ TEST(TilingAnalysis, LargestHitRectThreshold)
   EXPECT_FALSE(found2);
 }
 
-TEST(TilingAnalysis, LargestHitRectDisjointRegions)
-{
+TEST(TilingAnalysis, LargestHitRectDisjointRegions) {
   core::Rect bounds(0, 0, 64, 64); // 4x4
   int tileSize = 16;
 
@@ -197,8 +188,7 @@ TEST(TilingAnalysis, LargestHitRectDisjointRegions)
     for (int tx = 0; tx < 4; ++tx) {
       bool inA = (tx < 2 && ty < 2);
       bool inB = (tx >= 2 && ty >= 2);
-      TileCacheState state = (inA || inB) ? TileCacheState::Hit
-                                          : TileCacheState::NotCacheable;
+      TileCacheState state = (inA || inB) ? TileCacheState::Hit : TileCacheState::NotCacheable;
       query.setTileState(tx, ty, state);
     }
   }

@@ -1,0 +1,9 @@
+{
+  "config": {
+    "MD013": {
+      "line_length": 256,
+      "heading_line_length": 256,
+      "code_block_line_length": 256
+    }
+  }
+}
