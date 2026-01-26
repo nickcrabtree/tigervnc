@@ -230,9 +230,6 @@ private:
 
   // Record that we just referenced a CachedRect with this ID for this rect
   void recordCachedRectRef(uint64_t cacheId, const core::Rect& r);
-  return false;
-}
-
   // Drain pending cache init requests (EncodeManager will send them)
   // tracking so both protocols share a single notion of "known" IDs.
 
