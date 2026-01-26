@@ -32,18 +32,18 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_UK
 // TEXTINCLUDE
 //
 
-1 TEXTINCLUDE DISCARDABLE 
+1 TEXTINCLUDE DISCARDABLE
 BEGIN
     "resource.h\0"
 END
 
-2 TEXTINCLUDE DISCARDABLE 
+2 TEXTINCLUDE DISCARDABLE
 BEGIN
     "#include ""windows.h""\r\n"
     "\0"
 END
 
-3 TEXTINCLUDE DISCARDABLE 
+3 TEXTINCLUDE DISCARDABLE
 BEGIN
     "\r\n"
     "\0"
@@ -95,7 +95,7 @@ BEGIN
 			IDC_QUERY_CONNECT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP,
 			7,170,181,15
     CONTROL		"Only prompt when there is a user logged on",
-			IDC_QUERY_LOGGED_ON, "Button", BS_AUTOCHECKBOX | 
+			IDC_QUERY_LOGGED_ON, "Button", BS_AUTOCHECKBOX |
 			WS_TABSTOP,20,185,166,15
 END
 
@@ -114,7 +114,7 @@ BEGIN
     CONTROL         "Only accept connections from the local machine",
                     IDC_LOCALHOST,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,
                     70,190,15
-    LISTBOX         IDC_HOSTS,15,90,130,95,LBS_NOINTEGRALHEIGHT | WS_VSCROLL | 
+    LISTBOX         IDC_HOSTS,15,90,130,95,LBS_NOINTEGRALHEIGHT | WS_VSCROLL |
                     WS_TABSTOP
     PUSHBUTTON      "&Add",IDC_HOST_ADD,150,90,55,15
     PUSHBUTTON      "&Remove",IDC_HOST_REMOVE,150,110,55,15
@@ -139,7 +139,7 @@ BEGIN
 END
 
 IDD_AUTH_VNC_PASSWD DIALOG DISCARDABLE  0, 0, 212, 70
-STYLE DS_MODALFRAME | DS_SETFOREGROUND | DS_CENTER | WS_POPUP | WS_CAPTION | 
+STYLE DS_MODALFRAME | DS_SETFOREGROUND | DS_CENTER | WS_POPUP | WS_CAPTION |
     WS_SYSMENU
 CAPTION "VNC server password"
 FONT 8, "MS Sans Serif"
@@ -168,7 +168,7 @@ CAPTION "Specify host IP address pattern"
 FONT 8, "MS Sans Serif"
 BEGIN
     EDITTEXT        IDC_HOST_PATTERN,65,5,100,15,ES_AUTOHSCROLL
-    CONTROL         "&Allow",IDC_ALLOW,"Button",BS_AUTORADIOBUTTON | 
+    CONTROL         "&Allow",IDC_ALLOW,"Button",BS_AUTORADIOBUTTON |
                     WS_GROUP,7,5,53,15
     CONTROL         "&Deny",IDC_DENY,"Button",BS_AUTORADIOBUTTON,7,20,53,15
     CONTROL         "Query",IDC_QUERY,"Button",BS_AUTORADIOBUTTON,7,35,53,15
@@ -190,7 +190,7 @@ BEGIN
     CONTROL         "Use client's preferred sharing setting",
                     IDC_SHARE_CLIENT,"Button",BS_AUTORADIOBUTTON,7,40,172,15
     CONTROL         "Non-shared connections replace existing ones",
-                    IDC_DISCONNECT_CLIENTS,"Button",BS_AUTOCHECKBOX | 
+                    IDC_DISCONNECT_CLIENTS,"Button",BS_AUTOCHECKBOX |
                     WS_TABSTOP,7,55,172,15
 END
 
@@ -211,15 +211,15 @@ BEGIN
     CONTROL         "Send clipboard updates to clients",IDC_SEND_CUTTEXT,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,70,172,15
     CONTROL         "Allow input events to affect the screen-saver",
-                    IDC_AFFECT_SCREENSAVER,"Button",BS_AUTOCHECKBOX | 
+                    IDC_AFFECT_SCREENSAVER,"Button",BS_AUTOCHECKBOX |
                     WS_TABSTOP,7,85,172,15
     CONTROL         "Disable local inputs while server is in use",
-                    IDC_DISABLE_LOCAL_INPUTS,"Button",BS_AUTOCHECKBOX | 
+                    IDC_DISABLE_LOCAL_INPUTS,"Button",BS_AUTOCHECKBOX |
                     WS_TABSTOP,7,110,172,15
 END
 
 IDD_ABOUT DIALOG DISCARDABLE  0, 0, 300, 92
-STYLE DS_MODALFRAME | DS_SETFOREGROUND | DS_CENTER | WS_POPUP | WS_CAPTION | 
+STYLE DS_MODALFRAME | DS_SETFOREGROUND | DS_CENTER | WS_POPUP | WS_CAPTION |
     WS_SYSMENU
 CAPTION "About TigerVNC config for Windows"
 FONT 8, "MS Sans Serif"
@@ -235,7 +235,7 @@ BEGIN
 END
 
 IDD_DESKTOP DIALOG DISCARDABLE  0, 0, 185, 137
-STYLE DS_MODALFRAME | DS_SETFOREGROUND | DS_CONTROL | WS_POPUP | WS_CAPTION | 
+STYLE DS_MODALFRAME | DS_SETFOREGROUND | DS_CONTROL | WS_POPUP | WS_CAPTION |
     WS_SYSMENU
 CAPTION "Desktop"
 FONT 8, "MS Sans Serif"
@@ -261,7 +261,7 @@ END
 //
 
 #ifdef APSTUDIO_INVOKED
-GUIDELINES DESIGNINFO DISCARDABLE 
+GUIDELINES DESIGNINFO DISCARDABLE
 BEGIN
     IDD_AUTHENTICATION, DIALOG
     BEGIN
@@ -510,4 +510,3 @@ IDR_MANIFEST            24      DISCARDABLE     "vncconfig.exe.manifest"
 
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
-
