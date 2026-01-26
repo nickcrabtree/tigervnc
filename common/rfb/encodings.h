@@ -39,6 +39,8 @@ const int encodingH264 = 50;
 const int encodingPersistentCachedRect = 102; // Reference: payload is 16-byte CacheKey
 const int encodingPersistentCachedRectInit =
     103; // Init: 16-byte CacheKey + optional flags/PF + actual encoding + pixels
+const int encodingPersistentCachedRectWithOffset =
+    104; // Reference with offset: CacheKey + U16 ox + U16 oy + U16 cachedW + U16 cachedH
 
 // TigerVNC cache eviction notification (client→server)
 // Sent by client to notify server when cache entries are evicted.
