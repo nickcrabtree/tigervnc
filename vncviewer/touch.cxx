@@ -1,16 +1,16 @@
 /* Copyright 2019-2020 Pierre Ossman <ossman@cendio.se> for Cendio AB
  * Copyright 2019 Aaron Sowry for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -26,11 +26,11 @@
 #include <map>
 
 #if defined(WIN32)
-#include <windows.h>
 #include <commctrl.h>
+#include <windows.h>
 #elif !defined(__APPLE__)
-#include <X11/extensions/XInput2.h>
 #include <X11/extensions/XI2.h>
+#include <X11/extensions/XInput2.h>
 #endif
 
 #include <FL/Fl.H>
@@ -38,9 +38,9 @@
 
 #include <core/LogWriter.h>
 
+#include "BaseTouchHandler.h"
 #include "i18n.h"
 #include "vncviewer.h"
-#include "BaseTouchHandler.h"
 #if defined(WIN32)
 #include "Win32TouchHandler.h"
 #elif !defined(__APPLE__)
@@ -59,11 +59,8 @@ typedef std::map<Window, class BaseTouchHandler*> HandlerMap;
 static HandlerMap handlers;
 
 #if defined(WIN32)
-LRESULT CALLBACK win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam,
-                                 LPARAM lParam,
-                                 UINT_PTR /*uIdSubclass*/,
-                                 DWORD_PTR /*dwRefData*/)
-{
+LRESULT CALLBACK win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/,
+                                 DWORD_PTR /*dwRefData*/) {
   bool handled = false;
 
   if (uMsg == WM_NCDESTROY) {
@@ -74,8 +71,7 @@ LRESULT CALLBACK win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam,
     if (handlers.count(hWnd) == 0) {
       vlog.error(_("Got message (0x%x) for an unhandled window"), uMsg);
     } else {
-      handled = dynamic_cast<Win32TouchHandler*>
-        (handlers[hWnd])->processEvent(uMsg, wParam, lParam);
+      handled = dynamic_cast<Win32TouchHandler*>(handlers[hWnd])->processEvent(uMsg, wParam, lParam);
     }
   }
 
@@ -87,15 +83,14 @@ LRESULT CALLBACK win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam,
 }
 
 #elif !defined(__APPLE__)
-static void x11_change_touch_ownership(bool enable)
-{
+static void x11_change_touch_ownership(bool enable) {
   HandlerMap::const_iterator iter;
 
-  XIEventMask *curmasks;
+  XIEventMask* curmasks;
   int num_masks;
 
   XIEventMask newmask;
-  unsigned char mask[XIMaskLen(XI_LASTEVENT)] = { 0 };
+  unsigned char mask[XIMaskLen(XI_LASTEVENT)] = {0};
 
   newmask.mask = mask;
   newmask.mask_len = sizeof(mask);
@@ -130,8 +125,7 @@ static void x11_change_touch_ownership(bool enable)
   }
 }
 
-bool x11_grab_pointer(Window window)
-{
+bool x11_grab_pointer(Window window) {
   bool ret;
 
   if (handlers.count(window) == 0) {
@@ -154,8 +148,7 @@ bool x11_grab_pointer(Window window)
   return ret;
 }
 
-void x11_ungrab_pointer(Window window)
-{
+void x11_ungrab_pointer(Window window) {
   if (handlers.count(window) == 0) {
     vlog.error(_("Invalid window 0x%08lx specified for pointer grab"), window);
     return;
@@ -168,10 +161,9 @@ void x11_ungrab_pointer(Window window)
 }
 #endif
 
-static int handleTouchEvent(void *event, void* /*data*/)
-{
+static int handleTouchEvent(void* event, void* /*data*/) {
 #if defined(WIN32)
-  MSG *msg = (MSG*)event;
+  MSG* msg = (MSG*)event;
 
   // Trigger on the first WM_PAINT event. We can't trigger on WM_CREATE
   // events since FLTK's system handlers trigger before WndProc.
@@ -185,15 +177,14 @@ static int handleTouchEvent(void *event, void* /*data*/)
     }
     // Add a special hook-in for handling events sent directly to WndProc
     if (!SetWindowSubclass(msg->hwnd, &win32WindowProc, 1, 0)) {
-      vlog.error(_("Couldn't attach event handler to window (error 0x%x)"),
-                 (int)GetLastError());
+      vlog.error(_("Couldn't attach event handler to window (error 0x%x)"), (int)GetLastError());
     }
   }
 #elif defined(__APPLE__)
   // No touch support on macOS
   (void)event;
 #else
-  XEvent *xevent = (XEvent*)event;
+  XEvent* xevent = (XEvent*)event;
 
   if (xevent->type == MapNotify) {
     handlers[xevent->xmap.window] = new XInputTouchHandler(xevent->xmap.window);
@@ -209,7 +200,7 @@ static int handleTouchEvent(void *event, void* /*data*/)
     handlers.erase(xevent->xdestroywindow.window);
   } else if (xevent->type == GenericEvent) {
     if (xevent->xgeneric.extension == xi_major) {
-      XIDeviceEvent *devev;
+      XIDeviceEvent* devev;
 
       if (!XGetEventData(fl_display, &xevent->xcookie)) {
         vlog.error(_("Failed to get event data for X Input event"));
@@ -242,8 +233,7 @@ static int handleTouchEvent(void *event, void* /*data*/)
   return 0;
 }
 
-void enable_touch()
-{
+void enable_touch() {
 #if !defined(WIN32) && !defined(__APPLE__)
   int ev, err;
   int major_ver, minor_ver;
@@ -269,8 +259,6 @@ void enable_touch()
   Fl::add_system_handler(handleTouchEvent, nullptr);
 }
 
-void disable_touch()
-{
+void disable_touch() {
   Fl::remove_system_handler(handleTouchEvent);
 }
-

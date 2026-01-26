@@ -74,4 +74,3 @@ IDI_ICON                ICON    DISCARDABLE     "@CMAKE_SOURCE_DIR@/media/icons/
 
 #endif    // English (U.K.) resources
 /////////////////////////////////////////////////////////////////////////////
-

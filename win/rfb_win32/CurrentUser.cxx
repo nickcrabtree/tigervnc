@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -37,13 +37,11 @@ using namespace win32;
 
 static core::LogWriter vlog("CurrentUser");
 
-
 const char* shellIconClass = "Shell_TrayWnd";
 
 BOOL CALLBACK enumWindows(HWND hwnd, LPARAM lParam) {
   char className[16];
-  if (GetClassName(hwnd, className, sizeof(className)) &&
-      (strcmp(className, shellIconClass) == 0)) {
+  if (GetClassName(hwnd, className, sizeof(className)) && (strcmp(className, shellIconClass) == 0)) {
     vlog.debug("Located tray icon window (%s)", className);
     DWORD processId = 0;
     GetWindowThreadProcessId(hwnd, &processId);
@@ -73,7 +71,6 @@ BOOL CALLBACK enumDesktops(LPTSTR lpszDesktop, LPARAM lParam) {
   return result;
 }
 
-
 CurrentUserToken::CurrentUserToken() {
   if (isServiceProcess()) {
     // Try to get the user token using the Terminal Services APIs
@@ -88,7 +85,6 @@ CurrentUserToken::CurrentUserToken() {
     }
   }
 }
-
 
 ImpersonateCurrentUser::ImpersonateCurrentUser() {
   RegCloseKey(HKEY_CURRENT_USER);
@@ -112,15 +108,13 @@ ImpersonateCurrentUser::~ImpersonateCurrentUser() {
   RegCloseKey(HKEY_CURRENT_USER);
 }
 
-
 UserName::UserName() {
-  char buf[UNLEN+1];
-  DWORD len = UNLEN+1;
+  char buf[UNLEN + 1];
+  DWORD len = UNLEN + 1;
   if (!GetUserName(buf, &len))
     throw core::win32_error("GetUserName failed", GetLastError());
   assign(buf);
 }
-
 
 UserSID::UserSID() {
   CurrentUserToken token;

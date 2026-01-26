@@ -29,17 +29,15 @@
 #define XK_MISCELLANY
 #include <rfb/keysymdef.h>
 
-#include "i18n.h"
 #include "Win32TouchHandler.h"
+#include "i18n.h"
 
 static core::LogWriter vlog("Win32TouchHandler");
 
 static const unsigned SINGLE_PAN_THRESHOLD = 50;
 
-Win32TouchHandler::Win32TouchHandler(HWND hWnd_) :
-  hWnd(hWnd_), gesturesConfigured(false), gestureActive(false),
-  ignoringGesture(false), fakeButtonMask(0)
-{
+Win32TouchHandler::Win32TouchHandler(HWND hWnd_)
+    : hWnd(hWnd_), gesturesConfigured(false), gestureActive(false), ignoringGesture(false), fakeButtonMask(0) {
   // If window is registered as touch we can not receive gestures,
   // this should not happen
   if (IsTouchWindow(hWnd, nullptr))
@@ -54,32 +52,24 @@ Win32TouchHandler::Win32TouchHandler(HWND hWnd_) :
   // gesture events - Logging is enough
   int supportedTouches = GetSystemMetrics(SM_MAXIMUMTOUCHES);
   if (supportedTouches < 2)
-    vlog.debug("Two touch points required, system currently supports: %d",
-               supportedTouches);
+    vlog.debug("Two touch points required, system currently supports: %d", supportedTouches);
 }
 
-bool Win32TouchHandler::processEvent(UINT Msg, WPARAM /*wParam*/,
-                                     LPARAM lParam)
-{
+bool Win32TouchHandler::processEvent(UINT Msg, WPARAM /*wParam*/, LPARAM lParam) {
   GESTUREINFO gi;
 
-  DWORD panWant = GC_PAN_WITH_SINGLE_FINGER_VERTICALLY   |
-                  GC_PAN_WITH_SINGLE_FINGER_HORIZONTALLY |
-                  GC_PAN;
+  DWORD panWant = GC_PAN_WITH_SINGLE_FINGER_VERTICALLY | GC_PAN_WITH_SINGLE_FINGER_HORIZONTALLY | GC_PAN;
   DWORD panBlock = GC_PAN_WITH_INERTIA | GC_PAN_WITH_GUTTER;
 
-  GESTURECONFIG gc[] = {{GID_ZOOM, GC_ZOOM, 0},
-                        {GID_PAN, panWant, panBlock},
-                        {GID_TWOFINGERTAP, GC_TWOFINGERTAP, 0}};
+  GESTURECONFIG gc[] = {{GID_ZOOM, GC_ZOOM, 0}, {GID_PAN, panWant, panBlock}, {GID_TWOFINGERTAP, GC_TWOFINGERTAP, 0}};
 
-  switch(Msg) {
+  switch (Msg) {
   case WM_GESTURENOTIFY:
     if (gesturesConfigured)
-        return false;
+      return false;
 
     if (!SetGestureConfig(hWnd, 0, 3, gc, sizeof(GESTURECONFIG))) {
-      vlog.error(_("Failed to set gesture configuration (error 0x%x)"),
-                 (int)GetLastError());
+      vlog.error(_("Failed to set gesture configuration (error 0x%x)"), (int)GetLastError());
     }
     gesturesConfigured = true;
     // Windows expects all handler functions to always
@@ -90,8 +80,7 @@ bool Win32TouchHandler::processEvent(UINT Msg, WPARAM /*wParam*/,
     gi.cbSize = sizeof(GESTUREINFO);
 
     if (!GetGestureInfo((HGESTUREINFO)lParam, &gi)) {
-      vlog.error(_("Failed to get gesture information (error 0x%x)"),
-                 (int)GetLastError());
+      vlog.error(_("Failed to get gesture information (error 0x%x)"), (int)GetLastError());
       return true;
     }
 
@@ -104,8 +93,7 @@ bool Win32TouchHandler::processEvent(UINT Msg, WPARAM /*wParam*/,
   return false;
 }
 
-void Win32TouchHandler::handleWin32GestureEvent(GESTUREINFO gi)
-{
+void Win32TouchHandler::handleWin32GestureEvent(GESTUREINFO gi) {
   GestureEvent gev;
   POINT pos;
 
@@ -156,7 +144,7 @@ void Win32TouchHandler::handleWin32GestureEvent(GESTUREINFO gi)
   gev.eventX = pos.x;
   gev.eventY = pos.y;
 
-  switch(gi.dwID) {
+  switch (gi.dwID) {
 
   case GID_ZOOM:
     gev.gesture = GesturePinch;
@@ -177,17 +165,15 @@ void Win32TouchHandler::handleWin32GestureEvent(GESTUREINFO gi)
         gestureStart.x = pos.x;
         gestureStart.y = pos.y;
         startedSinglePan = false;
-
       }
 
       // FIXME: Add support for sending a OneFingerTap gesture here.
       //        When the movement was very small and we get a GF_END
       //        within a short time we should consider it a tap.
 
-      if (!startedSinglePan &&
-          ((unsigned)abs(gestureStart.x - pos.x) < SINGLE_PAN_THRESHOLD) &&
+      if (!startedSinglePan && ((unsigned)abs(gestureStart.x - pos.x) < SINGLE_PAN_THRESHOLD) &&
           ((unsigned)abs(gestureStart.y - pos.y) < SINGLE_PAN_THRESHOLD))
-         return;
+        return;
 
       // Here we know we got a single pan!
 
@@ -222,7 +208,6 @@ void Win32TouchHandler::handleWin32GestureEvent(GESTUREINFO gi)
   case GID_TWOFINGERTAP:
     gev.gesture = GestureTwoTap;
     break;
-
   }
 
   gestureActive = true;
@@ -248,14 +233,12 @@ void Win32TouchHandler::handleWin32GestureEvent(GESTUREINFO gi)
     ClientToScreen(hWnd, &expectedPos);
     GetCursorPos(&currentPos);
 
-    if ((expectedPos.x != currentPos.x) ||
-        (expectedPos.y != currentPos.y))
+    if ((expectedPos.x != currentPos.x) || (expectedPos.y != currentPos.y))
       SetCursorPos(expectedPos.x, expectedPos.y);
   }
 }
 
-bool Win32TouchHandler::isSinglePan(GESTUREINFO gi)
-{
+bool Win32TouchHandler::isSinglePan(GESTUREINFO gi) {
   // To differentiate between a single and a double pan we can look
   // at ullArguments. This shows the distance between the touch points,
   // but in the case of single pan, it seems to show the monitor's
@@ -276,8 +259,7 @@ bool Win32TouchHandler::isSinglePan(GESTUREINFO gi)
   // Find the monitor with the touch event
   coordinates.x = gi.ptsLocation.x;
   coordinates.y = gi.ptsLocation.y;
-  monitorHandler = MonitorFromPoint(coordinates,
-                                    MONITOR_DEFAULTTOPRIMARY);
+  monitorHandler = MonitorFromPoint(coordinates, MONITOR_DEFAULTTOPRIMARY);
 
   // Find the monitor's origin
   ZeroMemory(&mi, sizeof(MONITORINFO));
@@ -288,8 +270,7 @@ bool Win32TouchHandler::isSinglePan(GESTUREINFO gi)
   return lowestX == (LONG)gi.ullArguments;
 }
 
-void Win32TouchHandler::fakeMotionEvent(const GestureEvent origEvent)
-{
+void Win32TouchHandler::fakeMotionEvent(const GestureEvent origEvent) {
   UINT Msg = WM_MOUSEMOVE;
   WPARAM wParam = MAKEWPARAM(fakeButtonMask, 0);
   LPARAM lParam = MAKELPARAM(origEvent.eventX, origEvent.eventY);
@@ -299,9 +280,7 @@ void Win32TouchHandler::fakeMotionEvent(const GestureEvent origEvent)
   lastFakeMotionPos.y = origEvent.eventY;
 }
 
-void Win32TouchHandler::fakeButtonEvent(bool press, int button,
-                                        const GestureEvent origEvent)
-{
+void Win32TouchHandler::fakeButtonEvent(bool press, int button, const GestureEvent origEvent) {
   UINT Msg;
   WPARAM wParam;
   LPARAM lParam;
@@ -358,8 +337,7 @@ void Win32TouchHandler::fakeButtonEvent(bool press, int button,
     break;
 
   default:
-    vlog.error(_("Invalid mouse button %d, must be a number between 1 and 7."),
-               button);
+    vlog.error(_("Invalid mouse button %d, must be a number between 1 and 7."), button);
     return;
   }
 
@@ -388,9 +366,7 @@ void Win32TouchHandler::fakeButtonEvent(bool press, int button,
   pushFakeEvent(Msg, wParam, lParam);
 }
 
-void Win32TouchHandler::fakeKeyEvent(bool press, int keysym,
-                                     const GestureEvent /*origEvent*/)
-{
+void Win32TouchHandler::fakeKeyEvent(bool press, int keysym, const GestureEvent /*origEvent*/) {
   UINT Msg = press ? WM_KEYDOWN : WM_KEYUP;
   WPARAM wParam;
   LPARAM lParam;
@@ -399,7 +375,7 @@ void Win32TouchHandler::fakeKeyEvent(bool press, int keysym,
   int previousKeyState = press ? 0 : 1;
   int transitionState = press ? 0 : 1;
 
-  switch(keysym) {
+  switch (keysym) {
 
   case XK_Control_L:
     vKey = VK_CONTROL;
@@ -422,24 +398,22 @@ void Win32TouchHandler::fakeKeyEvent(bool press, int keysym,
     break;
 
   default:
-    //FIXME: consider adding generic handling
-    vlog.error(_("Unhandled key 0x%x - can't generate keyboard event."),
-               keysym);
+    // FIXME: consider adding generic handling
+    vlog.error(_("Unhandled key 0x%x - can't generate keyboard event."), keysym);
     return;
   }
 
   wParam = MAKEWPARAM(vKey, 0);
 
-  scanCode         <<= 0;
+  scanCode <<= 0;
   previousKeyState <<= 14;
-  transitionState  <<= 15;
+  transitionState <<= 15;
   lParam = MAKELPARAM(1, // RepeatCount
                       (scanCode | previousKeyState | transitionState));
 
   pushFakeEvent(Msg, wParam, lParam);
 }
 
-void Win32TouchHandler::pushFakeEvent(UINT Msg, WPARAM wParam, LPARAM lParam)
-{
+void Win32TouchHandler::pushFakeEvent(UINT Msg, WPARAM wParam, LPARAM lParam) {
   PostMessage(hWnd, Msg, wParam, lParam);
 }

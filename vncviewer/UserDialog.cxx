@@ -1,15 +1,15 @@
 /* Copyright 2011 Pierre Ossman <ossman@cendio.se> for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -26,15 +26,15 @@
 #include <string.h>
 
 #include <FL/Fl.H>
-#include <FL/fl_ask.H>
-#include <FL/Fl_Window.H>
 #include <FL/Fl_Box.H>
-#include <FL/Fl_Input.H>
-#include <FL/Fl_Secret_Input.H>
 #include <FL/Fl_Button.H>
 #include <FL/Fl_Check_Button.H>
-#include <FL/Fl_Return_Button.H>
+#include <FL/Fl_Input.H>
 #include <FL/Fl_Pixmap.H>
+#include <FL/Fl_Return_Button.H>
+#include <FL/Fl_Secret_Input.H>
+#include <FL/Fl_Window.H>
+#include <FL/fl_ask.H>
 
 #include <core/Exception.h>
 
@@ -42,17 +42,17 @@
 #include <rfb/Exception.h>
 #include <rfb/obfuscate.h>
 
+#include "UserDialog.h"
 #include "fltk/layout.h"
 #include "fltk/util.h"
 #include "i18n.h"
 #include "parameters.h"
-#include "UserDialog.h"
 
 /* xpm:s predate const, so they have invalid definitions */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wwrite-strings"
-#include "../media/secure.xpm"
 #include "../media/insecure.xpm"
+#include "../media/secure.xpm"
 #pragma GCC diagnostic pop
 
 static Fl_Pixmap secure_icon(secure);
@@ -63,7 +63,7 @@ std::string UserDialog::savedPassword;
 
 static long ret_val = 0;
 
-static void button_cb(Fl_Widget *widget, long val) {
+static void button_cb(Fl_Widget* widget, long val) {
   Fl_Window* win;
 
   ret_val = val;
@@ -76,30 +76,23 @@ static void button_cb(Fl_Widget *widget, long val) {
   win->hide();
 }
 
-UserDialog::UserDialog()
-{
-}
+UserDialog::UserDialog() {}
 
-UserDialog::~UserDialog()
-{
-}
+UserDialog::~UserDialog() {}
 
-void UserDialog::resetPassword()
-{
+void UserDialog::resetPassword() {
   savedUsername.clear();
   savedPassword.clear();
 }
 
-void UserDialog::getUserPasswd(bool secure_, std::string* user,
-                               std::string* password)
-{
-  const char *passwordFileName(passwordFile);
+void UserDialog::getUserPasswd(bool secure_, std::string* user, std::string* password) {
+  const char* passwordFileName(passwordFile);
 
   assert(password);
-  char *envUsername = getenv("VNC_USERNAME");
-  char *envPassword = getenv("VNC_PASSWORD");
+  char* envUsername = getenv("VNC_USERNAME");
+  char* envPassword = getenv("VNC_PASSWORD");
 
-  if(user && envUsername && envPassword) {
+  if (user && envUsername && envPassword) {
     *user = envUsername;
     *password = envPassword;
     return;
@@ -137,13 +130,13 @@ void UserDialog::getUserPasswd(bool secure_, std::string* user,
     return;
   }
 
-  Fl_Window *win;
-  Fl_Box *banner;
-  Fl_Input *username;
-  Fl_Secret_Input *passwd;
-  Fl_Box *icon;
-  Fl_Button *button;
-  Fl_Check_Button *keepPasswdCheckbox;
+  Fl_Window* win;
+  Fl_Box* banner;
+  Fl_Input* username;
+  Fl_Secret_Input* passwd;
+  Fl_Box* icon;
+  Fl_Button* button;
+  Fl_Check_Button* keepPasswdCheckbox;
 
   int x, y;
 
@@ -151,7 +144,7 @@ void UserDialog::getUserPasswd(bool secure_, std::string* user,
   win->callback(button_cb, 1);
 
   banner = new Fl_Box(0, 0, win->w(), 20);
-  banner->align(FL_ALIGN_CENTER|FL_ALIGN_INSIDE|FL_ALIGN_IMAGE_NEXT_TO_TEXT);
+  banner->align(FL_ALIGN_CENTER | FL_ALIGN_INSIDE | FL_ALIGN_IMAGE_NEXT_TO_TEXT);
   banner->box(FL_FLAT_BOX);
   if (secure_) {
     banner->label(_("This connection is secure"));
@@ -179,8 +172,7 @@ void UserDialog::getUserPasswd(bool secure_, std::string* user,
 
   if (user) {
     y += INPUT_LABEL_OFFSET;
-    username = new Fl_Input(x, y, win->w()- x - OUTER_MARGIN,
-                            INPUT_HEIGHT, _("Username:"));
+    username = new Fl_Input(x, y, win->w() - x - OUTER_MARGIN, INPUT_HEIGHT, _("Username:"));
     username->align(FL_ALIGN_LEFT | FL_ALIGN_TOP);
     y += INPUT_HEIGHT + INNER_MARGIN;
   } else {
@@ -192,16 +184,13 @@ void UserDialog::getUserPasswd(bool secure_, std::string* user,
   }
 
   y += INPUT_LABEL_OFFSET;
-  passwd = new Fl_Secret_Input(x, y, win->w()- x - OUTER_MARGIN,
-                               INPUT_HEIGHT, _("Password:"));
+  passwd = new Fl_Secret_Input(x, y, win->w() - x - OUTER_MARGIN, INPUT_HEIGHT, _("Password:"));
   passwd->align(FL_ALIGN_LEFT | FL_ALIGN_TOP);
   y += INPUT_HEIGHT + INNER_MARGIN;
 
   if (reconnectOnError) {
-    keepPasswdCheckbox = new Fl_Check_Button(LBLRIGHT(x, y,
-                                                      CHECK_MIN_WIDTH,
-                                                      CHECK_HEIGHT,
-                                                      _("Keep password for reconnect")));
+    keepPasswdCheckbox =
+        new Fl_Check_Button(LBLRIGHT(x, y, CHECK_MIN_WIDTH, CHECK_HEIGHT, _("Keep password for reconnect")));
     y += CHECK_HEIGHT + INNER_MARGIN;
   } else {
     keepPasswdCheckbox = nullptr;
@@ -211,8 +200,7 @@ void UserDialog::getUserPasswd(bool secure_, std::string* user,
   y += OUTER_MARGIN - INNER_MARGIN;
 
   x -= BUTTON_WIDTH;
-  button = new Fl_Return_Button(x, y, BUTTON_WIDTH,
-                                BUTTON_HEIGHT, fl_ok);
+  button = new Fl_Return_Button(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, fl_ok);
   button->callback(button_cb, 0);
   x -= INNER_MARGIN;
 
@@ -235,7 +223,8 @@ void UserDialog::getUserPasswd(bool secure_, std::string* user,
   ret_val = -1;
 
   win->show();
-  while (win->shown()) Fl::wait();
+  while (win->shown())
+    Fl::wait();
 
   if (ret_val == 0) {
     bool keepPasswd;
@@ -261,9 +250,7 @@ void UserDialog::getUserPasswd(bool secure_, std::string* user,
     throw rfb::auth_cancelled();
 }
 
-bool UserDialog::showMsgBox(rfb::MsgBoxFlags flags,
-                            const char* title, const char* text)
-{
+bool UserDialog::showMsgBox(rfb::MsgBoxFlags flags, const char* title, const char* text) {
   char buffer[1024];
 
   if (fltk_escape(text, buffer, sizeof(buffer)) >= sizeof(buffer))
@@ -281,8 +268,7 @@ bool UserDialog::showMsgBox(rfb::MsgBoxFlags flags,
     return fl_choice("%s", nullptr, fl_yes, fl_no, buffer) == 1;
   case rfb::M_OK:
   default:
-    if (((flags & 0xf0) == rfb::M_ICONERROR) ||
-        ((flags & 0xf0) == rfb::M_ICONWARNING))
+    if (((flags & 0xf0) == rfb::M_ICONERROR) || ((flags & 0xf0) == rfb::M_ICONWARNING))
       fl_alert("%s", buffer);
     else
       fl_message("%s", buffer);

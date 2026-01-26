@@ -6,29 +6,34 @@ The bug database for this repository is maintained in `BUGS.md` in the project r
 
 ## ⚠️ CRITICAL: ALWAYS USE TIMEOUTS
 
-**🔴 MANDATORY: All commands MUST use timeouts 🔴**
+### 🔴 MANDATORY: All commands MUST use timeouts 🔴
 
 When running commands that might hang or wait for user input, **ALWAYS** use `timeout`:
 
 ```bash
+
 # ✅ CORRECT: Use timeout for all commands that might hang
+
 timeout 60 ssh user@host 'command'
 timeout 120 ./script.sh
 timeout 30 make test
 
 # ❌ WRONG: Never run potentially blocking commands without timeout
+
 ssh user@host 'command'  # Can hang indefinitely
 ./script.sh              # May wait for user input
 make test                # Tests may hang
 ```
 
-**Why this is critical:**
+### Why this is critical
+
 - Commands can hang waiting for user input
-- Network operations can stall indefinitely  
+- Network operations can stall indefinitely
 - GUI applications block until closed
 - Without timeouts, the AI agent becomes unresponsive
 
-**Default timeout values:**
+### Default timeout values
+
 - Quick commands (ls, grep, etc.): 10 seconds
 - SSH operations: 30 seconds
 - Build operations: 300 seconds (5 minutes)
@@ -43,99 +48,121 @@ make test                # Tests may hang
 
 ### Production Servers and Viewers
 
-**🔴 ABSOLUTELY FORBIDDEN: pkill, killall, pkill -f, killall -f 🔴**
+### 🔴 ABSOLUTELY FORBIDDEN: pkill, killall, pkill -f, killall -f 🔴
 
-**NEVER, UNDER ANY CIRCUMSTANCES, use pkill or killall commands!**
+### NEVER, UNDER ANY CIRCUMSTANCES, use pkill or killall commands
 
 These commands will kill ALL matching processes across the ENTIRE system, including:
+
 - Production VNC servers on Linux (quartz)
 - Production VNC viewers on macOS (user's desktop)
 - Any other user processes that match the pattern
 
-**This system has production processes that must NEVER be killed:**
+### This system has production processes that must NEVER be killed
 
 On Linux (quartz):
+
 ```bash
+
 # Standard TigerVNC (system-installed)
+
 Xtigervnc :1  # Display :1, port 5901 - PRODUCTION
 Xtigervnc :2  # Display :2, port 5902 - PRODUCTION (USER'S ACTIVE DESKTOP)
 
 # Custom fork (Xnjcvnc) - PRODUCTION
-Xnjcvnc  :3   # Display :3, port 5903 - PRODUCTION (with ContentCache/PersistentCache)
+
+Xnjcvnc  :3   # Display :3, port 5903 - PRODUCTION (with session cache/PersistentCache)
 ```
 
 On macOS (user's desktop):
+
 - `njcvncviewer` - User's active VNC viewer sessions
 - `Xvfb` - May be used for legitimate purposes
 
-**MANDATORY Rules for safe process management:**
+### MANDATORY Rules for safe process management
 
 1. **🚫 ABSOLUTELY FORBIDDEN COMMANDS:**
+
    ```bash
    pkill <anything>        # ❌ NEVER - kills ALL matching processes
-   pkill -f <anything>     # ❌ NEVER - kills ALL matching patterns  
+   pkill -f <anything>     # ❌ NEVER - kills ALL matching patterns
    killall <anything>      # ❌ NEVER - kills ALL matching processes
    pkill -9 <anything>     # ❌ NEVER - force kills ALL matching
    ```
-   **These commands are COMPLETELY BANNED. Do not use them for ANY reason.**
 
-2. **✅ ONLY ACCEPTABLE METHOD - Kill by specific verified PID:**
+### These commands are COMPLETELY BANNED. Do not use them for ANY reason
+
+1. **✅ ONLY ACCEPTABLE METHOD - Kill by specific verified PID:**
+
    ```bash
    # Step 1: Find candidate processes
    ps aux | grep "Xnjcvnc :99[89]"
-   
+
    # Step 2: Verify EACH PID individually
    ps -p <PID> -o pid,args=    # Check full command
    pwdx <PID>                  # Verify working directory
-   
+
    # Step 3: Only after manual verification, kill specific PID
    kill <specific-verified-pid>
-   
+
    # If it doesn't stop, use SIGKILL on that SPECIFIC PID only
    kill -9 <specific-verified-pid>
    ```
 
-3. **Test servers only on isolated displays**: Use `:997`, `:998`, `:999` (managed by `tests/e2e/` framework)
+1. **Test servers only on isolated displays**: Use `:997`, `:998`, `:999` (managed by `tests/e2e/` framework)
 
-4. **Never manually start viewers on displays `:1`, `:2` or `:3`** - these are the user's working desktop
+1. **Never manually start viewers on displays `:1`, `:2` or `:3`** - these are the user's working desktop
 
-5. **On macOS**: User may have production viewers running. NEVER kill any viewer process without explicit user confirmation of the specific PID
+1. **On macOS**: User may have production viewers running. NEVER kill any viewer process without explicit user confirmation of the specific PID
 
-6. **Use the e2e test framework** which properly manages isolated test servers with specific PID tracking
+1. **Use the e2e test framework** which properly manages isolated test servers with specific PID tracking
 
 ### Safe Testing Approach
 
 ```bash
+
 # Good: Use e2e framework for testing
+
 cd tests/e2e
-python3 run_contentcache_test.py --server-modes local
+python3 run_cache_test.py --server-modes local
 
 # Good: Kill only specific test server PIDs
+
 ps aux | grep "Xnjcvnc :99[89]"
 kill <specific-test-pid>
 
 # BAD: Pattern-based killing (will kill production!)
+
 pkill -f Xnjcvnc  # ❌ NEVER DO THIS
 killall Xnjcvnc   # ❌ NEVER DO THIS
 ```
+
 **Safe process termination**:
+
 ```bash
+
 # ✅ Good: Kill specific test server by verified PID
+
 kill 3250351 3250371
 
 # ❌ Bad: Pattern matching (kills production!)
+
 pkill -f "Xnjcvnc"           # Kills :3, :998, :999 - WRONG!
 killall Xnjcvnc              # Kills all Xnjcvnc - WRONG!
 pkill -f "display_number"    # Still dangerous
 ```
 
 ```bash
-# ❌ FORBIDDEN: Pattern-based killing
-# pkill -f Xnjcvnc           # Kills ALL Xnjcvnc including production!
-# killall Xnjcvnc            # Kills ALL Xnjcvnc including production!
-# pkill -f "script_name.py"  # Kills ALL matching scripts!
-```
 
+# ❌ FORBIDDEN: Pattern-based killing
+
+# pkill -f Xnjcvnc           # Kills ALL Xnjcvnc including production
+
+# killall Xnjcvnc            # Kills ALL Xnjcvnc including production
+
+# pkill -f "script_name.py"  # Kills ALL matching scripts
+
+```
 
 ## Build Commands
 
@@ -146,16 +173,21 @@ TigerVNC uses CMake for configuration with a convenience Makefile for building.
 After initial CMake configuration (see below), use these simple commands:
 
 ```bash
+
 # Build everything (viewer + server)
+
 make
 
 # Build C++ viewer only (njcvncviewer)
+
 make viewer
 
 # Build Rust viewer only (njcvncviewer-rs)
+
 make rust_viewer
 
 # Build server (Xnjcvnc) only
+
 make server
 ```
 
@@ -164,10 +196,13 @@ make server
 **First time only** - configure the build directory with CMake:
 
 ```bash
+
 # Basic configuration (out-of-tree build)
+
 cmake -S . -B build
 
 # With common options
+
 cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DENABLE_NLS=ON \
@@ -177,6 +212,7 @@ cmake -S . -B build \
   -DBUILD_VIEWER=ON
 
 # Debug build
+
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 ```
 
@@ -187,27 +223,37 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 #### Ubuntu/Debian Setup
 
 ```bash
+
 # 1. Install Xorg server source (if not already installed)
+
 sudo apt-get install xorg-server-source
 
 # 2. Set up xserver build directory
+
 mkdir -p build/unix
 cp -R unix/xserver build/unix/
 
 # 3. Extract Xorg source into build directory
+
 cd build/unix/xserver
 tar xf /usr/src/xorg-server.tar.xz --strip-components=1
 
 # 4. Apply TigerVNC patches (use appropriate patch for your Xorg version)
-# For Xorg 21.x:
+
+# For Xorg 21.x
+
 patch -p1 < ../../../unix/xserver21.patch
-# For Xorg 1.20.x:
+
+# For Xorg 1.20.x
+
 # patch -p1 < ../../../unix/xserver120.patch
 
 # 5. Run autotools
+
 autoreconf -fiv
 
 # 6. Configure xserver (adjust paths for your system)
+
 ./configure --with-pic --without-dtrace --disable-static --disable-dri \
   --disable-xinerama --disable-xvfb --disable-xnest --disable-xorg \
   --disable-dmx --disable-xwin --disable-xephyr --disable-kdrive \
@@ -219,9 +265,11 @@ autoreconf -fiv
   --with-serverconfig-path=/usr/lib/xorg
 
 # 7. Return to project root
+
 cd ../../..
 
 # 8. Create symlink for wrapper compatibility
+
 mkdir -p build/unix/vncserver
 ln -sf ../xserver/hw/vnc/Xnjcvnc build/unix/vncserver/Xnjcvnc
 ```
@@ -237,10 +285,13 @@ ln -sf ../xserver/hw/vnc/Xnjcvnc build/unix/vncserver/Xnjcvnc
 #### Verifying Xserver Setup
 
 ```bash
+
 # Check if xserver is configured
+
 ls -la build/unix/xserver/config.status
 
 # Check if Makefile exists
+
 ls -la build/unix/xserver/hw/vnc/Makefile
 ```
 
@@ -249,7 +300,7 @@ ls -la build/unix/xserver/hw/vnc/Makefile
 ```bash
 make              # Build viewer + server (default)
 make viewer       # C++ viewer only
-make rust_viewer  # Rust viewer only  
+make rust_viewer  # Rust viewer only
 make server       # Server only (requires xserver setup)
 ```
 
@@ -272,13 +323,17 @@ build/unix/xserver/hw/vnc/Xnjcvnc               # Server
 You can also run all tests (including e2e) via `./run_tests.sh` from the repository root.
 
 ```bash
+
 # Run all unit tests (requires GTest)
+
 ctest --test-dir build --output-on-failure -j$(sysctl -n hw.ncpu 2>/dev/null || nproc)
 
 # Run specific test
+
 ctest --test-dir build -R <test_pattern> -V
 
 # Performance benchmarks
+
 ./build/tests/perf/encperf   # Encoding
 ./build/tests/perf/decperf   # Decoding
 ```
@@ -307,7 +362,6 @@ These are static libraries that provide the foundation for both viewers and serv
   - Message readers/writers (CMsgReader/Writer, SMsgReader/Writer)
   - Security types (Plain, VncAuth, VeNCrypt, TLS, RSA-AES, DH)
   - Encoders/Decoders (Raw, CopyRect, RRE, Hextile, Tight, ZRLE, H.264)
-  - **ContentCache**: Content-addressable historical cache with ARC algorithm (see `CONTENTCACHE_DESIGN_IMPLEMENTATION.md`)
   - Server-side components (VNCServerST, VNCSConnectionST, EncodeManager)
   - Pixel formats, cursors, update tracking
 
@@ -324,15 +378,17 @@ These are static libraries that provide the foundation for both viewers and serv
 
 - **tests/unit/**: GoogleTest unit tests
 - **tests/perf/**: Performance benchmarks
-- **tests/e2e/**: End-to-end ContentCache/PersistentCache protocol tests
+- **tests/e2e/**: End-to-end session cache/PersistentCache protocol tests
 
 **Test Status** (November 13, 2025):
-- 6 passing tests (ContentCache, PersistentCache, eviction handling)
+
+- 6 passing tests (session cache, PersistentCache, eviction handling)
 - 8 tests with known issues (see `tests/e2e/TEST_TRIAGE_FINDINGS.md`):
   - Primary bug: Viewer doesn't call `logStats()` on shutdown (affects 4 tests)
   - Test issues: Outdated thresholds, unbounded waits, obsolete assumptions
 
 For detailed test analysis, fixes, and evidence, see:
+
 - `tests/e2e/TEST_TRIAGE_FINDINGS.md` - Complete root cause analysis
 - `tests/e2e/README.md` - Test documentation and known issues
 
@@ -384,35 +440,40 @@ There are two remote server environments:
    - Code location: `/home/nickc/code/tigervnc`
    - Production displays: `:1`, `:2`, `:3`
 
-2. **AWS Jakarta** (`pspuser@108.136.194.23`): Remote testing server
+1. **AWS Jakarta** (`pspuser@108.136.194.23`): Remote testing server
    - SSH: `ssh -i ~/premierJakarta.key pspuser@108.136.194.23`
    - Code location: `/data_parallel/PreStackPro/share/nickc/tigervnc`
    - Production display: `:1` (port 5901)
 
 ### Code Synchronization
 
-**🔴 IMPORTANT: Use git, NOT rsync or scp, to sync code between machines 🔴**
+### 🔴 IMPORTANT: Use git, NOT rsync or scp, to sync code between machines 🔴
 
 All code synchronization between local development machine (macOS) and remote servers must use git:
 
 ```bash
-# On local machine (macOS):
+
+# On local machine (macOS)
+
 git add <files>
 git commit -m "Description
 
 Co-Authored-By: Warp <agent@warp.dev>"
 git push origin master
 
-# On remote server (AWS Jakarta):
+# On remote server (AWS Jakarta)
+
 timeout 30 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 \
   'cd /data_parallel/PreStackPro/share/nickc/tigervnc && git pull'
 
-# Then rebuild:
+# Then rebuild
+
 timeout 300 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 \
   'cd /data_parallel/PreStackPro/share/nickc/tigervnc && make server'
 ```
 
-**Why git, not rsync:**
+### Why git, not rsync
+
 - Maintains proper version history
 - Avoids corrupting the remote git repository
 - Ensures both sides stay in sync with origin
@@ -420,38 +481,50 @@ timeout 300 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 \
 
 ### Starting and Managing Servers
 
-**🔴 CRITICAL: Always ASK the user before killing or restarting any remote server 🔴**
+### 🔴 CRITICAL: Always ASK the user before killing or restarting any remote server 🔴
 
 Never kill or restart the VNC server on AWS Jakarta or quartz without explicit user permission. The user may have active work or connections that would be disrupted.
 
-**⚠️ ALWAYS use the startup scripts rather than raw Xnjcvnc commands:**
+### ⚠️ ALWAYS use the startup scripts rather than raw Xnjcvnc commands
 
-**On AWS Jakarta (pspuser):**
+### On AWS Jakarta (pspuser)
+
 ```bash
+
 # Start the VNC server (auto-selects display, uses correct binary)
+
 timeout 30 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 \
   '/data_parallel/PreStackPro/share/nickc/tigervnc/scripts/njcvncserver_start.bash'
 
 # Check server status
+
 timeout 10 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 'ps aux | grep Xnjcvnc | grep -v grep'
 
 # View server log
+
 timeout 10 ssh -i ~/premierJakarta.key pspuser@108.136.194.23 \
   'cat /home/pspuser/.config/tigervnc/ip-10-20-0-24.ap-southeast-3.compute.internal:1.log'
 ```
 
-**On quartz (nickc):**
+### On quartz (nickc)
+
 ```bash
+
 # Use the startup script in ~/scripts/
+
 ~/scripts/njcvncserver_start.bash
 ```
 
-**Local viewer (macOS):**
+### Local viewer (macOS)
+
 ```bash
+
 # The wrapper script handles password file and redirects stderr to timestamped log
+
 ~/scripts/njcvncviewer_start.sh [options] host[:display]
 
-# Example with options:
+# Example with options
+
 ~/scripts/njcvncviewer_start.sh -FullColor=1 -AutoSelect=0 108.136.194.23:1
 ```
 
@@ -464,10 +537,10 @@ There are **two different VNC server binaries** running on the same machine:
 Use the end-to-end test framework under `tests/e2e`, which launches isolated VNC servers on high-numbered displays (e.g., `:998`, `:999`). See `tests/e2e/README.md`.
 
 **Test servers are safe to manage**:
+
 - Displays: `:998` (port 6898), `:999` (port 6899)
 - Managed by e2e framework
 - Can be safely killed by specific PID after verification
-
 
 ### SSH Tunnels
 
@@ -476,11 +549,15 @@ Use the end-to-end test framework under `tests/e2e`, which launches isolated VNC
 For testing, use the e2e framework (which starts servers on high-numbered displays `:998`, `:999`) or set up tunnels only to those test displays as needed. See `tests/e2e/README.md`.
 
 **Safe tunnel example** (test servers only):
+
 ```bash
+
 # Connect to test server on :998
+
 ssh -L 5998:localhost:6898 user@host
 
-# Connect to test server on :999  
+# Connect to test server on :999
+
 ssh -L 5999:localhost:6899 user@host
 ```
 
@@ -489,22 +566,32 @@ ssh -L 5999:localhost:6899 user@host
 **ALWAYS verify before killing any process**:
 
 ```bash
+
 # List all VNC servers
+
 ps aux | grep -E 'Xnjcvnc|Xtigervnc' | grep -v grep
 
 # Check specific process details
+
 pwdx <PID>                    # Working directory
 ps -p <PID> -o pid,args       # Full command line
 
 # Safe identification of test servers
+
 ps aux | grep -E "Xnjcvnc :99[89]"  # Only matches test displays :998, :999
 
-# Example output:
+# Example output
+
 # nickc  849543  Xtigervnc :1      <- PRODUCTION (display :1, do not touch!)
+
 # nickc 3221111  Xtigervnc :2      <- PRODUCTION (display :2, user's desktop, do not touch!)
+
 # nickc 1497451  Xnjcvnc :3        <- PRODUCTION (display :3, do not touch!)
+
 # nickc 3250351  Xnjcvnc :998      <- TEST SERVER (safe to kill by PID only)
+
 # nickc 3250371  Xnjcvnc :999      <- TEST SERVER (safe to kill by PID only)
+
 ```
 
 ### Test Architecture Management
@@ -515,118 +602,146 @@ See `tests/e2e/README.md` for commands and options.
 
 ### Log Locations
 
-**Server logs:**
+### Server logs
+
 ```bash
+
 # quartz production server logs (do not modify)
+
 /home/nickc/.vnc/quartz:1.log
 /home/nickc/.vnc/quartz:2.log
 /home/nickc/.vnc/quartz:3.log
 
 # AWS Jakarta server log (pspuser)
+
 /home/pspuser/.config/tigervnc/ip-10-20-0-24.ap-southeast-3.compute.internal:1.log
 
 # Test framework logs (tests/e2e)
+
 # See tests/e2e output and logs produced by the harness
+
 ```
 
-**Client logs (macOS):**
+### Client logs (macOS)
+
 ```bash
+
 # Viewer stderr log (created by njcvncviewer_start.sh wrapper)
+
 # Format: /tmp/njcvncviewer_YYYY-MM-DD_HH-MM-SS.log
+
 /tmp/njcvncviewer_*.log
 
 # PersistentCache debug logs (when TIGERVNC_PERSISTENTCACHE_DEBUG=1)
+
 /tmp/persistentcache_debug_*.log
 ```
 
-**Log separation:**
+### Log separation
+
 - **stdout** (console): Startup/shutdown messages, hourly stats
 - **stderr** (log file): Debug messages, vlog output, cache operations
 
 ### Debug Logging Framework
 
 The viewer uses `vlog` for logging with different levels:
+
 - `vlog.error()` - Errors (always shown)
 - `vlog.info()` - Info messages (stdout by default)
 - `vlog.debug()` - Debug messages (stderr, goes to log file)
 
-**Enabling debug output:**
+### Enabling debug output
+
 ```bash
+
 # Run viewer with verbose flag (-v or -vv)
+
 ~/scripts/njcvncviewer_start.sh -v host:display
 
 # Debug output goes to /tmp/njcvncviewer_YYYY-MM-DD_HH-MM-SS.log
+
 ```
 
-**Key debug modules (grep patterns for log analysis):**
+### Key debug modules (grep patterns for log analysis)
+
 ```bash
+
 # Cache operations
+
 grep -E 'PC(CLT|SRV)|CACHE_' /tmp/njcvncviewer_*.log
 
 # Pixel format changes (auto-select issues)
+
 grep -E 'pixel format|FullColor|Throughput|rgb[0-9]+' /tmp/njcvncviewer_*.log
 
 # Hash operations
+
 grep -E 'hash|Hash|canonical|lossy' /tmp/njcvncviewer_*.log
 
 # Decode/blit operations
+
 grep -E 'imageRect|blit|DecodeManager' /tmp/njcvncviewer_*.log
 ```
 
-**Server-side debug (EncodeManager):**
+### Server-side debug (EncodeManager)
+
 - Look for `CC doUpdate`, `PCSRV TOPBAND_*`, `PersistentCache protocol HIT/INIT`
 - Server logs cache lookups, hits, misses, and ID tracking
 
-### ContentCache Debugging
+### Cache Debugging
 
 When debugging rectangle corruption issues:
 
 1. **Capture synchronized logs**:
+
    ```bash
    # Use the e2e test framework (isolated displays :998/:999)
-   python3 tests/e2e/run_contentcache_test.py --verbose
-   
+   python3 tests/e2e/run_cache_test.py --verbose
+
    # In another terminal: run the Rust viewer against the e2e test server
    cargo run --package njcvncviewer-rs -- -vv localhost:999 2>&1 | tee /tmp/client_debug.log
    ```
 
-2. **Check ContentCache message flow**:
+1. **Check cache message flow**:
    - Server sends `CachedRect` (reference) or `CachedRectInit` (full data)
    - Client receives and checks local cache
    - Client sends `RequestCachedData` on cache miss
    - Server queues `CachedRectInit` response
-   
-3. **Key log patterns to look for**:
-   ```
+
+1. **Key log patterns to look for**:
+
+   ```text
    # Server side
-   "ContentCache protocol hit: rect [x,y-x,y] cacheId=N"
+   "Cache protocol hit: rect [x,y-x,y] cacheId=N"
    "Client requested cached data for ID N"
    "Targeted refresh for cacheId=N"
-   
-   # Client side  
+
+   # Client side
    "Received CachedRect: [x,y-x,y] cacheId=N"
    "Cache miss for ID N, requesting from server"
    "Storing decoded rect [x,y-x,y] with cache ID N"
    ```
 
-4. **Auto-Select color depth issues**:
+1. **Auto-Select color depth issues**:
+
    The viewer's AutoSelect feature can cause visual corruption by switching
    between 8bpp (rgb332) and 32bpp (rgb888) based on bandwidth:
+
    ```bash
    # Disable auto-select to force full color:
    ~/scripts/njcvncviewer_start.sh -AutoSelect=0 -FullColor=1 host:display
-   
+
    # Or set in ~/.vnc/default.tigervnc:
    AutoSelect=0
    FullColor=1
    ```
-   
+
    Symptoms: Purple/color-shifted areas that "creep" across the display.
    Cause: Format switching at 256kbit/s threshold combined with lossy cache entries.
 
 ## Important Code Patterns and Gotchas
 
-### Stride is in Pixels, Not Bytes!
+### Stride is in Pixels, Not Bytes
 
 **Critical**: `PixelBuffer::getBuffer()` returns stride in **pixels**, not bytes.
 
@@ -643,8 +758,7 @@ size_t bytesPerPixel = pb->getPF().bpp / 8;
 size_t byteLen = rect.height() * stride * bytesPerPixel;
 ```
 
-**Why this matters**: This caused a critical bug (Oct 7 2025) in ContentCache hash calculation that resulted in frequent hash collisions and severe visual corruption. Always multiply stride by `bytesPerPixel` when calculating byte lengths.
-
+**Why this matters**: This caused a critical bug (Oct 7 2025) in cache hash calculation that resulted in frequent hash collisions and severe visual corruption. Always multiply stride by `bytesPerPixel` when calculating byte lengths.
 
 ### PixelBuffer Access Patterns
 
@@ -660,6 +774,7 @@ pb->commitBufferRW(rect);  // Must call when done!
 ```
 
 Stride value determines how to traverse rows:
+
 ```cpp
 for (int y = 0; y < height; y++) {
     const uint8_t* row = buffer + (y * stride * bytesPerPixel);
@@ -670,16 +785,16 @@ for (int y = 0; y < height; y++) {
 }
 ```
 
-## ContentCache and PersistentCache Implementation
+## Cache and PersistentCache Implementation
 
 This fork includes two custom cache protocols that provide 63-99% bandwidth reduction for repeated content:
 
-- **ContentCache**: Session-based cache with server-assigned IDs (20-byte references)
+- **session cache**: Session-based cache with server-assigned IDs (20-byte references)
 - **PersistentCache**: Disk-backed cache with content hashes (47-byte references, survives sessions)
 
 ### Key Files
 
-- `common/rfb/ContentCache.h/cxx`: ContentCache with ARC (Adaptive Replacement Cache) algorithm
+- `common/rfb/session cache.h/cxx`: session cache with ARC (Adaptive Replacement Cache) algorithm
 - `common/rfb/PersistentCache.h/cxx`: PersistentCache with disk persistence
 - `common/rfb/EncodeManager.cxx`: Server-side integration (cache lookups, insertions)
 - `common/rfb/DecodeManager.cxx`: Client-side integration (cache retrieval, blitting)
@@ -687,25 +802,26 @@ This fork includes two custom cache protocols that provide 63-99% bandwidth redu
 
 ### Protocol Overview
 
-**ContentCache**:
+**session cache**:
+
 - `CachedRect` (20 bytes): Server references by cache ID
 - `CachedRectInit` (20 bytes + encoding): Full data + ID for storage
 
 **PersistentCache**:
+
 - `PersistentCachedRect` (47 bytes): Server references by content hash
 - `PersistentCachedRectInit` (47 bytes + encoding): Full data + hash for storage
 
 ### Configuration
 
 Server parameters (add to `~/.vnc/config`):
+
 ```bash
-# ContentCache (session-only)
-EnableContentCache=1          # Enable (default: true)
-ContentCacheSize=2048         # Cache size in MB (default: 2048)
-ContentCacheMaxAge=0          # Max age in seconds (0 = unlimited)
-ContentCacheMinRectSize=2048  # Min pixels to cache (default: 2048)
+
+# session cache (session-only)
 
 # PersistentCache (survives sessions)
+
 EnablePersistentCache=1       # Enable (default: true)
 PersistentCacheSize=256       # Cache size in MB (default: 256)
 PersistentCacheMinRectSize=2048  # Min pixels to cache (default: 2048)
@@ -713,11 +829,13 @@ PersistentCacheMinRectSize=2048  # Min pixels to cache (default: 2048)
 
 ### Test Results (November 2025)
 
-**ContentCache** (128×128 logos, 30s duration):
+**Session cache** (128×128 logos, 30s duration):
+
 - Hit rate: 63-67%, Bandwidth saved: ~300 KB
-- Test: `tests/e2e/test_cpp_contentcache.py`
+- Test: `tests/e2e/test_cpp_sessioncache.py`
 
 **PersistentCache** (128×128 logos, 30s duration):
+
 - Hit rate: 100%, Bandwidth reduction: 99.7%, Saved: ~517 KB
 - Test: `tests/e2e/test_cpp_persistentcache.py`
 
@@ -730,17 +848,19 @@ PersistentCacheMinRectSize=2048  # Min pixels to cache (default: 2048)
 ### Debugging
 
 ```bash
+
 # Enable verbose logging in the e2e test framework as needed
+
 # See tests/e2e/README.md for options
+
 ```
 
 ### Documentation
 
-See `CONTENTCACHE_DESIGN_IMPLEMENTATION.md` for comprehensive design, implementation details, build system notes, known issues, and troubleshooting guide.
+See the session cache design document for comprehensive design and implementation details.
 
 ## Related Documentation
 
-- `CONTENTCACHE_DESIGN_IMPLEMENTATION.md`: Comprehensive ContentCache guide
 - `PERSISTENTCACHE_DESIGN.md`: PersistentCache protocol specification
 - `ARC_ALGORITHM.md`: Adaptive Replacement Cache algorithm details
 - `tests/e2e/README.md`: End-to-end test suite documentation

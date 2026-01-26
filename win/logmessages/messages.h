@@ -28,11 +28,9 @@
 // Define the facility codes
 //
 
-
 //
 // Define the severity codes
 //
-
 
 //
 // MessageId: VNC4LogMessage
@@ -40,8 +38,7 @@
 // MessageText:
 //
 //  %1: %2
-//  
-//  
 //
-#define VNC4LogMessage                   0x00000001L
-
+//
+//
+#define VNC4LogMessage 0x00000001L

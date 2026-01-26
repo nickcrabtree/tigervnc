@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -22,9 +22,9 @@
 #include <config.h>
 #endif
 
+#include <shlobj.h>
 #include <windows.h>
 #include <wininet.h>
-#include <shlobj.h>
 
 #include <core/Exception.h>
 #include <core/LogWriter.h>
@@ -40,12 +40,11 @@ using namespace rfb::win32;
 
 static core::LogWriter vlog("CleanDesktop");
 
-
 struct ActiveDesktop {
   ActiveDesktop() : handle(nullptr) {
     // - Contact Active Desktop
-    HRESULT result = CoCreateInstance(CLSID_ActiveDesktop, nullptr, CLSCTX_INPROC_SERVER,
-                                      IID_IActiveDesktop, (PVOID*)&handle);
+    HRESULT result =
+        CoCreateInstance(CLSID_ActiveDesktop, nullptr, CLSCTX_INPROC_SERVER, IID_IActiveDesktop, (PVOID*)&handle);
     if (result != S_OK)
       throw core::win32_error("Failed to contact Active Desktop", HRESULT_CODE(result));
   }
@@ -71,7 +70,7 @@ struct ActiveDesktop {
     hr = handle->ModifyDesktopItem(&item, COMP_ELEM_CHECKED);
     return hr == S_OK;
   }
-  
+
   // enable
   //   Attempts to enable/disable Active Desktop, returns true if the setting changed,
   //   false otherwise.
@@ -94,7 +93,7 @@ struct ActiveDesktop {
     if (hr == S_OK) {
       // If Active Desktop is already in the desired state then return false (no change)
       // NB: If AD is enabled AND restoreItems is set then we regard it as disabled...
-      if (((adOptions.fActiveDesktop==0) && restoreItems.empty()) == (enable_==false))
+      if (((adOptions.fActiveDesktop == 0) && restoreItems.empty()) == (enable_ == false))
         return false;
       adOptions.fActiveDesktop = enable_;
       hr = handle->SetDesktopItemOptions(&adOptions, 0);
@@ -105,7 +104,7 @@ struct ActiveDesktop {
     if (hr == S_OK)
       hr = handle->GetDesktopItemOptions(&adOptions, 0);
     if (hr == S_OK)
-      modifyComponents = (adOptions.fActiveDesktop==0) != (enable_==false);
+      modifyComponents = (adOptions.fActiveDesktop == 0) != (enable_ == false);
     if (hr != S_OK) {
       vlog.error("Failed to get/set Active Desktop options: %ld", hr);
       return false;
@@ -115,7 +114,7 @@ struct ActiveDesktop {
       // - We are re-enabling Active Desktop.  If there are components in restoreItems
       //   then restore them!
       std::set<int>::const_iterator i;
-      for (i=restoreItems.begin(); i!=restoreItems.end(); i++) {
+      for (i = restoreItems.begin(); i != restoreItems.end(); i++) {
         enableItem(*i, true);
       }
       restoreItems.clear();
@@ -127,7 +126,7 @@ struct ActiveDesktop {
         vlog.error("Failed to get desktop item count: %ld", hr);
         return false;
       }
-      for (int i=0; i<itemCount; i++) {
+      for (int i = 0; i < itemCount; i++) {
         if (enableItem(i, false))
           restoreItems.insert(i);
       }
@@ -141,7 +140,6 @@ struct ActiveDesktop {
   std::set<int> restoreItems;
 };
 
-
 DWORD SysParamsInfo(UINT action, UINT param, PVOID ptr, UINT ini) {
   DWORD r = ERROR_SUCCESS;
   if (!SystemParametersInfo(action, param, ptr, ini)) {
@@ -151,10 +149,7 @@ DWORD SysParamsInfo(UINT action, UINT param, PVOID ptr, UINT ini) {
   return r;
 }
 
-
-CleanDesktop::CleanDesktop() : restoreActiveDesktop(false),
-                               restoreWallpaper(false),
-                               restoreEffects(false) {
+CleanDesktop::CleanDesktop() : restoreActiveDesktop(false), restoreWallpaper(false), restoreEffects(false) {
   CoInitialize(nullptr);
 }
 
@@ -209,7 +204,7 @@ void CleanDesktop::enableWallpaper() {
       vlog.debug("Restore desktop wallpaper");
 
       // -=- Then restore the standard wallpaper if required
-	    SysParamsInfo(SPI_SETDESKWALLPAPER, 0, nullptr, SPIF_SENDCHANGE);
+      SysParamsInfo(SPI_SETDESKWALLPAPER, 0, nullptr, SPIF_SENDCHANGE);
       restoreWallpaper = false;
     }
 
@@ -217,7 +212,6 @@ void CleanDesktop::enableWallpaper() {
     vlog.info("%s", e.what());
   }
 }
-
 
 void CleanDesktop::disableEffects() {
   try {
@@ -260,7 +254,8 @@ void CleanDesktop::enableEffects() {
       RegKey desktopCfg;
       desktopCfg.openKey(HKEY_CURRENT_USER, "Control Panel\\Desktop");
       SysParamsInfo(SPI_SETFONTSMOOTHING, desktopCfg.getInt("FontSmoothing", 0) != 0, nullptr, SPIF_SENDCHANGE);
-      if (SysParamsInfo(SPI_SETUIEFFECTS, 0, (void*)(intptr_t)uiEffects, SPIF_SENDCHANGE) == ERROR_CALL_NOT_IMPLEMENTED) {
+      if (SysParamsInfo(SPI_SETUIEFFECTS, 0, (void*)(intptr_t)uiEffects, SPIF_SENDCHANGE) ==
+          ERROR_CALL_NOT_IMPLEMENTED) {
         SysParamsInfo(SPI_SETCOMBOBOXANIMATION, 0, (void*)(intptr_t)comboBoxAnim, SPIF_SENDCHANGE);
         SysParamsInfo(SPI_SETGRADIENTCAPTIONS, 0, (void*)(intptr_t)gradientCaptions, SPIF_SENDCHANGE);
         SysParamsInfo(SPI_SETHOTTRACKING, 0, (void*)(intptr_t)hotTracking, SPIF_SENDCHANGE);

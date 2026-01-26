@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011-2025 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -46,20 +46,20 @@
 #define NoSymbol 0
 #endif
 
+#include "CConn.h"
+#include "DesktopWindow.h"
+#include "OptionsDialog.h"
+#include "Viewport.h"
 #include "fltk/layout.h"
 #include "fltk/util.h"
-#include "Viewport.h"
-#include "CConn.h"
-#include "OptionsDialog.h"
-#include "DesktopWindow.h"
 #include "i18n.h"
 #include "parameters.h"
 #include "vncviewer.h"
 
 #include "PlatformPixelBuffer.h"
 
-#include <FL/fl_draw.H>
 #include <FL/fl_ask.H>
+#include <FL/fl_draw.H>
 
 #include <FL/Fl_Menu.H>
 #include <FL/Fl_Menu_Button.H>
@@ -81,9 +81,19 @@ static core::LogWriter vlog("Viewport");
 
 // Menu constants
 
-enum { ID_DISCONNECT, ID_FULLSCREEN, ID_MINIMIZE, ID_RESIZE,
-       ID_CTRL, ID_ALT, ID_CTRLALTDEL,
-       ID_REFRESH, ID_OPTIONS, ID_INFO, ID_ABOUT };
+enum {
+  ID_DISCONNECT,
+  ID_FULLSCREEN,
+  ID_MINIMIZE,
+  ID_RESIZE,
+  ID_CTRL,
+  ID_ALT,
+  ID_CTRLALTDEL,
+  ID_REFRESH,
+  ID_OPTIONS,
+  ID_INFO,
+  ID_ABOUT
+};
 
 // Used for fake key presses from the menu
 static const int FAKE_CTRL_KEY_CODE = 0x10001;
@@ -94,13 +104,9 @@ static const int FAKE_DEL_KEY_CODE = 0x10003;
 static const int FAKE_KEY_CODE = 0xffff;
 
 Viewport::Viewport(int w, int h, CConn* cc_)
-  : Fl_Widget(0, 0, w, h), cc(cc_), frameBuffer(nullptr),
-    lastPointerPos(0, 0), lastButtonMask(0),
-    keyboard(nullptr), shortcutBypass(false), shortcutActive(false),
-    firstLEDState(true), pendingClientClipboard(false),
-    menuCtrlKey(false), menuAltKey(false), cursor(nullptr),
-    cursorIsBlank(false)
-{
+    : Fl_Widget(0, 0, w, h), cc(cc_), frameBuffer(nullptr), lastPointerPos(0, 0), lastButtonMask(0), keyboard(nullptr),
+      shortcutBypass(false), shortcutActive(false), firstLEDState(true), pendingClientClipboard(false),
+      menuCtrlKey(false), menuAltKey(false), cursor(nullptr), cursorIsBlank(false) {
 #if defined(WIN32)
   keyboard = new KeyboardWin32(this);
 #elif defined(__APPLE__)
@@ -147,9 +153,7 @@ Viewport::Viewport(int w, int h, CConn* cc_)
   setCursor();
 }
 
-
-Viewport::~Viewport()
-{
+Viewport::~Viewport() {
   // Unregister all timeouts in case they get a change tro trigger
   // again later when this object is already gone.
   Fl::remove_timeout(handlePointerTimeout, this);
@@ -162,7 +166,7 @@ Viewport::~Viewport()
 
   if (cursor) {
     if (!cursor->alloc_array)
-      delete [] cursor->array;
+      delete[] cursor->array;
     delete cursor;
   }
 
@@ -173,40 +177,27 @@ Viewport::~Viewport()
   // them ourselves here
 }
 
-
-const rfb::PixelFormat &Viewport::getPreferredPF()
-{
+const rfb::PixelFormat& Viewport::getPreferredPF() {
   return frameBuffer->getPF();
 }
-
 
 // Copy the areas of the framebuffer that have been changed (damaged)
 // to the displayed window.
 
-void Viewport::updateWindow()
-{
+void Viewport::updateWindow() {
   core::Rect r;
 
   r = frameBuffer->getDamage();
-  vlog.debug("Viewport::updateWindow: damage rect [%d,%d-%d,%d]",
-             r.tl.x, r.tl.y, r.br.x, r.br.y);
+  vlog.debug("Viewport::updateWindow: damage rect [%d,%d-%d,%d]", r.tl.x, r.tl.y, r.br.x, r.br.y);
   if (!r.is_empty()) {
     damage(FL_DAMAGE_USER1, r.tl.x + x(), r.tl.y + y(), r.width(), r.height());
   }
 }
 
-static const char * dotcursor_xpm[] = {
-  "5 5 2 1",
-  ".	c #000000",
-  " 	c #FFFFFF",
-  "     ",
-  " ... ",
-  " ... ",
-  " ... ",
-  "     "};
+static const char* dotcursor_xpm[] = {"5 5 2 1", ".	c #000000", " 	c #FFFFFF", "     ",
+                                      " ... ",   " ... ",       " ... ",        "     "};
 
-void Viewport::setCursor()
-{
+void Viewport::setCursor() {
   int width, height;
   core::Point hotspot;
   const uint8_t* data;
@@ -215,7 +206,7 @@ void Viewport::setCursor()
 
   if (cursor) {
     if (!cursor->alloc_array)
-      delete [] cursor->array;
+      delete[] cursor->array;
     delete cursor;
   }
 
@@ -224,10 +215,11 @@ void Viewport::setCursor()
   hotspot = cc->server.cursor().hotspot();
   data = cc->server.cursor().getBuffer();
 
-  for (i = 0; i < width*height; i++)
-    if (data[i*4 + 3] != 0) break;
+  for (i = 0; i < width * height; i++)
+    if (data[i * 4 + 3] != 0)
+      break;
 
-  cursorIsBlank = i == width*height;
+  cursorIsBlank = i == width * height;
 
   if (cursorIsBlank && alwaysCursor) {
     // This is the default in case the local cursor should be displayed yet cursorType is invalid.
@@ -240,12 +232,12 @@ void Viewport::setCursor()
     cursorHotspot.x = cursorHotspot.y = 2;
   } else {
     if ((width == 0) || (height == 0)) {
-      uint8_t *buffer = new uint8_t[4];
+      uint8_t* buffer = new uint8_t[4];
       memset(buffer, 0, 4);
       cursor = new Fl_RGB_Image(buffer, 1, 1, 4);
       cursorHotspot.x = cursorHotspot.y = 0;
     } else {
-      uint8_t *buffer = new uint8_t[width * height * 4];
+      uint8_t* buffer = new uint8_t[width * height * 4];
       memcpy(buffer, data, width * height * 4);
       cursor = new Fl_RGB_Image(buffer, width, height, 4);
       cursorHotspot = hotspot;
@@ -256,8 +248,7 @@ void Viewport::setCursor()
     showCursor();
 }
 
-void Viewport::showCursor()
-{
+void Viewport::showCursor() {
   if (viewOnly) {
     window()->cursor(FL_CURSOR_DEFAULT);
     return;
@@ -270,16 +261,14 @@ void Viewport::showCursor()
   }
 }
 
-void Viewport::handleClipboardRequest()
-{
+void Viewport::handleClipboardRequest() {
   if (viewOnly)
     return;
 
   Fl::paste(*this, clipboardSource);
 }
 
-void Viewport::handleClipboardAnnounce(bool available)
-{
+void Viewport::handleClipboardAnnounce(bool available) {
   if (viewOnly)
     return;
 
@@ -302,8 +291,7 @@ void Viewport::handleClipboardAnnounce(bool available)
   cc->requestClipboard();
 }
 
-void Viewport::handleClipboardData(const char* data)
-{
+void Viewport::handleClipboardData(const char* data) {
   size_t len;
 
   if (!hasFocus())
@@ -322,8 +310,7 @@ void Viewport::handleClipboardData(const char* data)
   Fl::copy(data, len, 1);
 }
 
-void Viewport::setLEDState(unsigned int ledState)
-{
+void Viewport::setLEDState(unsigned int ledState) {
   vlog.debug("Got server LED state: 0x%08x", ledState);
 
   // The first message is just considered to be the server announcing
@@ -346,8 +333,7 @@ void Viewport::setLEDState(unsigned int ledState)
   keyboard->setLEDState(ledState);
 }
 
-void Viewport::pushLEDState()
-{
+void Viewport::pushLEDState() {
   unsigned int ledState;
 
   if (viewOnly)
@@ -366,29 +352,24 @@ void Viewport::pushLEDState()
   ledState |= (cc->server.ledState() & rfb::ledScrollLock);
 #endif
 
-  if ((ledState & rfb::ledCapsLock) !=
-      (cc->server.ledState() & rfb::ledCapsLock)) {
+  if ((ledState & rfb::ledCapsLock) != (cc->server.ledState() & rfb::ledCapsLock)) {
     vlog.debug("Inserting fake CapsLock to get in sync with server");
     handleKeyPress(FAKE_KEY_CODE, 0x3a, XK_Caps_Lock);
     handleKeyRelease(FAKE_KEY_CODE);
   }
-  if ((ledState & rfb::ledNumLock) !=
-      (cc->server.ledState() & rfb::ledNumLock)) {
+  if ((ledState & rfb::ledNumLock) != (cc->server.ledState() & rfb::ledNumLock)) {
     vlog.debug("Inserting fake NumLock to get in sync with server");
     handleKeyPress(FAKE_KEY_CODE, 0x45, XK_Num_Lock);
     handleKeyRelease(FAKE_KEY_CODE);
   }
-  if ((ledState & rfb::ledScrollLock) !=
-      (cc->server.ledState() & rfb::ledScrollLock)) {
+  if ((ledState & rfb::ledScrollLock) != (cc->server.ledState() & rfb::ledScrollLock)) {
     vlog.debug("Inserting fake ScrollLock to get in sync with server");
     handleKeyPress(FAKE_KEY_CODE, 0x46, XK_Scroll_Lock);
     handleKeyRelease(FAKE_KEY_CODE);
   }
 }
 
-
-void Viewport::draw(Surface* dst)
-{
+void Viewport::draw(Surface* dst) {
   int X, Y, W, H;
 
   // Check what actually needs updating
@@ -399,33 +380,28 @@ void Viewport::draw(Surface* dst)
   frameBuffer->draw(dst, X - x(), Y - y(), X, Y, W, H);
 }
 
-
-void Viewport::draw()
-{
+void Viewport::draw() {
   int X, Y, W, H;
 
   // Check what actually needs updating
   fl_clip_box(x(), y(), w(), h(), X, Y, W, H);
-  vlog.debug("Viewport::draw: clip_box returned X=%d Y=%d W=%d H=%d (widget x=%d y=%d w=%d h=%d)",
-             X, Y, W, H, x(), y(), w(), h());
+  vlog.debug("Viewport::draw: clip_box returned X=%d Y=%d W=%d H=%d (widget x=%d y=%d w=%d h=%d)", X, Y, W, H, x(), y(),
+             w(), h());
   if ((W == 0) || (H == 0))
     return;
 
   frameBuffer->draw(X - x(), Y - y(), X, Y, W, H);
 }
 
-
-void Viewport::resize(int x, int y, int w, int h)
-{
-  vlog.debug("Viewport::resize called: widget (%d,%d,%dx%d), framebuffer currently %dx%d",
-             x, y, w, h, frameBuffer->width(), frameBuffer->height());
+void Viewport::resize(int x, int y, int w, int h) {
+  vlog.debug("Viewport::resize called: widget (%d,%d,%dx%d), framebuffer currently %dx%d", x, y, w, h,
+             frameBuffer->width(), frameBuffer->height());
   if ((w != frameBuffer->width()) || (h != frameBuffer->height())) {
-    vlog.debug("Resizing framebuffer from %dx%d to %dx%d",
-               frameBuffer->width(), frameBuffer->height(), w, h);
+    vlog.debug("Resizing framebuffer from %dx%d to %dx%d", frameBuffer->width(), frameBuffer->height(), w, h);
 
     PlatformPixelBuffer* newFrameBuffer = new PlatformPixelBuffer(w, h);
     assert(newFrameBuffer);
-    
+
     // Sync the initial clear(0,0,0) from the constructor to the Pixmap
     // immediately so the Pixmap doesn't contain uninitialized garbage.
     newFrameBuffer->getDamage();
@@ -434,21 +410,21 @@ void Viewport::resize(int x, int y, int w, int h)
     // and deletes the old framebuffer
     frameBuffer = newFrameBuffer;
     cc->setFramebuffer(frameBuffer);
-    
+
     // Force sync of framebuffer to X11 Pixmap/display surface
     // setFramebuffer() marks regions as damaged via commitBufferRW(), but
     // those changes are only applied to the underlying XImage. We need to
     // call getDamage() to copy the damaged regions to the actual display Pixmap.
     core::Rect syncedDamage = frameBuffer->getDamage();
-    vlog.debug("Synced framebuffer damage after resize: [%d,%d-%d,%d]",
-               syncedDamage.tl.x, syncedDamage.tl.y, syncedDamage.br.x, syncedDamage.br.y);
-    
+    vlog.debug("Synced framebuffer damage after resize: [%d,%d-%d,%d]", syncedDamage.tl.x, syncedDamage.tl.y,
+               syncedDamage.br.x, syncedDamage.br.y);
+
     // Always damage the ENTIRE framebuffer area after resize, not just the
     // synced damage region. This fixes a race condition during drag-resize
     // where intermediate resize events create partial damage regions that
     // don't cover the full final size, leaving black areas.
     damage(FL_DAMAGE_USER1, Fl_Widget::x(), Fl_Widget::y(), w, h);
-    
+
     // Request a full non-incremental framebuffer update after ANY resize.
     // During drag-resize, multiple resize events fire in quick succession.
     // Each creates a new framebuffer and requests an update, but intermediate
@@ -456,8 +432,7 @@ void Viewport::resize(int x, int y, int w, int h)
     // Always requesting a full refresh ensures the final state is correct.
     if (cc->writer() != nullptr) {
       try {
-        vlog.debug("Requesting full framebuffer refresh after resize [%d,%d-%d,%d]",
-                   0, 0, w, h);
+        vlog.debug("Requesting full framebuffer refresh after resize [%d,%d-%d,%d]", 0, 0, w, h);
         cc->writer()->writeFramebufferUpdateRequest(core::Rect(0, 0, w, h), false);
       } catch (std::exception& e) {
         vlog.error("Failed to request framebuffer refresh after resize: %s", e.what());
@@ -466,15 +441,12 @@ void Viewport::resize(int x, int y, int w, int h)
   }
 
   Fl_Widget::resize(x, y, w, h);
-  
-  vlog.debug("After Fl_Widget::resize: widget=(%d,%d,%dx%d), framebuffer=%dx%d",
-             Fl_Widget::x(), Fl_Widget::y(), Fl_Widget::w(), Fl_Widget::h(),
-             frameBuffer->width(), frameBuffer->height());
+
+  vlog.debug("After Fl_Widget::resize: widget=(%d,%d,%dx%d), framebuffer=%dx%d", Fl_Widget::x(), Fl_Widget::y(),
+             Fl_Widget::w(), Fl_Widget::h(), frameBuffer->width(), frameBuffer->height());
 }
 
-
-int Viewport::handle(int event)
-{
+int Viewport::handle(int event) {
   std::string filtered;
   int buttonMask, wheelMask;
 
@@ -530,13 +502,13 @@ int Viewport::handle(int event)
     if (Fl::event_button3())
       buttonMask |= 1 << 2;
 
-  // The back/forward buttons are not supported by FTLK 1.3 and require
-  // a patch which adds these buttons to the FLTK API. These buttons
-  // will be part of the upcoming 1.4 API:
-  //   * https://github.com/fltk/fltk/pull/1081
-  //
-  // A backport for branch-1.3 is available here:
-  //   * https://github.com/fltk/fltk/pull/1083
+      // The back/forward buttons are not supported by FTLK 1.3 and require
+      // a patch which adds these buttons to the FLTK API. These buttons
+      // will be part of the upcoming 1.4 API:
+      //   * https://github.com/fltk/fltk/pull/1081
+      //
+      // A backport for branch-1.3 is available here:
+      //   * https://github.com/fltk/fltk/pull/1083
 #if defined(FL_BUTTON4) && defined(FL_BUTTON5)
     if (Fl::event_button4())
       buttonMask |= 1 << 7;
@@ -557,9 +529,8 @@ int Viewport::handle(int event)
 
       // A quick press of the wheel "button", followed by a immediate
       // release below
-      handlePointerEvent({Fl::event_x() - x(), Fl::event_y() - y()},
-                         buttonMask | wheelMask);
-    } 
+      handlePointerEvent({Fl::event_x() - x(), Fl::event_y() - y()}, buttonMask | wheelMask);
+    }
 
     handlePointerEvent({Fl::event_x() - x(), Fl::event_y() - y()}, buttonMask);
     return 1;
@@ -594,11 +565,9 @@ int Viewport::handle(int event)
   return Fl_Widget::handle(event);
 }
 
-void Viewport::sendPointerEvent(const core::Point& pos,
-                                uint16_t buttonMask)
-{
+void Viewport::sendPointerEvent(const core::Point& pos, uint16_t buttonMask) {
   if (viewOnly)
-      return;
+    return;
 
   if ((pointerEventInterval == 0) || (buttonMask != lastButtonMask)) {
     try {
@@ -609,15 +578,13 @@ void Viewport::sendPointerEvent(const core::Point& pos,
     }
   } else {
     if (!Fl::has_timeout(handlePointerTimeout, this))
-      Fl::add_timeout((double)pointerEventInterval/1000.0,
-                      handlePointerTimeout, this);
+      Fl::add_timeout((double)pointerEventInterval / 1000.0, handlePointerTimeout, this);
   }
   lastPointerPos = pos;
   lastButtonMask = buttonMask;
 }
 
-bool Viewport::hasFocus()
-{
+bool Viewport::hasFocus() {
   Fl_Widget* focus;
 
   focus = Fl::grab();
@@ -627,9 +594,8 @@ bool Viewport::hasFocus()
   return focus == this;
 }
 
-void Viewport::handleClipboardChange(int source, void *data)
-{
-  Viewport *self = (Viewport *)data;
+void Viewport::handleClipboardChange(int source, void* data) {
+  Viewport* self = (Viewport*)data;
 
   assert(self);
 
@@ -681,9 +647,7 @@ void Viewport::handleClipboardChange(int source, void *data)
   }
 }
 
-
-void Viewport::flushPendingClipboard()
-{
+void Viewport::flushPendingClipboard() {
   if (pendingClientClipboard) {
     vlog.debug("Focus regained after local clipboard change, notifying server");
     try {
@@ -697,32 +661,24 @@ void Viewport::flushPendingClipboard()
   pendingClientClipboard = false;
 }
 
-
-void Viewport::handlePointerEvent(const core::Point& pos,
-                                  uint16_t buttonMask)
-{
+void Viewport::handlePointerEvent(const core::Point& pos, uint16_t buttonMask) {
   filterPointerEvent(pos, buttonMask);
 }
 
-
-void Viewport::handlePointerTimeout(void *data)
-{
-  Viewport *self = (Viewport *)data;
+void Viewport::handlePointerTimeout(void* data) {
+  Viewport* self = (Viewport*)data;
 
   assert(self);
 
   try {
-    self->cc->writer()->writePointerEvent(self->lastPointerPos,
-                                          self->lastButtonMask);
+    self->cc->writer()->writePointerEvent(self->lastPointerPos, self->lastButtonMask);
   } catch (std::exception& e) {
     vlog.error("%s", e.what());
     abort_connection_with_unexpected_error(e);
   }
 }
 
-
-void Viewport::resetKeyboard()
-{
+void Viewport::resetKeyboard() {
   try {
     cc->releaseAllKeys();
   } catch (std::exception& e) {
@@ -738,10 +694,7 @@ void Viewport::resetKeyboard()
   pressedKeys.clear();
 }
 
-
-void Viewport::handleKeyPress(int systemKeyCode,
-                              uint32_t keyCode, uint32_t keySym)
-{
+void Viewport::handleKeyPress(int systemKeyCode, uint32_t keyCode, uint32_t keySym) {
   pressedKeys.insert(systemKeyCode);
 
   // Possible keyboard shortcut?
@@ -752,8 +705,8 @@ void Viewport::handleKeyPress(int systemKeyCode,
     action = shortcutHandler.handleKeyPress(systemKeyCode, keySym);
 
     if (action == ShortcutHandler::KeyIgnore) {
-      vlog.debug("Ignoring key press %d => 0x%02x / XK_%s (0x%04x)",
-                 systemKeyCode, keyCode, KeySymName(keySym), keySym);
+      vlog.debug("Ignoring key press %d => 0x%02x / XK_%s (0x%04x)", systemKeyCode, keyCode, KeySymName(keySym),
+                 keySym);
       return;
     }
 
@@ -791,8 +744,7 @@ void Viewport::handleKeyPress(int systemKeyCode,
           break;
       }
 
-      vlog.debug("Detected shortcut %d => 0x%02x / XK_%s (0x%04x)",
-                 systemKeyCode, keyCode, KeySymName(keySym), keySym);
+      vlog.debug("Detected shortcut %d => 0x%02x / XK_%s (0x%04x)", systemKeyCode, keyCode, KeySymName(keySym), keySym);
 
       // Special case which we need to handle first
       if (keySym == XK_space) {
@@ -814,7 +766,8 @@ void Viewport::handleKeyPress(int systemKeyCode,
       } catch (std::exception& e) {
         vlog.error("%s", e.what());
         abort_connection(_("An unexpected error occurred when communicating "
-                           "with the server:\n\n%s"), e.what());
+                           "with the server:\n\n%s"),
+                         e.what());
       }
 
       switch (keySym) {
@@ -858,9 +811,7 @@ void Viewport::handleKeyPress(int systemKeyCode,
   }
 }
 
-
-void Viewport::handleKeyRelease(int systemKeyCode)
-{
+void Viewport::handleKeyRelease(int systemKeyCode) {
   pressedKeys.erase(systemKeyCode);
 
   if (pressedKeys.empty())
@@ -884,7 +835,7 @@ void Viewport::handleKeyRelease(int systemKeyCode)
     }
 
     if (action == ShortcutHandler::KeyUnarm) {
-      DesktopWindow *win;
+      DesktopWindow* win;
 
       vlog.debug("Detected shortcut to release grab");
 
@@ -893,7 +844,8 @@ void Viewport::handleKeyRelease(int systemKeyCode)
       } catch (std::exception& e) {
         vlog.error("%s", e.what());
         abort_connection(_("An unexpected error occurred when communicating "
-                           "with the server:\n\n%s"), e.what());
+                           "with the server:\n\n%s"),
+                         e.what());
       }
 
       win = dynamic_cast<DesktopWindow*>(window());
@@ -920,10 +872,8 @@ void Viewport::handleKeyRelease(int systemKeyCode)
   }
 }
 
-
-int Viewport::handleSystemEvent(void *event, void *data)
-{
-  Viewport *self = (Viewport *)data;
+int Viewport::handleSystemEvent(void* event, void* data) {
+  Viewport* self = (Viewport*)data;
   bool consumed;
 
   assert(self);
@@ -947,48 +897,35 @@ int Viewport::handleSystemEvent(void *event, void *data)
 // FIXME: gcc confuses ID_DISCONNECT with NULL
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wzero-as-null-pointer-constant"
-void Viewport::initContextMenu()
-{
+void Viewport::initContextMenu() {
   contextMenu->clear();
 
-  fltk_menu_add(contextMenu, p_("ContextMenu|", "Disconn&ect"),
-                0, nullptr, (void*)ID_DISCONNECT, FL_MENU_DIVIDER);
+  fltk_menu_add(contextMenu, p_("ContextMenu|", "Disconn&ect"), 0, nullptr, (void*)ID_DISCONNECT, FL_MENU_DIVIDER);
 
-  fltk_menu_add(contextMenu, p_("ContextMenu|", "&Full screen"),
-                0, nullptr, (void*)ID_FULLSCREEN,
-                FL_MENU_TOGGLE | (window()->fullscreen_active()?FL_MENU_VALUE:0));
-  fltk_menu_add(contextMenu, p_("ContextMenu|", "Minimi&ze"),
-                0, nullptr, (void*)ID_MINIMIZE, 0);
-  fltk_menu_add(contextMenu, p_("ContextMenu|", "Resize &window to session"),
-                0, nullptr, (void*)ID_RESIZE,
-                (window()->fullscreen_active()?FL_MENU_INACTIVE:0) |
+  fltk_menu_add(contextMenu, p_("ContextMenu|", "&Full screen"), 0, nullptr, (void*)ID_FULLSCREEN,
+                FL_MENU_TOGGLE | (window()->fullscreen_active() ? FL_MENU_VALUE : 0));
+  fltk_menu_add(contextMenu, p_("ContextMenu|", "Minimi&ze"), 0, nullptr, (void*)ID_MINIMIZE, 0);
+  fltk_menu_add(contextMenu, p_("ContextMenu|", "Resize &window to session"), 0, nullptr, (void*)ID_RESIZE,
+                (window()->fullscreen_active() ? FL_MENU_INACTIVE : 0) | FL_MENU_DIVIDER);
+
+  fltk_menu_add(contextMenu, p_("ContextMenu|", "&Ctrl"), 0, nullptr, (void*)ID_CTRL,
+                FL_MENU_TOGGLE | (menuCtrlKey ? FL_MENU_VALUE : 0));
+  fltk_menu_add(contextMenu, p_("ContextMenu|", "&Alt"), 0, nullptr, (void*)ID_ALT,
+                FL_MENU_TOGGLE | (menuAltKey ? FL_MENU_VALUE : 0));
+
+  fltk_menu_add(contextMenu, p_("ContextMenu|", "Send Ctrl-Alt-&Del"), 0, nullptr, (void*)ID_CTRLALTDEL,
                 FL_MENU_DIVIDER);
 
-  fltk_menu_add(contextMenu, p_("ContextMenu|", "&Ctrl"),
-                0, nullptr, (void*)ID_CTRL,
-                FL_MENU_TOGGLE | (menuCtrlKey?FL_MENU_VALUE:0));
-  fltk_menu_add(contextMenu, p_("ContextMenu|", "&Alt"),
-                0, nullptr, (void*)ID_ALT,
-                FL_MENU_TOGGLE | (menuAltKey?FL_MENU_VALUE:0));
+  fltk_menu_add(contextMenu, p_("ContextMenu|", "&Refresh screen"), 0, nullptr, (void*)ID_REFRESH, FL_MENU_DIVIDER);
 
-  fltk_menu_add(contextMenu, p_("ContextMenu|", "Send Ctrl-Alt-&Del"),
-                0, nullptr, (void*)ID_CTRLALTDEL, FL_MENU_DIVIDER);
-
-  fltk_menu_add(contextMenu, p_("ContextMenu|", "&Refresh screen"),
-                0, nullptr, (void*)ID_REFRESH, FL_MENU_DIVIDER);
-
-  fltk_menu_add(contextMenu, p_("ContextMenu|", "&Options..."),
-                0, nullptr, (void*)ID_OPTIONS, 0);
-  fltk_menu_add(contextMenu, p_("ContextMenu|", "Connection &info..."),
-                0, nullptr, (void*)ID_INFO, 0);
-  fltk_menu_add(contextMenu, p_("ContextMenu|", "About &TigerVNC..."),
-                0, nullptr, (void*)ID_ABOUT, 0);
+  fltk_menu_add(contextMenu, p_("ContextMenu|", "&Options..."), 0, nullptr, (void*)ID_OPTIONS, 0);
+  fltk_menu_add(contextMenu, p_("ContextMenu|", "Connection &info..."), 0, nullptr, (void*)ID_INFO, 0);
+  fltk_menu_add(contextMenu, p_("ContextMenu|", "About &TigerVNC..."), 0, nullptr, (void*)ID_ABOUT, 0);
 }
 #pragma GCC diagnostic pop
 
-void Viewport::popupContextMenu()
-{
-  const Fl_Menu_Item *m;
+void Viewport::popupContextMenu() {
+  const Fl_Menu_Item* m;
   char buffer[1024];
 
   // Make sure the menu is reset to its initial state between goes or
@@ -1071,8 +1008,7 @@ void Viewport::popupContextMenu()
     OptionsDialog::showDialog();
     break;
   case ID_INFO:
-    if (fltk_escape(cc->connectionInfo().c_str(),
-                    buffer, sizeof(buffer)) < sizeof(buffer)) {
+    if (fltk_escape(cc->connectionInfo().c_str(), buffer, sizeof(buffer)) < sizeof(buffer)) {
       fl_message_title(_("VNC connection info"));
       fl_message("%s", buffer);
     }
@@ -1083,9 +1019,8 @@ void Viewport::popupContextMenu()
   }
 }
 
-void Viewport::handleOptions(void *data)
-{
-  Viewport *self = (Viewport*)data;
+void Viewport::handleOptions(void* data) {
+  Viewport* self = (Viewport*)data;
   unsigned modifierMask;
 
   modifierMask = 0;

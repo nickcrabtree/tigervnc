@@ -1,15 +1,15 @@
 /* Copyright 2016 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -34,8 +34,7 @@
 
 static core::LogWriter vlog("SurfaceDebug");
 
-void Surface::clear(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
-{
+void Surface::clear(unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
   XRenderColor color;
 
   color.red = (unsigned)r * 65535 / 255 * a / 255;
@@ -43,30 +42,22 @@ void Surface::clear(unsigned char r, unsigned char g, unsigned char b, unsigned 
   color.blue = (unsigned)b * 65535 / 255 * a / 255;
   color.alpha = (unsigned)a * 65535 / 255;
 
-  XRenderFillRectangle(fl_display, PictOpSrc, picture, &color,
-                       0, 0, width(), height());
+  XRenderFillRectangle(fl_display, PictOpSrc, picture, &color, 0, 0, width(), height());
 }
 
-void Surface::draw(int src_x, int src_y, int dst_x, int dst_y,
-                   int dst_w, int dst_h)
-{
+void Surface::draw(int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h) {
   Picture winPict;
 
   winPict = XRenderCreatePicture(fl_display, fl_window, visFormat, 0, nullptr);
-  XRenderComposite(fl_display, PictOpSrc, picture, None, winPict,
-                   src_x, src_y, 0, 0, dst_x, dst_y, dst_w, dst_h);
+  XRenderComposite(fl_display, PictOpSrc, picture, None, winPict, src_x, src_y, 0, 0, dst_x, dst_y, dst_w, dst_h);
   XRenderFreePicture(fl_display, winPict);
 }
 
-void Surface::draw(Surface* dst, int src_x, int src_y,
-                   int dst_x, int dst_y, int dst_w, int dst_h)
-{
-  XRenderComposite(fl_display, PictOpSrc, picture, None, dst->picture,
-                   src_x, src_y, 0, 0, dst_x, dst_y, dst_w, dst_h);
+void Surface::draw(Surface* dst, int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h) {
+  XRenderComposite(fl_display, PictOpSrc, picture, None, dst->picture, src_x, src_y, 0, 0, dst_x, dst_y, dst_w, dst_h);
 }
 
-static Picture alpha_mask(int a)
-{
+static Picture alpha_mask(int a) {
   Pixmap pixmap;
   XRenderPictFormat* format;
   XRenderPictureAttributes rep;
@@ -76,8 +67,7 @@ static Picture alpha_mask(int a)
   if (a == 255)
     return None;
 
-  pixmap = XCreatePixmap(fl_display, XDefaultRootWindow(fl_display),
-                         1, 1, 8);
+  pixmap = XCreatePixmap(fl_display, XDefaultRootWindow(fl_display), 1, 1, 8);
 
   format = XRenderFindStandardFormat(fl_display, PictStandardA8);
   rep.repeat = RepeatNormal;
@@ -86,50 +76,41 @@ static Picture alpha_mask(int a)
 
   color.alpha = (unsigned)a * 65535 / 255;
 
-  XRenderFillRectangle(fl_display, PictOpSrc, pict, &color,
-                       0, 0, 1, 1);
+  XRenderFillRectangle(fl_display, PictOpSrc, pict, &color, 0, 0, 1, 1);
 
   return pict;
 }
 
-void Surface::blend(int src_x, int src_y, int dst_x, int dst_y,
-                    int dst_w, int dst_h, int a)
-{
+void Surface::blend(int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h, int a) {
   Picture winPict, alpha;
 
   winPict = XRenderCreatePicture(fl_display, fl_window, visFormat, 0, nullptr);
   alpha = alpha_mask(a);
-  XRenderComposite(fl_display, PictOpOver, picture, alpha, winPict,
-                   src_x, src_y, 0, 0, dst_x, dst_y, dst_w, dst_h);
+  XRenderComposite(fl_display, PictOpOver, picture, alpha, winPict, src_x, src_y, 0, 0, dst_x, dst_y, dst_w, dst_h);
   XRenderFreePicture(fl_display, winPict);
 
   if (alpha != None)
     XRenderFreePicture(fl_display, alpha);
 }
 
-void Surface::blend(Surface* dst, int src_x, int src_y,
-                    int dst_x, int dst_y, int dst_w, int dst_h, int a)
-{
+void Surface::blend(Surface* dst, int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h, int a) {
   Picture alpha;
 
   alpha = alpha_mask(a);
-  XRenderComposite(fl_display, PictOpOver, picture, alpha, dst->picture,
-                   src_x, src_y, 0, 0, dst_x, dst_y, dst_w, dst_h);
+  XRenderComposite(fl_display, PictOpOver, picture, alpha, dst->picture, src_x, src_y, 0, 0, dst_x, dst_y, dst_w,
+                   dst_h);
   if (alpha != None)
     XRenderFreePicture(fl_display, alpha);
 }
 
-
-void Surface::alloc()
-{
+void Surface::alloc() {
   XRenderPictFormat templ;
   XRenderPictFormat* format;
 
   // Might not be open at this point
   fl_open_display();
 
-  pixmap = XCreatePixmap(fl_display, XDefaultRootWindow(fl_display),
-                         width(), height(), 32);
+  pixmap = XCreatePixmap(fl_display, XDefaultRootWindow(fl_display), width(), height(), 32);
 
   // Our code assumes a BGRA byte order, regardless of what the endian
   // of the machine is or the native byte order of XImage, so make sure
@@ -138,25 +119,24 @@ void Surface::alloc()
   templ.depth = 32;
   if (XImageByteOrder(fl_display) == MSBFirst) {
     templ.direct.alpha = 0;
-    templ.direct.red   = 8;
+    templ.direct.red = 8;
     templ.direct.green = 16;
-    templ.direct.blue  = 24;
+    templ.direct.blue = 24;
   } else {
     templ.direct.alpha = 24;
-    templ.direct.red   = 16;
+    templ.direct.red = 16;
     templ.direct.green = 8;
-    templ.direct.blue  = 0;
+    templ.direct.blue = 0;
   }
   templ.direct.alphaMask = 0xff;
   templ.direct.redMask = 0xff;
   templ.direct.greenMask = 0xff;
   templ.direct.blueMask = 0xff;
 
-  format = XRenderFindFormat(fl_display, PictFormatType | PictFormatDepth |
-                             PictFormatRed | PictFormatRedMask |
-                             PictFormatGreen | PictFormatGreenMask |
-                             PictFormatBlue | PictFormatBlueMask |
-                             PictFormatAlpha | PictFormatAlphaMask,
+  format = XRenderFindFormat(fl_display,
+                             PictFormatType | PictFormatDepth | PictFormatRed | PictFormatRedMask | PictFormatGreen |
+                                 PictFormatGreenMask | PictFormatBlue | PictFormatBlueMask | PictFormatAlpha |
+                                 PictFormatAlphaMask,
                              &templ, 0);
 
   if (!format)
@@ -167,14 +147,12 @@ void Surface::alloc()
   visFormat = XRenderFindVisualFormat(fl_display, fl_visual->visual);
 }
 
-void Surface::dealloc()
-{
+void Surface::dealloc() {
   XRenderFreePicture(fl_display, picture);
   XFreePixmap(fl_display, pixmap);
 }
 
-void Surface::update(const Fl_RGB_Image* image)
-{
+void Surface::update(const Fl_RGB_Image* image) {
   XImage* img;
   GC gc;
 
@@ -185,9 +163,7 @@ void Surface::update(const Fl_RGB_Image* image)
   assert(image->w() == width());
   assert(image->h() == height());
 
-  img = XCreateImage(fl_display, (Visual*)CopyFromParent, 32,
-                     ZPixmap, 0, nullptr, width(), height(),
-                     32, 0);
+  img = XCreateImage(fl_display, (Visual*)CopyFromParent, 32, ZPixmap, 0, nullptr, width(), height(), 32, 0);
   if (!img)
     throw std::runtime_error("XCreateImage");
 
@@ -198,8 +174,8 @@ void Surface::update(const Fl_RGB_Image* image)
   // Convert data and pre-multiply alpha
   in = (const unsigned char*)image->data()[0];
   out = (unsigned char*)img->data;
-  for (y = 0;y < img->height;y++) {
-    for (x = 0;x < img->width;x++) {
+  for (y = 0; y < img->height; y++) {
+    for (x = 0; x < img->width; x++) {
       switch (image->d()) {
       case 1:
         *out++ = in[0];
@@ -233,16 +209,13 @@ void Surface::update(const Fl_RGB_Image* image)
   }
 
   gc = XCreateGC(fl_display, pixmap, 0, nullptr);
-  XPutImage(fl_display, pixmap, gc, img,
-            0, 0, 0, 0, img->width, img->height);
+  XPutImage(fl_display, pixmap, gc, img, 0, 0, 0, 0, img->width, img->height);
   XFreeGC(fl_display, gc);
 
   XDestroyImage(img);
 }
 
-void Surface::debugSampleRect(int src_x, int src_y, int width, int height,
-                              const char* tag)
-{
+void Surface::debugSampleRect(int src_x, int src_y, int width, int height, const char* tag) {
   const char* env = getenv("TIGERVNC_DEBUG_SAMPLE_REGION");
   if (!env || env[0] == '\0' || env[0] == '0')
     return;
@@ -251,16 +224,12 @@ void Surface::debugSampleRect(int src_x, int src_y, int width, int height,
     return;
 
   // Clamp to surface bounds to avoid XGetImage failures
-  if (src_x < 0 || src_y < 0 ||
-      src_x + width > this->width() || src_y + height > this->height())
+  if (src_x < 0 || src_y < 0 || src_x + width > this->width() || src_y + height > this->height())
     return;
 
-  XImage* img = XGetImage(fl_display, pixmap,
-                          src_x, src_y, width, height,
-                          AllPlanes, ZPixmap);
+  XImage* img = XGetImage(fl_display, pixmap, src_x, src_y, width, height, AllPlanes, ZPixmap);
   if (!img) {
-    vlog.error("debugSampleRect[%s]: XGetImage failed at (%d,%d %dx%d)",
-               tag, src_x, src_y, width, height);
+    vlog.error("debugSampleRect[%s]: XGetImage failed at (%d,%d %dx%d)", tag, src_x, src_y, width, height);
     return;
   }
 
@@ -270,8 +239,7 @@ void Surface::debugSampleRect(int src_x, int src_y, int width, int height,
   const unsigned long long fnv_prime = 1099511628211ULL;
 
   for (int y = 0; y < img->height; y++) {
-    const unsigned char* row =
-      (const unsigned char*)img->data + y * img->bytes_per_line;
+    const unsigned char* row = (const unsigned char*)img->data + y * img->bytes_per_line;
     for (int x = 0; x < img->width; x++) {
       const unsigned char* p = row + x * 4; // BGRA
       hash ^= (unsigned long long)p[0];
@@ -286,11 +254,15 @@ void Surface::debugSampleRect(int src_x, int src_y, int width, int height,
   }
 
   // Log a small number of sample pixels: top-left, center, bottom-right
-  struct SamplePos { int x; int y; const char* label; };
+  struct SamplePos {
+    int x;
+    int y;
+    const char* label;
+  };
   SamplePos samples[] = {
-    {0, 0, "tl"},
-    {width / 2, height / 2, "c"},
-    {width - 1, height - 1, "br"},
+      {0, 0, "tl"},
+      {width / 2, height / 2, "c"},
+      {width - 1, height - 1, "br"},
   };
 
   for (const auto& s : samples) {
@@ -300,15 +272,10 @@ void Surface::debugSampleRect(int src_x, int src_y, int width, int height,
       continue;
 
     // Assume 32bpp BGRA as configured in alloc()
-    const unsigned char* p =
-      (const unsigned char*)img->data + y * img->bytes_per_line + x * 4;
-    vlog.info("debugSampleRect[%s] %s (%d,%d): [%u %u %u %u] hash=0x%016llx",
-              tag, s.label, src_x + x, src_y + y,
-              (unsigned)p[0], (unsigned)p[1],
-              (unsigned)p[2], (unsigned)p[3],
-              hash);
+    const unsigned char* p = (const unsigned char*)img->data + y * img->bytes_per_line + x * 4;
+    vlog.info("debugSampleRect[%s] %s (%d,%d): [%u %u %u %u] hash=0x%016llx", tag, s.label, src_x + x, src_y + y,
+              (unsigned)p[0], (unsigned)p[1], (unsigned)p[2], (unsigned)p[3], hash);
   }
 
   XDestroyImage(img);
 }
-

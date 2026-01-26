@@ -1,16 +1,16 @@
 /* Copyright 2019 Aaron Sowry for Cendio AB
  * Copyright 2019-2020 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -24,9 +24,9 @@
 #include <assert.h>
 #include <string.h>
 
-#include <X11/extensions/XInput2.h>
-#include <X11/extensions/XI2.h>
 #include <X11/XKBlib.h>
+#include <X11/extensions/XI2.h>
+#include <X11/extensions/XInput2.h>
 
 #include <FL/x.H>
 
@@ -37,18 +37,16 @@
 #include <rfb/keysymdef.h>
 #endif
 
-#include "i18n.h"
 #include "XInputTouchHandler.h"
+#include "i18n.h"
 
 static core::LogWriter vlog("XInputTouchHandler");
 
 static bool grabbed = false;
 
-XInputTouchHandler::XInputTouchHandler(Window wnd_)
-  : wnd(wnd_), fakeStateMask(0)
-{
+XInputTouchHandler::XInputTouchHandler(Window wnd_) : wnd(wnd_), fakeStateMask(0) {
   XIEventMask eventmask;
-  unsigned char flags[XIMaskLen(XI_LASTEVENT)] = { 0 };
+  unsigned char flags[XIMaskLen(XI_LASTEVENT)] = {0};
 
   // Event delivery is broken when somebody else does a pointer grab,
   // so we need to listen to all devices and do filtering of master
@@ -86,9 +84,8 @@ XInputTouchHandler::XInputTouchHandler(Window wnd_)
   XISelectEvents(fl_display, wnd, &eventmask, 1);
 }
 
-bool XInputTouchHandler::grabPointer()
-{
-  XIEventMask *curmasks;
+bool XInputTouchHandler::grabPointer() {
+  XIEventMask* curmasks;
   int num_masks;
 
   int ret, ndevices;
@@ -127,14 +124,7 @@ bool XInputTouchHandler::grabPointer()
 
     curmasks[0].deviceid = device->deviceid;
 
-    ret = XIGrabDevice(fl_display,
-                       device->deviceid,
-                       wnd,
-                       CurrentTime,
-                       None,
-                       XIGrabModeAsync,
-                       XIGrabModeAsync,
-                       True,
+    ret = XIGrabDevice(fl_display, device->deviceid, wnd, CurrentTime, None, XIGrabModeAsync, XIGrabModeAsync, True,
                        &(curmasks[0]));
 
     if (ret) {
@@ -160,8 +150,7 @@ bool XInputTouchHandler::grabPointer()
   return true;
 }
 
-void XInputTouchHandler::ungrabPointer()
-{
+void XInputTouchHandler::ungrabPointer() {
   int ndevices;
   XIDeviceInfo *devices, *device;
 
@@ -183,8 +172,7 @@ void XInputTouchHandler::ungrabPointer()
   grabbed = false;
 }
 
-void XInputTouchHandler::processEvent(const XIDeviceEvent* devev)
-{
+void XInputTouchHandler::processEvent(const XIDeviceEvent* devev) {
   // FLTK doesn't understand X Input events, and we've stopped
   // delivery of Core events by enabling the X Input ones. Make
   // FLTK happy by faking Core events based on the X Input ones.
@@ -208,9 +196,8 @@ void XInputTouchHandler::processEvent(const XIDeviceEvent* devev)
   if (devev->flags & XIPointerEmulated) {
     // We still want the server to do the scroll wheel to button thing
     // though, so keep those
-    if (((devev->evtype == XI_ButtonPress) ||
-         (devev->evtype == XI_ButtonRelease)) &&
-        (devev->detail >= 4) && (devev->detail <= 7)) {
+    if (((devev->evtype == XI_ButtonPress) || (devev->evtype == XI_ButtonRelease)) && (devev->detail >= 4) &&
+        (devev->detail <= 7)) {
       ;
     } else {
       // Sometimes the server incorrectly sends us various events with
@@ -241,11 +228,7 @@ void XInputTouchHandler::processEvent(const XIDeviceEvent* devev)
     // XInput2 wants us to explicitly accept touch sequences
     // for grabbed devices before it will pass events
     if (grabbed) {
-      XIAllowTouchEvents(fl_display,
-                         devev->deviceid,
-                         devev->detail,
-                         devev->event,
-                         XIAcceptTouch);
+      XIAllowTouchEvents(fl_display, devev->deviceid, devev->detail, devev->event, XIAcceptTouch);
     }
 
     handleTouchBegin(devev->detail, devev->event_x, devev->event_y);
@@ -262,8 +245,7 @@ void XInputTouchHandler::processEvent(const XIDeviceEvent* devev)
   }
 }
 
-void XInputTouchHandler::preparePointerEvent(XEvent* dst, const XIDeviceEvent* src)
-{
+void XInputTouchHandler::preparePointerEvent(XEvent* dst, const XIDeviceEvent* src) {
   // XButtonEvent and XMotionEvent are almost identical, so we
   // don't have to care which it is for these fields
   dst->xbutton.serial = src->serial;
@@ -281,8 +263,7 @@ void XInputTouchHandler::preparePointerEvent(XEvent* dst, const XIDeviceEvent* s
   dst->xbutton.same_screen = True;
 }
 
-void XInputTouchHandler::fakeMotionEvent(const XIDeviceEvent* origEvent)
-{
+void XInputTouchHandler::fakeMotionEvent(const XIDeviceEvent* origEvent) {
   XEvent fakeEvent;
 
   memset(&fakeEvent, 0, sizeof(XEvent));
@@ -294,9 +275,7 @@ void XInputTouchHandler::fakeMotionEvent(const XIDeviceEvent* origEvent)
   pushFakeEvent(&fakeEvent);
 }
 
-void XInputTouchHandler::fakeButtonEvent(bool press, int button,
-                                         const XIDeviceEvent* origEvent)
-{
+void XInputTouchHandler::fakeButtonEvent(bool press, int button, const XIDeviceEvent* origEvent) {
   XEvent fakeEvent;
 
   memset(&fakeEvent, 0, sizeof(XEvent));
@@ -311,8 +290,7 @@ void XInputTouchHandler::fakeButtonEvent(bool press, int button,
   pushFakeEvent(&fakeEvent);
 }
 
-void XInputTouchHandler::preparePointerEvent(XEvent* dst, const GestureEvent src)
-{
+void XInputTouchHandler::preparePointerEvent(XEvent* dst, const GestureEvent src) {
   Window root, child;
   int rootX, rootY;
   XkbStateRec xkbState;
@@ -321,10 +299,7 @@ void XInputTouchHandler::preparePointerEvent(XEvent* dst, const GestureEvent src
   // to fake these events based on the current state of things
 
   root = XDefaultRootWindow(fl_display);
-  XTranslateCoordinates(fl_display, wnd, root,
-                        src.eventX,
-                        src.eventY,
-                        &rootX, &rootY, &child);
+  XTranslateCoordinates(fl_display, wnd, root, src.eventX, src.eventY, &rootX, &rootY, &child);
   XkbGetState(fl_display, XkbUseCoreKbd, &xkbState);
 
   // XButtonEvent and XMotionEvent are almost identical, so we
@@ -344,8 +319,7 @@ void XInputTouchHandler::preparePointerEvent(XEvent* dst, const GestureEvent src
   dst->xbutton.same_screen = True;
 }
 
-void XInputTouchHandler::fakeMotionEvent(const GestureEvent origEvent)
-{
+void XInputTouchHandler::fakeMotionEvent(const GestureEvent origEvent) {
   XEvent fakeEvent;
 
   memset(&fakeEvent, 0, sizeof(XEvent));
@@ -359,9 +333,7 @@ void XInputTouchHandler::fakeMotionEvent(const GestureEvent origEvent)
   pushFakeEvent(&fakeEvent);
 }
 
-void XInputTouchHandler::fakeButtonEvent(bool press, int button,
-                                         const GestureEvent origEvent)
-{
+void XInputTouchHandler::fakeButtonEvent(bool press, int button, const GestureEvent origEvent) {
   XEvent fakeEvent;
 
   memset(&fakeEvent, 0, sizeof(XEvent));
@@ -378,15 +350,13 @@ void XInputTouchHandler::fakeButtonEvent(bool press, int button,
 
   // Set/unset the bit for the correct button
   if (press) {
-    fakeStateMask |= (1<<(7+button));
+    fakeStateMask |= (1 << (7 + button));
   } else {
-    fakeStateMask &= ~(1<<(7+button));
+    fakeStateMask &= ~(1 << (7 + button));
   }
 }
 
-void XInputTouchHandler::fakeKeyEvent(bool press, int keysym,
-                                      const GestureEvent origEvent)
-{
+void XInputTouchHandler::fakeKeyEvent(bool press, int keysym, const GestureEvent origEvent) {
   XEvent fakeEvent;
 
   Window root, child;
@@ -396,10 +366,7 @@ void XInputTouchHandler::fakeKeyEvent(bool press, int keysym,
   int modmask;
 
   root = XDefaultRootWindow(fl_display);
-  XTranslateCoordinates(fl_display, wnd, root,
-                        origEvent.eventX,
-                        origEvent.eventY,
-                        &rootX, &rootY, &child);
+  XTranslateCoordinates(fl_display, wnd, root, origEvent.eventX, origEvent.eventY, &rootX, &rootY, &child);
   XkbGetState(fl_display, XkbUseCoreKbd, &xkbState);
 
   KeyCode kc = XKeysymToKeycode(fl_display, keysym);
@@ -428,20 +395,20 @@ void XInputTouchHandler::fakeKeyEvent(bool press, int keysym,
 
   pushFakeEvent(&fakeEvent);
 
-  switch(keysym) {
-    case XK_Shift_L:
-    case XK_Shift_R:
-      modmask = ShiftMask;
-      break;
-    case XK_Caps_Lock:
-      modmask = LockMask;
-      break;
-    case XK_Control_L:
-    case XK_Control_R:
-      modmask = ControlMask;
-      break;
-    default:
-      modmask = 0;
+  switch (keysym) {
+  case XK_Shift_L:
+  case XK_Shift_R:
+    modmask = ShiftMask;
+    break;
+  case XK_Caps_Lock:
+    modmask = LockMask;
+    break;
+  case XK_Control_L:
+  case XK_Control_R:
+    modmask = ControlMask;
+    break;
+  default:
+    modmask = 0;
   }
 
   if (press)
@@ -450,13 +417,11 @@ void XInputTouchHandler::fakeKeyEvent(bool press, int keysym,
     fakeStateMask &= ~modmask;
 }
 
-void XInputTouchHandler::handleGestureEvent(const GestureEvent& event)
-{
+void XInputTouchHandler::handleGestureEvent(const GestureEvent& event) {
   BaseTouchHandler::handleGestureEvent(event);
 }
 
-void XInputTouchHandler::pushFakeEvent(XEvent* event)
-{
+void XInputTouchHandler::pushFakeEvent(XEvent* event) {
   // Perhaps use XPutBackEvent() to avoid round trip latency?
   XSendEvent(fl_display, event->xany.window, true, 0, event);
 }

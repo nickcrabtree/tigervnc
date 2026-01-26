@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -27,11 +27,11 @@
 #include <rfb_win32/Win32Util.h>
 
 #ifndef min
- #define min(a,b) ((a)<(b)?(a):(b))
+#define min(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
 #ifndef max
- #define max(a,b) ((a)>(b)?(a):(b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
 #endif
 
 using namespace core;
@@ -40,18 +40,17 @@ using namespace win32;
 
 static LogWriter vlog("MonitorInfo");
 
-
 static void fillMonitorInfo(HMONITOR monitor, MONITORINFOEXA* mi) {
   vlog.debug("monitor=%p", monitor);
   memset(mi, 0, sizeof(MONITORINFOEXA));
   mi->cbSize = sizeof(MONITORINFOEXA);
   if (!GetMonitorInfo(monitor, mi))
     throw core::win32_error("Failed to GetMonitorInfo", GetLastError());
-  vlog.debug("Monitor is %ld,%ld-%ld,%ld", mi->rcMonitor.left, mi->rcMonitor.top, mi->rcMonitor.right, mi->rcMonitor.bottom);
+  vlog.debug("Monitor is %ld,%ld-%ld,%ld", mi->rcMonitor.left, mi->rcMonitor.top, mi->rcMonitor.right,
+             mi->rcMonitor.bottom);
   vlog.debug("Work area is %ld,%ld-%ld,%ld", mi->rcWork.left, mi->rcWork.top, mi->rcWork.right, mi->rcWork.bottom);
   vlog.debug("Device is \"%s\"", mi->szDevice);
 }
-
 
 MonitorInfo::MonitorInfo(HWND window) {
   cbSize = sizeof(MonitorInfo);
@@ -73,16 +72,12 @@ MonitorInfo::MonitorInfo(const RECT& r) {
   fillMonitorInfo(monitor, this);
 }
 
-
 struct monitorByNameData {
   MONITORINFOEXA* info;
   const char* monitorName;
 };
 
-static BOOL CALLBACK monitorByNameEnumProc(HMONITOR monitor,
-                                    HDC /*dc*/,
-                                    LPRECT /*pos*/,
-                                    LPARAM d) {
+static BOOL CALLBACK monitorByNameEnumProc(HMONITOR monitor, HDC /*dc*/, LPRECT /*pos*/, LPARAM d) {
   monitorByNameData* data = (monitorByNameData*)d;
   memset(data->info, 0, sizeof(MONITORINFOEXA));
   data->info->cbSize = sizeof(MONITORINFOEXA);
@@ -115,16 +110,20 @@ void MonitorInfo::clipTo(RECT* r) {
   vlog.debug("clipTo monitor=%s", szDevice);
 
   if (r->top < rcWork.top) {
-    r->bottom += rcWork.top - r->top; r->top = rcWork.top;
+    r->bottom += rcWork.top - r->top;
+    r->top = rcWork.top;
   }
   if (r->left < rcWork.left) {
-    r->right += rcWork.left - r->left; r->left = rcWork.left;
+    r->right += rcWork.left - r->left;
+    r->left = rcWork.left;
   }
   if (r->bottom > rcWork.bottom) {
-    r->top += rcWork.bottom - r->bottom; r->bottom = rcWork.bottom;
+    r->top += rcWork.bottom - r->bottom;
+    r->bottom = rcWork.bottom;
   }
   if (r->right > rcWork.right) {
-    r->left += rcWork.right - r->right; r->right = rcWork.right;
+    r->left += rcWork.right - r->right;
+    r->right = rcWork.right;
   }
   r->left = max(r->left, rcWork.left);
   r->right = min(r->right, rcWork.right);
@@ -136,8 +135,6 @@ void MonitorInfo::clipTo(HWND handle) {
   RECT r;
   GetWindowRect(handle, &r);
   clipTo(&r);
-  SetWindowPos(handle, nullptr, r.left, r.top, r.right-r.left, r.bottom-r.top,
+  SetWindowPos(handle, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top,
                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
 }
-
-

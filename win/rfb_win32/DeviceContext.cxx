@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2014 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -24,14 +24,13 @@
 #include <core/Exception.h>
 #include <core/LogWriter.h>
 
-#include <rfb_win32/DeviceContext.h>
-#include <rfb_win32/CompatibleBitmap.h>
 #include <rfb_win32/BitmapInfo.h>
+#include <rfb_win32/CompatibleBitmap.h>
+#include <rfb_win32/DeviceContext.h>
 
 using namespace core;
 using namespace rfb;
 using namespace win32;
-
 
 static LogWriter vlog("DeviceContext");
 
@@ -65,7 +64,7 @@ PixelFormat DeviceContext::getPF(HDC dc) {
   bpp = bi.bmiHeader.biBitCount;
 
   if (trueColour) {
-    DWORD rMask=0, gMask=0, bMask=0;
+    DWORD rMask = 0, gMask = 0, bMask = 0;
 
     // Which true colour format is the DIB section using?
     switch (bi.bmiHeader.biCompression) {
@@ -97,8 +96,7 @@ PixelFormat DeviceContext::getPF(HDC dc) {
       rMask = bi.mask.red;
       gMask = bi.mask.green;
       bMask = bi.mask.blue;
-      vlog.info("%d-bit BitFields: (%lx, %lx, %lx)",
-                 bi.bmiHeader.biBitCount, rMask, gMask, bMask);
+      vlog.info("%d-bit BitFields: (%lx, %lx, %lx)", bi.bmiHeader.biBitCount, rMask, gMask, bMask);
       break;
     };
 
@@ -132,17 +130,14 @@ PixelFormat DeviceContext::getPF(HDC dc) {
     depth = bpp;
     if (bpp < 8)
       bpp = 8;
-    vlog.info("%d-colour palettised", 1<<depth);
+    vlog.info("%d-colour palettised", 1 << depth);
     // Aren't really used, but set them to keep the compiler happy
     redMax = redShift = 0;
     greenMax = greenShift = 0;
     blueMax = blueShift = 0;
   }
 
-
-  return PixelFormat(bpp, depth, bigEndian, trueColour,
-		                 redMax, greenMax, blueMax,
-		                 redShift, greenShift, blueShift);
+  return PixelFormat(bpp, depth, bigEndian, trueColour, redMax, greenMax, blueMax, redShift, greenShift, blueShift);
 }
 
 Rect DeviceContext::getClipBox() const {
@@ -157,7 +152,6 @@ Rect DeviceContext::getClipBox(HDC dc) {
   return {cr.left, cr.top, cr.right, cr.bottom};
 }
 
-
 DeviceDC::DeviceDC(const char* deviceName) {
   dc = ::CreateDC("DISPLAY", deviceName, nullptr, nullptr);
   if (!dc)
@@ -168,7 +162,6 @@ DeviceDC::~DeviceDC() {
   if (dc)
     DeleteDC(dc);
 }
-
 
 WindowDC::WindowDC(HWND wnd) : hwnd(wnd) {
   dc = GetDC(wnd);
@@ -181,7 +174,6 @@ WindowDC::~WindowDC() {
     ReleaseDC(hwnd, dc);
 }
 
-
 CompatibleDC::CompatibleDC(HDC existing) {
   dc = CreateCompatibleDC(existing);
   if (!dc)
@@ -193,12 +185,10 @@ CompatibleDC::~CompatibleDC() {
     DeleteDC(dc);
 }
 
-
-BitmapDC::BitmapDC(HDC hdc, HBITMAP hbitmap) : CompatibleDC(hdc){
+BitmapDC::BitmapDC(HDC hdc, HBITMAP hbitmap) : CompatibleDC(hdc) {
   oldBitmap = (HBITMAP)SelectObject(dc, hbitmap);
   if (!oldBitmap)
-    throw core::win32_error("SelectObject to CompatibleDC failed",
-    GetLastError());
+    throw core::win32_error("SelectObject to CompatibleDC failed", GetLastError());
 }
 
 BitmapDC::~BitmapDC() {

@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2010 D. R. Commander.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -33,8 +33,8 @@
 
 #ifdef _DIALOG_CAPTURE
 #ifdef PropSheet_IndexToId
-#include <rfb_win32/DeviceFrameBuffer.h>
 #include <extra/LoadBMP.cxx>
+#include <rfb_win32/DeviceFrameBuffer.h>
 #else
 #undef _DIALOG_CAPTURE
 #pragma message("  NOTE: Not building Dialog Capture support.")
@@ -47,30 +47,21 @@ using namespace rfb::win32;
 static core::LogWriter dlog("Dialog");
 static core::LogWriter plog("PropSheet");
 
+Dialog::Dialog(HINSTANCE inst_) : inst(inst_), handle(nullptr), alreadyShowing(false) {}
 
-Dialog::Dialog(HINSTANCE inst_)
-: inst(inst_), handle(nullptr), alreadyShowing(false)
-{
-}
+Dialog::~Dialog() {}
 
-Dialog::~Dialog()
-{
-}
-
-
-bool Dialog::showDialog(const char* resource, HWND owner)
-{
-  if (alreadyShowing) return false;
+bool Dialog::showDialog(const char* resource, HWND owner) {
+  if (alreadyShowing)
+    return false;
   handle = nullptr;
   alreadyShowing = true;
-  INT_PTR result = DialogBoxParam(inst, resource, owner,
-                                  staticDialogProc, (LPARAM)this);
-  if (result<0)
+  INT_PTR result = DialogBoxParam(inst, resource, owner, staticDialogProc, (LPARAM)this);
+  if (result < 0)
     throw core::win32_error("DialogBoxParam failed", GetLastError());
   alreadyShowing = false;
   return (result == 1);
 }
-
 
 bool Dialog::isItemChecked(int id) {
   return SendMessage(GetDlgItem(handle, id), BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -99,28 +90,22 @@ void Dialog::setItemString(int id, const char* s) {
   SetDlgItemText(handle, id, s);
 }
 
-
 void Dialog::enableItem(int id, bool state) {
   EnableWindow(GetDlgItem(handle, id), state);
 }
 
-
-
-
-INT_PTR CALLBACK Dialog::staticDialogProc(HWND hwnd, UINT msg,
-				       WPARAM wParam, LPARAM lParam)
-{
+INT_PTR CALLBACK Dialog::staticDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   if (msg == WM_INITDIALOG)
     SetWindowLongPtr(hwnd, GWLP_USERDATA, lParam);
 
   LONG_PTR self = GetWindowLongPtr(hwnd, GWLP_USERDATA);
-  if (!self) return FALSE;
+  if (!self)
+    return FALSE;
 
   return ((Dialog*)self)->dialogProc(hwnd, msg, wParam, lParam);
 }
 
-BOOL Dialog::dialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
+BOOL Dialog::dialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   switch (msg) {
 
   case WM_INITDIALOG:
@@ -145,12 +130,10 @@ BOOL Dialog::dialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
   case WM_HELP:
     return onHelp(((HELPINFO*)lParam)->iCtrlId);
-
   }
 
   return FALSE;
 }
-
 
 PropSheetPage::PropSheetPage(HINSTANCE inst_, const char* id) : Dialog(inst_), propSheet(nullptr) {
   page.dwSize = sizeof(page);
@@ -162,24 +145,20 @@ PropSheetPage::PropSheetPage(HINSTANCE inst_, const char* id) : Dialog(inst_), p
   page.pfnCallback = nullptr; // staticPageProc;
 }
 
-PropSheetPage::~PropSheetPage() {
-}
+PropSheetPage::~PropSheetPage() {}
 
-
-INT_PTR CALLBACK PropSheetPage::staticPageProc(HWND hwnd, UINT msg,
-				       WPARAM wParam, LPARAM lParam)
-{
+INT_PTR CALLBACK PropSheetPage::staticPageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   if (msg == WM_INITDIALOG)
     SetWindowLongPtr(hwnd, GWLP_USERDATA, ((PROPSHEETPAGE*)lParam)->lParam);
 
   LONG_PTR self = GetWindowLongPtr(hwnd, GWLP_USERDATA);
-  if (!self) return FALSE;
+  if (!self)
+    return FALSE;
 
   return ((PropSheetPage*)self)->dialogProc(hwnd, msg, wParam, lParam);
 }
 
-BOOL PropSheetPage::dialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
+BOOL PropSheetPage::dialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   switch (msg) {
 
   case WM_INITDIALOG:
@@ -200,20 +179,15 @@ BOOL PropSheetPage::dialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
   case WM_HELP:
     return onHelp(((HELPINFO*)lParam)->iCtrlId);
-
   }
 
   return FALSE;
 }
 
-
 PropSheet::PropSheet(HINSTANCE inst_, const char* title_, std::list<PropSheetPage*> pages_, HICON icon_)
-: icon(icon_), pages(pages_), inst(inst_), title(title_), handle(nullptr), alreadyShowing(0) {
-}
+    : icon(icon_), pages(pages_), inst(inst_), title(title_), handle(nullptr), alreadyShowing(0) {}
 
-PropSheet::~PropSheet() {
-}
-
+PropSheet::~PropSheet() {}
 
 // For some reason, DLGTEMPLATEEX isn't defined in the Windows headers - go figure...
 struct DLGTEMPLATEEX {
@@ -241,9 +215,9 @@ static int CALLBACK removeCtxtHelp(HWND /*hwnd*/, UINT message, LPARAM lParam) {
   return TRUE;
 }
 
-
 bool PropSheet::showPropSheet(HWND owner_, bool showApply, bool showCtxtHelp, bool capture) {
-  if (alreadyShowing) return false;
+  if (alreadyShowing)
+    return false;
   alreadyShowing = true;
   int count = pages.size();
 
@@ -252,12 +226,12 @@ bool PropSheet::showPropSheet(HWND owner_, bool showApply, bool showCtxtHelp, bo
     // Create the PropertSheet page GDI objects.
     std::list<PropSheetPage*>::iterator pspi;
     int i = 0;
-    for (pspi=pages.begin(); pspi!=pages.end(); pspi++) {
+    for (pspi = pages.begin(); pspi != pages.end(); pspi++) {
       hpages[i] = CreatePropertySheetPage(&((*pspi)->page));
       (*pspi)->setPropSheet(this);
       i++;
     }
- 
+
     // Initialise and create the PropertySheet itself
     PROPSHEETHEADER header;
     header.dwSize = sizeof(PROPSHEETHEADER); // Requires comctl32.dll 4.71 or greater, ie IE 4 or later
@@ -287,10 +261,11 @@ bool PropSheet::showPropSheet(HWND owner_, bool showApply, bool showCtxtHelp, bo
       char* tmpdir = getenv("TEMP");
       HDC dc = GetWindowDC(handle);
       DeviceFrameBuffer fb(dc);
-      int i=0;
+      int i = 0;
       while (true) {
         int id = PropSheet_IndexToId(handle, i);
-        if (!id) break;
+        if (!id)
+          break;
         PropSheet_SetCurSelByID(handle, id);
         MSG msg;
         while (PeekMessage(&msg, handle, 0, 0, PM_REMOVE)) {
@@ -301,7 +276,7 @@ bool PropSheet::showPropSheet(HWND owner_, bool showApply, bool showCtxtHelp, bo
         char title[128];
         if (!GetWindowText(PropSheet_GetCurrentPageHwnd(handle), title, sizeof(title)))
           sprintf(title, "capture%d", i);
-        for (int j=0; j<strlen(title); j++) {
+        for (int j = 0; j < strlen(title); j++) {
           if (title == '/' || title[j] == '\\' || title[j] == ':')
             title[j] = '-';
         }
@@ -343,18 +318,20 @@ bool PropSheet::showPropSheet(HWND owner_, bool showApply, bool showCtxtHelp, bo
     alreadyShowing = false;
 
     // Clear up the pages' GDI objects
-    for (pspi=pages.begin(); pspi!=pages.end(); pspi++)
+    for (pspi = pages.begin(); pspi != pages.end(); pspi++)
       (*pspi)->setPropSheet(nullptr);
-    delete [] hpages; hpages = nullptr;
+    delete[] hpages;
+    hpages = nullptr;
 
     return true;
   } catch (std::exception&) {
     alreadyShowing = false;
 
     std::list<PropSheetPage*>::iterator pspi;
-    for (pspi=pages.begin(); pspi!=pages.end(); pspi++)
+    for (pspi = pages.begin(); pspi != pages.end(); pspi++)
       (*pspi)->setPropSheet(nullptr);
-    delete [] hpages; hpages = nullptr;
+    delete[] hpages;
+    hpages = nullptr;
 
     throw;
   }
@@ -362,7 +339,7 @@ bool PropSheet::showPropSheet(HWND owner_, bool showApply, bool showCtxtHelp, bo
 
 void PropSheet::reInitPages() {
   std::list<PropSheetPage*>::iterator pspi;
-  for (pspi=pages.begin(); pspi!=pages.end(); pspi++) {
+  for (pspi = pages.begin(); pspi != pages.end(); pspi++) {
     if ((*pspi)->handle)
       (*pspi)->initDialog();
   }
@@ -371,13 +348,12 @@ void PropSheet::reInitPages() {
 bool PropSheet::commitPages() {
   bool result = true;
   std::list<PropSheetPage*>::iterator pspi;
-  for (pspi=pages.begin(); pspi!=pages.end(); pspi++) {
+  for (pspi = pages.begin(); pspi != pages.end(); pspi++) {
     if ((*pspi)->handle)
       result = result && (*pspi)->onOk();
   }
   return result;
 }
-
 
 void PropSheetPage::setChanged(bool changed) {
   if (propSheet) {

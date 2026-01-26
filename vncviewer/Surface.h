@@ -1,15 +1,15 @@
 /* Copyright 2016 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -36,27 +36,26 @@ public:
   Surface(const Fl_RGB_Image* image);
   ~Surface();
 
-  int width() { return w; }
-  int height() { return h; }
+  int width() {
+    return w;
+  }
+  int height() {
+    return h;
+  }
 
-  void clear(unsigned char r, unsigned char g, unsigned char b, unsigned char a=255);
+  void clear(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255);
 
-  void draw(int src_x, int src_y, int dst_x, int dst_y,
-            int dst_w, int dst_h);
-  void draw(Surface* dst, int src_x, int src_y, int dst_x, int dst_y,
-            int dst_w, int dst_h);
+  void draw(int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h);
+  void draw(Surface* dst, int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h);
 
-  void blend(int src_x, int src_y, int dst_x, int dst_y,
-             int dst_w, int dst_h, int a=255);
-  void blend(Surface* dst, int src_x, int src_y, int dst_x, int dst_y,
-             int dst_w, int dst_h, int a=255);
+  void blend(int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h, int a = 255);
+  void blend(Surface* dst, int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h, int a = 255);
 
   // Debug helper: sample a small rectangle from this surface and log
   // representative pixel values. Only active on platforms where
   // implemented and when TIGERVNC_DEBUG_SAMPLE_REGION is set in the
   // environment.
-  void debugSampleRect(int src_x, int src_y, int w, int h,
-                       const char* tag);
+  void debugSampleRect(int src_x, int src_y, int w, int h, const char* tag);
 
 protected:
   void alloc();
@@ -71,9 +70,9 @@ protected:
   HBITMAP bitmap;
 #elif defined(__APPLE__)
   unsigned char* data;
-  friend class SurfaceOSXOrientation_BlitPreservesTopRow_Test; // test access to data buffer
+  friend class SurfaceOSXOrientation_BlitPreservesTopRow_Test;          // test access to data buffer
   friend class SurfaceOSXWindowOrientation_RendersUprightInWindow_Test; // test access to data buffer
-  friend class SurfaceOSXWindowOrientation; // fixture helper access
+  friend class SurfaceOSXWindowOrientation;                             // fixture helper access
 #else
   Pixmap pixmap;
   Picture picture;
@@ -82,4 +81,3 @@ protected:
 };
 
 #endif
-

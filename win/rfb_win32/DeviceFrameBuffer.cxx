@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2014-2017 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -30,8 +30,8 @@
 
 #include <core/LogWriter.h>
 
-#include <rfb_win32/DeviceFrameBuffer.h>
 #include <rfb_win32/DeviceContext.h>
+#include <rfb_win32/DeviceFrameBuffer.h>
 #include <rfb_win32/IconInfo.h>
 
 #include <rfb/VNCServer.h>
@@ -42,17 +42,13 @@ using namespace win32;
 
 static LogWriter vlog("DeviceFrameBuffer");
 
-BoolParameter DeviceFrameBuffer::useCaptureBlt("UseCaptureBlt",
-  "Use a slower capture method that ensures that alpha blended windows appear correctly",
-  true);
-
+BoolParameter DeviceFrameBuffer::useCaptureBlt(
+    "UseCaptureBlt", "Use a slower capture method that ensures that alpha blended windows appear correctly", true);
 
 // -=- DeviceFrameBuffer class
 
 DeviceFrameBuffer::DeviceFrameBuffer(HDC deviceContext, const Rect& wRect)
-  : DIBSectionBuffer(deviceContext), device(deviceContext),
-    ignoreGrabErrors(false)
-{
+    : DIBSectionBuffer(deviceContext), device(deviceContext), ignoreGrabErrors(false) {
 
   // -=- Firstly, let's check that the device has suitable capabilities
 
@@ -79,29 +75,26 @@ DeviceFrameBuffer::DeviceFrameBuffer(HDC deviceContext, const Rect& wRect)
   int h = deviceCoords.height();
 
   // We can't handle uneven widths :(
-  if (w % 2) w--;
+  if (w % 2)
+    w--;
 
   // Configure the underlying DIB to match the device
   initBuffer(DeviceContext::getPF(device), w, h);
 }
 
-DeviceFrameBuffer::~DeviceFrameBuffer() {
-}
-
+DeviceFrameBuffer::~DeviceFrameBuffer() {}
 
 #ifndef CAPTUREBLT
 #define CAPTUREBLT 0x40000000
 #endif
 
-void
-DeviceFrameBuffer::grabRect(const Rect &rect) {
+void DeviceFrameBuffer::grabRect(const Rect& rect) {
   BitmapDC tmpDC(device, bitmap);
 
   // Map the rectangle coords from VNC Desktop-relative to device relative - usually (0,0)
   Point src = desktopToDevice(rect.tl);
 
-  if (!::BitBlt(tmpDC, rect.tl.x, rect.tl.y,
-                rect.width(), rect.height(), device, src.x, src.y,
+  if (!::BitBlt(tmpDC, rect.tl.x, rect.tl.y, rect.width(), rect.height(), device, src.x, src.y,
                 useCaptureBlt ? (CAPTUREBLT | SRCCOPY) : SRCCOPY)) {
     if (ignoreGrabErrors)
       vlog.error("BitBlt failed:%ld", GetLastError());
@@ -110,20 +103,17 @@ DeviceFrameBuffer::grabRect(const Rect &rect) {
   }
 }
 
-void
-DeviceFrameBuffer::grabRegion(const Region &rgn) {
+void DeviceFrameBuffer::grabRegion(const Region& rgn) {
   std::vector<Rect> rects;
   std::vector<Rect>::const_iterator i;
   rgn.get_rects(&rects);
-  for(i=rects.begin(); i!=rects.end(); i++) {
+  for (i = rects.begin(); i != rects.end(); i++) {
     grabRect(*i);
   }
   ::GdiFlush();
 }
 
-
-void DeviceFrameBuffer::setCursor(HCURSOR hCursor, VNCServer* server)
-{
+void DeviceFrameBuffer::setCursor(HCURSOR hCursor, VNCServer* server) {
   // - If hCursor is null then there is no cursor - clear the old one
 
   if (hCursor == nullptr) {
@@ -165,19 +155,18 @@ void DeviceFrameBuffer::setCursor(HCURSOR hCursor, VNCServer* server)
 
       memset(&bi, 0, sizeof(BITMAPV5HEADER));
 
-      bi.bV5Size        = sizeof(BITMAPV5HEADER);
-      bi.bV5Width       = width;
-      bi.bV5Height      = -height; // Negative for top-down
-      bi.bV5Planes      = 1;
-      bi.bV5BitCount    = 32;
+      bi.bV5Size = sizeof(BITMAPV5HEADER);
+      bi.bV5Width = width;
+      bi.bV5Height = -height; // Negative for top-down
+      bi.bV5Planes = 1;
+      bi.bV5BitCount = 32;
       bi.bV5Compression = BI_BITFIELDS;
-      bi.bV5RedMask     = 0x000000FF;
-      bi.bV5GreenMask   = 0x0000FF00;
-      bi.bV5BlueMask    = 0x00FF0000;
-      bi.bV5AlphaMask   = 0xFF000000;
+      bi.bV5RedMask = 0x000000FF;
+      bi.bV5GreenMask = 0x0000FF00;
+      bi.bV5BlueMask = 0x00FF0000;
+      bi.bV5AlphaMask = 0xFF000000;
 
-      if (!GetDIBits(dc, iconInfo.hbmColor, 0, height,
-                     buffer.data(), (LPBITMAPINFO)&bi, DIB_RGB_COLORS))
+      if (!GetDIBits(dc, iconInfo.hbmColor, 0, height, buffer.data(), (LPBITMAPINFO)&bi, DIB_RGB_COLORS))
         throw core::win32_error("GetDIBits", GetLastError());
 
       // We may not get the RGBA order we want, so shuffle things around
@@ -189,9 +178,8 @@ void DeviceFrameBuffer::setCursor(HCURSOR hCursor, VNCServer* server)
       // Usually not set properly
       aidx = 6 - ridx - gidx - bidx;
 
-      if ((bi.bV5RedMask != ((unsigned)0xff << ridx*8)) ||
-          (bi.bV5GreenMask != ((unsigned)0xff << gidx*8)) ||
-          (bi.bV5BlueMask != ((unsigned)0xff << bidx*8)))
+      if ((bi.bV5RedMask != ((unsigned)0xff << ridx * 8)) || (bi.bV5GreenMask != ((unsigned)0xff << gidx * 8)) ||
+          (bi.bV5BlueMask != ((unsigned)0xff << bidx * 8)))
         throw std::invalid_argument("Unsupported cursor colour format");
 
       uint8_t* rwbuffer = buffer.data();
@@ -219,8 +207,7 @@ void DeviceFrameBuffer::setCursor(HCURSOR hCursor, VNCServer* server)
       uint8_t* andMask = mask.data();
       uint8_t* xorMask = mask.data() + height * maskInfo.bmWidthBytes;
 
-      if (!GetBitmapBits(iconInfo.hbmMask,
-                         maskInfo.bmWidthBytes * maskInfo.bmHeight, mask.data()))
+      if (!GetBitmapBits(iconInfo.hbmMask, maskInfo.bmWidthBytes * maskInfo.bmHeight, mask.data()))
         throw core::win32_error("GetBitmapBits", GetLastError());
 
       bool doOutline = false;
@@ -264,33 +251,33 @@ void DeviceFrameBuffer::setCursor(HCURSOR hCursor, VNCServer* server)
 
         // The buffer needs to be slightly larger to make sure there
         // is room for the outline pixels
-        std::vector<uint8_t> outline((width + 2)*(height + 2)*4);
-        memset(outline.data(), 0, (width + 2)*(height + 2)*4);
+        std::vector<uint8_t> outline((width + 2) * (height + 2) * 4);
+        memset(outline.data(), 0, (width + 2) * (height + 2) * 4);
 
         // Pass 1, outline everything
         uint8_t* in = buffer.data();
-        uint8_t* out = outline.data() + width*4 + 4;
+        uint8_t* out = outline.data() + width * 4 + 4;
         for (int y = 0; y < height; y++) {
           for (int x = 0; x < width; x++) {
             // Visible pixel?
             if (in[3] > 0) {
               // Outline above...
-              memset(out - (width+2)*4 - 4, 0xff, 4 * 3);
+              memset(out - (width + 2) * 4 - 4, 0xff, 4 * 3);
               // ...besides...
               memset(out - 4, 0xff, 4 * 3);
               // ...and above
-              memset(out + (width+2)*4 - 4, 0xff, 4 * 3);
+              memset(out + (width + 2) * 4 - 4, 0xff, 4 * 3);
             }
             in += 4;
             out += 4;
           }
           // outline is slightly larger
-          out += 2*4;
+          out += 2 * 4;
         }
 
         // Pass 2, overwrite with actual cursor
         in = buffer.data();
-        out = outline.data() + width*4 + 4;
+        out = outline.data() + width * 4 + 4;
         for (int y = 0; y < height; y++) {
           for (int x = 0; x < width; x++) {
             if (in[3] > 0)
@@ -298,7 +285,7 @@ void DeviceFrameBuffer::setCursor(HCURSOR hCursor, VNCServer* server)
             in += 4;
             out += 4;
           }
-          out += 2*4;
+          out += 2 * 4;
         }
 
         width += 2;
