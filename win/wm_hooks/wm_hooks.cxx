@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -26,7 +26,7 @@
 
 #include <wm_hooks/wm_hooks.h>
 
-#define SHARED __attribute__((section ("shared"), shared))
+#define SHARED __attribute__((section("shared"), shared))
 
 UINT WM_HK_PingThread = RegisterWindowMessage("RFB.WM_Hooks.PingThread");
 
@@ -98,19 +98,20 @@ HHOOK hook_DialogMessage SHARED = nullptr;
 BOOL enable_cursor_shape SHARED = FALSE;
 HCURSOR cursor SHARED = nullptr;
 #ifdef _DEBUG
-UINT diagnostic_min SHARED =1;
-UINT diagnostic_max SHARED =0;
+UINT diagnostic_min SHARED = 1;
+UINT diagnostic_max SHARED = 0;
 #endif
 
 #ifdef _DEBUG
 DLLEXPORT void WM_Hooks_SetDiagnosticRange(UINT min, UINT max) {
-  diagnostic_min = min; diagnostic_max=max;
+  diagnostic_min = min;
+  diagnostic_max = max;
 }
 #endif
 
 bool NotifyHookOwner(UINT event, WPARAM wParam, LPARAM lParam) {
   if (hook_owner) {
-    return PostThreadMessage(hook_owner, event, wParam, lParam)!=0;
+    return PostThreadMessage(hook_owner, event, wParam, lParam) != 0;
     /*
     if (last_event)
       return PostThreadMessage(hook_owner, last_event, last_wParam, last_lParam);
@@ -146,53 +147,52 @@ void ProcessWindowMessage(UINT msg, HWND wnd, WPARAM wParam, LPARAM /*lParam*/) 
   if ((msg >= diagnostic_min) && (msg <= diagnostic_max))
     PostThreadMessage(hook_owner, WM_HK_Diagnostic, msg, (LPARAM)wnd);
 #endif
-  if (!IsWindowVisible(wnd)) return;
+  if (!IsWindowVisible(wnd))
+    return;
   switch (msg) {
 
     // -=- Border update events
-	case WM_NCPAINT:
-	case WM_NCACTIVATE:
+  case WM_NCPAINT:
+  case WM_NCACTIVATE:
     NotifyWindowBorder(wnd, msg);
-		break;
+    break;
 
     // -=- Client area update events
-	case BM_SETCHECK:
-	case BM_SETSTATE:
-	case EM_SETSEL:
-	case WM_CHAR:
-	case WM_ENABLE:
-	case WM_KEYUP:
-	case WM_LBUTTONUP:
-	case WM_MBUTTONUP:
-	case WM_PALETTECHANGED:
-	case WM_RBUTTONUP:
-	case WM_SYSCOLORCHANGE:
-	case WM_SETTEXT:
+  case BM_SETCHECK:
+  case BM_SETSTATE:
+  case EM_SETSEL:
+  case WM_CHAR:
+  case WM_ENABLE:
+  case WM_KEYUP:
+  case WM_LBUTTONUP:
+  case WM_MBUTTONUP:
+  case WM_PALETTECHANGED:
+  case WM_RBUTTONUP:
+  case WM_SYSCOLORCHANGE:
+  case WM_SETTEXT:
   case WM_SETFOCUS:
-	//case WM_TIMER:
+    // case WM_TIMER:
     NotifyWindowClientArea(wnd, msg);
     break;
-	case WM_HSCROLL:
-	case WM_VSCROLL:
-		if (((int) LOWORD(wParam) == SB_THUMBTRACK) || ((int) LOWORD(wParam) == SB_ENDSCROLL))
-			NotifyWindow(wnd, msg);
-		break;
-
-	case WM_WINDOWPOSCHANGING:
-  case WM_DESTROY:
-    {
-      RECT wrect;
-      if (GetWindowRect(wnd, &wrect)) {
-        NotifyRectangle(&wrect);
-      }
-    }
+  case WM_HSCROLL:
+  case WM_VSCROLL:
+    if (((int)LOWORD(wParam) == SB_THUMBTRACK) || ((int)LOWORD(wParam) == SB_ENDSCROLL))
+      NotifyWindow(wnd, msg);
     break;
+
+  case WM_WINDOWPOSCHANGING:
+  case WM_DESTROY: {
+    RECT wrect;
+    if (GetWindowRect(wnd, &wrect)) {
+      NotifyRectangle(&wrect);
+    }
+  } break;
 
   case WM_WINDOWPOSCHANGED:
     NotifyWindow(wnd, msg);
     break;
 
-	case WM_PAINT:
+  case WM_PAINT:
     // *** could improve this
     NotifyWindowClientArea(wnd, msg);
     break;
@@ -203,17 +203,13 @@ void ProcessWindowMessage(UINT msg, HWND wnd, WPARAM wParam, LPARAM /*lParam*/) 
     break;
 
     // Handle pop-up menus having items selected
-	case 485:
-		{
-			HANDLE prop = GetProp(wnd, (LPCTSTR) (intptr_t) ATOM_Popup_Selection);
-      if (prop != (HANDLE) wParam) {
-        NotifyWindow(wnd, 485);
-				SetProp(wnd,
-					(LPCTSTR) (intptr_t) ATOM_Popup_Selection,
-					(HANDLE) wParam);
-			}
-		}
-		break;
+  case 485: {
+    HANDLE prop = GetProp(wnd, (LPCTSTR)(intptr_t)ATOM_Popup_Selection);
+    if (prop != (HANDLE)wParam) {
+      NotifyWindow(wnd, 485);
+      SetProp(wnd, (LPCTSTR)(intptr_t)ATOM_Popup_Selection, (HANDLE)wParam);
+    }
+  } break;
 
   case WM_NCMOUSEMOVE:
   case WM_MOUSEMOVE:
@@ -227,65 +223,65 @@ void ProcessWindowMessage(UINT msg, HWND wnd, WPARAM wParam, LPARAM /*lParam*/) 
     break;
 
     /* ***
-		if (prf_use_GetUpdateRect)
-		{
-			HRGN region;
-			region = CreateRectRgn(0, 0, 0, 0);
+    if (prf_use_GetUpdateRect)
+    {
+      HRGN region;
+      region = CreateRectRgn(0, 0, 0, 0);
 
-			// Get the affected region
-			if (GetUpdateRgn(hWnd, region, FALSE) != ERROR)
-			{
-				int buffsize;
-				UINT x;
-				RGNDATA *buff;
-				POINT TopLeft;
+      // Get the affected region
+      if (GetUpdateRgn(hWnd, region, FALSE) != ERROR)
+      {
+        int buffsize;
+        UINT x;
+        RGNDATA *buff;
+        POINT TopLeft;
 
-				// Get the top-left point of the client area
-				TopLeft.x = 0;
-				TopLeft.y = 0;
-				if (!ClientToScreen(hWnd, &TopLeft))
-					break;
+        // Get the top-left point of the client area
+        TopLeft.x = 0;
+        TopLeft.y = 0;
+        if (!ClientToScreen(hWnd, &TopLeft))
+          break;
 
-				// Get the size of buffer required
-				buffsize = GetRegionData(region, 0, 0);
-				if (buffsize != 0)
-				{
-					buff = (RGNDATA *) new BYTE [buffsize];
-					if (buff == nullptr)
-						break;
+        // Get the size of buffer required
+        buffsize = GetRegionData(region, 0, 0);
+        if (buffsize != 0)
+        {
+          buff = (RGNDATA *) new BYTE [buffsize];
+          if (buff == nullptr)
+            break;
 
-					// Now get the region data
-					if(GetRegionData(region, buffsize, buff))
-					{
-						for (x=0; x<(buff->rdh.nCount); x++)
-						{
-							// Obtain the rectangles from the list
-							RECT *urect = (RECT *) (((BYTE *) buff) + sizeof(RGNDATAHEADER) + (x * sizeof(RECT)));
-							SendDeferredUpdateRect(
-								hWnd,
-								(SHORT) (TopLeft.x + urect->left),
-								(SHORT) (TopLeft.y + urect->top),
-								(SHORT) (TopLeft.x + urect->right),
-								(SHORT) (TopLeft.y + urect->bottom)
-								);
-						}
-					}
+          // Now get the region data
+          if(GetRegionData(region, buffsize, buff))
+          {
+            for (x=0; x<(buff->rdh.nCount); x++)
+            {
+              // Obtain the rectangles from the list
+              RECT *urect = (RECT *) (((BYTE *) buff) + sizeof(RGNDATAHEADER) + (x * sizeof(RECT)));
+              SendDeferredUpdateRect(
+                hWnd,
+                (SHORT) (TopLeft.x + urect->left),
+                (SHORT) (TopLeft.y + urect->top),
+                (SHORT) (TopLeft.x + urect->right),
+                (SHORT) (TopLeft.y + urect->bottom)
+                );
+            }
+          }
 
-					delete [] buff;
-				}
-			}
+          delete [] buff;
+        }
+      }
 
-			// Now free the region
-			if (region != nullptr)
-				DeleteObject(region);
-		}
+      // Now free the region
+      if (region != nullptr)
+        DeleteObject(region);
+    }
     */
   };
 }
 
 LRESULT CALLBACK HookCallWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
   if (nCode == HC_ACTION) {
-    CWPSTRUCT* info = (CWPSTRUCT*) lParam;
+    CWPSTRUCT* info = (CWPSTRUCT*)lParam;
     ProcessWindowMessage(info->message, info->hwnd, info->wParam, info->lParam);
   }
   return CallNextHookEx(hook_CallWndProc, nCode, wParam, lParam);
@@ -293,7 +289,7 @@ LRESULT CALLBACK HookCallWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
 LRESULT CALLBACK HookCallWndProcRet(int nCode, WPARAM wParam, LPARAM lParam) {
   if (nCode == HC_ACTION) {
-    CWPRETSTRUCT* info = (CWPRETSTRUCT*) lParam;
+    CWPRETSTRUCT* info = (CWPRETSTRUCT*)lParam;
     ProcessWindowMessage(info->message, info->hwnd, info->wParam, info->lParam);
   }
   return CallNextHookEx(hook_CallWndProcRet, nCode, wParam, lParam);
@@ -302,7 +298,7 @@ LRESULT CALLBACK HookCallWndProcRet(int nCode, WPARAM wParam, LPARAM lParam) {
 LRESULT CALLBACK HookGetMessage(int nCode, WPARAM wParam, LPARAM lParam) {
   if (nCode == HC_ACTION) {
     if (wParam & PM_REMOVE) {
-      MSG* msg = (MSG*) lParam;
+      MSG* msg = (MSG*)lParam;
       ProcessWindowMessage(msg->message, msg->hwnd, msg->wParam, msg->lParam);
     }
   }
@@ -311,7 +307,7 @@ LRESULT CALLBACK HookGetMessage(int nCode, WPARAM wParam, LPARAM lParam) {
 
 LRESULT CALLBACK HookDialogMessage(int nCode, WPARAM wParam, LPARAM lParam) {
   if (nCode == HC_ACTION) {
-    MSG* msg = (MSG*) lParam;
+    MSG* msg = (MSG*)lParam;
     ProcessWindowMessage(msg->message, msg->hwnd, msg->wParam, msg->lParam);
   }
   return CallNextHookEx(hook_DialogMessage, nCode, wParam, lParam);
@@ -349,7 +345,8 @@ BOOL WM_Hooks_Install(DWORD owner, DWORD thread) {
 // - WM_Hooks_Remove
 
 BOOL WM_Hooks_Remove(DWORD owner) {
-  if (owner != hook_owner) return FALSE;
+  if (owner != hook_owner)
+    return FALSE;
   if (hook_CallWndProc) {
     UnhookWindowsHookEx(hook_CallWndProc);
     hook_CallWndProc = nullptr;
@@ -385,10 +382,9 @@ bool enable_synth_kbd SHARED = true;
 #ifdef WH_KEYBOARD_LL
 LRESULT CALLBACK HookKeyboardHook(int nCode, WPARAM wParam, LPARAM lParam) {
   if (nCode >= 0) {
-    KBDLLHOOKSTRUCT* info = (KBDLLHOOKSTRUCT*) lParam;
+    KBDLLHOOKSTRUCT* info = (KBDLLHOOKSTRUCT*)lParam;
     bool real_event = (info->flags & LLKHF_INJECTED) == 0;
-    if ((real_event && !enable_real_kbd) ||
-      (!real_event && !enable_synth_kbd)) {
+    if ((real_event && !enable_real_kbd) || (!real_event && !enable_synth_kbd)) {
       return 1;
     }
   }
@@ -397,10 +393,9 @@ LRESULT CALLBACK HookKeyboardHook(int nCode, WPARAM wParam, LPARAM lParam) {
 
 LRESULT CALLBACK HookPointerHook(int nCode, WPARAM wParam, LPARAM lParam) {
   if (nCode >= 0) {
-    MSLLHOOKSTRUCT* info = (MSLLHOOKSTRUCT*) lParam;
+    MSLLHOOKSTRUCT* info = (MSLLHOOKSTRUCT*)lParam;
     bool real_event = (info->flags & LLMHF_INJECTED) == 0;
-    if ((real_event && !enable_real_ptr) ||
-      (!real_event && !enable_synth_ptr)) {
+    if ((real_event && !enable_real_ptr) || (!real_event && !enable_synth_ptr)) {
       return 1;
     }
   }
@@ -421,11 +416,13 @@ bool RefreshInputHooks() {
   }
   if (!hook_keyboard && set_kbd_hook) {
     hook_keyboard = SetWindowsHookEx(WH_KEYBOARD_LL, HookKeyboardHook, dll_instance, 0);
-    if (!hook_keyboard) success = false;
+    if (!hook_keyboard)
+      success = false;
   }
   if (!hook_pointer && set_ptr_hook) {
     hook_pointer = SetWindowsHookEx(WH_MOUSE_LL, HookPointerHook, dll_instance, 0);
-    if (!hook_pointer) success = false;
+    if (!hook_pointer)
+      success = false;
   }
   return success;
 }
@@ -437,8 +434,8 @@ bool RefreshInputHooks() {
 
 BOOL WM_Hooks_EnableRealInputs(BOOL pointer, BOOL keyboard) {
 #ifdef WH_KEYBOARD_LL
-  enable_real_ptr = pointer!=0;
-  enable_real_kbd = keyboard!=0;
+  enable_real_ptr = pointer != 0;
+  enable_real_kbd = keyboard != 0;
   return RefreshInputHooks();
 #else
   return FALSE;
@@ -449,8 +446,8 @@ BOOL WM_Hooks_EnableRealInputs(BOOL pointer, BOOL keyboard) {
 
 BOOL WM_Hooks_EnableSynthInputs(BOOL pointer, BOOL keyboard) {
 #ifdef WH_KEYBOARD_LL
-  enable_synth_ptr = pointer!=0;
-  enable_synth_kbd = keyboard!=0;
+  enable_synth_ptr = pointer != 0;
+  enable_synth_kbd = keyboard != 0;
   return RefreshInputHooks();
 #else
   return FALSE;

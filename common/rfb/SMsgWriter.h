@@ -125,8 +125,10 @@ public:
 
   // Cache protocol extension: initial transmission with cache ID (16-byte CacheKey)
 
-  // PersistentCache protocol extension: reference by 16-byte CacheKey
+  // PersistentCache protocol extension: reference by 16-byte CacheKey, with offset extension fields
   void writePersistentCachedRect(const core::Rect& r, const CacheKey& key);
+  void writePersistentCachedRectWithOffset(const core::Rect& r, const CacheKey& key, uint16_t ox, uint16_t oy,
+                                           uint16_t cachedW, uint16_t cachedH);
 
   // PersistentCache protocol extension: initial transmission with 16-byte CacheKey
   void writePersistentCachedRectInit(const core::Rect& r, const CacheKey& key, int encoding, uint8_t flags = 0,

@@ -36,11 +36,10 @@ const int encodingH264 = 50;
 //
 // key type (content-addressable 16-byte hashes). The only behavioural difference
 // is whether the viewer preloads entries from disk and advertises an initial
-const int encodingPersistentCachedRect = 102; // Reference: payload is 16-byte CacheKey
+const int encodingPersistentCachedRect =
+    102; // Reference: 16-byte CacheKey + U16 ox/oy + U16 cachedW/cachedH (offset extension)
 const int encodingPersistentCachedRectInit =
     103; // Init: 16-byte CacheKey + optional flags/PF + actual encoding + pixels
-const int encodingPersistentCachedRectWithOffset =
-    104; // Reference with offset: CacheKey + U16 ox + U16 oy + U16 cachedW + U16 cachedH
 
 // TigerVNC cache eviction notification (client→server)
 // Sent by client to notify server when cache entries are evicted.

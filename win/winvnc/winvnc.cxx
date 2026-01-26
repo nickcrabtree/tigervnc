@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -24,13 +24,13 @@
 
 #include <string.h>
 
-#include <winvnc/VNCServerWin32.h>
-#include <winvnc/VNCServerService.h>
 #include <winvnc/AddNewClientDialog.h>
+#include <winvnc/VNCServerService.h>
+#include <winvnc/VNCServerWin32.h>
 
+#include <core/LogWriter.h>
 #include <core/Logger_file.h>
 #include <core/Logger_stdio.h>
-#include <core/LogWriter.h>
 #include <core/string.h>
 
 #include <rfb_win32/AboutDialog.h>
@@ -47,11 +47,9 @@ static LogWriter vlog("main");
 
 const char* rfb::win32::AppName = "TigerVNC Server";
 
-
 extern bool runAsService;
 static bool runServer = true;
 static bool close_console = false;
-
 
 //
 // -=- processParams
@@ -60,10 +58,8 @@ static bool close_console = false;
 
 static void programInfo() {
   win32::FileVersionInfo inf;
-  printf("%s - %s, Version %s\n",
-    inf.getVerString("ProductName"),
-    inf.getVerString("FileDescription"),
-    inf.getVerString("FileVersion"));
+  printf("%s - %s, Version %s\n", inf.getVerString("ProductName"), inf.getVerString("FileDescription"),
+         inf.getVerString("FileVersion"));
   printf("%s\n", buildTime);
   printf("%s\n\n", inf.getVerString("LegalCopyright"));
 }
@@ -80,7 +76,8 @@ static void programUsage() {
   printf("  -help                                - Provide usage information.\n");
   printf("  -noconsole                           - Run without a console (i.e. no stderr/stdout)\n");
   printf("  <setting>=<value>                    - Set the named configuration parameter.\n");
-  printf("    (Parameter values specified on the command-line override those specified by other configuration methods.)\n");
+  printf("    (Parameter values specified on the command-line override those specified by other configuration "
+         "methods.)\n");
   printf("\nLog names:\n");
   LogWriter::listLogWriters();
   printf("\nLog destinations:\n");
@@ -89,7 +86,7 @@ static void programUsage() {
   Configuration::listParams(79, 14);
 }
 
-static void MsgBoxOrLog(const char* msg, bool isError=false) {
+static void MsgBoxOrLog(const char* msg, bool isError = false) {
   if (close_console) {
     MsgBox(nullptr, msg, (isError ? MB_ICONERROR : MB_ICONINFORMATION) | MB_OK);
   } else {
@@ -105,14 +102,14 @@ static void MsgBoxOrLog(const char* msg, bool isError=false) {
 }
 
 static void processParams(int argc, char** argv) {
-  for (int i=1; i<argc; i++) {
+  for (int i = 1; i < argc; i++) {
     try {
 
       if (strcasecmp(argv[i], "-connect") == 0) {
         runServer = false;
-        const char *host = nullptr;
-        if (i+1 < argc) {
-          host = argv[i+1];
+        const char* host = nullptr;
+        if (i + 1 < argc) {
+          host = argv[i + 1];
           i++;
         } else {
           AddNewClientDialog ancd;
@@ -158,9 +155,8 @@ static void processParams(int argc, char** argv) {
         runServer = false;
         std::string result;
         DWORD state = rfb::win32::getServiceState(VNCServerService::Name);
-        result = format("The %s service is in the %s state.",
-                        VNCServerService::Name,
-                        rfb::win32::serviceStateName(state));
+        result =
+            format("The %s service is in the %s state.", VNCServerService::Name, rfb::win32::serviceStateName(state));
         MsgBoxOrLog(result.c_str());
       } else if (strcasecmp(argv[i], "-service") == 0) {
         printf("Run in service mode\n");
@@ -189,10 +185,9 @@ static void processParams(int argc, char** argv) {
         } catch (core::win32_error&) {
         }
 
-        if (rfb::win32::registerService(VNCServerService::Name,
-                                        "TigerVNC Server",
+        if (rfb::win32::registerService(VNCServerService::Name, "TigerVNC Server",
                                         "Provides remote access to this machine via the VNC/RFB protocol.",
-                                        argc-(j+1), &argv[j+1]))
+                                        argc - (j + 1), &argv[j + 1]))
           MsgBoxOrLog("Registered service successfully");
       } else if (strcasecmp(argv[i], "-unregister") == 0) {
         printf("Attempting to unregister service...\n");
@@ -206,10 +201,8 @@ static void processParams(int argc, char** argv) {
         if (!FreeConsole())
           vlog.info("Unable to close console:%lu", GetLastError());
 
-      } else if ((strcasecmp(argv[i], "-help") == 0) ||
-        (strcasecmp(argv[i], "--help") == 0) ||
-        (strcasecmp(argv[i], "-h") == 0) ||
-        (strcasecmp(argv[i], "/?") == 0)) {
+      } else if ((strcasecmp(argv[i], "-help") == 0) || (strcasecmp(argv[i], "--help") == 0) ||
+                 (strcasecmp(argv[i], "-h") == 0) || (strcasecmp(argv[i], "/?") == 0)) {
         runServer = false;
         programUsage();
         break;
@@ -235,7 +228,6 @@ static void processParams(int argc, char** argv) {
   }
 }
 
-
 //
 // -=- main
 //
@@ -245,30 +237,29 @@ int WINAPI WinMain(HINSTANCE /*inst*/, HINSTANCE /*prevInst*/, char* /*cmdLine*/
 
   try {
     // - Initialise the available loggers
-    //freopen("\\\\drupe\\tjr\\WinVNC4.log","ab",stderr);
+    // freopen("\\\\drupe\\tjr\\WinVNC4.log","ab",stderr);
 #ifdef _DEBUG
     AllocConsole();
-	freopen("CONIN$", "rb", stdin);
-	freopen("CONOUT$", "wb", stdout);
-	freopen("CONOUT$", "wb", stderr);
+    freopen("CONIN$", "rb", stdin);
+    freopen("CONOUT$", "wb", stdout);
+    freopen("CONOUT$", "wb", stderr);
     setbuf(stderr, nullptr);
-	initStdIOLoggers();
-	initFileLogger("C:\\temp\\WinVNC4.log");
-	logParams.setParam("*:stderr:100");
+    initStdIOLoggers();
+    initFileLogger("C:\\temp\\WinVNC4.log");
+    logParams.setParam("*:stderr:100");
 #else
     initFileLogger("C:\\temp\\WinVNC4.log");
-	logParams.setParam("*:stderr:0");
+    logParams.setParam("*:stderr:0");
 #endif
     rfb::win32::initEventLogLogger(VNCServerService::Name);
 
     // - By default, just log errors to stderr
-    
 
     // - Print program details and process the command line
     programInfo();
 
-	int argc = __argc;
-	char **argv = __argv;
+    int argc = __argc;
+    char** argv = __argv;
     processParams(argc, argv);
 
     // - Run the server if required

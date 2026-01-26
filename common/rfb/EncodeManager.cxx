@@ -204,6 +204,15 @@ inline void logFBHashDebug(const char* tag, const core::Rect& r, uint64_t cacheI
 
 // (strContentKey helper removed: unified cache path now logs IDs via hex64
 // directly where needed.)
+// Offset-reference (PersistentCachedRect) debug counters (per-update).
+// Logged by default as requested; reset at doUpdate begin.
+struct PcoffCounters {
+  unsigned long long lookups = 0;
+  unsigned long long hits = 0;
+  unsigned long long bytes = 0;
+};
+static thread_local PcoffCounters pcoffCounters;
+
 } // namespace
 
 // The size in pixels of either side of each block tested when looking
@@ -726,6 +735,9 @@ void EncodeManager::doUpdate(bool allowLossy, const core::Region& changed_, cons
 
   writeRects(changed, pb);
   writeRects(cursorRegion, renderedCursor);
+  vlog.info("PCOFF SUMMARY: hits=%llu lookups=%llu bytes=%llu changed=%s", (unsigned long long)pcoffCounters.hits,
+            (unsigned long long)pcoffCounters.lookups, (unsigned long long)pcoffCounters.bytes,
+            strRegionSummary(changed_));
   conn->writer()->writeFramebufferUpdateEnd();
 
   // Track regions sent at reduced pixel depth (< 24 bpp).
@@ -808,6 +820,117 @@ void EncodeManager::runShiftTolerantCacheScan(core::Region* changed, const Pixel
               (unsigned long long)scanStats.blocksHit, (unsigned long long)scanStats.packedRects,
               (unsigned long long)scanStats.rectHitsVerified, (unsigned long long)scanStats.rectHitsEmitted,
               (unsigned long long)scanStats.timeUs);
+  }
+}
+
+void EncodeManager::runOffsetTilePrepass(core::Region* changed, const PixelBuffer* pb) {
+  // Pre-pass: for each configured tile size, attempt to satisfy newly-exposed damage
+  // from a larger cached tile already known to the client using the offset extension.
+  // Requires pseudoEncodingLastRect so we can emit a variable number of rectangles.
+  if (!pb || !changed || changed->is_empty())
+    return;
+  if (!conn->client.supportsEncoding(pseudoEncodingLastRect))
+    return;
+  if (!conn->client.supportsEncoding(pseudoEncodingPersistentCache))
+    return;
+  if (!usePersistentCache)
+    return;
+
+  const core::Rect fbRect = pb->getRect();
+  core::Rect bbox = changed->get_bounding_rect();
+  if (bbox.is_empty())
+    return;
+
+  // Build tile size list from server scan configuration.
+  std::vector<int> tileSizes;
+  for (auto it = rfb::Server::cacheScanTileSizes.begin(); it != rfb::Server::cacheScanTileSizes.end(); ++it)
+    tileSizes.push_back(*it);
+  if (tileSizes.empty()) {
+    tileSizes.push_back(64);
+    tileSizes.push_back(128);
+    tileSizes.push_back(256);
+  }
+  // Offset-tile prepass: satisfy newly-exposed damage from cached tiles (uses same tile size list).
+  if (pb != nullptr && !changed.is_empty())
+    runOffsetTilePrepass(&changed, pb);
+
+  // Prefer largest-first if configured (reduces rectangle count).
+  if (rfb::Server::cacheScanPreferLargestFirst)
+    std::sort(tileSizes.begin(), tileSizes.end(), std::greater<int>());
+
+  for (int tile : tileSizes) {
+    if (tile <= 0)
+      continue;
+
+    // Expand bbox to tile grid.
+    int startX = (bbox.tl.x / tile) * tile;
+    int startY = (bbox.tl.y / tile) * tile;
+    int endX = ((bbox.br.x + tile - 1) / tile) * tile;
+    int endY = ((bbox.br.y + tile - 1) / tile) * tile;
+
+    for (int y = startY; y < endY; y += tile) {
+      for (int x = startX; x < endX; x += tile) {
+        core::Rect tileRect(x, y, x + tile, y + tile);
+        tileRect = tileRect.intersect(fbRect);
+        if (tileRect.is_empty())
+          continue;
+
+        // Only consider tiles that overlap remaining damage.
+        core::Region tileDamage = changed->intersect(tileRect);
+        if (tileDamage.is_empty())
+          continue;
+
+        // Compute tile key and see if the client already knows it.
+        std::vector<uint8_t> tileHash = ContentHash::computeRect(const_cast<PixelBuffer*>(pb), tileRect);
+        if (tileHash.size() < 16)
+          continue;
+        CacheKey tileKey(tileHash.data());
+        uint64_t tileId = cacheKeyToU64(tileKey);
+
+        persistentCacheStats.cacheLookups++;
+        pcoffCounters.lookups++;
+
+        if (!conn->knowsPersistentId(tileId) || conn->clientRequestedPersistent(tileId))
+          continue;
+
+        // Emit offset references for each damaged rect within this tile.
+        std::vector<core::Rect> rs;
+        tileDamage.get_rects(&rs);
+        for (const auto& r : rs) {
+          // r is guaranteed to be inside tileRect by construction.
+          uint16_t ox = (uint16_t)(r.tl.x - tileRect.tl.x);
+          uint16_t oy = (uint16_t)(r.tl.y - tileRect.tl.y);
+
+          const int before = conn->getOutStream()->length();
+          conn->writer()->writePersistentCachedRectWithOffset(r, tileKey, ox, oy, (uint16_t)tileRect.width(),
+                                                              (uint16_t)tileRect.height());
+          const int after = conn->getOutStream()->length();
+
+          persistentCacheStats.cacheHits++;
+          pcoffCounters.hits++;
+          if (after > before)
+            pcoffCounters.bytes += (unsigned long long)(after - before);
+
+          // Account for saved bytes similarly to other cache refs (20 bytes overhead).
+          const int equiv = 12 + r.area() * (conn->client.pf().bpp / 8);
+          persistentCacheStats.bytesSaved += (unsigned long long)(equiv - 20);
+
+          // Logging per-hit.
+          char rbuf[64];
+          char tbuf[64];
+          snprintf(rbuf, sizeof(rbuf), "%d,%d %dx%d", r.tl.x, r.tl.y, r.width(), r.height());
+          snprintf(tbuf, sizeof(tbuf), "%d,%d %dx%d", tileRect.tl.x, tileRect.tl.y, tileRect.width(),
+                   tileRect.height());
+          vlog.info("PCOFF HIT rect=%s tile=%s off=%u,%u id=%016llx bytes=%d", rbuf, tbuf, (unsigned)ox, (unsigned)oy,
+                    (unsigned long long)tileId, after - before);
+
+          // Remove from remaining work.
+          changed->assign_subtract(core::Region(r));
+          lossyRegion.assign_subtract(r);
+          pendingRefreshRegion.assign_subtract(r);
+        }
+      }
+    }
   }
 }
 
@@ -1376,6 +1499,7 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
 
       // Count this bordered-region attempt as a cache lookup.
       persistentCacheStats.cacheLookups++;
+      pcoffCounters.lookups++;
 
       if (hasMatch) {
         // CACHE HIT on bordered content region!
@@ -1490,6 +1614,7 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
 
         // Count this bbox attempt as a cache lookup.
         persistentCacheStats.cacheLookups++;
+        pcoffCounters.lookups++;
 
         if (hasHit) {
           // CACHE HIT on bounding box!
@@ -1975,7 +2100,7 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect, const Pixel
   // offset reference encoding, try to satisfy this rect from a larger cached
   // tile that the client already knows. This avoids sending a new INIT for
   // small newly-exposed regions when we previously cached a larger tile.
-  if (conn->client.supportsEncoding(encodingPersistentCachedRectWithOffset) && pb != nullptr) {
+  if (pb != nullptr) {
     const core::Rect fbRect = pb->getRect();
 
     std::vector<int> tileSizes;
@@ -2011,6 +2136,7 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect, const Pixel
       uint64_t tileId = cacheKeyToU64(tileKey);
 
       persistentCacheStats.cacheLookups++;
+      pcoffCounters.lookups++;
       if (!conn->knowsPersistentId(tileId) || conn->clientRequestedPersistent(tileId))
         continue;
 
@@ -2037,6 +2163,7 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect, const Pixel
   }
 
   persistentCacheStats.cacheLookups++;
+  pcoffCounters.lookups++;
 
   // Compute content hash using ContentHash utility (same as ContentCache)
   std::vector<uint8_t> fullHash = ContentHash::computeRect(pb, rect);

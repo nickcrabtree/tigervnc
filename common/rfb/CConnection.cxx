@@ -1111,6 +1111,20 @@ void CConnection::handlePersistentCachedRect(const core::Rect& r, const CacheKey
   // Forward to decoder manager to handle cache lookup and blit
   decoder.handlePersistentCachedRect(r, key, framebuffer);
 }
+void CConnection::handlePersistentCachedRectWithOffset(const core::Rect& r, const CacheKey& key, uint16_t ox,
+                                                       uint16_t oy, uint16_t cachedW, uint16_t cachedH) {
+  // On first use, record and log negotiated cache protocol
+  if (negotiatedCacheProtocol == CacheProtocolNone) {
+    negotiatedCacheProtocol = CacheProtocolPersistent;
+    if (!negotiatedCacheLogged) {
+      vlog.info("Cache protocol: negotiated PersistentCache (-321)");
+      negotiatedCacheLogged = true;
+    }
+    // Trigger deferred disk load now that we know server supports PersistentCache.
+    decoder.triggerPersistentCacheLoad();
+  }
+  decoder.handlePersistentCachedRectWithOffset(r, key, ox, oy, cachedW, cachedH, framebuffer);
+}
 
 void CConnection::storePersistentCachedRect(const core::Rect& r, const CacheKey& key, int encoding) {
   // On first use, record and log negotiated cache protocol and trigger disk load.

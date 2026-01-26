@@ -44,10 +44,14 @@ int rfb::encodingNum(const char* name) {
 #endif
   if (strcasecmp(name, "PersistentCachedRect") == 0)
     return encodingPersistentCachedRect;
+  if (strcasecmp(name, "PersistentCachedRectWithOffset") == 0)
+    return encodingPersistentCachedRectWithOffset;
   if (strcasecmp(name, "PersistentCachedRectInit") == 0)
     return encodingPersistentCachedRectInit;
   if (strcasecmp(name, "CachedRect") == 0)
     return encodingPersistentCachedRect;
+  if (strcasecmp(name, "CachedRectWithOffset") == 0)
+    return encodingPersistentCachedRectWithOffset;
   if (strcasecmp(name, "CachedRectInit") == 0)
     return encodingPersistentCachedRectInit;
   return -1;

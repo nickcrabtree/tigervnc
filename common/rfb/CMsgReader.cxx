@@ -914,11 +914,45 @@ bool CMsgReader::readCachedRectInit(const core::Rect& r) {
 }
 
 bool CMsgReader::readPersistentCachedRect(const core::Rect& r) {
-  rfb::CacheKey key;
-  if (!readCacheKey(is, &key))
+  // PersistentCachedRect reference with offset extension.
+  // Payload: 16-byte CacheKey + U16 ox + U16 oy + U16 cachedW + U16 cachedH
+  if (!is->hasData(16 + 2 + 2 + 2 + 2))
     return false;
-
-  handler->handlePersistentCachedRect(r, key);
+  is->setRestorePoint();
+  if (!is->hasDataOrRestore(16 + 2 + 2 + 2 + 2))
+    return false;
+  uint8_t keyBuf[16];
+  is->readBytes(keyBuf, 16);
+  CacheKey key(keyBuf);
+  uint16_t ox = is->readU16();
+  uint16_t oy = is->readU16();
+  uint16_t cachedW = is->readU16();
+  uint16_t cachedH = is->readU16();
+  is->clearRestorePoint();
+  // Fast-path: most references are non-offset (0,0) and match the destination size.
+  if (ox == 0 && oy == 0 && cachedW == (uint16_t)r.width() && cachedH == (uint16_t)r.height())
+    handler->handlePersistentCachedRect(r, key);
+  else
+    handler->handlePersistentCachedRectWithOffset(r, key, ox, oy, cachedW, cachedH);
+  return true;
+}
+bool CMsgReader::readPersistentCachedRectWithOffset(const core::Rect& r) {
+  // Reference to cached content with a sub-rect offset.
+  // Payload: 16-byte CacheKey + U16 ox + U16 oy + U16 cachedW + U16 cachedH
+  if (!is->hasData(16 + 2 + 2 + 2 + 2))
+    return false;
+  is->setRestorePoint();
+  if (!is->hasDataOrRestore(16 + 2 + 2 + 2 + 2))
+    return false;
+  uint8_t keyBuf[16];
+  is->readBytes(keyBuf, 16);
+  CacheKey key(keyBuf);
+  uint16_t ox = is->readU16();
+  uint16_t oy = is->readU16();
+  uint16_t cachedW = is->readU16();
+  uint16_t cachedH = is->readU16();
+  is->clearRestorePoint();
+  handler->handlePersistentCachedRectWithOffset(r, key, ox, oy, cachedW, cachedH);
   return true;
 }
 

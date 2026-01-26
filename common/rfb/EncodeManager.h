@@ -134,6 +134,9 @@ protected:
   // Shift-tolerant cache scan (emit tiles): attempt to emit cache references
   // for translated/reappearing content and subtract emitted regions from work.
   void runShiftTolerantCacheScan(core::Region* changed, const PixelBuffer* pb, bool clientSupportsCache);
+  // Offset-tile prepass (emit PersistentCachedRect references with offsets) to satisfy
+  // newly-exposed damage from previously cached tiles before decomposition.
+  void runOffsetTilePrepass(core::Region* changed, const PixelBuffer* pb);
   // Check if encoding produces lossy output
   bool isLossyEncoding(int encoding) const;
 

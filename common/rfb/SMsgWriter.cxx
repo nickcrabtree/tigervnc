@@ -222,9 +222,28 @@ void SMsgWriter::writeEndOfContinuousUpdates() {
 }
 
 void SMsgWriter::writePersistentCachedRect(const core::Rect& r, const CacheKey& key) {
-  // Server → client: reference to PersistentCache entry by 16-byte CacheKey.
+  // Server → client: reference to PersistentCache entry by CacheKey, with offset extension.
+  // Wire format: rect header + 16-byte CacheKey + U16 ox + U16 oy + U16 cachedW + U16 cachedH
   startRect(r, encodingPersistentCachedRect);
   os->writeBytes(key.bytes.data(), 16);
+  os->writeU16(0);
+  os->writeU16(0);
+  os->writeU16((uint16_t)r.width());
+  os->writeU16((uint16_t)r.height());
+  endRect();
+}
+
+void SMsgWriter::writePersistentCachedRectWithOffset(const core::Rect& r, const CacheKey& key, uint16_t ox, uint16_t oy,
+                                                     uint16_t cachedW, uint16_t cachedH) {
+  // Server → client: reference to a PersistentCache entry by CacheKey, with a
+  // sub-rectangle offset into the cached source rectangle.
+  // Wire format: rect header + 16-byte CacheKey + U16 ox + U16 oy + U16 cachedW + U16 cachedH
+  startRect(r, encodingPersistentCachedRect);
+  os->writeBytes(key.bytes.data(), 16);
+  os->writeU16(ox);
+  os->writeU16(oy);
+  os->writeU16(cachedW);
+  os->writeU16(cachedH);
   endRect();
 }
 
