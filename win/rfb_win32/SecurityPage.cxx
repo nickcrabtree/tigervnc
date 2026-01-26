@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2011 TigerVNC Team
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -25,8 +25,8 @@
 
 #include <rfb/Security.h>
 
-#include <rfb_win32/resource.h>
 #include <rfb_win32/SecurityPage.h>
+#include <rfb_win32/resource.h>
 
 #include <list>
 
@@ -38,14 +38,10 @@ using namespace std;
 static LogWriter vlog("AuthDialog");
 
 /* XXX: This class contains bunch of similar code to unix/vncviewer/CConn.cxx */
-SecurityPage::SecurityPage(Security *security_)
-  : PropSheetPage(GetModuleHandle(nullptr), MAKEINTRESOURCE(IDD_SECURITY)),
-    security(security_) {
-}
+SecurityPage::SecurityPage(Security* security_)
+    : PropSheetPage(GetModuleHandle(nullptr), MAKEINTRESOURCE(IDD_SECURITY)), security(security_) {}
 
-void
-SecurityPage::initDialog()
-{
+void SecurityPage::initDialog() {
   list<uint8_t> secTypes;
 
   if (isItemChecked(IDC_ENC_X509))
@@ -102,9 +98,7 @@ SecurityPage::initDialog()
   }
 }
 
-bool
-SecurityPage::onCommand(int id, int /*cmd*/)
-{
+bool SecurityPage::onCommand(int id, int /*cmd*/) {
   if (id == IDC_ENC_X509) {
     if (isItemChecked(IDC_ENC_X509))
       enableX509Dialogs();
@@ -115,8 +109,7 @@ SecurityPage::onCommand(int id, int /*cmd*/)
   return true;
 }
 
-bool
-SecurityPage::onOk() {
+bool SecurityPage::onOk() {
 #ifdef HAVE_GNUTLS
   bool x509_loaded = false;
 #endif
@@ -173,39 +166,28 @@ SecurityPage::onOk() {
   return true;
 }
 
-inline void
-SecurityPage::disableFeature(int id)
-{
+inline void SecurityPage::disableFeature(int id) {
   enableItem(id, false);
   setItemChecked(id, false);
 }
 
-inline void
-SecurityPage::enableAuthMethod(int encid, int authid)
-{
+inline void SecurityPage::enableAuthMethod(int encid, int authid) {
   setItemChecked(encid, true);
   setItemChecked(authid, true);
 }
 
-inline bool
-SecurityPage::authMethodEnabled(int encid, int authid)
-{
+inline bool SecurityPage::authMethodEnabled(int encid, int authid) {
   return isItemChecked(encid) && isItemChecked(authid);
 }
 
-inline void
-SecurityPage::loadX509Certs(bool &loaded)
-{
+inline void SecurityPage::loadX509Certs(bool& loaded) {
   if (!loaded)
     loadX509Certs();
   loaded = true;
 }
 
-inline void
-SecurityPage::loadVncPasswd(bool &loaded)
-{
+inline void SecurityPage::loadVncPasswd(bool& loaded) {
   if (!loaded)
     loadVncPasswd();
   loaded = true;
 }
-

@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -33,8 +33,8 @@
 #include <core/Exception.h>
 #include <core/LogWriter.h>
 
-#include <rfb_win32/SInput.h>
 #include <rfb_win32/MonitorInfo.h>
+#include <rfb_win32/SInput.h>
 #include <rfb_win32/Service.h>
 #include <rfb_win32/keymap.h>
 
@@ -48,27 +48,16 @@ static LogWriter vlog("SInput");
 //
 
 static DWORD buttonDownMapping[8] = {
-  MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_RIGHTDOWN,
-  MOUSEEVENTF_WHEEL, MOUSEEVENTF_WHEEL, 0, 0, 0
-};
+    MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_WHEEL, MOUSEEVENTF_WHEEL, 0, 0, 0};
 
 static DWORD buttonUpMapping[8] = {
-  MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTUP,
-  MOUSEEVENTF_WHEEL, MOUSEEVENTF_WHEEL, 0, 0, 0
-};
+    MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEEVENTF_WHEEL, 0, 0, 0};
 
-static DWORD buttonDataMapping[8] = {
-  0, 0, 0, 120, (DWORD)-120, 0, 0, 0
-};
+static DWORD buttonDataMapping[8] = {0, 0, 0, 120, (DWORD)-120, 0, 0, 0};
 
-win32::SPointer::SPointer()
-  : last_buttonmask(0)
-{
-}
+win32::SPointer::SPointer() : last_buttonmask(0) {}
 
-void
-win32::SPointer::pointerEvent(const Point& pos, uint16_t buttonmask)
-{
+void win32::SPointer::pointerEvent(const Point& pos, uint16_t buttonmask) {
   // - We are specifying absolute coordinates
   DWORD flags = MOUSEEVENTF_ABSOLUTE;
 
@@ -83,17 +72,20 @@ win32::SPointer::pointerEvent(const Point& pos, uint16_t buttonmask)
     bool leftDown = buttonmask & 1;
     bool rightDown = buttonmask & 4;
     buttonmask = (buttonmask & ~(1 | 4));
-    if (leftDown) buttonmask |= 4;
-    if (rightDown) buttonmask |= 1;
+    if (leftDown)
+      buttonmask |= 4;
+    if (rightDown)
+      buttonmask |= 1;
   }
 
   DWORD data = 0;
   for (int i = 0; i < 8; i++) {
-    if ((buttonmask & (1<<i)) != (last_buttonmask & (1<<i))) {
-      if (buttonmask & (1<<i)) {
+    if ((buttonmask & (1 << i)) != (last_buttonmask & (1 << i))) {
+      if (buttonmask & (1 << i)) {
         flags |= buttonDownMapping[i];
         if (buttonDataMapping[i]) {
-          if (data) vlog.info("Warning: Two buttons set mouse_event data field");
+          if (data)
+            vlog.info("Warning: Two buttons set mouse_event data field");
           data = buttonDataMapping[i];
         }
       } else {
@@ -105,13 +97,13 @@ win32::SPointer::pointerEvent(const Point& pos, uint16_t buttonmask)
   last_position = pos;
   last_buttonmask = buttonmask;
 
-  Rect primaryDisplay(0,0,GetSystemMetrics(SM_CXSCREEN),GetSystemMetrics(SM_CYSCREEN));
+  Rect primaryDisplay(0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
   if (primaryDisplay.contains(pos)) {
     // mouse_event wants coordinates specified as a proportion of the
     // primary display's size, scaled to the range 0 to 65535
     Point scaled;
-    scaled.x = (pos.x * 65535) / (primaryDisplay.width()-1);
-    scaled.y = (pos.y * 65535) / (primaryDisplay.height()-1);
+    scaled.x = (pos.x * 65535) / (primaryDisplay.width() - 1);
+    scaled.y = (pos.y * 65535) / (primaryDisplay.height() - 1);
     ::mouse_event(flags, scaled.x, scaled.y, data, 0);
   } else {
     // The event lies outside the primary monitor.  Under Win2K, we can just use
@@ -119,10 +111,9 @@ win32::SPointer::pointerEvent(const Point& pos, uint16_t buttonmask)
     // SendInput is available on all multi-monitor-aware platforms.
     INPUT evt;
     evt.type = INPUT_MOUSE;
-    Point vPos(pos.x-GetSystemMetrics(SM_XVIRTUALSCREEN),
-               pos.y-GetSystemMetrics(SM_YVIRTUALSCREEN));
-    evt.mi.dx = (vPos.x * 65535) / (GetSystemMetrics(SM_CXVIRTUALSCREEN)-1);
-    evt.mi.dy = (vPos.y * 65535) / (GetSystemMetrics(SM_CYVIRTUALSCREEN)-1);
+    Point vPos(pos.x - GetSystemMetrics(SM_XVIRTUALSCREEN), pos.y - GetSystemMetrics(SM_YVIRTUALSCREEN));
+    evt.mi.dx = (vPos.x * 65535) / (GetSystemMetrics(SM_CXVIRTUALSCREEN) - 1);
+    evt.mi.dy = (vPos.y * 65535) / (GetSystemMetrics(SM_CYVIRTUALSCREEN) - 1);
     evt.mi.dwFlags = flags | MOUSEEVENTF_VIRTUALDESK;
     evt.mi.dwExtraInfo = 0;
     evt.mi.mouseData = data;
@@ -136,29 +127,29 @@ win32::SPointer::pointerEvent(const Point& pos, uint16_t buttonmask)
 // -=- Keyboard implementation
 //
 
-BoolParameter rfb::win32::SKeyboard::deadKeyAware("DeadKeyAware",
-  "Whether to assume the viewer has already interpreted dead key sequences "
-  "into latin-1 characters", true);
+BoolParameter
+    rfb::win32::SKeyboard::deadKeyAware("DeadKeyAware",
+                                        "Whether to assume the viewer has already interpreted dead key sequences "
+                                        "into latin-1 characters",
+                                        true);
 BoolParameter rfb::win32::SKeyboard::rawKeyboard("RawKeyboard",
-  "Send keyboard events straight through and avoid mapping them to the "
-  "current keyboard layout", false);
+                                                 "Send keyboard events straight through and avoid mapping them to the "
+                                                 "current keyboard layout",
+                                                 false);
 
 // The keysymToAscii table transforms a couple of awkward keysyms into their
 // ASCII equivalents.
-struct  keysymToAscii_t {
+struct keysymToAscii_t {
   uint32_t keysym;
   uint8_t ascii;
 };
 
 keysymToAscii_t keysymToAscii[] = {
-  { XK_KP_Space, ' ' },
-  { XK_KP_Equal, '=' },
+    {XK_KP_Space, ' '},
+    {XK_KP_Equal, '='},
 };
 
-uint8_t latin1DeadChars[] = {
-  XK_grave, XK_acute, XK_asciicircum, XK_diaeresis, XK_degree, XK_cedilla,
-  XK_asciitilde
-};
+uint8_t latin1DeadChars[] = {XK_grave, XK_acute, XK_asciicircum, XK_diaeresis, XK_degree, XK_cedilla, XK_asciitilde};
 
 struct latin1ToDeadChars_t {
   uint8_t latin1Char;
@@ -168,65 +159,65 @@ struct latin1ToDeadChars_t {
 
 latin1ToDeadChars_t latin1ToDeadChars[] = {
 
-  { XK_Agrave, XK_grave, XK_A },
-  { XK_Egrave, XK_grave, XK_E },
-  { XK_Igrave, XK_grave, XK_I },
-  { XK_Ograve, XK_grave, XK_O },
-  { XK_Ugrave, XK_grave, XK_U },
-  { XK_agrave, XK_grave, XK_a },
-  { XK_egrave, XK_grave, XK_e },
-  { XK_igrave, XK_grave, XK_i },
-  { XK_ograve, XK_grave, XK_o},
-  { XK_ugrave, XK_grave, XK_u },
+    {XK_Agrave, XK_grave, XK_A},
+    {XK_Egrave, XK_grave, XK_E},
+    {XK_Igrave, XK_grave, XK_I},
+    {XK_Ograve, XK_grave, XK_O},
+    {XK_Ugrave, XK_grave, XK_U},
+    {XK_agrave, XK_grave, XK_a},
+    {XK_egrave, XK_grave, XK_e},
+    {XK_igrave, XK_grave, XK_i},
+    {XK_ograve, XK_grave, XK_o},
+    {XK_ugrave, XK_grave, XK_u},
 
-  { XK_Aacute, XK_acute, XK_A },
-  { XK_Eacute, XK_acute, XK_E },
-  { XK_Iacute, XK_acute, XK_I },
-  { XK_Oacute, XK_acute, XK_O },
-  { XK_Uacute, XK_acute, XK_U },
-  { XK_Yacute, XK_acute, XK_Y },
-  { XK_aacute, XK_acute, XK_a },
-  { XK_eacute, XK_acute, XK_e },
-  { XK_iacute, XK_acute, XK_i },
-  { XK_oacute, XK_acute, XK_o},
-  { XK_uacute, XK_acute, XK_u },
-  { XK_yacute, XK_acute, XK_y },
+    {XK_Aacute, XK_acute, XK_A},
+    {XK_Eacute, XK_acute, XK_E},
+    {XK_Iacute, XK_acute, XK_I},
+    {XK_Oacute, XK_acute, XK_O},
+    {XK_Uacute, XK_acute, XK_U},
+    {XK_Yacute, XK_acute, XK_Y},
+    {XK_aacute, XK_acute, XK_a},
+    {XK_eacute, XK_acute, XK_e},
+    {XK_iacute, XK_acute, XK_i},
+    {XK_oacute, XK_acute, XK_o},
+    {XK_uacute, XK_acute, XK_u},
+    {XK_yacute, XK_acute, XK_y},
 
-  { XK_Acircumflex, XK_asciicircum, XK_A },
-  { XK_Ecircumflex, XK_asciicircum, XK_E },
-  { XK_Icircumflex, XK_asciicircum, XK_I },
-  { XK_Ocircumflex, XK_asciicircum, XK_O },
-  { XK_Ucircumflex, XK_asciicircum, XK_U },
-  { XK_acircumflex, XK_asciicircum, XK_a },
-  { XK_ecircumflex, XK_asciicircum, XK_e },
-  { XK_icircumflex, XK_asciicircum, XK_i },
-  { XK_ocircumflex, XK_asciicircum, XK_o},
-  { XK_ucircumflex, XK_asciicircum, XK_u },
+    {XK_Acircumflex, XK_asciicircum, XK_A},
+    {XK_Ecircumflex, XK_asciicircum, XK_E},
+    {XK_Icircumflex, XK_asciicircum, XK_I},
+    {XK_Ocircumflex, XK_asciicircum, XK_O},
+    {XK_Ucircumflex, XK_asciicircum, XK_U},
+    {XK_acircumflex, XK_asciicircum, XK_a},
+    {XK_ecircumflex, XK_asciicircum, XK_e},
+    {XK_icircumflex, XK_asciicircum, XK_i},
+    {XK_ocircumflex, XK_asciicircum, XK_o},
+    {XK_ucircumflex, XK_asciicircum, XK_u},
 
-  { XK_Adiaeresis, XK_diaeresis, XK_A },
-  { XK_Ediaeresis, XK_diaeresis, XK_E },
-  { XK_Idiaeresis, XK_diaeresis, XK_I },
-  { XK_Odiaeresis, XK_diaeresis, XK_O },
-  { XK_Udiaeresis, XK_diaeresis, XK_U },
-  { XK_adiaeresis, XK_diaeresis, XK_a },
-  { XK_ediaeresis, XK_diaeresis, XK_e },
-  { XK_idiaeresis, XK_diaeresis, XK_i },
-  { XK_odiaeresis, XK_diaeresis, XK_o},
-  { XK_udiaeresis, XK_diaeresis, XK_u },
-  { XK_ydiaeresis, XK_diaeresis, XK_y },
+    {XK_Adiaeresis, XK_diaeresis, XK_A},
+    {XK_Ediaeresis, XK_diaeresis, XK_E},
+    {XK_Idiaeresis, XK_diaeresis, XK_I},
+    {XK_Odiaeresis, XK_diaeresis, XK_O},
+    {XK_Udiaeresis, XK_diaeresis, XK_U},
+    {XK_adiaeresis, XK_diaeresis, XK_a},
+    {XK_ediaeresis, XK_diaeresis, XK_e},
+    {XK_idiaeresis, XK_diaeresis, XK_i},
+    {XK_odiaeresis, XK_diaeresis, XK_o},
+    {XK_udiaeresis, XK_diaeresis, XK_u},
+    {XK_ydiaeresis, XK_diaeresis, XK_y},
 
-  { XK_Aring, XK_degree, XK_A },
-  { XK_aring, XK_degree, XK_a },
+    {XK_Aring, XK_degree, XK_A},
+    {XK_aring, XK_degree, XK_a},
 
-  { XK_Ccedilla, XK_cedilla, XK_C },
-  { XK_ccedilla, XK_cedilla, XK_c },
+    {XK_Ccedilla, XK_cedilla, XK_C},
+    {XK_ccedilla, XK_cedilla, XK_c},
 
-  { XK_Atilde, XK_asciitilde, XK_A },
-  { XK_Ntilde, XK_asciitilde, XK_N },
-  { XK_Otilde, XK_asciitilde, XK_O },
-  { XK_atilde, XK_asciitilde, XK_a },
-  { XK_ntilde, XK_asciitilde, XK_n },
-  { XK_otilde, XK_asciitilde, XK_o },
+    {XK_Atilde, XK_asciitilde, XK_A},
+    {XK_Ntilde, XK_asciitilde, XK_N},
+    {XK_Otilde, XK_asciitilde, XK_O},
+    {XK_atilde, XK_asciitilde, XK_a},
+    {XK_ntilde, XK_asciitilde, XK_n},
+    {XK_otilde, XK_asciitilde, XK_o},
 };
 
 // doKeyboardEvent wraps the system keybd_event function and attempts to find
@@ -255,8 +246,7 @@ inline void doScanCodeEvent(BYTE scancode, bool down) {
   evt.ki.wScan = scancode;
   evt.ki.dwExtraInfo = 0;
   evt.ki.time = 0;
-  vlog.debug("SendInput ScanCode: 0x%x Flags: 0x%lx %s", scancode,
-             evt.ki.dwFlags, down ? "Down" : "Up");
+  vlog.debug("SendInput ScanCode: 0x%x Flags: 0x%lx %s", scancode, evt.ki.dwFlags, down ? "Down" : "Up");
 
   // Windows has some bug where it doesn't look up scan code 0x45
   // properly, so we need to help it out
@@ -281,9 +271,7 @@ inline void doScanCodeEvent(BYTE scancode, bool down) {
 
 class KeyStateModifier {
 public:
-  KeyStateModifier(int vkCode_, int flags_=0)
-    : vkCode(vkCode_), flags(flags_), pressed(false), released(false)
-  {}
+  KeyStateModifier(int vkCode_, int flags_ = 0) : vkCode(vkCode_), flags(flags_), pressed(false), released(false) {}
   void press() {
     if (!(GetAsyncKeyState(vkCode) & 0x8000)) {
       doKeyboardEvent(vkCode, flags);
@@ -309,21 +297,21 @@ public:
   bool released;
 };
 
-
 // doKeyEventWithModifiers() generates a key event having first "pressed" or
 // "released" the shift, ctrl or alt modifiers if necessary.
 
-void doKeyEventWithModifiers(BYTE vkCode, BYTE modifierState, bool down)
-{
+void doKeyEventWithModifiers(BYTE vkCode, BYTE modifierState, bool down) {
   KeyStateModifier ctrl(VK_CONTROL);
   KeyStateModifier alt(VK_MENU);
   KeyStateModifier shift(VK_SHIFT);
 
   if (down) {
-    if (modifierState & 2) ctrl.press();
-    if (modifierState & 4) alt.press();
+    if (modifierState & 2)
+      ctrl.press();
+    if (modifierState & 4)
+      alt.press();
     if (modifierState & 1) {
-      shift.press(); 
+      shift.press();
     } else {
       shift.release();
     }
@@ -331,9 +319,7 @@ void doKeyEventWithModifiers(BYTE vkCode, BYTE modifierState, bool down)
   doKeyboardEvent(vkCode, down ? 0 : KEYEVENTF_KEYUP);
 }
 
-
-win32::SKeyboard::SKeyboard()
-{
+win32::SKeyboard::SKeyboard() {
   for (unsigned int i = 0; i < sizeof(keymap) / sizeof(keymap_t); i++) {
     vkMap[keymap[i].keysym] = keymap[i].vk;
     extendedMap[keymap[i].keysym] = keymap[i].extended;
@@ -354,8 +340,7 @@ win32::SKeyboard::SKeyboard()
       uint8_t chars[2];
       int nchars = ToAscii(vkCode, 0, keystate, (WORD*)&chars, 0);
       if (nchars < 0) {
-        vlog.debug("Found dead key 0x%x '%c'",
-                   latin1DeadChars[j], latin1DeadChars[j]);
+        vlog.debug("Found dead key 0x%x '%c'", latin1DeadChars[j], latin1DeadChars[j]);
         deadChars.push_back(latin1DeadChars[j]);
         ToAscii(vkCode, 0, keystate, (WORD*)&chars, 0);
       }
@@ -363,9 +348,7 @@ win32::SKeyboard::SKeyboard()
   }
 }
 
-
-void win32::SKeyboard::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
-{
+void win32::SKeyboard::keyEvent(uint32_t keysym, uint32_t keycode, bool down) {
   // If scan code is available use that directly as windows uses
   // compatible scancodes
   if (keycode && rawKeyboard) {
@@ -382,10 +365,8 @@ void win32::SKeyboard::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
     if ((keycode == 0x54) && !(GetAsyncKeyState(VK_MENU) & 0x8000))
       keycode = 0xb7;
 
-    if (down && (keycode == 0xd3) &&
-        ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) &&
-        ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0))
-    {
+    if (down && (keycode == 0xd3) && ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) &&
+        ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0)) {
       rfb::win32::emulateCtrlAltDel();
       return;
     }
@@ -401,9 +382,7 @@ void win32::SKeyboard::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
     }
   }
 
-  if ((keysym >= 32 && keysym <= 126) ||
-      (keysym >= 160 && keysym <= 255))
-  {
+  if ((keysym >= 32 && keysym <= 126) || (keysym >= 160 && keysym <= 255)) {
     // ordinary Latin-1 character
 
     if (deadKeyAware) {
@@ -415,7 +394,8 @@ void win32::SKeyboard::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
           if (dc != -1) {
             if (down) {
               vlog.info("Latin-1 dead key: 0x%x vkCode 0x%x mod 0x%x "
-                        "followed by space", keysym, LOBYTE(dc), HIBYTE(dc));
+                        "followed by space",
+                        keysym, LOBYTE(dc), HIBYTE(dc));
               doKeyEventWithModifiers(LOBYTE(dc), HIBYTE(dc), true);
               doKeyEventWithModifiers(LOBYTE(dc), HIBYTE(dc), false);
               doKeyEventWithModifiers(VK_SPACE, 0, true);
@@ -431,9 +411,7 @@ void win32::SKeyboard::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
     if (s == -1) {
       if (down) {
         // not a single keypress - try synthesizing dead chars.
-        for (unsigned int j = 0;
-             j < sizeof(latin1ToDeadChars) / sizeof(latin1ToDeadChars_t);
-             j++) {
+        for (unsigned int j = 0; j < sizeof(latin1ToDeadChars) / sizeof(latin1ToDeadChars_t); j++) {
           if (keysym == latin1ToDeadChars[j].latin1Char) {
             for (unsigned int i = 0; i < deadChars.size(); i++) {
               if (deadChars[i] == latin1ToDeadChars[j].deadChar) {
@@ -442,8 +420,7 @@ void win32::SKeyboard::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
                 if (dc != -1 && bc != -1) {
                   vlog.info("Latin-1 key: 0x%x dead key vkCode 0x%x mod 0x%x "
                             "followed by vkCode 0x%x mod 0x%x",
-                            keysym, LOBYTE(dc), HIBYTE(dc),
-                            LOBYTE(bc), HIBYTE(bc));
+                            keysym, LOBYTE(dc), HIBYTE(dc), LOBYTE(bc), HIBYTE(bc));
                   doKeyEventWithModifiers(LOBYTE(dc), HIBYTE(dc), true);
                   doKeyEventWithModifiers(LOBYTE(dc), HIBYTE(dc), false);
                   doKeyEventWithModifiers(LOBYTE(bc), HIBYTE(bc), true);
@@ -456,15 +433,14 @@ void win32::SKeyboard::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
             break;
           }
         }
-        vlog.info("Ignoring unrecognised Latin-1 keysym 0x%x",keysym);
+        vlog.info("Ignoring unrecognised Latin-1 keysym 0x%x", keysym);
       }
       return;
     }
 
     BYTE vkCode = LOBYTE(s);
     BYTE modifierState = HIBYTE(s);
-    vlog.debug("Latin-1 key: 0x%x vkCode 0x%x mod 0x%x down %d",
-               keysym, vkCode, modifierState, down);
+    vlog.debug("Latin-1 key: 0x%x vkCode 0x%x mod 0x%x down %d", keysym, vkCode, modifierState, down);
     doKeyEventWithModifiers(vkCode, modifierState, down);
 
   } else {
@@ -472,20 +448,19 @@ void win32::SKeyboard::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
     // see if it's a recognised keyboard key, otherwise ignore it
 
     if (vkMap.find(keysym) == vkMap.end()) {
-      vlog.info("Ignoring unknown keysym 0x%x",keysym);
+      vlog.info("Ignoring unknown keysym 0x%x", keysym);
       return;
     }
     BYTE vkCode = vkMap[keysym];
     DWORD flags = 0;
-    if (extendedMap[keysym]) flags |= KEYEVENTF_EXTENDEDKEY;
-    if (!down) flags |= KEYEVENTF_KEYUP;
+    if (extendedMap[keysym])
+      flags |= KEYEVENTF_EXTENDEDKEY;
+    if (!down)
+      flags |= KEYEVENTF_KEYUP;
 
-    vlog.debug("Keyboard key: keysym 0x%x vkCode 0x%x ext %d down %d",
-               keysym, vkCode, extendedMap[keysym], down);
-    if (down && (vkCode == VK_DELETE) &&
-        ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) &&
-        ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0))
-    {
+    vlog.debug("Keyboard key: keysym 0x%x vkCode 0x%x ext %d down %d", keysym, vkCode, extendedMap[keysym], down);
+    if (down && (vkCode == VK_DELETE) && ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) &&
+        ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0)) {
       rfb::win32::emulateCtrlAltDel();
       return;
     }

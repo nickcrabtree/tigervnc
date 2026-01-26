@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -35,43 +35,39 @@ using namespace rfb::win32;
 static LogWriter vlog("WMPoller");
 
 BoolParameter rfb::win32::WMPoller::poll_console_windows("PollConsoleWindows",
-  "Server should poll console windows for updates", true);
+                                                         "Server should poll console windows for updates", true);
 
 // -=- WMPoller class
 
-bool
-rfb::win32::WMPoller::processEvent() {
+bool rfb::win32::WMPoller::processEvent() {
   PollInfo info;
   if (poll_console_windows && ut) {
-    ::EnumWindows(WMPoller::enumWindowProc, (LPARAM) &info);
+    ::EnumWindows(WMPoller::enumWindowProc, (LPARAM)&info);
     ut->add_changed(info.poll_include);
   }
   return false;
 }
 
-bool
-rfb::win32::WMPoller::setUpdateTracker(UpdateTracker* ut_) {
+bool rfb::win32::WMPoller::setUpdateTracker(UpdateTracker* ut_) {
   ut = ut_;
   return true;
 }
 
-bool
-rfb::win32::WMPoller::checkPollWindow(HWND w) {
+bool rfb::win32::WMPoller::checkPollWindow(HWND w) {
   char buffer[128];
   if (!GetClassName(w, buffer, 128))
     throw core::win32_error("Unable to get window class:%u", GetLastError());
-  if ((strcmp(buffer, "tty") != 0) &&
-    (strcmp(buffer, "ConsoleWindowClass") != 0)) {
+  if ((strcmp(buffer, "tty") != 0) && (strcmp(buffer, "ConsoleWindowClass") != 0)) {
     return false;
   }
   return true;
 }
 
-void
-rfb::win32::WMPoller::pollWindow(HWND w, PollInfo* i) {
+void rfb::win32::WMPoller::pollWindow(HWND w, PollInfo* i) {
   RECT r;
   if (IsWindowVisible(w) && GetWindowRect(w, &r)) {
-    if (IsRectEmpty(&r)) return;
+    if (IsRectEmpty(&r))
+      return;
     Region wrgn({r.left, r.top, r.right, r.bottom});
     if (checkPollWindow(w)) {
       wrgn.assign_subtract(i->poll_exclude);
@@ -82,8 +78,7 @@ rfb::win32::WMPoller::pollWindow(HWND w, PollInfo* i) {
   }
 }
 
-BOOL CALLBACK
-rfb::win32::WMPoller::enumWindowProc(HWND w, LPARAM lp) {
+BOOL CALLBACK rfb::win32::WMPoller::enumWindowProc(HWND w, LPARAM lp) {
   pollWindow(w, (PollInfo*)lp);
   return TRUE;
 }

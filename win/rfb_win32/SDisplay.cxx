@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011-2019 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -29,17 +29,16 @@
 
 #include <core/LogWriter.h>
 
-#include <rfb_win32/SDisplay.h>
-#include <rfb_win32/Service.h>
-#include <rfb_win32/TsSessions.h>
+#include <rfb/VNCServer.h>
+#include <rfb/ledStates.h>
 #include <rfb_win32/CleanDesktop.h>
 #include <rfb_win32/CurrentUser.h>
 #include <rfb_win32/MonitorInfo.h>
+#include <rfb_win32/SDisplay.h>
 #include <rfb_win32/SDisplayCorePolling.h>
 #include <rfb_win32/SDisplayCoreWMHooks.h>
-#include <rfb/VNCServer.h>
-#include <rfb/ledStates.h>
-
+#include <rfb_win32/Service.h>
+#include <rfb_win32/TsSessions.h>
 
 using namespace core;
 using namespace rdr;
@@ -50,21 +49,22 @@ static LogWriter vlog("SDisplay");
 
 // - SDisplay-specific configuration options
 
-IntParameter rfb::win32::SDisplay::updateMethod("UpdateMethod",
-  "How to discover desktop updates; 0 - Polling, 1 - Application hooking, 2 - Driver hooking.",
-  0, 0, 2);
-BoolParameter rfb::win32::SDisplay::disableLocalInputs("DisableLocalInputs",
-  "Disable local keyboard and pointer input while the server is in use", false);
-EnumParameter rfb::win32::SDisplay::disconnectAction("DisconnectAction",
-  "Action to perform when all clients have disconnected.  (None, Lock, Logoff)",
-  {"None", "Lock", "Logoff"}, "None");
+IntParameter rfb::win32::SDisplay::updateMethod(
+    "UpdateMethod", "How to discover desktop updates; 0 - Polling, 1 - Application hooking, 2 - Driver hooking.", 0, 0,
+    2);
+BoolParameter rfb::win32::SDisplay::disableLocalInputs(
+    "DisableLocalInputs", "Disable local keyboard and pointer input while the server is in use", false);
+EnumParameter rfb::win32::SDisplay::disconnectAction(
+    "DisconnectAction", "Action to perform when all clients have disconnected.  (None, Lock, Logoff)",
+    {"None", "Lock", "Logoff"}, "None");
 StringParameter displayDevice("DisplayDevice",
-  "Display device name of the monitor to be remoted, or empty to export the whole desktop.", "");
+                              "Display device name of the monitor to be remoted, or empty to export the whole desktop.",
+                              "");
 BoolParameter rfb::win32::SDisplay::removeWallpaper("RemoveWallpaper",
-  "Remove the desktop wallpaper when the server is in use.", false);
+                                                    "Remove the desktop wallpaper when the server is in use.", false);
 BoolParameter rfb::win32::SDisplay::disableEffects("DisableEffects",
-  "Disable desktop user interface effects when the server is in use.", false);
-
+                                                   "Disable desktop user interface effects when the server is in use.",
+                                                   false);
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -74,17 +74,14 @@ BoolParameter rfb::win32::SDisplay::disableEffects("DisableEffects",
 // -=- Constructor/Destructor
 
 SDisplay::SDisplay()
-  : server(nullptr), pb(nullptr), device(nullptr),
-    core(nullptr), ptr(nullptr), kbd(nullptr), clipboard(nullptr),
-    inputs(nullptr), monitor(nullptr), cleanDesktop(nullptr), cursor(nullptr),
-    statusLocation(nullptr), queryConnectionHandler(nullptr), ledState(0)
-{
+    : server(nullptr), pb(nullptr), device(nullptr), core(nullptr), ptr(nullptr), kbd(nullptr), clipboard(nullptr),
+      inputs(nullptr), monitor(nullptr), cleanDesktop(nullptr), cursor(nullptr), statusLocation(nullptr),
+      queryConnectionHandler(nullptr), ledState(0) {
   updateEvent.h = CreateEvent(nullptr, TRUE, FALSE, nullptr);
   terminateEvent.h = CreateEvent(nullptr, TRUE, FALSE, nullptr);
 }
 
-SDisplay::~SDisplay()
-{
+SDisplay::~SDisplay() {
   // XXX when the VNCServer has been deleted with clients active, stop()
   // doesn't get called - this ought to be fixed in VNCServerST.  In any event,
   // we should never call any methods on VNCServer once we're being deleted.
@@ -94,19 +91,17 @@ SDisplay::~SDisplay()
   // methods on it.  Setting server to zero here ensures that stop() doesn't
   // call setPixelBuffer(0) on the server.
   server = nullptr;
-  if (core) stop();
+  if (core)
+    stop();
 }
-
 
 // -=- SDesktop interface
 
-void SDisplay::init(VNCServer* vs)
-{
+void SDisplay::init(VNCServer* vs) {
   server = vs;
 }
 
-void SDisplay::start()
-{
+void SDisplay::start() {
   vlog.debug("Starting");
 
   // Try to make session zero the console session
@@ -118,11 +113,11 @@ void SDisplay::start()
 
   vlog.debug("Started");
 
-  if (statusLocation) *statusLocation = true;
+  if (statusLocation)
+    *statusLocation = true;
 }
 
-void SDisplay::stop()
-{
+void SDisplay::stop() {
   vlog.debug("Stopping");
 
   // If we successfully start()ed then perform the DisconnectAction
@@ -148,18 +143,15 @@ void SDisplay::stop()
 
   vlog.debug("Stopped");
 
-  if (statusLocation) *statusLocation = false;
+  if (statusLocation)
+    *statusLocation = false;
 }
 
-void SDisplay::terminate()
-{
+void SDisplay::terminate() {
   SetEvent(terminateEvent);
 }
 
-
-void SDisplay::queryConnection(network::Socket* sock,
-                               const char* userName)
-{
+void SDisplay::queryConnection(network::Socket* sock, const char* userName) {
   assert(server != nullptr);
 
   if (queryConnectionHandler) {
@@ -170,14 +162,13 @@ void SDisplay::queryConnection(network::Socket* sock,
   server->approveConnection(sock, true);
 }
 
-
 void SDisplay::startCore() {
 
   // Currently, we just check whether we're in the console session, and
   //   fail if not
   if (!inConsoleSession())
     throw std::runtime_error("Console is not session zero - oreconnect to restore Console sessin");
-  
+
   // Switch to the current input desktop
   if (rfb::win32::desktopChangeRequired()) {
     if (!rfb::win32::changeDesktop())
@@ -202,7 +193,8 @@ void SDisplay::startCore() {
         core = new SDisplayCorePolling(this, &updates);
       core->setScreenRect(screenRect);
     } catch (std::exception& e) {
-      delete core; core = nullptr;
+      delete core;
+      core = nullptr;
       if (tryMethod == 0)
         throw std::runtime_error("Unable to access desktop");
       tryMethod--;
@@ -238,19 +230,28 @@ void SDisplay::startCore() {
 void SDisplay::stopCore() {
   if (core)
     vlog.info("Stopping %s", core->methodName());
-  delete core; core = nullptr;
-  delete pb; pb = nullptr;
-  delete device; device = nullptr;
-  delete monitor; monitor = nullptr;
-  delete clipboard; clipboard = nullptr;
-  delete inputs; inputs = nullptr;
-  delete ptr; ptr = nullptr;
-  delete kbd; kbd = nullptr;
-  delete cleanDesktop; cleanDesktop = nullptr;
-  delete cursor; cursor = nullptr;
+  delete core;
+  core = nullptr;
+  delete pb;
+  pb = nullptr;
+  delete device;
+  device = nullptr;
+  delete monitor;
+  monitor = nullptr;
+  delete clipboard;
+  clipboard = nullptr;
+  delete inputs;
+  inputs = nullptr;
+  delete ptr;
+  ptr = nullptr;
+  delete kbd;
+  kbd = nullptr;
+  delete cleanDesktop;
+  cleanDesktop = nullptr;
+  delete cursor;
+  cursor = nullptr;
   ResetEvent(updateEvent);
 }
-
 
 bool SDisplay::isRestartRequired() {
   // - We must restart the SDesktop if:
@@ -274,13 +275,11 @@ bool SDisplay::isRestartRequired() {
 
   // - Check that the desktop optimisation settings haven't changed
   //   This isn't very efficient, but it shouldn't change very often!
-  if ((isWallpaperRemoved != removeWallpaper) ||
-      (areEffectsDisabled != disableEffects))
+  if ((isWallpaperRemoved != removeWallpaper) || (areEffectsDisabled != disableEffects))
     return true;
 
   return false;
 }
-
 
 void SDisplay::restartCore() {
   vlog.info("Restarting");
@@ -300,7 +299,6 @@ void SDisplay::restartCore() {
   }
 }
 
-
 void SDisplay::handleClipboardRequest() {
   server->sendClipboardData(clipboard->getClipText().c_str());
 }
@@ -314,7 +312,6 @@ void SDisplay::handleClipboardAnnounce(bool available) {
 void SDisplay::handleClipboardData(const char* data) {
   clipboard->setClipText(data);
 }
-
 
 void SDisplay::pointerEvent(const Point& pos, uint16_t buttonmask) {
   if (pb->getRect().contains(pos)) {
@@ -353,17 +350,13 @@ bool SDisplay::checkLedState() {
   return false;
 }
 
-
-void
-SDisplay::notifyClipboardChanged(bool available) {
+void SDisplay::notifyClipboardChanged(bool available) {
   vlog.debug("Clipboard text changed");
   if (server)
     server->announceClipboard(available);
 }
 
-
-void
-SDisplay::notifyDisplayEvent(WMMonitor::Notifier::DisplayEventType evt) {
+void SDisplay::notifyDisplayEvent(WMMonitor::Notifier::DisplayEventType evt) {
   switch (evt) {
   case WMMonitor::Notifier::DisplaySizeChanged:
     vlog.debug("Desktop size changed");
@@ -378,8 +371,7 @@ SDisplay::notifyDisplayEvent(WMMonitor::Notifier::DisplayEventType evt) {
   }
 }
 
-void
-SDisplay::processEvent(HANDLE event) {
+void SDisplay::processEvent(HANDLE event) {
   if (event == updateEvent) {
     vlog.write(120, "processEvent");
     ResetEvent(updateEvent);
@@ -442,11 +434,9 @@ SDisplay::processEvent(HANDLE event) {
   throw std::runtime_error("No such event");
 }
 
-
 // -=- Protected methods
 
-void
-SDisplay::recreatePixelBuffer(bool force) {
+void SDisplay::recreatePixelBuffer(bool force) {
   // Open the specified display device
   //   If no device is specified, open entire screen using GetDC().
   //   Opening the whole display with CreateDC doesn't work on multi-monitor
@@ -465,17 +455,14 @@ SDisplay::recreatePixelBuffer(bool force) {
   Rect newScreenRect;
   if (strlen(displayDevice) > 0) {
     MonitorInfo info(displayDevice);
-    newScreenRect = {info.rcMonitor.left, info.rcMonitor.top,
-                     info.rcMonitor.right, info.rcMonitor.bottom};
+    newScreenRect = {info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right, info.rcMonitor.bottom};
   } else {
     newScreenRect = new_device->getClipBox();
   }
 
   // If nothing has changed & a recreate has not been forced, delete
   // the new device context and return
-  if (pb && !force &&
-    newScreenRect == screenRect &&
-    new_device->getPF() == pb->getPF()) {
+  if (pb && !force && newScreenRect == screenRect && new_device->getPF() == pb->getPF()) {
     delete new_device;
     return;
   }

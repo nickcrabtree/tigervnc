@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -22,8 +22,8 @@
 #include <config.h>
 #endif
 
-#include <winsock2.h>
 #include <list>
+#include <winsock2.h>
 
 #include <core/Exception.h>
 #include <core/LogWriter.h>
@@ -43,29 +43,23 @@ using namespace rfb::win32;
 
 static LogWriter vlog("SocketManager");
 
-
 // -=- SocketManager
 
-SocketManager::SocketManager() {
-}
+SocketManager::SocketManager() {}
 
-SocketManager::~SocketManager() {
-}
-
+SocketManager::~SocketManager() {}
 
 static void requestAddressChangeEvents(network::SocketListener* sock_) {
   DWORD dummy = 0;
-  if (WSAIoctl(sock_->getFd(), SIO_ADDRESS_LIST_CHANGE, nullptr, 0, nullptr, 0, &dummy, nullptr, nullptr) == SOCKET_ERROR) {
+  if (WSAIoctl(sock_->getFd(), SIO_ADDRESS_LIST_CHANGE, nullptr, 0, nullptr, 0, &dummy, nullptr, nullptr) ==
+      SOCKET_ERROR) {
     DWORD err = WSAGetLastError();
     if (err != WSAEWOULDBLOCK)
       vlog.error("Unable to track address changes: 0x%08x", (unsigned)err);
   }
 }
 
-
-void SocketManager::addListener(network::SocketListener* sock_,
-                                VNCServer* srvr,
-                                AddressChangeNotifier* acn) {
+void SocketManager::addListener(network::SocketListener* sock_, VNCServer* srvr, AddressChangeNotifier* acn) {
   WSAEVENT event = WSACreateEvent();
   long flags = FD_ACCEPT | FD_CLOSE;
   if (acn)
@@ -98,8 +92,8 @@ void SocketManager::addListener(network::SocketListener* sock_,
 }
 
 void SocketManager::remListener(network::SocketListener* sock) {
-  std::map<HANDLE,ListenInfo>::iterator i;
-  for (i=listeners.begin(); i!=listeners.end(); i++) {
+  std::map<HANDLE, ListenInfo>::iterator i;
+  for (i = listeners.begin(); i != listeners.end(); i++) {
     if (i->second.sock == sock) {
       removeEvent(i->first);
       WSACloseEvent(i->first);
@@ -111,11 +105,9 @@ void SocketManager::remListener(network::SocketListener* sock) {
   throw std::runtime_error("Listener not registered");
 }
 
-
 void SocketManager::addSocket(network::Socket* sock_, VNCServer* srvr, bool outgoing) {
   WSAEVENT event = WSACreateEvent();
-  if (!event || !addEvent(event, this) ||
-      (WSAEventSelect(sock_->getFd(), event, FD_READ | FD_CLOSE) == SOCKET_ERROR)) {
+  if (!event || !addEvent(event, this) || (WSAEventSelect(sock_->getFd(), event, FD_READ | FD_CLOSE) == SOCKET_ERROR)) {
     if (event)
       WSACloseEvent(event);
     delete sock_;
@@ -130,8 +122,8 @@ void SocketManager::addSocket(network::Socket* sock_, VNCServer* srvr, bool outg
 }
 
 void SocketManager::remSocket(network::Socket* sock_) {
-  std::map<HANDLE,ConnInfo>::iterator i;
-  for (i=connections.begin(); i!=connections.end(); i++) {
+  std::map<HANDLE, ConnInfo>::iterator i;
+  for (i = connections.begin(); i != connections.end(); i++) {
     if (i->second.sock == sock_) {
       i->second.server->removeSocket(sock_);
       removeEvent(i->first);
@@ -144,10 +136,9 @@ void SocketManager::remSocket(network::Socket* sock_) {
   throw std::runtime_error("Socket not registered");
 }
 
-bool SocketManager::getDisable(VNCServer* srvr)
-{
-  std::map<HANDLE,ListenInfo>::iterator i;
-  for (i=listeners.begin(); i!=listeners.end(); i++) {
+bool SocketManager::getDisable(VNCServer* srvr) {
+  std::map<HANDLE, ListenInfo>::iterator i;
+  for (i = listeners.begin(); i != listeners.end(); i++) {
     if (i->second.server == srvr) {
       return i->second.disable;
     }
@@ -155,11 +146,10 @@ bool SocketManager::getDisable(VNCServer* srvr)
   throw std::runtime_error("Listener not registered");
 }
 
-void SocketManager::setDisable(VNCServer* srvr, bool disable)
-{
+void SocketManager::setDisable(VNCServer* srvr, bool disable) {
   bool found = false;
-  std::map<HANDLE,ListenInfo>::iterator i;
-  for (i=listeners.begin(); i!=listeners.end(); i++) {
+  std::map<HANDLE, ListenInfo>::iterator i;
+  for (i = listeners.begin(); i != listeners.end(); i++) {
     if (i->second.server == srvr) {
       i->second.disable = disable;
       // There might be multiple sockets for the same server, so
@@ -179,9 +169,10 @@ int SocketManager::checkTimeouts() {
     timeout = nextTimeout;
 
   std::list<network::Socket*> shutdownSocks;
-  std::map<HANDLE,ConnInfo>::iterator j, j_next;
-  for (j=connections.begin(); j!=connections.end(); j=j_next) {
-    j_next = j; j_next++;
+  std::map<HANDLE, ConnInfo>::iterator j, j_next;
+  for (j = connections.begin(); j != connections.end(); j = j_next) {
+    j_next = j;
+    j_next++;
     if (j->second.sock->isShutdown())
       shutdownSocks.push_back(j->second.sock);
     else {
@@ -194,12 +185,11 @@ int SocketManager::checkTimeouts() {
   }
 
   std::list<network::Socket*>::iterator k;
-  for (k=shutdownSocks.begin(); k!=shutdownSocks.end(); k++)
+  for (k = shutdownSocks.begin(); k != shutdownSocks.end(); k++)
     remSocket(*k);
 
   return timeout;
 }
-
 
 void SocketManager::processEvent(HANDLE event) {
   if (listeners.count(event)) {
@@ -247,7 +237,6 @@ void SocketManager::processEvent(HANDLE event) {
 
       // Reset the event object
       WSAResetEvent(event);
-
 
       // Call the socket server to process the event
       if (network_events.lNetworkEvents & FD_WRITE) {

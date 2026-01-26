@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -26,11 +26,11 @@
 #include <core/LogWriter.h>
 #include <core/string.h>
 
-#include <rfb_win32/Service.h>
-#include <rfb_win32/MsgWindow.h>
-#include <rfb_win32/ModuleFileName.h>
-#include <rfb_win32/Registry.h>
 #include <rfb_win32/Handle.h>
+#include <rfb_win32/ModuleFileName.h>
+#include <rfb_win32/MsgWindow.h>
+#include <rfb_win32/Registry.h>
+#include <rfb_win32/Service.h>
 
 #include <logmessages/messages.h>
 
@@ -39,7 +39,6 @@ using namespace rfb;
 using namespace win32;
 
 static LogWriter vlog("Service");
-
 
 // - Internal service implementation functions
 
@@ -69,7 +68,6 @@ VOID WINAPI serviceHandler(DWORD control) {
   vlog.debug("CMD: Unknown %lu", control);
 }
 
-
 // -=- Service main procedure
 
 VOID WINAPI serviceProc(DWORD dwArgc, LPTSTR* lpszArgv) {
@@ -89,7 +87,6 @@ VOID WINAPI serviceProc(DWORD dwArgc, LPTSTR* lpszArgv) {
   service->setStatus(SERVICE_STOPPED);
 }
 
-
 // -=- Service
 
 Service::Service(const char* name_) : name(name_) {
@@ -104,8 +101,7 @@ Service::Service(const char* name_) : name(name_) {
   status.dwCurrentState = SERVICE_STOPPED;
 }
 
-void
-Service::start() {
+void Service::start() {
   SERVICE_TABLE_ENTRY entry[2];
   entry[0].lpServiceName = (char*)name;
   entry[0].lpServiceProc = serviceProc;
@@ -119,13 +115,11 @@ Service::start() {
     throw win32_error("Unable to start service", GetLastError());
 }
 
-void
-Service::setStatus() {
+void Service::setStatus() {
   setStatus(status.dwCurrentState);
 }
 
-void
-Service::setStatus(DWORD state) {
+void Service::setStatus(DWORD state) {
   if (status_handle == nullptr) {
     vlog.debug("Warning: Cannot setStatus");
     return;
@@ -145,18 +139,15 @@ Service::~Service() {
   service = nullptr;
 }
 
-
 // Find out whether this process is running as the WinVNC service
 bool thisIsService() {
   return service && (service->status.dwCurrentState != SERVICE_STOPPED);
 }
 
-
 // -=- Desktop handling code
 
 // Switch the current thread to the specified desktop
-static bool
-switchToDesktop(HDESK desktop) {
+static bool switchToDesktop(HDESK desktop) {
   HDESK old_desktop = GetThreadDesktop(GetCurrentThreadId());
   if (!SetThreadDesktop(desktop)) {
     vlog.debug("switchToDesktop failed:%lu", GetLastError());
@@ -168,14 +159,12 @@ switchToDesktop(HDESK desktop) {
 }
 
 // Determine whether the thread's current desktop is the input one
-static bool
-inputDesktopSelected() {
+static bool inputDesktopSelected() {
   HDESK current = GetThreadDesktop(GetCurrentThreadId());
-	HDESK input = OpenInputDesktop(0, FALSE,
-  	DESKTOP_CREATEMENU | DESKTOP_CREATEWINDOW |
-		DESKTOP_ENUMERATE | DESKTOP_HOOKCONTROL |
-		DESKTOP_WRITEOBJECTS | DESKTOP_READOBJECTS |
-		DESKTOP_SWITCHDESKTOP | GENERIC_WRITE);
+  HDESK input =
+      OpenInputDesktop(0, FALSE,
+                       DESKTOP_CREATEMENU | DESKTOP_CREATEWINDOW | DESKTOP_ENUMERATE | DESKTOP_HOOKCONTROL |
+                           DESKTOP_WRITEOBJECTS | DESKTOP_READOBJECTS | DESKTOP_SWITCHDESKTOP | GENERIC_WRITE);
   if (!input) {
     vlog.debug("Unable to OpenInputDesktop(1):%lu", GetLastError());
     return false;
@@ -204,14 +193,12 @@ inputDesktopSelected() {
 }
 
 // Switch the current thread into the input desktop
-static bool
-selectInputDesktop() {
+static bool selectInputDesktop() {
   // - Open the input desktop
-  HDESK desktop = OpenInputDesktop(0, FALSE,
-		DESKTOP_CREATEMENU | DESKTOP_CREATEWINDOW |
-		DESKTOP_ENUMERATE | DESKTOP_HOOKCONTROL |
-		DESKTOP_WRITEOBJECTS | DESKTOP_READOBJECTS |
-		DESKTOP_SWITCHDESKTOP | GENERIC_WRITE);
+  HDESK desktop =
+      OpenInputDesktop(0, FALSE,
+                       DESKTOP_CREATEMENU | DESKTOP_CREATEWINDOW | DESKTOP_ENUMERATE | DESKTOP_HOOKCONTROL |
+                           DESKTOP_WRITEOBJECTS | DESKTOP_READOBJECTS | DESKTOP_SWITCHDESKTOP | GENERIC_WRITE);
   if (!desktop) {
     vlog.debug("Unable to OpenInputDesktop(2):%lu", GetLastError());
     return false;
@@ -236,30 +223,23 @@ selectInputDesktop() {
   return true;
 }
 
-
 // -=- Access points to desktop-switching routines
 
-bool
-rfb::win32::desktopChangeRequired() {
+bool rfb::win32::desktopChangeRequired() {
   return !inputDesktopSelected();
 }
 
-bool
-rfb::win32::changeDesktop() {
+bool rfb::win32::changeDesktop() {
   return selectInputDesktop();
 }
 
-
 // -=- Ctrl-Alt-Del emulation
 
-bool
-rfb::win32::emulateCtrlAltDel() {
-  rfb::win32::Handle sessionEventCad = 
-    CreateEvent(nullptr, FALSE, FALSE, "Global\\SessionEventTigerVNCCad");
+bool rfb::win32::emulateCtrlAltDel() {
+  rfb::win32::Handle sessionEventCad = CreateEvent(nullptr, FALSE, FALSE, "Global\\SessionEventTigerVNCCad");
   SetEvent(sessionEventCad);
   return true;
 }
-
 
 // -=- Application Event Log target Logger class
 
@@ -275,11 +255,13 @@ public:
       DeregisterEventSource(eventlog);
   }
 
-  void write(int level, const char *logname, const char *message) override {
-    if (!eventlog) return;
+  void write(int level, const char* logname, const char* message) override {
+    if (!eventlog)
+      return;
     const char* strings[] = {logname, message};
     WORD type = EVENTLOG_INFORMATION_TYPE;
-    if (level == 0) type = EVENTLOG_ERROR_TYPE;
+    if (level == 0)
+      type = EVENTLOG_ERROR_TYPE;
     if (!ReportEvent(eventlog, type, 0, VNC4LogMessage, nullptr, 2, 0, strings, nullptr)) {
       // *** It's not at all clear what is the correct behaviour if this fails...
       printf("ReportEvent failed:%ld\n", GetLastError());
@@ -300,13 +282,9 @@ bool rfb::win32::initEventLogLogger(const char* srcname) {
   return true;
 }
 
-
 // -=- Registering and unregistering the service
 
-bool rfb::win32::registerService(const char* name,
-                                 const char* display,
-                                 const char* desc,
-                                 int argc, char** argv) {
+bool rfb::win32::registerService(const char* name, const char* display, const char* desc, int argc, char** argv) {
   int i;
 
   // - Initialise the default service parameters
@@ -319,12 +297,12 @@ bool rfb::win32::registerService(const char* name,
   // - Add the supplied extra parameters to the command line
   std::string cmdline;
   cmdline = format("\"%s\" %s", buffer.buf, defaultcmdline);
-  for (i=0; i<argc; i++) {
+  for (i = 0; i < argc; i++) {
     cmdline += " \"";
     cmdline += argv[i];
     cmdline += "\"";
   }
-    
+
   // - Register the service
 
   // - Open the SCM
@@ -333,11 +311,9 @@ bool rfb::win32::registerService(const char* name,
     throw core::win32_error("Unable to open Service Control Manager", GetLastError());
 
   // - Add the service
-  ServiceHandle handle = CreateService(scm,
-    name, display, SC_MANAGER_ALL_ACCESS,
-    SERVICE_WIN32_OWN_PROCESS | SERVICE_INTERACTIVE_PROCESS,
-    SERVICE_AUTO_START, SERVICE_ERROR_IGNORE,
-    cmdline.c_str(), nullptr, nullptr, nullptr, nullptr, nullptr);
+  ServiceHandle handle = CreateService(
+      scm, name, display, SC_MANAGER_ALL_ACCESS, SERVICE_WIN32_OWN_PROCESS | SERVICE_INTERACTIVE_PROCESS,
+      SERVICE_AUTO_START, SERVICE_ERROR_IGNORE, cmdline.c_str(), nullptr, nullptr, nullptr, nullptr, nullptr);
   if (!handle)
     throw core::win32_error("Unable to create service", GetLastError());
 
@@ -351,9 +327,9 @@ bool rfb::win32::registerService(const char* name,
   hk2.createKey(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application");
   hk.createKey(hk2, name);
 
-  for (i=strlen(buffer.buf); i>0; i--) {
+  for (i = strlen(buffer.buf); i > 0; i--) {
     if (buffer.buf[i] == '\\') {
-      buffer.buf[i+1] = 0;
+      buffer.buf[i + 1] = 0;
       break;
     }
   }
@@ -393,7 +369,6 @@ bool rfb::win32::unregisterService(const char* name) {
 
   return true;
 }
-
 
 // -=- Starting and stopping the service
 
@@ -460,15 +435,17 @@ DWORD rfb::win32::getServiceState(const char* name) {
 
 const char* rfb::win32::serviceStateName(DWORD state) {
   switch (state) {
-  case SERVICE_RUNNING: return "Running";
-  case SERVICE_STOPPED: return "Stopped";
-  case SERVICE_STOP_PENDING: return "Stopping";
+  case SERVICE_RUNNING:
+    return "Running";
+  case SERVICE_STOPPED:
+    return "Stopped";
+  case SERVICE_STOP_PENDING:
+    return "Stopping";
   };
   static char tmp[32];
   sprintf(tmp, "Unknown (%lu)", state);
   return tmp;
 }
-
 
 bool rfb::win32::isServiceProcess() {
   return runAsService;

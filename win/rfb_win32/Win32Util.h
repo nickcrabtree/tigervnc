@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -27,28 +27,29 @@
 
 namespace rfb {
 
-  namespace win32 {
+namespace win32 {
 
-    struct FileVersionInfo {
-      FileVersionInfo(const char* filename=nullptr);
-      ~FileVersionInfo();
-      const char* getVerString(const char* name, DWORD langId = 0x080904b0);
-    private:
-      char *buf;
-    };
+struct FileVersionInfo {
+  FileVersionInfo(const char* filename = nullptr);
+  ~FileVersionInfo();
+  const char* getVerString(const char* name, DWORD langId = 0x080904b0);
 
-    // Center the window to a rectangle, or to a parent window.
-    // Optionally, resize the window to lay within the rect or parent window
-    // If the parent window is NULL then the working area if the window's
-    // current monitor is used instead.
-    void centerWindow(HWND handle, const RECT& r);
-    void centerWindow(HWND handle, HWND parent);
-
-    // resizeWindow resizes a window about its center
-    void resizeWindow(HWND handle, int width, int height);
-
-  };
-
+private:
+  char* buf;
 };
+
+// Center the window to a rectangle, or to a parent window.
+// Optionally, resize the window to lay within the rect or parent window
+// If the parent window is NULL then the working area if the window's
+// current monitor is used instead.
+void centerWindow(HWND handle, const RECT& r);
+void centerWindow(HWND handle, HWND parent);
+
+// resizeWindow resizes a window about its center
+void resizeWindow(HWND handle, int width, int height);
+
+}; // namespace win32
+
+}; // namespace rfb
 
 #endif
