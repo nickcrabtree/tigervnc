@@ -832,6 +832,15 @@ void VNCSConnectionST::recordCachedRectRef(uint64_t cacheId, const core::Rect& r
   lastCachedRectRef_[cacheId] = r;
 }
 
+bool VNCSConnectionST::getLastCachedRectRef(uint64_t cacheId, core::Rect& r) const {
+  auto it = lastCachedRectRef_.find(cacheId);
+  if (it != lastCachedRectRef_.end()) {
+    r = (*it).second;
+    return true;
+  }
+  return false;
+}
+
 void VNCSConnectionST::onCachedRectRef(uint64_t cacheId, const core::Rect& r) {
   recordCachedRectRef(cacheId, r);
 }

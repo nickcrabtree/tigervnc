@@ -123,6 +123,9 @@ public:
     return peerEndpoint.c_str();
   }
 
+  // Get the last rectangle that referenced this cache ID (for targeted refresh)
+  bool getLastCachedRectRef(uint64_t cacheId, core::Rect& r) const;
+
 private:
   // SConnection callbacks
 
@@ -227,16 +230,8 @@ private:
 
   // Record that we just referenced a CachedRect with this ID for this rect
   void recordCachedRectRef(uint64_t cacheId, const core::Rect& r);
-
-  // Get the last rectangle that referenced this cache ID (for targeted refresh)
-  bool getLastCachedRectRef(uint64_t cacheId, core::Rect& r) const {
-    auto it = lastCachedRectRef_.find(cacheId);
-    if (it != lastCachedRectRef_.end()) {
-      r = it->second;
-      return true;
-    }
-    return false;
-  }
+  return false;
+}
 
   // Drain pending cache init requests (EncodeManager will send them)
   // tracking so both protocols share a single notion of "known" IDs.
@@ -244,72 +239,72 @@ private:
   // Timer callbacks
   void handleTimeout(core::Timer* t) override;
 
-  // Internal methods
+// Internal methods
 
-  bool isShiftPressed();
+bool isShiftPressed();
 
-  // Congestion control
-  void writeRTTPing();
-  bool isCongested();
+// Congestion control
+void writeRTTPing();
+bool isCongested();
 
-  // writeFramebufferUpdate() attempts to write a framebuffer update to the
-  // client.
+// writeFramebufferUpdate() attempts to write a framebuffer update to the
+// client.
 
-  void writeFramebufferUpdate();
-  void writeNoDataUpdate();
-  void writeDataUpdate();
-  void writeLosslessRefresh();
+void writeFramebufferUpdate();
+void writeNoDataUpdate();
+void writeDataUpdate();
+void writeLosslessRefresh();
 
-  void screenLayoutChange(uint16_t reason);
-  void setCursor();
-  void setCursorPos();
-  void setDesktopName(const char* name);
-  void setLEDState(unsigned int state);
-  void desktopReady() override;
+void screenLayoutChange(uint16_t reason);
+void setCursor();
+void setCursorPos();
+void setDesktopName(const char* name);
+void setLEDState(unsigned int state);
+void desktopReady() override;
 
 private:
-  network::Socket* sock;
-  std::string peerEndpoint;
-  bool reverseConnection;
+network::Socket* sock;
+std::string peerEndpoint;
+bool reverseConnection;
 
-  bool inProcessMessages;
+bool inProcessMessages;
 
-  bool pendingSyncFence, syncFence;
-  uint32_t fenceFlags;
-  unsigned fenceDataLen;
-  uint8_t* fenceData;
+bool pendingSyncFence, syncFence;
+uint32_t fenceFlags;
+unsigned fenceDataLen;
+uint8_t* fenceData;
 
-  Congestion congestion;
-  core::Timer congestionTimer;
-  core::Timer losslessTimer;
+Congestion congestion;
+core::Timer congestionTimer;
+core::Timer losslessTimer;
 
-  VNCServerST* server;
-  SimpleUpdateTracker updates;
-  core::Region requested;
-  bool updateRenderedCursor, removeRenderedCursor;
-  core::Region damagedCursorRegion;
-  bool continuousUpdates;
-  core::Region cuRegion;
-  EncodeManager encodeManager;
+VNCServerST* server;
+SimpleUpdateTracker updates;
+core::Region requested;
+bool updateRenderedCursor, removeRenderedCursor;
+core::Region damagedCursorRegion;
+bool continuousUpdates;
+core::Region cuRegion;
+EncodeManager encodeManager;
 
-  // Track last referenced rectangle per cacheId for targeted refresh on miss
-  std::unordered_map<uint64_t, core::Rect> lastCachedRectRef_;
+// Track last referenced rectangle per cacheId for targeted refresh on miss
+std::unordered_map<uint64_t, core::Rect> lastCachedRectRef_;
 
-  // Update counter for periodic cache statistics logging
-  unsigned updateCount_;
+// Update counter for periodic cache statistics logging
+unsigned updateCount_;
 
-  std::map<uint32_t, uint32_t> pressedKeys;
+std::map<uint32_t, uint32_t> pressedKeys;
 
-  core::Timer idleTimer;
+core::Timer idleTimer;
 
-  time_t pointerEventTime;
-  core::Point pointerEventPos;
-  bool clientHasCursor;
+time_t pointerEventTime;
+core::Point pointerEventPos;
+bool clientHasCursor;
 
-  // Session timing for aggregate per-client bandwidth statistics
-  struct timeval sessionStartTime_;
+// Session timing for aggregate per-client bandwidth statistics
+struct timeval sessionStartTime_;
 
-  std::string closeReason;
+std::string closeReason;
 };
 } // namespace rfb
 #endif
