@@ -228,6 +228,16 @@ private:
   // Record that we just referenced a CachedRect with this ID for this rect
   void recordCachedRectRef(uint64_t cacheId, const core::Rect& r);
 
+  // Get the last rectangle that referenced this cache ID (for targeted refresh)
+  bool getLastCachedRectRef(uint64_t cacheId, core::Rect& r) const {
+    auto it = lastCachedRectRef_.find(cacheId);
+    if (it != lastCachedRectRef_.end()) {
+      r = it->second;
+      return true;
+    }
+    return false;
+  }
+
   // Drain pending cache init requests (EncodeManager will send them)
   // tracking so both protocols share a single notion of "known" IDs.
 

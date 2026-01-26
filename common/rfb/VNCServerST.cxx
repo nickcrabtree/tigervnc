@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2024 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -18,7 +18,6 @@
  */
 
 // -=- Single-Threaded VNC server implementation
-
 
 // Note about how sockets get closed:
 //
@@ -47,7 +46,6 @@
 // getSockets function, we must maintain a separate closingSockets list,
 // otherwise blacklisted connections might be "forgotten".
 
-
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -68,10 +66,9 @@
 #include <rfb/SDesktop.h>
 #include <rfb/Security.h>
 #include <rfb/ServerCore.h>
-#include <rfb/VNCServerST.h>
 #include <rfb/VNCSConnectionST.h>
+#include <rfb/VNCServerST.h>
 #include <rfb/ledStates.h>
-
 
 using namespace rfb;
 
@@ -85,16 +82,11 @@ static core::LogWriter connectionsLog("Connections");
 // -=- Constructors/Destructor
 
 VNCServerST::VNCServerST(const char* name_, SDesktop* desktop_)
-  : blHosts(&blacklist), desktop(desktop_), desktopStarted(false),
-    desktopStarting(false), blockCounter(0), pb(nullptr),
-    ledState(ledUnknown), name(name_), pointerClient(nullptr),
-    clipboardClient(nullptr), pointerClientTime(0),
-    comparer(nullptr), cursor(new Cursor(0, 0, {}, nullptr)),
-    renderedCursorInvalid(false),
-    keyRemapper(&KeyRemapper::defInstance),
-    idleTimer(this), disconnectTimer(this), connectTimer(this),
-    msc(0), queuedMsc(0), frameTimer(this)
-{
+    : blHosts(&blacklist), desktop(desktop_), desktopStarted(false), desktopStarting(false), blockCounter(0),
+      pb(nullptr), ledState(ledUnknown), name(name_), pointerClient(nullptr), clipboardClient(nullptr),
+      pointerClientTime(0), comparer(nullptr), cursor(new Cursor(0, 0, {}, nullptr)), renderedCursorInvalid(false),
+      keyRemapper(&KeyRemapper::defInstance), idleTimer(this), disconnectTimer(this), connectTimer(this), msc(0),
+      queuedMsc(0), frameTimer(this) {
   slog.debug("Creating single-threaded server %s", name.c_str());
 
   desktop_->init(this);
@@ -106,8 +98,7 @@ VNCServerST::VNCServerST(const char* name_, SDesktop* desktop_)
     disconnectTimer.start(core::secsToMillis(rfb::Server::maxDisconnectionTime));
 }
 
-VNCServerST::~VNCServerST()
-{
+VNCServerST::~VNCServerST() {
   slog.debug("Shutting down server %s", name.c_str());
 
   // Close any active clients, with appropriate logging & cleanup
@@ -134,14 +125,12 @@ VNCServerST::~VNCServerST()
   delete cursor;
 }
 
-
 // VNCServer methods
 
-void VNCServerST::addSocket(network::Socket* sock, bool outgoing, AccessRights accessRights)
-{
+void VNCServerST::addSocket(network::Socket* sock, bool outgoing, AccessRights accessRights) {
   // - Check the connection isn't black-marked
   // *** do this in getSecurity instead?
-  const char *address = sock->getPeerAddress();
+  const char* address = sock->getPeerAddress();
   if (blHosts->isBlackmarked(address)) {
     connectionsLog.error("Blacklisted: %s", address);
     try {
@@ -223,8 +212,7 @@ void VNCServerST::removeSocket(network::Socket* sock) {
   closingSockets.remove(sock);
 }
 
-void VNCServerST::processSocketReadEvent(network::Socket* sock)
-{
+void VNCServerST::processSocketReadEvent(network::Socket* sock) {
   // - Find the appropriate VNCSConnectionST and process the event
   std::list<VNCSConnectionST*>::iterator ci;
   for (ci = clients.begin(); ci != clients.end(); ci++) {
@@ -236,8 +224,7 @@ void VNCServerST::processSocketReadEvent(network::Socket* sock)
   throw std::invalid_argument("Invalid Socket in VNCServerST");
 }
 
-void VNCServerST::processSocketWriteEvent(network::Socket* sock)
-{
+void VNCServerST::processSocketWriteEvent(network::Socket* sock) {
   // - Find the appropriate VNCSConnectionST and process the event
   std::list<VNCSConnectionST*>::iterator ci;
   for (ci = clients.begin(); ci != clients.end(); ci++) {
@@ -249,15 +236,13 @@ void VNCServerST::processSocketWriteEvent(network::Socket* sock)
   throw std::invalid_argument("Invalid Socket in VNCServerST");
 }
 
-void VNCServerST::blockUpdates()
-{
+void VNCServerST::blockUpdates() {
   blockCounter++;
 
   stopFrameClock();
 }
 
-void VNCServerST::unblockUpdates()
-{
+void VNCServerST::unblockUpdates() {
   assert(blockCounter > 0);
 
   blockCounter--;
@@ -267,21 +252,18 @@ void VNCServerST::unblockUpdates()
     startFrameClock();
 }
 
-uint64_t VNCServerST::getMsc()
-{
+uint64_t VNCServerST::getMsc() {
   return msc;
 }
 
-void VNCServerST::queueMsc(uint64_t target)
-{
+void VNCServerST::queueMsc(uint64_t target) {
   if (target > queuedMsc)
     queuedMsc = target;
 
   startFrameClock();
 }
 
-void VNCServerST::setPixelBuffer(PixelBuffer* pb_, const ScreenSet& layout)
-{
+void VNCServerST::setPixelBuffer(PixelBuffer* pb_, const ScreenSet& layout) {
   if (comparer)
     comparer->logStats();
 
@@ -320,8 +302,7 @@ void VNCServerST::setPixelBuffer(PixelBuffer* pb_, const ScreenSet& layout)
   }
 }
 
-void VNCServerST::setPixelBuffer(PixelBuffer* pb_)
-{
+void VNCServerST::setPixelBuffer(PixelBuffer* pb_) {
   ScreenSet layout = screenLayout;
 
   if (!pb_) {
@@ -336,14 +317,15 @@ void VNCServerST::setPixelBuffer(PixelBuffer* pb_)
 
     fbRect.setXYWH(0, 0, pb_->width(), pb_->height());
 
-    for (iter = layout.begin();iter != layout.end();iter = iter_next) {
-      iter_next = iter; ++iter_next;
+    for (iter = layout.begin(); iter != layout.end(); iter = iter_next) {
+      iter_next = iter;
+      ++iter_next;
       if (iter->dimensions.enclosed_by(fbRect))
-          continue;
+        continue;
       iter->dimensions = iter->dimensions.intersect(fbRect);
       if (iter->dimensions.is_empty()) {
-        slog.info("Removing screen %d (%x) as it is completely outside the new framebuffer",
-                  (int)iter->id, (unsigned)iter->id);
+        slog.info("Removing screen %d (%x) as it is completely outside the new framebuffer", (int)iter->id,
+                  (unsigned)iter->id);
         layout.remove_screen(iter->id);
       }
     }
@@ -356,8 +338,7 @@ void VNCServerST::setPixelBuffer(PixelBuffer* pb_)
   setPixelBuffer(pb_, layout);
 }
 
-void VNCServerST::setScreenLayout(const ScreenSet& layout)
-{
+void VNCServerST::setScreenLayout(const ScreenSet& layout) {
   if (!pb)
     throw std::logic_error("setScreenLayout: New screen layout without a PixelBuffer");
   if (!layout.validate(pb->width(), pb->height()))
@@ -370,8 +351,7 @@ void VNCServerST::setScreenLayout(const ScreenSet& layout)
     (*ci)->screenLayoutChangeOrClose(reasonServer);
 }
 
-void VNCServerST::requestClipboard()
-{
+void VNCServerST::requestClipboard() {
   if (!rfb::Server::acceptCutText)
     return;
 
@@ -383,8 +363,7 @@ void VNCServerST::requestClipboard()
   clipboardClient->requestClipboardOrClose();
 }
 
-void VNCServerST::announceClipboard(bool available)
-{
+void VNCServerST::announceClipboard(bool available) {
   std::list<VNCSConnectionST*>::iterator ci;
 
   clipboardRequestors.clear();
@@ -396,8 +375,7 @@ void VNCServerST::announceClipboard(bool available)
     (*ci)->announceClipboardOrClose(available);
 }
 
-void VNCServerST::sendClipboardData(const char* data)
-{
+void VNCServerST::sendClipboardData(const char* data) {
   std::list<VNCSConnectionST*>::iterator ci;
 
   if (!rfb::Server::sendCutText)
@@ -406,15 +384,13 @@ void VNCServerST::sendClipboardData(const char* data)
   if (strchr(data, '\r') != nullptr)
     throw std::invalid_argument("Invalid carriage return in clipboard data");
 
-  for (ci = clipboardRequestors.begin();
-       ci != clipboardRequestors.end(); ++ci)
+  for (ci = clipboardRequestors.begin(); ci != clipboardRequestors.end(); ++ci)
     (*ci)->sendClipboardDataOrClose(data);
 
   clipboardRequestors.clear();
 }
 
-void VNCServerST::checkDesktopReady()
-{
+void VNCServerST::checkDesktopReady() {
   if (!desktopStarting)
     return;
 
@@ -425,10 +401,9 @@ void VNCServerST::checkDesktopReady()
   desktopReady();
 }
 
-void VNCServerST::desktopReady()
-{
+void VNCServerST::desktopReady() {
   if (!pb)
-      throw std::logic_error("desktopReady: Null PixelBuffer when desktop is ready");
+    throw std::logic_error("desktopReady: Null PixelBuffer when desktop is ready");
 
   desktopStarted = true;
   // The tracker might have accumulated changes whilst we were
@@ -448,23 +423,20 @@ void VNCServerST::desktopReady()
     client->desktopReadyOrClose();
 }
 
-void VNCServerST::bell()
-{
+void VNCServerST::bell() {
   std::list<VNCSConnectionST*>::iterator ci;
   for (ci = clients.begin(); ci != clients.end(); ++ci)
     (*ci)->bellOrClose();
 }
 
-void VNCServerST::setName(const char* name_)
-{
+void VNCServerST::setName(const char* name_) {
   name = name_;
   std::list<VNCSConnectionST*>::iterator ci;
   for (ci = clients.begin(); ci != clients.end(); ++ci)
     (*ci)->setDesktopNameOrClose(name_);
 }
 
-void VNCServerST::add_changed(const core::Region& region)
-{
+void VNCServerST::add_changed(const core::Region& region) {
   if (comparer == nullptr)
     return;
 
@@ -472,9 +444,7 @@ void VNCServerST::add_changed(const core::Region& region)
   startFrameClock();
 }
 
-void VNCServerST::add_copied(const core::Region& dest,
-                             const core::Point& delta)
-{
+void VNCServerST::add_copied(const core::Region& dest, const core::Point& delta) {
   if (comparer == nullptr)
     return;
 
@@ -482,10 +452,7 @@ void VNCServerST::add_copied(const core::Region& dest,
   startFrameClock();
 }
 
-void VNCServerST::setCursor(int width, int height,
-                            const core::Point& newHotspot,
-                            const uint8_t* data)
-{
+void VNCServerST::setCursor(int width, int height, const core::Point& newHotspot, const uint8_t* data) {
   delete cursor;
   cursor = new Cursor(width, height, newHotspot, data);
   cursor->crop();
@@ -499,8 +466,7 @@ void VNCServerST::setCursor(int width, int height,
   }
 }
 
-void VNCServerST::setCursorPos(const core::Point& pos, bool warped)
-{
+void VNCServerST::setCursorPos(const core::Point& pos, bool warped) {
   if (cursorPos != pos) {
     cursorPos = pos;
     renderedCursorInvalid = true;
@@ -513,8 +479,7 @@ void VNCServerST::setCursorPos(const core::Point& pos, bool warped)
   }
 }
 
-void VNCServerST::setLEDState(unsigned int state)
-{
+void VNCServerST::setLEDState(unsigned int state) {
   std::list<VNCSConnectionST*>::iterator ci;
 
   if (state == ledState)
@@ -528,8 +493,7 @@ void VNCServerST::setLEDState(unsigned int state)
 
 // Event handlers
 
-void VNCServerST::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
-{
+void VNCServerST::keyEvent(uint32_t keysym, uint32_t keycode, bool down) {
   if (!rfb::Server::acceptKeyEvents)
     return;
 
@@ -541,8 +505,7 @@ void VNCServerST::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
     uint32_t newkey;
     newkey = keyRemapper->remapKey(keysym);
     if (newkey != keysym) {
-      slog.debug("Key remapped to XK_%s (0x%x)",
-                 KeySymName(newkey), newkey);
+      slog.debug("Key remapped to XK_%s (0x%x)", KeySymName(newkey), newkey);
       keysym = newkey;
     }
   }
@@ -550,10 +513,7 @@ void VNCServerST::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
   desktop->keyEvent(keysym, keycode, down);
 }
 
-void VNCServerST::pointerEvent(VNCSConnectionST* client,
-                               const core::Point& pos,
-                               uint16_t buttonMask)
-{
+void VNCServerST::pointerEvent(VNCSConnectionST* client, const core::Point& pos, uint16_t buttonMask) {
   time_t now = time(nullptr);
 
   if (!rfb::Server::acceptPointerEvents)
@@ -565,8 +525,7 @@ void VNCServerST::pointerEvent(VNCSConnectionST* client,
   // Let one client own the cursor whilst buttons are pressed in order
   // to provide a bit more sane user experience. But limit the time to
   // prevent locking out all others when e.g. the network is down.
-  if ((pointerClient != nullptr) && (pointerClient != client) &&
-      ((now - pointerClientTime) < 10))
+  if ((pointerClient != nullptr) && (pointerClient != client) && ((now - pointerClientTime) < 10))
     return;
 
   pointerClientTime = now;
@@ -578,16 +537,13 @@ void VNCServerST::pointerEvent(VNCSConnectionST* client,
   desktop->pointerEvent(pos, buttonMask);
 }
 
-void VNCServerST::handleClipboardRequest(VNCSConnectionST* client)
-{
+void VNCServerST::handleClipboardRequest(VNCSConnectionST* client) {
   clipboardRequestors.push_back(client);
   if (clipboardRequestors.size() == 1)
     desktop->handleClipboardRequest();
 }
 
-void VNCServerST::handleClipboardAnnounce(VNCSConnectionST* client,
-                                          bool available)
-{
+void VNCServerST::handleClipboardAnnounce(VNCSConnectionST* client, bool available) {
   if (available) {
     if (!rfb::Server::acceptCutText)
       return;
@@ -600,9 +556,7 @@ void VNCServerST::handleClipboardAnnounce(VNCSConnectionST* client,
   desktop->handleClipboardAnnounce(available);
 }
 
-void VNCServerST::handleClipboardData(VNCSConnectionST* client,
-                                      const char* data)
-{
+void VNCServerST::handleClipboardData(VNCSConnectionST* client, const char* data) {
   if (!rfb::Server::acceptCutText)
     return;
   if (client != clipboardClient) {
@@ -612,31 +566,28 @@ void VNCServerST::handleClipboardData(VNCSConnectionST* client,
   desktop->handleClipboardData(data);
 }
 
-void VNCServerST::handleRequestCachedData(VNCSConnectionST* client,
-                                         uint64_t cacheId)
-{
-  slog.debug("Client requested cached data for ID %llu",
-             (unsigned long long)cacheId);
-  
+void VNCServerST::handleRequestCachedData(VNCSConnectionST* client, uint64_t cacheId) {
+  slog.debug("Client requested cached data for ID %llu", (unsigned long long)cacheId);
+
   // VNCSConnectionST tracks the last rectangle that referenced each cacheId
-  // via onCachedRectRef(). If no mapping exists for this cacheId (e.g. very
-  // old clients, or if the session state has been cleared), fall back to a
-  // conservative full-frame refresh as a safety net.
-  
-  slog.info("Client cache miss for ID %llu - requesting refresh",
-            (unsigned long long)cacheId);
-  
-  // Mark the entire framebuffer as changed to force a re-send
-  // This is inefficient but ensures the client gets the data
-  // TODO: Look up specific rect bounds from cache and only mark that region
-  core::Region fullRegion({0, 0, pb->width(), pb->height()});
-  client->add_changed(fullRegion);
+  // via onCachedRectRef(). Look up the specific rectangle and only mark that
+  // region as changed for efficient targeted refresh. If no mapping exists,
+  // fall back to a conservative full-frame refresh as a safety net.
+
+  core::Rect targetRect;
+  if (client->getLastCachedRectRef(cacheId, targetRect)) {
+    slog.info("Client cache miss for ID %llu - triggering targeted refresh at [%d,%d-%d,%d]",
+              (unsigned long long)cacheId, targetRect.tl.x, targetRect.tl.y, targetRect.br.x, targetRect.br.y);
+    client->add_changed(core::Region(targetRect));
+  } else {
+    slog.info("Client cache miss for ID %llu - no rect tracked, requesting full refresh", (unsigned long long)cacheId);
+    core::Region fullRegion({0, 0, pb->width(), pb->height()});
+    client->add_changed(fullRegion);
+  }
 }
 
-unsigned int VNCServerST::setDesktopSize(VNCSConnectionST* requester,
-                                         int fb_width, int fb_height,
-                                         const ScreenSet& layout)
-{
+unsigned int VNCServerST::setDesktopSize(VNCSConnectionST* requester, int fb_width, int fb_height,
+                                         const ScreenSet& layout) {
   unsigned int result;
   std::list<VNCSConnectionST*>::iterator ci;
 
@@ -681,9 +632,7 @@ unsigned int VNCServerST::setDesktopSize(VNCSConnectionST* requester,
 
 // Other public methods
 
-void VNCServerST::approveConnection(network::Socket* sock, bool accept,
-                                    const char* reason)
-{
+void VNCServerST::approveConnection(network::Socket* sock, bool accept, const char* reason) {
   std::list<VNCSConnectionST*>::iterator ci;
   for (ci = clients.begin(); ci != clients.end(); ci++) {
     if ((*ci)->getSock() == sock) {
@@ -693,8 +642,7 @@ void VNCServerST::approveConnection(network::Socket* sock, bool accept,
   }
 }
 
-void VNCServerST::closeClients(const char* reason, network::Socket* except)
-{
+void VNCServerST::closeClients(const char* reason, network::Socket* except) {
   std::list<VNCSConnectionST*>::iterator i;
   for (i = clients.begin(); i != clients.end(); ++i) {
     if ((*i)->getSock() != except)
@@ -702,8 +650,7 @@ void VNCServerST::closeClients(const char* reason, network::Socket* except)
   }
 }
 
-void VNCServerST::getSockets(std::list<network::Socket*>* sockets)
-{
+void VNCServerST::getSockets(std::list<network::Socket*>* sockets) {
   sockets->clear();
   std::list<VNCSConnectionST*>::iterator ci;
   for (ci = clients.begin(); ci != clients.end(); ci++) {
@@ -724,22 +671,20 @@ SConnection* VNCServerST::getConnection(network::Socket* sock) {
   return nullptr;
 }
 
-void VNCServerST::handleTimeout(core::Timer* t)
-{
+void VNCServerST::handleTimeout(core::Timer* t) {
   if (t == &frameTimer) {
     int timeout;
 
     // We keep running until we go a full interval without any updates,
     // or there are no active clients anymore
-    if (!desktopStarted ||
-        ((comparer != nullptr) && comparer->is_empty())) {
+    if (!desktopStarted || ((comparer != nullptr) && comparer->is_empty())) {
       // Unless something waits for us to advance the frame count
       if (queuedMsc < msc)
         return;
     }
 
     // If this is the first iteration then we need to adjust the timeout
-    timeout = 1000/rfb::Server::frameRate;
+    timeout = 1000 / rfb::Server::frameRate;
 
     // If there are no clients, then slow down the clock
     if (!desktopStarted)
@@ -747,8 +692,7 @@ void VNCServerST::handleTimeout(core::Timer* t)
 
     frameTimer.repeat(timeout);
 
-    if (desktopStarted &&
-        ((comparer != nullptr) && !comparer->is_empty()))
+    if (desktopStarted && ((comparer != nullptr) && !comparer->is_empty()))
       writeUpdate();
 
     msc++;
@@ -765,9 +709,7 @@ void VNCServerST::handleTimeout(core::Timer* t)
   }
 }
 
-void VNCServerST::queryConnection(VNCSConnectionST* client,
-                                  const char* userName)
-{
+void VNCServerST::queryConnection(VNCSConnectionST* client, const char* userName) {
   // - Authentication succeeded - clear from blacklist
   blHosts->clearBlackmark(client->getSock()->getPeerAddress());
 
@@ -776,24 +718,19 @@ void VNCServerST::queryConnection(VNCSConnectionST* client,
   startDesktop();
 
   // - Special case to provide a more useful error message
-  if (rfb::Server::neverShared &&
-      !rfb::Server::disconnectClients &&
-      authClientCount() > 0) {
-    approveConnection(client->getSock(), false,
-                      "The server is already in use");
+  if (rfb::Server::neverShared && !rfb::Server::disconnectClients && authClientCount() > 0) {
+    approveConnection(client->getSock(), false, "The server is already in use");
     return;
   }
 
   // - Are we configured to do queries?
-  if (!rfb::Server::queryConnect &&
-      !client->getSock()->requiresQuery()) {
+  if (!rfb::Server::queryConnect && !client->getSock()->requiresQuery()) {
     approveConnection(client->getSock(), true, nullptr);
     return;
   }
 
   // - Does the client have the right to bypass the query?
-  if (client->accessCheck(AccessNoQuery))
-  {
+  if (client->accessCheck(AccessNoQuery)) {
     approveConnection(client->getSock(), true, nullptr);
     return;
   }
@@ -801,11 +738,9 @@ void VNCServerST::queryConnection(VNCSConnectionST* client,
   desktop->queryConnection(client->getSock(), userName);
 }
 
-void VNCServerST::clientReady(VNCSConnectionST* client, bool shared)
-{
+void VNCServerST::clientReady(VNCSConnectionST* client, bool shared) {
   if (!shared) {
-    if (rfb::Server::disconnectClients &&
-        client->accessCheck(AccessNonShared)) {
+    if (rfb::Server::disconnectClients && client->accessCheck(AccessNonShared)) {
       // - Close all the other connected clients
       slog.debug("Non-shared connection - closing clients");
       closeClients("Non-shared connection requested", client->getSock());
@@ -822,8 +757,7 @@ void VNCServerST::clientReady(VNCSConnectionST* client, bool shared)
 
 // -=- Internal methods
 
-void VNCServerST::startDesktop()
-{
+void VNCServerST::startDesktop() {
   if (!desktopStarted && !desktopStarting) {
     slog.debug("Starting desktop");
     desktopStarting = true;
@@ -833,8 +767,7 @@ void VNCServerST::startDesktop()
   }
 }
 
-void VNCServerST::stopDesktop()
-{
+void VNCServerST::stopDesktop() {
   if (desktopStarted || desktopStarting) {
     slog.debug("Stopping desktop");
     desktopStarted = false;
@@ -853,24 +786,22 @@ int VNCServerST::authClientCount() {
   return count;
 }
 
-inline bool VNCServerST::needRenderedCursor()
-{
+inline bool VNCServerST::needRenderedCursor() {
   std::list<VNCSConnectionST*>::iterator ci;
   for (ci = clients.begin(); ci != clients.end(); ci++)
-    if ((*ci)->needRenderedCursor()) return true;
+    if ((*ci)->needRenderedCursor())
+      return true;
   return false;
 }
 
-void VNCServerST::startFrameClock()
-{
+void VNCServerST::startFrameClock() {
   if (frameTimer.isStarted())
     return;
   if (blockCounter > 0)
     return;
 
   // Anyone actually interested in frames?
-  if (!desktopStarted ||
-      ((comparer != nullptr) && comparer->is_empty())) {
+  if (!desktopStarted || ((comparer != nullptr) && comparer->is_empty())) {
     if (queuedMsc < msc)
       return;
   }
@@ -885,21 +816,19 @@ void VNCServerST::startFrameClock()
   // The first iteration will be just half a frame as we get a very
   // unstable update rate if we happen to be perfectly in sync with
   // the application's update rate
-  frameTimer.start(1000/rfb::Server::frameRate/2);
+  frameTimer.start(1000 / rfb::Server::frameRate / 2);
 }
 
-void VNCServerST::stopFrameClock()
-{
+void VNCServerST::stopFrameClock() {
   frameTimer.stop();
 }
 
-int VNCServerST::msToNextUpdate()
-{
+int VNCServerST::msToNextUpdate() {
   // FIXME: If the application is updating slower than frameRate then
   //        we could allow the clients more time here
 
   if (!frameTimer.isStarted())
-    return 1000/rfb::Server::frameRate/2;
+    return 1000 / rfb::Server::frameRate / 2;
   else
     return frameTimer.getRemainingMs();
 }
@@ -911,8 +840,7 @@ int VNCServerST::msToNextUpdate()
 // also checks the state of the (server-side) rendered cursor, if
 // necessary rendering it again with the correct background.
 
-void VNCServerST::writeUpdate()
-{
+void VNCServerST::writeUpdate() {
   UpdateInfo ui;
   core::Region toCheck;
 
@@ -927,8 +855,8 @@ void VNCServerST::writeUpdate()
 
   if (needRenderedCursor()) {
     core::Rect clippedCursorRect = core::Rect(0, 0, cursor->width(), cursor->height())
-                                   .translate(cursorPos.subtract(cursor->hotspot()))
-                                   .intersect(pb->getRect());
+                                       .translate(cursorPos.subtract(cursor->hotspot()))
+                                       .intersect(pb->getRect());
 
     if (!toCheck.intersect(clippedCursorRect).is_empty())
       renderedCursorInvalid = true;
@@ -956,8 +884,7 @@ void VNCServerST::writeUpdate()
 // checkUpdate() is called by clients to see if it is safe to read from
 // the framebuffer at this time.
 
-core::Region VNCServerST::getPendingRegion()
-{
+core::Region VNCServerST::getPendingRegion() {
   UpdateInfo ui;
 
   // Block clients as the frame buffer cannot be safely accessed
@@ -975,8 +902,7 @@ core::Region VNCServerST::getPendingRegion()
   return ui.changed.union_(ui.copied);
 }
 
-const RenderedCursor* VNCServerST::getRenderedCursor()
-{
+const RenderedCursor* VNCServerST::getRenderedCursor() {
   if (renderedCursorInvalid) {
     renderedCursor.update(pb, cursor, cursorPos);
     renderedCursorInvalid = false;
@@ -985,8 +911,7 @@ const RenderedCursor* VNCServerST::getRenderedCursor()
   return &renderedCursor;
 }
 
-bool VNCServerST::getComparerState()
-{
+bool VNCServerST::getComparerState() {
   if (rfb::Server::compareFB == 0)
     return false;
   if (rfb::Server::compareFB != 2)
