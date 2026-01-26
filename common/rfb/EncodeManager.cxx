@@ -1971,6 +1971,71 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect, const Pixel
   if (!clientSupportsPersistent && !clientSupportsContentCache)
     return false;
 
+  // PersistentCachedRectWithOffset (encoding 104): if the client supports the
+  // offset reference encoding, try to satisfy this rect from a larger cached
+  // tile that the client already knows. This avoids sending a new INIT for
+  // small newly-exposed regions when we previously cached a larger tile.
+  if (conn->client.supportsEncoding(encodingPersistentCachedRectWithOffset) && pb != nullptr) {
+    const core::Rect fbRect = pb->getRect();
+
+    std::vector<int> tileSizes;
+    for (auto it = rfb::Server::cacheScanTileSizes.begin(); it != rfb::Server::cacheScanTileSizes.end(); ++it)
+      tileSizes.push_back(*it);
+    if (tileSizes.empty()) {
+      tileSizes.push_back(64);
+      tileSizes.push_back(128);
+      tileSizes.push_back(256);
+    }
+
+    for (int tile : tileSizes) {
+      if (tile <= 0)
+        continue;
+
+      int tlx = (rect.tl.x / tile) * tile;
+      int tly = (rect.tl.y / tile) * tile;
+      core::Rect tileRect(tlx, tly, tlx + tile, tly + tile);
+      tileRect = tileRect.intersect(fbRect);
+      if (tileRect.is_empty())
+        continue;
+
+      // Only valid if the destination rect is fully contained within the tile.
+      if (rect.tl.x < tileRect.tl.x || rect.tl.y < tileRect.tl.y || rect.br.x > tileRect.br.x ||
+          rect.br.y > tileRect.br.y)
+        continue;
+
+      // Hash the full tile and see if the client already knows this ID.
+      std::vector<uint8_t> tileHash = ContentHash::computeRect(const_cast<PixelBuffer*>(pb), tileRect);
+      if (tileHash.size() < 16)
+        continue;
+      CacheKey tileKey(tileHash.data());
+      uint64_t tileId = cacheKeyToU64(tileKey);
+
+      persistentCacheStats.cacheLookups++;
+      if (!conn->knowsPersistentId(tileId) || conn->clientRequestedPersistent(tileId))
+        continue;
+
+      uint16_t ox = (uint16_t)(rect.tl.x - tileRect.tl.x);
+      uint16_t oy = (uint16_t)(rect.tl.y - tileRect.tl.y);
+
+      const int before = conn->getOutStream()->length();
+      conn->writer()->writePersistentCachedRectWithOffset(rect, tileKey, ox, oy, (uint16_t)tileRect.width(),
+                                                          (uint16_t)tileRect.height());
+      const int after = conn->getOutStream()->length();
+
+      persistentCacheStats.cacheHits++;
+
+      // Debug logging by default: this encoding is intended to eliminate
+      // retransmission for partially visible cached tiles, so log each use.
+      char rbuf[64];
+      char tbuf[64];
+      snprintf(rbuf, sizeof(rbuf), "%d,%d %dx%d", rect.tl.x, rect.tl.y, rect.width(), rect.height());
+      snprintf(tbuf, sizeof(tbuf), "%d,%d %dx%d", tileRect.tl.x, tileRect.tl.y, tileRect.width(), tileRect.height());
+      vlog.info("PCOFF HIT rect=%s tile=%s off=%u,%u id=%016llx bytes=%d", rbuf, tbuf, (unsigned)ox, (unsigned)oy,
+                (unsigned long long)tileId, after - before);
+      return true;
+    }
+  }
+
   persistentCacheStats.cacheLookups++;
 
   // Compute content hash using ContentHash utility (same as ContentCache)
