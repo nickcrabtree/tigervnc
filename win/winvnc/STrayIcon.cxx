@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -29,12 +29,12 @@
 #include <core/Configuration.h>
 #include <core/LogWriter.h>
 
-#include <rfb_win32/LaunchProcess.h>
-#include <rfb_win32/TrayIcon.h>
 #include <rfb_win32/AboutDialog.h>
+#include <rfb_win32/CurrentUser.h>
+#include <rfb_win32/LaunchProcess.h>
 #include <rfb_win32/MsgBox.h>
 #include <rfb_win32/Service.h>
-#include <rfb_win32/CurrentUser.h>
+#include <rfb_win32/TrayIcon.h>
 
 #include <winvnc/ControlPanel.h>
 
@@ -45,9 +45,10 @@ using namespace winvnc;
 
 static LogWriter vlog("STrayIcon");
 
-BoolParameter STrayIconThread::disableOptions("DisableOptions", "Disable the Options entry in the VNC server tray menu.", false);
-BoolParameter STrayIconThread::disableClose("DisableClose", "Disable the Close entry in the VNC server tray menu.", false);
-
+BoolParameter STrayIconThread::disableOptions("DisableOptions",
+                                              "Disable the Options entry in the VNC server tray menu.", false);
+BoolParameter STrayIconThread::disableClose("DisableClose", "Disable the Close entry in the VNC server tray menu.",
+                                            false);
 
 //
 // -=- AboutDialog global values
@@ -59,7 +60,6 @@ const WORD rfb::win32::AboutDialog::Version = IDC_VERSION;
 const WORD rfb::win32::AboutDialog::BuildTime = IDC_BUILDTIME;
 const WORD rfb::win32::AboutDialog::Description = IDC_DESCRIPTION;
 
-
 //
 // -=- Internal tray icon class
 //
@@ -70,9 +70,9 @@ namespace winvnc {
 
 class STrayIcon : public TrayIcon {
 public:
-  STrayIcon(STrayIconThread& t) :
-    vncConfig("vncconfig.exe", isServiceProcess() ? "-noconsole -service" : "-noconsole"),
-    vncConnect("winvnc4.exe", "-noconsole -connect"), thread(t) {
+  STrayIcon(STrayIconThread& t)
+      : vncConfig("vncconfig.exe", isServiceProcess() ? "-noconsole -service" : "-noconsole"),
+        vncConnect("winvnc4.exe", "-noconsole -connect"), thread(t) {
 
     // ***
     SetWindowText(getHandle(), "winvnc::IPC_Interface");
@@ -85,63 +85,60 @@ public:
   }
 
   LRESULT processMessage(UINT msg, WPARAM wParam, LPARAM lParam) override {
-    switch(msg) {
+    switch (msg) {
 
-    case WM_USER:
-      {
-        bool userKnown = CurrentUserToken().canImpersonate();
-        bool allowOptions = !STrayIconThread::disableOptions && userKnown;
-        bool allowClose = !STrayIconThread::disableClose && userKnown;
+    case WM_USER: {
+      bool userKnown = CurrentUserToken().canImpersonate();
+      bool allowOptions = !STrayIconThread::disableOptions && userKnown;
+      bool allowClose = !STrayIconThread::disableClose && userKnown;
 
-        switch (lParam) {
-        case WM_LBUTTONDBLCLK:
-          SendMessage(getHandle(), WM_COMMAND, ID_CONTR0L_PANEL, 0);
-          break;
-        case WM_RBUTTONUP:
-          HMENU menu = LoadMenu(GetModuleHandle(nullptr), MAKEINTRESOURCE(thread.menu));
-          HMENU trayMenu = GetSubMenu(menu, 0);
+      switch (lParam) {
+      case WM_LBUTTONDBLCLK:
+        SendMessage(getHandle(), WM_COMMAND, ID_CONTR0L_PANEL, 0);
+        break;
+      case WM_RBUTTONUP:
+        HMENU menu = LoadMenu(GetModuleHandle(nullptr), MAKEINTRESOURCE(thread.menu));
+        HMENU trayMenu = GetSubMenu(menu, 0);
 
+        // Default item is Options, if available, or About if not
+        SetMenuDefaultItem(trayMenu, ID_CONTR0L_PANEL, FALSE);
 
-          // Default item is Options, if available, or About if not
-          SetMenuDefaultItem(trayMenu, ID_CONTR0L_PANEL, FALSE);
-          
-          // Enable/disable options as required
-          EnableMenuItem(trayMenu, ID_OPTIONS, (!allowOptions ? MF_GRAYED : MF_ENABLED) | MF_BYCOMMAND);
-          EnableMenuItem(trayMenu, ID_CONNECT, (!userKnown ? MF_GRAYED : MF_ENABLED) | MF_BYCOMMAND);
-          EnableMenuItem(trayMenu, ID_CLOSE, (!allowClose ? MF_GRAYED : MF_ENABLED) | MF_BYCOMMAND);
+        // Enable/disable options as required
+        EnableMenuItem(trayMenu, ID_OPTIONS, (!allowOptions ? MF_GRAYED : MF_ENABLED) | MF_BYCOMMAND);
+        EnableMenuItem(trayMenu, ID_CONNECT, (!userKnown ? MF_GRAYED : MF_ENABLED) | MF_BYCOMMAND);
+        EnableMenuItem(trayMenu, ID_CLOSE, (!allowClose ? MF_GRAYED : MF_ENABLED) | MF_BYCOMMAND);
 
-          thread.server.getClientsInfo(&LCInfo);
-          CheckMenuItem(trayMenu, ID_DISABLE_NEW_CLIENTS, (LCInfo.getDisable() ? MF_CHECKED : MF_UNCHECKED) | MF_BYCOMMAND);
+        thread.server.getClientsInfo(&LCInfo);
+        CheckMenuItem(trayMenu, ID_DISABLE_NEW_CLIENTS,
+                      (LCInfo.getDisable() ? MF_CHECKED : MF_UNCHECKED) | MF_BYCOMMAND);
 
-          // SetForegroundWindow is required, otherwise Windows ignores the
-          // TrackPopupMenu because the window isn't the foreground one, on
-          // some older Windows versions...
-          SetForegroundWindow(getHandle());
+        // SetForegroundWindow is required, otherwise Windows ignores the
+        // TrackPopupMenu because the window isn't the foreground one, on
+        // some older Windows versions...
+        SetForegroundWindow(getHandle());
 
-          // Display the menu
-          POINT pos;
-          GetCursorPos(&pos);
-          TrackPopupMenu(trayMenu, 0, pos.x, pos.y, 0, getHandle(), nullptr);
+        // Display the menu
+        POINT pos;
+        GetCursorPos(&pos);
+        TrackPopupMenu(trayMenu, 0, pos.x, pos.y, 0, getHandle(), nullptr);
 
-          break;
-		} 
-        return 0;
+        break;
       }
-    
+      return 0;
+    }
+
       // Handle tray icon menu commands
     case WM_COMMAND:
       switch (LOWORD(wParam)) {
       case ID_CONTR0L_PANEL:
         CPanel->showDialog();
         break;
-      case ID_DISABLE_NEW_CLIENTS:
-        {
-          thread.server.getClientsInfo(&LCInfo);
-          LCInfo.setDisable(!LCInfo.getDisable());
-          thread.server.setClientsStatus(&LCInfo);
-          CPanel->UpdateListView(&LCInfo);
-        }
-        break;
+      case ID_DISABLE_NEW_CLIENTS: {
+        thread.server.getClientsInfo(&LCInfo);
+        LCInfo.setDisable(!LCInfo.getDisable());
+        thread.server.setClientsStatus(&LCInfo);
+        CPanel->UpdateListView(&LCInfo);
+      } break;
       case ID_OPTIONS:
         vncConfig.start(INVALID_HANDLE_VALUE);
         break;
@@ -152,8 +149,8 @@ public:
         thread.server.disconnectClients("tray menu disconnect");
         break;
       case ID_CLOSE:
-        if (MsgBox(nullptr, "Are you sure you want to close the server?",
-                   MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON2) == IDYES) {
+        if (MsgBox(nullptr, "Are you sure you want to close the server?", MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON2) ==
+            IDYES) {
           if (isServiceProcess()) {
             try {
               rfb::win32::stopService(VNCServerService::Name);
@@ -172,27 +169,24 @@ public:
       return 0;
 
       // Handle commands send by other processes
-    case WM_COPYDATA:
-      {
-        COPYDATASTRUCT* command = (COPYDATASTRUCT*)lParam;
-        switch (command->dwData) {
-        case 1:
-          {
-            std::string viewer((char*)command->lpData, command->cbData);
-            return thread.server.addNewClient(viewer.c_str()) ? 1 : 0;
-          }
-        case 2:
-          return thread.server.disconnectClients("IPC disconnect") ? 1 : 0;
-        case 3:
-          thread.server.setClientsStatus(&CPanel->ListConnStatus);
-          /* fall through */
-        case 4:
-          thread.server.getClientsInfo(&LCInfo);
-          CPanel->UpdateListView(&LCInfo);
-          break;
-        };
+    case WM_COPYDATA: {
+      COPYDATASTRUCT* command = (COPYDATASTRUCT*)lParam;
+      switch (command->dwData) {
+      case 1: {
+        std::string viewer((char*)command->lpData, command->cbData);
+        return thread.server.addNewClient(viewer.c_str()) ? 1 : 0;
+      }
+      case 2:
+        return thread.server.disconnectClients("IPC disconnect") ? 1 : 0;
+      case 3:
+        thread.server.setClientsStatus(&CPanel->ListConnStatus);
+        /* fall through */
+      case 4:
+        thread.server.getClientsInfo(&LCInfo);
+        CPanel->UpdateListView(&LCInfo);
+        break;
       };
-      break;
+    }; break;
 
     case WM_CLOSE:
       PostQuitMessage(0);
@@ -207,20 +201,17 @@ public:
       thread.server.getClientsInfo(&LCInfo);
       CPanel->UpdateListView(&LCInfo);
 
-      setIcon(thread.server.isServerInUse() ?
-              (!LCInfo.getDisable() ? thread.activeIcon : thread.dis_activeIcon) : 
-              (!LCInfo.getDisable() ? thread.inactiveIcon : thread.dis_inactiveIcon));
+      setIcon(thread.server.isServerInUse() ? (!LCInfo.getDisable() ? thread.activeIcon : thread.dis_activeIcon)
+                                            : (!LCInfo.getDisable() ? thread.inactiveIcon : thread.dis_inactiveIcon));
 
       return 0;
 
-    case WM_SET_TOOLTIP:
-      {
-        const std::lock_guard<std::mutex> a(thread.lock);
-        if (!thread.toolTip.empty())
-          setToolTip(thread.toolTip.c_str());
-      }
+    case WM_SET_TOOLTIP: {
+      const std::lock_guard<std::mutex> a(thread.lock);
+      if (!thread.toolTip.empty())
+        setToolTip(thread.toolTip.c_str());
+    }
       return 0;
-
     }
 
     return TrayIcon::processMessage(msg, wParam, lParam);
@@ -230,18 +221,15 @@ protected:
   LaunchProcess vncConfig;
   LaunchProcess vncConnect;
   STrayIconThread& thread;
-  ControlPanel * CPanel;
+  ControlPanel* CPanel;
   ListConnInfo LCInfo;
 };
 
-
-STrayIconThread::STrayIconThread(VNCServerWin32& sm, UINT inactiveIcon_, UINT activeIcon_, 
-                                 UINT dis_inactiveIcon_, UINT dis_activeIcon_, UINT menu_)
-: thread(&STrayIconThread::worker, this), thread_id(-1),
-  windowHandle(nullptr), server(sm),
-  inactiveIcon(inactiveIcon_), activeIcon(activeIcon_),
-  dis_inactiveIcon(dis_inactiveIcon_), dis_activeIcon(dis_activeIcon_),
-  menu(menu_), runTrayIcon(true) {
+STrayIconThread::STrayIconThread(VNCServerWin32& sm, UINT inactiveIcon_, UINT activeIcon_, UINT dis_inactiveIcon_,
+                                 UINT dis_activeIcon_, UINT menu_)
+    : thread(&STrayIconThread::worker, this), thread_id(-1), windowHandle(nullptr), server(sm),
+      inactiveIcon(inactiveIcon_), activeIcon(activeIcon_), dis_inactiveIcon(dis_inactiveIcon_),
+      dis_activeIcon(dis_activeIcon_), menu(menu_), runTrayIcon(true) {
   while (thread_id == (DWORD)-1)
     Sleep(0);
 }
@@ -255,8 +243,7 @@ STrayIconThread::~STrayIconThread() {
 void STrayIconThread::worker() {
   thread_id = GetCurrentThreadId();
   while (runTrayIcon) {
-    if (rfb::win32::desktopChangeRequired() && 
-      !rfb::win32::changeDesktop())
+    if (rfb::win32::desktopChangeRequired() && !rfb::win32::changeDesktop())
       Sleep(2000);
 
     STrayIcon icon(*this);
@@ -273,11 +260,11 @@ void STrayIconThread::worker() {
 }
 
 void STrayIconThread::setToolTip(const char* text) {
-  if (!windowHandle) return;
+  if (!windowHandle)
+    return;
   const std::lock_guard<std::mutex> a(lock);
   toolTip = text;
   PostMessage(windowHandle, WM_SET_TOOLTIP, 0, 0);
 }
 
-}
-
+} // namespace winvnc

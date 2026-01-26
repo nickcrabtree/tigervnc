@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -22,10 +22,10 @@
 #include <config.h>
 #endif
 
-#include <winvnc/VNCServerWin32.h>
-#include <winvnc/resource.h>
 #include <winvnc/ListConnInfo.h>
 #include <winvnc/STrayIcon.h>
+#include <winvnc/VNCServerWin32.h>
+#include <winvnc/resource.h>
 
 #include <core/LogWriter.h>
 
@@ -45,33 +45,24 @@ using namespace network;
 
 static LogWriter vlog("VNCServerWin32");
 
-
 const char* winvnc::VNCServerWin32::RegConfigPath = "Software\\TigerVNC\\WinVNC4";
 
-
-static IntParameter port_number("PortNumber",
-  "TCP/IP port on which the server will accept connections",
-  5900, 0, 65535);
-static StringParameter hosts("Hosts",
-  "Filter describing which hosts are allowed access to this server", "+");
-static BoolParameter localHost("LocalHost",
-  "Only accept connections from via the local loop-back network interface", false);
-static BoolParameter queryOnlyIfLoggedOn("QueryOnlyIfLoggedOn",
-  "Only prompt for a local user to accept incoming connections if there is a user logged on", false);
-static BoolParameter showTrayIcon("ShowTrayIcon",
-  "Show the configuration applet in the system tray icon", true);
-
+static IntParameter port_number("PortNumber", "TCP/IP port on which the server will accept connections", 5900, 0,
+                                65535);
+static StringParameter hosts("Hosts", "Filter describing which hosts are allowed access to this server", "+");
+static BoolParameter localHost("LocalHost", "Only accept connections from via the local loop-back network interface",
+                               false);
+static BoolParameter
+    queryOnlyIfLoggedOn("QueryOnlyIfLoggedOn",
+                        "Only prompt for a local user to accept incoming connections if there is a user logged on",
+                        false);
+static BoolParameter showTrayIcon("ShowTrayIcon", "Show the configuration applet in the system tray icon", true);
 
 VNCServerWin32::VNCServerWin32()
-  : command(NoCommand),
-    commandEvent(CreateEvent(nullptr, TRUE, FALSE, nullptr)),
-    sessionEvent(isServiceProcess() ?
-      CreateEvent(nullptr, FALSE, FALSE, "Global\\SessionEventTigerVNC") : nullptr),
-    vncServer(ComputerName().buf, &desktop),
-    thread_id(-1), runServer(false), isDesktopStarted(false),
-    config(&sockMgr), rfbSock(&sockMgr), trayIcon(nullptr),
-    queryConnectDialog(nullptr)
-{
+    : command(NoCommand), commandEvent(CreateEvent(nullptr, TRUE, FALSE, nullptr)),
+      sessionEvent(isServiceProcess() ? CreateEvent(nullptr, FALSE, FALSE, "Global\\SessionEventTigerVNC") : nullptr),
+      vncServer(ComputerName().buf, &desktop), thread_id(-1), runServer(false), isDesktopStarted(false),
+      config(&sockMgr), rfbSock(&sockMgr), trayIcon(nullptr), queryConnectDialog(nullptr) {
   // Initialise the desktop
   desktop.setStatusLocation(&isDesktopStarted);
   desktop.setQueryConnectionHandler(this);
@@ -97,7 +88,6 @@ VNCServerWin32::~VNCServerWin32() {
     delete queryConnectDialog;
 }
 
-
 void VNCServerWin32::processAddressChange() {
   if (!trayIcon)
     return;
@@ -117,13 +107,14 @@ void VNCServerWin32::processAddressChange() {
   // Build the new tip
   std::list<std::string>::iterator i, next_i;
   std::string toolTip(prefix);
-  for (i=addrs.begin(); i!= addrs.end(); i=next_i) {
-    next_i = i; next_i ++;
+  for (i = addrs.begin(); i != addrs.end(); i = next_i) {
+    next_i = i;
+    next_i++;
     toolTip += *i;
     if (next_i != addrs.end())
       toolTip += ",";
   }
-  
+
   // Pass the new tip to the tray icon
   vlog.info("Refreshing tray icon");
   trayIcon->setToolTip(toolTip.c_str());
@@ -141,7 +132,6 @@ void VNCServerWin32::regConfigChanged() {
   processAddressChange();
 }
 
-
 int VNCServerWin32::run() {
   {
     const std::lock_guard<std::mutex> a(runLock);
@@ -151,9 +141,7 @@ int VNCServerWin32::run() {
 
   // - Create the tray icon (if possible)
   if (showTrayIcon)
-	  trayIcon = new STrayIconThread(*this, IDI_ICON, IDI_CONNECTED,
-                                 IDI_ICON_DISABLE, IDI_CONNECTED_DISABLE,
-                                 IDR_TRAY);
+    trayIcon = new STrayIconThread(*this, IDI_ICON, IDI_CONNECTED, IDI_ICON_DISABLE, IDI_CONNECTED_DISABLE, IDR_TRAY);
 
   // - Register for notification of configuration changes
   config.setCallback(this);
@@ -182,10 +170,10 @@ int VNCServerWin32::run() {
     }
 
     vlog.debug("Server exited cleanly");
-  } catch (core::win32_error &s) {
+  } catch (core::win32_error& s) {
     vlog.error("%s", s.what());
     result = s.err;
-  } catch (std::exception &e) {
+  } catch (std::exception& e) {
     vlog.error("%s", e.what());
   }
 
@@ -204,7 +192,6 @@ void VNCServerWin32::stop() {
   if (thread_id != (DWORD)-1)
     PostThreadMessage(thread_id, WM_QUIT, 0, 0);
 }
-
 
 bool VNCServerWin32::disconnectClients(const char* reason) {
   return queueCommand(DisconnectClients, reason, 0);
@@ -235,9 +222,7 @@ bool VNCServerWin32::setClientsStatus(ListConnInfo* LCInfo) {
   return queueCommand(SetClientsStatus, LCInfo, 0);
 }
 
-void VNCServerWin32::queryConnection(network::Socket* sock,
-                                     const char* userName)
-{
+void VNCServerWin32::queryConnection(network::Socket* sock, const char* userName) {
   if (queryOnlyIfLoggedOn && CurrentUserToken().noUserLoggedOn()) {
     vncServer.approveConnection(sock, true, nullptr);
     return;
@@ -253,7 +238,6 @@ void VNCServerWin32::queryConnection(network::Socket* sock,
 void VNCServerWin32::queryConnectionComplete() {
   queueCommand(QueryConnectionComplete, nullptr, 0, false);
 }
-
 
 bool VNCServerWin32::queueCommand(Command cmd, const void* data, int len, bool wait) {
   std::unique_lock<std::mutex> lock(commandLock);
@@ -294,18 +278,17 @@ void VNCServerWin32::processEvent(HANDLE event_) {
       // Make a reverse connection to a VNC viewer
       sockMgr.addSocket((network::Socket*)commandData, &vncServer);
       break;
-  case GetClientsInfo:
-    getConnInfo((ListConnInfo*)commandData);
-    break;
-  case SetClientsStatus:
-    setConnStatus((ListConnInfo*)commandData);
-    break;
+    case GetClientsInfo:
+      getConnInfo((ListConnInfo*)commandData);
+      break;
+    case SetClientsStatus:
+      setConnStatus((ListConnInfo*)commandData);
+      break;
 
     case QueryConnectionComplete:
       // The Accept/Reject dialog has completed
       // Get the result, then clean it up
-      vncServer.approveConnection(queryConnectDialog->getSock(),
-                                  queryConnectDialog->isAccepted(),
+      vncServer.approveConnection(queryConnectDialog->getSock(), queryConnectDialog->isAccepted(),
                                   "Connection rejected by user");
       delete queryConnectDialog;
       queryConnectDialog = nullptr;
@@ -321,14 +304,12 @@ void VNCServerWin32::processEvent(HANDLE event_) {
       command = NoCommand;
       commandSig.notify_one();
     }
-  } else if ((event_ == sessionEvent.h) ||
-             (event_ == desktop.getTerminateEvent())) {
+  } else if ((event_ == sessionEvent.h) || (event_ == desktop.getTerminateEvent())) {
     stop();
   }
 }
 
-void VNCServerWin32::getConnInfo(ListConnInfo * listConn)
-{
+void VNCServerWin32::getConnInfo(ListConnInfo* listConn) {
   std::list<network::Socket*> sockets;
   std::list<network::Socket*>::iterator i;
 
@@ -347,9 +328,7 @@ void VNCServerWin32::getConnInfo(ListConnInfo * listConn)
 
     if (!conn->authenticated())
       status = 3;
-    else if (conn->accessCheck(rfb::AccessPtrEvents |
-                               rfb::AccessKeyEvents |
-                               rfb::AccessView))
+    else if (conn->accessCheck(rfb::AccessPtrEvents | rfb::AccessKeyEvents | rfb::AccessView))
       status = 0;
     else if (conn->accessCheck(rfb::AccessView))
       status = 1;
@@ -360,8 +339,7 @@ void VNCServerWin32::getConnInfo(ListConnInfo * listConn)
   }
 }
 
-void VNCServerWin32::setConnStatus(ListConnInfo* listConn)
-{
+void VNCServerWin32::setConnStatus(ListConnInfo* listConn) {
   sockMgr.setDisable(&vncServer, listConn->getDisable());
 
   if (listConn->Empty())
@@ -388,19 +366,14 @@ void VNCServerWin32::setConnStatus(ListConnInfo* listConn)
 
       switch (status) {
       case 0:
-        ar |= rfb::AccessPtrEvents |
-              rfb::AccessKeyEvents |
-              rfb::AccessView;
+        ar |= rfb::AccessPtrEvents | rfb::AccessKeyEvents | rfb::AccessView;
         break;
       case 1:
         ar |= rfb::AccessView;
-        ar &= ~(rfb::AccessPtrEvents |
-                rfb::AccessKeyEvents);
+        ar &= ~(rfb::AccessPtrEvents | rfb::AccessKeyEvents);
         break;
       case 2:
-        ar &= ~(rfb::AccessPtrEvents |
-                rfb::AccessKeyEvents |
-                rfb::AccessView);
+        ar &= ~(rfb::AccessPtrEvents | rfb::AccessKeyEvents | rfb::AccessView);
         break;
       }
       conn->setAccessRights(ar);

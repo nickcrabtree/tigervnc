@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -20,14 +20,14 @@
 #include <config.h>
 #endif
 
-#include <winvnc/VNCServerWin32.h>
 #include <winvnc/QueryConnectDialog.h>
+#include <winvnc/VNCServerWin32.h>
 #include <winvnc/resource.h>
 
 #include <core/LogWriter.h>
 
-#include <rfb_win32/Win32Util.h>
 #include <rfb_win32/Service.h>
+#include <rfb_win32/Win32Util.h>
 
 using namespace core;
 using namespace rfb;
@@ -41,20 +41,13 @@ static IntParameter timeout("QueryConnectTimeout",
                             "rejecting the connection",
                             10, 0, INT_MAX);
 
-
 // - Visible methods
 
-QueryConnectDialog::QueryConnectDialog(network::Socket* sock_,
-                                       const char* userName_,
-                                       VNCServerWin32* s)
-: Dialog(GetModuleHandle(nullptr)),
-  thread(nullptr), sock(sock_), peerIp(sock->getPeerAddress()),
-  userName(userName_?userName_:""),
-  approve(false), server(s) {
-}
+QueryConnectDialog::QueryConnectDialog(network::Socket* sock_, const char* userName_, VNCServerWin32* s)
+    : Dialog(GetModuleHandle(nullptr)), thread(nullptr), sock(sock_), peerIp(sock->getPeerAddress()),
+      userName(userName_ ? userName_ : ""), approve(false), server(s) {}
 
-QueryConnectDialog::~QueryConnectDialog()
-{
+QueryConnectDialog::~QueryConnectDialog() {
   if (thread != nullptr) {
     thread->join();
     delete thread;
@@ -64,7 +57,6 @@ QueryConnectDialog::~QueryConnectDialog()
 void QueryConnectDialog::startDialog() {
   thread = new std::thread(&QueryConnectDialog::worker, this);
 }
-
 
 // - Thread overrides
 
@@ -80,7 +72,6 @@ void QueryConnectDialog::worker() {
     throw;
   }
 }
-
 
 // - Dialog overrides
 
