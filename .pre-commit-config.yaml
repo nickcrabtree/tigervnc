@@ -155,6 +155,7 @@ repos:
       - id: cmake-lint
         name: cmake-lint
         files: (CMakeLists\.txt|\.cmake)$
+        args: ["--line-width=200"]
 
   # ---------------------------------------------------------
   # OPTIONAL local hooks (uncomment per repo as needed)
