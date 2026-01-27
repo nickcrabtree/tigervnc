@@ -28,12 +28,14 @@
 #include <cstring>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #ifdef HAVE_GNUTLS
 // clang-format off
@@ -49,6 +51,68 @@
 using namespace rfb;
 
 static core::LogWriter vlog("PersistentCache");
+
+namespace {
+class CacheDirLock {
+public:
+  explicit CacheDirLock(const std::string& dir) : fd_(-1), locked_(false) {
+    std::string lockPath = dir + "/.pcache.lock";
+    fd_ = ::open(lockPath.c_str(), O_CREAT | O_RDWR, 0644);
+    if (fd_ < 0)
+      return;
+    struct flock fl;
+    memset(&fl, 0, sizeof(fl));
+    fl.l_type = F_WRLCK;
+    fl.l_whence = SEEK_SET;
+    fl.l_start = 0;
+    fl.l_len = 0; // whole file
+    if (::fcntl(fd_, F_SETLKW, &fl) == 0)
+      locked_ = true;
+  }
+
+  ~CacheDirLock() {
+    if (fd_ >= 0) {
+      if (locked_) {
+        struct flock fl;
+        memset(&fl, 0, sizeof(fl));
+        fl.l_type = F_UNLCK;
+        fl.l_whence = SEEK_SET;
+        fl.l_start = 0;
+        fl.l_len = 0;
+        ::fcntl(fd_, F_SETLK, &fl);
+      }
+      ::close(fd_);
+    }
+  }
+
+  bool ok() const {
+    return locked_;
+  }
+
+private:
+  int fd_;
+  bool locked_;
+};
+
+static bool fsyncFile(FILE* f) {
+  if (!f)
+    return false;
+  if (fflush(f) != 0)
+    return false;
+  int fd = fileno(f);
+  if (fd < 0)
+    return false;
+  return ::fsync(fd) == 0;
+}
+
+static void fsyncDirBestEffort(const std::string& dir) {
+  int dfd = ::open(dir.c_str(), O_RDONLY);
+  if (dfd >= 0) {
+    (void)::fsync(dfd);
+    ::close(dfd);
+  }
+}
+} // namespace
 
 // Helpers for the unified 16-byte CacheKey
 static inline uint64_t cacheKeyFirstU64(const CacheKey& key) {
@@ -728,61 +792,77 @@ void GlobalClientPersistentCache::closeCurrentShard() {
   }
 }
 
-bool GlobalClientPersistentCache::writeEntryToShard(const std::vector<uint8_t>& hash, const CachedPixels& entry) {
-  // Check if current shard is full
-  if (currentShardSize_ >= shardSize_) {
-    closeCurrentShard();
-    currentShardId_++;
-    currentShardSize_ = 0;
-  }
-
-  if (!openCurrentShard())
-    return false;
-
-  // Record position before write
-  uint32_t offset = currentShardSize_;
-
-  // Write pixel data to shard
-  errno = 0;
-  size_t written = fwrite(entry.pixels.data(), 1, entry.pixels.size(), currentShardHandle_);
-  if (written != entry.pixels.size()) {
-    int err = errno;
-    vlog.error("PersistentCache: failed to write to shard %u (%zu/%zu bytes written): %s", currentShardId_, written,
-               entry.pixels.size(), strerror(err));
+ // Enforce on-disk quota before writing. We must prevent unbounded shard growth,
+    // especially when eviction/GC cannot reclaim fragmented shards.
+    const size_t needBytes = entry.pixels.size();
+size_t diskUsage = getDiskUsage();
+if (needBytes > 0 && diskUsage + needBytes > maxDiskSize_) {
+  vlog.info("PersistentCache: disk usage %zuMB + write %zuKB exceeds limit %zuMB; attempting GC",
+            diskUsage / (1024 * 1024), needBytes / 1024, maxDiskSize_ / (1024 * 1024));
+  garbageCollect();
+  cleanupOrphanShardsOnDisk();
+  diskUsage = getDiskUsage();
+  if (diskUsage + needBytes > maxDiskSize_) {
+    vlog.error(
+        "PersistentCache: refusing to write entry (%zuKB) because disk would exceed limit (%zuMB used, %zuMB limit)",
+        needBytes / 1024, diskUsage / (1024 * 1024), maxDiskSize_ / (1024 * 1024));
     return false;
   }
-  if (fflush(currentShardHandle_) != 0) {
-    int err = errno;
-    vlog.error("PersistentCache: failed to flush shard %u: %s", currentShardId_, strerror(err));
-    return false;
-  }
+}
+// Check if current shard is full
+if (currentShardSize_ >= shardSize_) {
+  closeCurrentShard();
+  currentShardId_++;
+  currentShardSize_ = 0;
+}
 
-  currentShardSize_ += written;
-  shardSizes_[currentShardId_] = currentShardSize_;
+if (!openCurrentShard())
+  return false;
 
-  // Update index entry
-  IndexEntry idx;
-  idx.shardId = currentShardId_;
-  idx.payloadOffset = offset;
-  idx.payloadSize = entry.pixels.size();
-  idx.width = entry.width;
-  idx.height = entry.height;
-  idx.stridePixels = entry.stridePixels;
-  idx.format = entry.format;
-  idx.isCold = false;
-  idx.canonicalHash = entry.canonicalHash;
+// Record position before write
+uint32_t offset = currentShardSize_;
 
-  // NEW in v7: compute quality code from pixel format and lossy flag
-  bool isLossy = (entry.actualHash != entry.canonicalHash);
-  idx.qualityCode = computeQualityCode(entry.format, isLossy);
+// Write pixel data to shard
+errno = 0;
+size_t written = fwrite(entry.pixels.data(), 1, entry.pixels.size(), currentShardHandle_);
+if (written != entry.pixels.size()) {
+  int err = errno;
+  vlog.error("PersistentCache: failed to write to shard %u (%zu/%zu bytes written): %s", currentShardId_, written,
+             entry.pixels.size(), strerror(err));
+  return false;
+}
+if (fflush(currentShardHandle_) != 0) {
+  int err = errno;
+  vlog.error("PersistentCache: failed to flush shard %u: %s", currentShardId_, strerror(err));
+  return false;
+}
 
-  // Set key for index lookups (unified 16-byte hash)
-  idx.key = CacheKey(hash.data());
+currentShardSize_ += written;
+shardSizes_[currentShardId_] = currentShardSize_;
 
-  indexMap_[hash] = idx;
-  indexDirty_ = true;
+// Update index entry
+IndexEntry idx;
+idx.shardId = currentShardId_;
+idx.payloadOffset = offset;
+idx.payloadSize = entry.pixels.size();
+idx.width = entry.width;
+idx.height = entry.height;
+idx.stridePixels = entry.stridePixels;
+idx.format = entry.format;
+idx.isCold = false;
+idx.canonicalHash = entry.canonicalHash;
 
-  return true;
+// NEW in v7: compute quality code from pixel format and lossy flag
+bool isLossy = (entry.actualHash != entry.canonicalHash);
+idx.qualityCode = computeQualityCode(entry.format, isLossy);
+
+// Set key for index lookups (unified 16-byte hash)
+idx.key = CacheKey(hash.data());
+
+indexMap_[hash] = idx;
+indexDirty_ = true;
+
+return true;
 }
 
 size_t GlobalClientPersistentCache::getDiskUsage() const {
@@ -1249,52 +1329,102 @@ size_t GlobalClientPersistentCache::flushDirtyEntries() {
 }
 
 size_t GlobalClientPersistentCache::garbageCollect() {
-  // GC strategy: remove entries from oldest shards that are cold
-  // and exceed the disk limit
-
+  // GC strategy: reclaim whole *cold* shards so we actually free disk space.
+  // Removing individual entries from a shard does not shrink the shard file,
+  // so we target shards whose entries are all marked cold.
   size_t diskUsage = getDiskUsage();
-  if (diskUsage <= maxDiskSize_ && coldEntries_.empty()) {
-    return 0; // Nothing to collect
+  const size_t target = (maxDiskSize_ * 9) / 10; // aim for 90% of limit
+  if (diskUsage <= maxDiskSize_ && diskUsage <= target && coldEntries_.empty()) {
+    return 0;
   }
+
+  // Never delete the shard we're currently appending to.
+  const uint16_t activeShard = currentShardId_;
+
+  // Build shard -> hashes map and track which shards are fully cold.
+  std::unordered_map<uint16_t, std::vector<std::vector<uint8_t>>> shardToHashes;
+  std::unordered_map<uint16_t, bool> shardAllCold;
+  shardToHashes.reserve(shardSizes_.size());
+  shardAllCold.reserve(shardSizes_.size());
+
+  for (const auto& kv : indexMap_) {
+    const std::vector<uint8_t>& hash = kv.first;
+    const IndexEntry& idx = kv.second;
+    shardToHashes[idx.shardId].push_back(hash);
+    auto it = shardAllCold.find(idx.shardId);
+    if (it == shardAllCold.end()) {
+      shardAllCold[idx.shardId] = idx.isCold;
+    } else {
+      it->second = it->second && idx.isCold;
+    }
+  }
+
+  // Collect candidate shard IDs (oldest first).
+  std::vector<uint16_t> candidates;
+  candidates.reserve(shardAllCold.size());
+  for (const auto& kv : shardAllCold) {
+    uint16_t shardId = kv.first;
+    if (shardId == activeShard)
+      continue;
+    if (kv.second)
+      candidates.push_back(shardId);
+  }
+  std::sort(candidates.begin(), candidates.end());
 
   size_t reclaimed = 0;
+  size_t removedEntries = 0;
 
-  // Find the oldest shard with cold entries
-  // For simplicity, just remove cold entries until we're under the limit
-  std::vector<std::vector<uint8_t>> toRemove;
-  for (const auto& hash : coldEntries_) {
-    if (diskUsage <= maxDiskSize_ * 0.9) // Target 90% of limit
+  for (uint16_t shardId : candidates) {
+    if (diskUsage <= target)
       break;
 
-    auto it = indexMap_.find(hash);
-    if (it != indexMap_.end()) {
-      reclaimed += it->second.payloadSize;
-      diskUsage -= it->second.payloadSize;
-      toRemove.push_back(hash);
+    auto itList = shardToHashes.find(shardId);
+    if (itList == shardToHashes.end())
+      continue;
+
+    // Remove all entries that point into this shard.
+    for (const auto& hash : itList->second) {
+      auto itKey = hashToKey_.find(hash);
+      if (itKey != hashToKey_.end()) {
+        keyToHash_.erase(itKey->second);
+        hashToKey_.erase(itKey);
+      }
+      indexMap_.erase(hash);
+      coldEntries_.erase(hash);
+      dirtyEntries_.erase(hash);
+      hydrationQueue_.remove(hash);
+      ++removedEntries;
     }
-  }
-  // Remove from index and related maps.
-  for (const auto& hash : toRemove) {
-    auto itKey = hashToKey_.find(hash);
-    if (itKey != hashToKey_.end()) {
-      keyToHash_.erase(itKey->second);
-      hashToKey_.erase(itKey);
+
+    // Delete the shard file itself.
+    std::string path = getShardPath(shardId);
+    struct stat st;
+    size_t fileBytes = 0;
+    if (stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+      fileBytes = static_cast<size_t>(st.st_size);
+    } else {
+      auto itSz = shardSizes_.find(shardId);
+      if (itSz != shardSizes_.end())
+        fileBytes = itSz->second;
     }
-    indexMap_.erase(hash);
-    coldEntries_.erase(hash);
-    hydrationQueue_.remove(hash);
-  }
-  if (!toRemove.empty())
+
+    remove(path.c_str());
+    shardSizes_.erase(shardId);
+
+    if (fileBytes > 0 && diskUsage >= fileBytes)
+      diskUsage -= fileBytes;
+
+    reclaimed += fileBytes;
     indexDirty_ = true;
 
-  // Delete any shard files that became unreferenced as a result of trimming.
-  // This is the key step that actually reclaims disk space.
-  size_t orphanReclaimed = cleanupOrphanShardsOnDisk();
-  reclaimed += orphanReclaimed;
+    vlog.debug("PersistentCache: GC deleted shard %u (%zuMB), removed %zu entries, usage now %zuMB", shardId,
+               fileBytes / (1024 * 1024), removedEntries, diskUsage / (1024 * 1024));
+  }
+
+  reclaimed += cleanupOrphanShardsOnDisk();
 
   if (reclaimed > 0) {
-    vlog.debug("PersistentCache: GC reclaimed %zuKB (%zu entries, %zuKB orphan shards)", reclaimed / 1024,
-               toRemove.size(), orphanReclaimed / 1024);
+    vlog.info("PersistentCache: GC reclaimed %zuMB", reclaimed / (1024 * 1024));
   }
 
   return reclaimed;
@@ -1445,6 +1575,13 @@ bool GlobalClientPersistentCache::saveToDisk() {
     }
   }
 
+  if (!fsyncFile(f)) {
+    int err = errno;
+    vlog.error("PersistentCache: failed to flush/fsync %s: %s", tmpPath.c_str(), strerror(err));
+    fclose(f);
+    remove(tmpPath.c_str());
+    return false;
+  }
   if (fclose(f) != 0) {
     int err = errno;
     vlog.error("PersistentCache: failed to close %s: %s", tmpPath.c_str(), strerror(err));
@@ -1455,7 +1592,8 @@ bool GlobalClientPersistentCache::saveToDisk() {
   // Atomically replace the old index. If rename fails, keep the old index.
   if (rename(tmpPath.c_str(), indexPath.c_str()) != 0) {
     int err = errno;
-    vlog.error("PersistentCache: failed to rename %s to %s: %s", tmpPath.c_str(), indexPath.c_str(), strerror(err));
+    vlog.error("PersistentCache: failed to rename %s to %s: %s (likely concurrent writer or filesystem race)",
+               tmpPath.c_str(), indexPath.c_str(), strerror(err));
     remove(tmpPath.c_str());
     return false;
   }
