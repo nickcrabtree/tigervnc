@@ -1,4 +1,5 @@
-add_library(core STATIC
+add_library(
+  core STATIC
   Configuration.cxx
   Exception.cxx
   Logger.cxx

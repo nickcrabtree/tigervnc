@@ -76,6 +76,8 @@ public:
   // PersistentCache protocol extension (cross-session), using 64-bit
   // contentHash/cacheId identifiers on the wire.
   void handlePersistentCachedRect(const core::Rect& r, const CacheKey& key, ModifiablePixelBuffer* pb);
+  void handlePersistentCachedRectWithOffset(const core::Rect& r, const CacheKey& key, uint16_t ox, uint16_t oy,
+                                            uint16_t cachedW, uint16_t cachedH, ModifiablePixelBuffer* pb);
   // PersistentCache INIT: encoding is the inner payload encoding used
   // for this rect. This allows the client cache to treat lossy and
   // lossless payloads differently for on-disk persistence.
@@ -169,6 +171,9 @@ private:
 
   // Client-side cache engine used for PersistentCache (cross-session, optionally disk-backed).
   GlobalClientPersistentCache* persistentCache;
+
+  // Whether PersistentCache protocol handlers are enabled for this connection.
+  bool persistentCacheEnabled_;
 
   // Whether disk persistence is enabled for this connection.
   bool persistentCacheDiskEnabled_;

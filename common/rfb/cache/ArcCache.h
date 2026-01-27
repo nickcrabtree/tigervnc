@@ -25,13 +25,12 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace rfb { namespace cache {
+namespace rfb {
+namespace cache {
 
 enum class ArcList { NONE, T1, T2, B1, B2 };
 
-template <typename Key, typename Entry,
-          typename Hasher = std::hash<Key>,
-          typename Eq = std::equal_to<Key>>
+template <typename Key, typename Entry, typename Hasher = std::hash<Key>, typename Eq = std::equal_to<Key>>
 class ArcCache {
 public:
   using ByteSizeFunc = std::function<size_t(const Entry&)>;
@@ -51,15 +50,19 @@ public:
   };
 
   ArcCache(size_t maxBytes, ByteSizeFunc sizeFunc, EvictionCallback evictCb = nullptr)
-    : maxBytes_(maxBytes), currentBytes_(0), pBytes_(0),
-      sizeFunc_(std::move(sizeFunc)), evictCb_(std::move(evictCb)) {
-    if (!sizeFunc_) throw std::invalid_argument("ArcCache: sizeFunc must be provided");
+      : maxBytes_(maxBytes), currentBytes_(0), pBytes_(0), sizeFunc_(std::move(sizeFunc)),
+        evictCb_(std::move(evictCb)) {
+    if (!sizeFunc_)
+      throw std::invalid_argument("ArcCache: sizeFunc must be provided");
   }
 
   void clear() {
-    t1_.clear(); t2_.clear(); b1_.clear(); b2_.clear();
+    t1_.clear();
+    t2_.clear();
+    b1_.clear();
+    b2_.clear();
     listMap_.clear();
-    for (auto &kv : cache_) {
+    for (auto& kv : cache_) {
       (void)kv; // no-op; let cache_ be cleared
     }
     cache_.clear();
@@ -188,7 +191,8 @@ private:
 
   void moveToList(const Key& key, ArcList dst) {
     auto it = listMap_.find(key);
-    if (it == listMap_.end()) return; // not tracked (shouldn't happen for cache resident)
+    if (it == listMap_.end())
+      return; // not tracked (shouldn't happen for cache resident)
 
     // Remove from current list
     removeFromList(it->first, it->second.list);
@@ -199,44 +203,69 @@ private:
 
   void addToListFront(const Key& key, ArcList which) {
     switch (which) {
-      case ArcList::T1: {
-        t1_.push_front(key);
-        auto& li = listMap_[key]; li.list = which; li.iter = t1_.begin();
-        break; }
-      case ArcList::T2: {
-        t2_.push_front(key);
-        auto& li = listMap_[key]; li.list = which; li.iter = t2_.begin();
-        break; }
-      case ArcList::B1: {
-        b1_.push_front(key);
-        auto& li = listMap_[key]; li.list = which; li.iter = b1_.begin();
-        break; }
-      case ArcList::B2: {
-        b2_.push_front(key);
-        auto& li = listMap_[key]; li.list = which; li.iter = b2_.begin();
-        break; }
-      default: break;
+    case ArcList::T1: {
+      t1_.push_front(key);
+      auto& li = listMap_[key];
+      li.list = which;
+      li.iter = t1_.begin();
+      break;
+    }
+    case ArcList::T2: {
+      t2_.push_front(key);
+      auto& li = listMap_[key];
+      li.list = which;
+      li.iter = t2_.begin();
+      break;
+    }
+    case ArcList::B1: {
+      b1_.push_front(key);
+      auto& li = listMap_[key];
+      li.list = which;
+      li.iter = b1_.begin();
+      break;
+    }
+    case ArcList::B2: {
+      b2_.push_front(key);
+      auto& li = listMap_[key];
+      li.list = which;
+      li.iter = b2_.begin();
+      break;
+    }
+    default:
+      break;
     }
   }
 
   void removeFromList(const Key& key, ArcList which) {
     auto it = listMap_.find(key);
-    if (it == listMap_.end()) return;
-    if (it->second.list != which) return;
+    if (it == listMap_.end())
+      return;
+    if (it->second.list != which)
+      return;
 
     switch (which) {
-      case ArcList::T1: t1_.erase(it->second.iter); break;
-      case ArcList::T2: t2_.erase(it->second.iter); break;
-      case ArcList::B1: b1_.erase(it->second.iter); break;
-      case ArcList::B2: b2_.erase(it->second.iter); break;
-      default: break;
+    case ArcList::T1:
+      t1_.erase(it->second.iter);
+      break;
+    case ArcList::T2:
+      t2_.erase(it->second.iter);
+      break;
+    case ArcList::B1:
+      b1_.erase(it->second.iter);
+      break;
+    case ArcList::B2:
+      b2_.erase(it->second.iter);
+      break;
+    default:
+      break;
     }
     it->second.list = ArcList::NONE;
   }
 
   void eraseFromGhostList(const Key& key) {
     auto it = listMap_.find(key);
-    if (it == listMap_.end()) return;
+    if (it == listMap_.end())
+      return;
     if (it->second.list == ArcList::B1) {
       b1_.erase(it->second.iter);
       listMap_.erase(it);
@@ -270,7 +299,8 @@ private:
         if (cit != cache_.end()) {
           size_t vsz = sizeFunc_(cit->second);
           currentBytes_ -= vsz;
-          if (evictCb_) evictCb_(victim);
+          if (evictCb_)
+            evictCb_(victim);
           cache_.erase(cit);
           stats_.evictions++;
           stats_.totalEntries = cache_.size();
@@ -287,7 +317,8 @@ private:
         if (cit != cache_.end()) {
           size_t vsz = sizeFunc_(cit->second);
           currentBytes_ -= vsz;
-          if (evictCb_) evictCb_(victim);
+          if (evictCb_)
+            evictCb_(victim);
           cache_.erase(cit);
           stats_.evictions++;
           stats_.totalEntries = cache_.size();
@@ -306,10 +337,14 @@ private:
   void trimGhosts() {
     const size_t maxGhost = 4 * (t1_.size() + t2_.size() + 1);
     while (b1_.size() > maxGhost) {
-      const Key k = b1_.back(); b1_.pop_back(); listMap_.erase(k);
+      const Key k = b1_.back();
+      b1_.pop_back();
+      listMap_.erase(k);
     }
     while (b2_.size() > maxGhost) {
-      const Key k = b2_.back(); b2_.pop_back(); listMap_.erase(k);
+      const Key k = b2_.back();
+      b2_.pop_back();
+      listMap_.erase(k);
     }
   }
 
@@ -319,7 +354,8 @@ private:
       size_t sum = 0;
       for (const auto& k : lst) {
         auto it = cache_.find(k);
-        if (it != cache_.end()) sum += sizeFunc_(it->second);
+        if (it != cache_.end())
+          sum += sizeFunc_(it->second);
       }
       return sum;
     }
@@ -327,4 +363,5 @@ private:
   }
 };
 
-}} // namespace rfb::cache
+} // namespace cache
+} // namespace rfb

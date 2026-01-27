@@ -1,17 +1,17 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011-2020 Pierre Ossman for Cendio AB
  * Copyright 2017 Peter Astrand <astrand@cendio.se> for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -32,27 +32,23 @@ static const size_t DEFAULT_BUF_SIZE = 16384;
 static const size_t MAX_BUF_SIZE = 32 * 1024 * 1024;
 
 BufferedOutStream::BufferedOutStream(bool emulateCork_)
-  : bufSize(DEFAULT_BUF_SIZE), offset(0), emulateCork(emulateCork_)
-{
+    : bufSize(DEFAULT_BUF_SIZE), offset(0), emulateCork(emulateCork_) {
   ptr = start = sentUpTo = new uint8_t[bufSize];
   end = start + bufSize;
   gettimeofday(&lastSizeCheck, nullptr);
   peakUsage = 0;
 }
 
-BufferedOutStream::~BufferedOutStream()
-{
+BufferedOutStream::~BufferedOutStream() {
   // FIXME: Complain about non-flushed buffer?
-  delete [] start;
+  delete[] start;
 }
 
-size_t BufferedOutStream::length()
-{
+size_t BufferedOutStream::length() {
   return offset + ptr - sentUpTo;
 }
 
-void BufferedOutStream::flush()
-{
+void BufferedOutStream::flush() {
   struct timeval now;
 
   // Only give larger chunks if corked to minimize overhead
@@ -77,8 +73,7 @@ void BufferedOutStream::flush()
   // Time to shrink an excessive buffer?
   gettimeofday(&now, nullptr);
   if ((sentUpTo == ptr) && (bufSize > DEFAULT_BUF_SIZE) &&
-      ((now.tv_sec < lastSizeCheck.tv_sec) ||
-       (now.tv_sec > (lastSizeCheck.tv_sec + 5)))) {
+      ((now.tv_sec < lastSizeCheck.tv_sec) || (now.tv_sec > (lastSizeCheck.tv_sec + 5)))) {
     if (peakUsage < (bufSize / 2)) {
       size_t newSize;
 
@@ -87,7 +82,7 @@ void BufferedOutStream::flush()
         newSize *= 2;
 
       // We know the buffer is empty, so just reset everything
-      delete [] start;
+      delete[] start;
       ptr = start = sentUpTo = new uint8_t[newSize];
       end = start + newSize;
       bufSize = newSize;
@@ -98,13 +93,11 @@ void BufferedOutStream::flush()
   }
 }
 
-bool BufferedOutStream::hasBufferedData()
-{
+bool BufferedOutStream::hasBufferedData() {
   return sentUpTo != ptr;
 }
 
-void BufferedOutStream::overrun(size_t needed)
-{
+void BufferedOutStream::overrun(size_t needed) {
   bool oldCorked;
   size_t totalNeeded, newSize;
   uint8_t* newBuffer;
@@ -138,10 +131,9 @@ void BufferedOutStream::overrun(size_t needed)
   // We'll need to allocate more buffer space...
 
   if (totalNeeded > MAX_BUF_SIZE)
-    throw std::out_of_range(core::format(
-      "BufferedOutStream overrun: requested size of %lu bytes exceeds "
-      "maximum of %lu bytes",
-      (long unsigned)totalNeeded, (long unsigned)MAX_BUF_SIZE));
+    throw std::out_of_range(core::format("BufferedOutStream overrun: requested size of %lu bytes exceeds "
+                                         "maximum of %lu bytes",
+                                         (long unsigned)totalNeeded, (long unsigned)MAX_BUF_SIZE));
 
   newSize = DEFAULT_BUF_SIZE;
   while (newSize < totalNeeded)
@@ -149,7 +141,7 @@ void BufferedOutStream::overrun(size_t needed)
 
   newBuffer = new uint8_t[newSize];
   memcpy(newBuffer, sentUpTo, ptr - sentUpTo);
-  delete [] start;
+  delete[] start;
   bufSize = newSize;
 
   ptr = newBuffer + (ptr - sentUpTo);

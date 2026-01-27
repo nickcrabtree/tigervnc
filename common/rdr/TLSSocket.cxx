@@ -39,30 +39,24 @@ using namespace rdr;
 
 static core::LogWriter vlog("TLSSocket");
 
-TLSSocket::TLSSocket(InStream* in_, OutStream* out_,
-                     gnutls_session_t session_)
-  : session(session_), in(in_), out(out_), tlsin(this), tlsout(this)
-{
-  gnutls_transport_set_pull_function(
-    session, [](gnutls_transport_ptr_t sock, void* data, size_t size) {
-      return ((TLSSocket*)sock)->pull(data, size);
-    });
-  gnutls_transport_set_push_function(
-    session, [](gnutls_transport_ptr_t sock, const void* data, size_t size) {
-      return ((TLSSocket*)sock)->push(data, size);
-    });
+TLSSocket::TLSSocket(InStream* in_, OutStream* out_, gnutls_session_t session_)
+    : session(session_), in(in_), out(out_), tlsin(this), tlsout(this) {
+  gnutls_transport_set_pull_function(session, [](gnutls_transport_ptr_t sock, void* data, size_t size) {
+    return ((TLSSocket*)sock)->pull(data, size);
+  });
+  gnutls_transport_set_push_function(session, [](gnutls_transport_ptr_t sock, const void* data, size_t size) {
+    return ((TLSSocket*)sock)->push(data, size);
+  });
   gnutls_transport_set_ptr(session, this);
 }
 
-TLSSocket::~TLSSocket()
-{
+TLSSocket::~TLSSocket() {
   gnutls_transport_set_pull_function(session, nullptr);
   gnutls_transport_set_push_function(session, nullptr);
   gnutls_transport_set_ptr(session, nullptr);
 }
 
-bool TLSSocket::handshake()
-{
+bool TLSSocket::handshake() {
   int err;
 
   err = gnutls_handshake(session);
@@ -76,8 +70,7 @@ bool TLSSocket::handshake()
     alert = gnutls_alert_get(session);
     msg = nullptr;
 
-    if ((err == GNUTLS_E_WARNING_ALERT_RECEIVED) ||
-        (err == GNUTLS_E_FATAL_ALERT_RECEIVED))
+    if ((err == GNUTLS_E_WARNING_ALERT_RECEIVED) || (err == GNUTLS_E_FATAL_ALERT_RECEIVED))
       msg = gnutls_alert_get_name(alert);
 
     if (msg == nullptr)
@@ -96,8 +89,7 @@ bool TLSSocket::handshake()
   return true;
 }
 
-void TLSSocket::shutdown()
-{
+void TLSSocket::shutdown() {
   int ret;
 
   try {
@@ -118,13 +110,12 @@ void TLSSocket::shutdown()
     vlog.error("TLS shutdown failed: %s", gnutls_strerror(ret));
 }
 
-size_t TLSSocket::readTLS(uint8_t* buf, size_t len)
-{
+size_t TLSSocket::readTLS(uint8_t* buf, size_t len) {
   int n;
 
   while (true) {
     streamEmpty = false;
-    n = gnutls_record_recv(session, (void *) buf, len);
+    n = gnutls_record_recv(session, (void*)buf, len);
     if (n == GNUTLS_E_INTERRUPTED || n == GNUTLS_E_AGAIN) {
       // GnuTLS returns GNUTLS_E_AGAIN for a bunch of other scenarios
       // other than the pull function returning EAGAIN, so we have to
@@ -151,8 +142,7 @@ size_t TLSSocket::readTLS(uint8_t* buf, size_t len)
   return n;
 }
 
-size_t TLSSocket::writeTLS(const uint8_t* data, size_t length)
-{
+size_t TLSSocket::writeTLS(const uint8_t* data, size_t length) {
   int n;
 
   n = gnutls_record_send(session, data, length);
@@ -170,8 +160,7 @@ size_t TLSSocket::writeTLS(const uint8_t* data, size_t length)
   return n;
 }
 
-ssize_t TLSSocket::pull(void* data, size_t size)
-{
+ssize_t TLSSocket::pull(void* data, size_t size) {
   streamEmpty = false;
   saved_exception = nullptr;
 
@@ -203,8 +192,7 @@ ssize_t TLSSocket::pull(void* data, size_t size)
   return size;
 }
 
-ssize_t TLSSocket::push(const void* data, size_t size)
-{
+ssize_t TLSSocket::push(const void* data, size_t size) {
   saved_exception = nullptr;
 
   try {

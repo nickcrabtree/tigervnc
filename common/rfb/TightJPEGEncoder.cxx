@@ -1,17 +1,17 @@
 /* Copyright (C) 2000-2003 Constantin Kaplinsky.  All Rights Reserved.
  * Copyright (C) 2011 D. R. Commander.  All Rights Reserved.
  * Copyright 2014 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -23,17 +23,17 @@
 #endif
 
 #include <rdr/OutStream.h>
-#include <rfb/encodings.h>
-#include <rfb/SConnection.h>
 #include <rfb/PixelBuffer.h>
-#include <rfb/TightJPEGEncoder.h>
+#include <rfb/SConnection.h>
 #include <rfb/TightConstants.h>
+#include <rfb/TightJPEGEncoder.h>
+#include <rfb/encodings.h>
 
 using namespace rfb;
 
 struct TightJPEGConfiguration {
-    int quality;
-    int subsampling;
+  int quality;
+  int subsampling;
 };
 
 // NOTE:  The JPEG quality and subsampling levels below were obtained
@@ -55,32 +55,25 @@ struct TightJPEGConfiguration {
 // 0 = JPEG quality 15,  4:2:0 subsampling (ratio ~= 100:1)
 
 static const struct TightJPEGConfiguration conf[10] = {
-  {  15, subsample4X }, // 0
-  {  29, subsample4X }, // 1
-  {  41, subsample4X }, // 2
-  {  42, subsample2X }, // 3
-  {  62, subsample2X }, // 4
-  {  77, subsample2X }, // 5
-  {  79, subsampleNone }, // 6
-  {  86, subsampleNone }, // 7
-  {  92, subsampleNone }, // 8
-  { 100, subsampleNone }  // 9
+    {15, subsample4X},   // 0
+    {29, subsample4X},   // 1
+    {41, subsample4X},   // 2
+    {42, subsample2X},   // 3
+    {62, subsample2X},   // 4
+    {77, subsample2X},   // 5
+    {79, subsampleNone}, // 6
+    {86, subsampleNone}, // 7
+    {92, subsampleNone}, // 8
+    {100, subsampleNone} // 9
 };
 
+TightJPEGEncoder::TightJPEGEncoder(SConnection* conn_)
+    : Encoder(conn_, encodingTight, (EncoderFlags)(EncoderUseNativePF | EncoderLossy), -1, 9), qualityLevel(-1),
+      fineQuality(-1), fineSubsampling(subsampleUndefined) {}
 
-TightJPEGEncoder::TightJPEGEncoder(SConnection* conn_) :
-  Encoder(conn_, encodingTight,
-          (EncoderFlags)(EncoderUseNativePF | EncoderLossy), -1, 9),
-  qualityLevel(-1), fineQuality(-1), fineSubsampling(subsampleUndefined)
-{
-}
+TightJPEGEncoder::~TightJPEGEncoder() {}
 
-TightJPEGEncoder::~TightJPEGEncoder()
-{
-}
-
-bool TightJPEGEncoder::isSupported()
-{
+bool TightJPEGEncoder::isSupported() {
   if (!conn->client.supportsEncoding(encodingTight))
     return false;
 
@@ -96,25 +89,20 @@ bool TightJPEGEncoder::isSupported()
   return false;
 }
 
-void TightJPEGEncoder::setQualityLevel(int level)
-{
+void TightJPEGEncoder::setQualityLevel(int level) {
   qualityLevel = level;
 }
 
-void TightJPEGEncoder::setFineQualityLevel(int quality, int subsampling)
-{
+void TightJPEGEncoder::setFineQualityLevel(int quality, int subsampling) {
   fineQuality = quality;
   fineSubsampling = subsampling;
 }
 
-int TightJPEGEncoder::getQualityLevel()
-{
+int TightJPEGEncoder::getQualityLevel() {
   return qualityLevel;
 }
 
-void TightJPEGEncoder::writeRect(const PixelBuffer* pb,
-                                 const Palette& /*palette*/)
-{
+void TightJPEGEncoder::writeRect(const PixelBuffer* pb, const Palette& /*palette*/) {
   const uint8_t* buffer;
   int stride;
 
@@ -139,8 +127,7 @@ void TightJPEGEncoder::writeRect(const PixelBuffer* pb,
     subsampling = fineSubsampling;
 
   jc.clear();
-  jc.compress(buffer, stride, pb->getRect(),
-              pb->getPF(), quality, subsampling);
+  jc.compress(buffer, stride, pb->getRect(), pb->getPF(), quality, subsampling);
 
   os = conn->getOutStream();
 
@@ -150,17 +137,13 @@ void TightJPEGEncoder::writeRect(const PixelBuffer* pb,
   os->writeBytes(jc.data(), jc.length());
 }
 
-void TightJPEGEncoder::writeSolidRect(int width, int height,
-                                      const PixelFormat& pf,
-                                      const uint8_t* colour)
-{
+void TightJPEGEncoder::writeSolidRect(int width, int height, const PixelFormat& pf, const uint8_t* colour) {
   // FIXME: Add a shortcut in the JPEG compressor to handle this case
   //        without having to use the default fallback which is very slow.
   Encoder::writeSolidRect(width, height, pf, colour);
 }
 
-void TightJPEGEncoder::writeCompact(uint32_t value, rdr::OutStream* os)
-{
+void TightJPEGEncoder::writeCompact(uint32_t value, rdr::OutStream* os) {
   // Copied from TightEncoder as it's overkill to inherit just for this
   uint8_t b;
 

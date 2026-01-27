@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -24,39 +24,42 @@
 #ifndef __RDR_FDOUTSTREAM_H__
 #define __RDR_FDOUTSTREAM_H__
 
-#include <sys/time.h>
 #include <stdint.h>
+#include <sys/time.h>
 
 #include <rdr/BufferedOutStream.h>
 
 namespace rdr {
 
-  class FdOutStream : public BufferedOutStream {
+class FdOutStream : public BufferedOutStream {
 
-  public:
+public:
+  FdOutStream(int fd);
+  virtual ~FdOutStream();
 
-    FdOutStream(int fd);
-    virtual ~FdOutStream();
+  int getFd() {
+    return fd;
+  }
 
-    int getFd() { return fd; }
+  unsigned getIdleTime();
 
-    unsigned getIdleTime();
+  void cork(bool enable) override;
 
-    void cork(bool enable) override;
+  // Total number of bytes successfully written on this stream since
+  // construction. This is used for coarse-grained per-connection
+  // bandwidth statistics in the viewer and server.
+  uint64_t bytesWritten() const {
+    return bytesWritten_;
+  }
 
-    // Total number of bytes successfully written on this stream since
-    // construction. This is used for coarse-grained per-connection
-    // bandwidth statistics in the viewer and server.
-    uint64_t bytesWritten() const { return bytesWritten_; }
+private:
+  bool flushBuffer() override;
+  size_t writeFd(const uint8_t* data, size_t length);
+  int fd;
+  struct timeval lastWrite;
+  uint64_t bytesWritten_;
+};
 
-  private:
-    bool flushBuffer() override;
-    size_t writeFd(const uint8_t* data, size_t length);
-    int fd;
-    struct timeval lastWrite;
-    uint64_t bytesWritten_;
-  };
-
-}
+} // namespace rdr
 
 #endif

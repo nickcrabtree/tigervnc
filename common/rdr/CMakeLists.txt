@@ -1,4 +1,5 @@
-add_library(rdr STATIC
+add_library(
+  rdr STATIC
   AESInStream.cxx
   AESOutStream.cxx
   BufferedInStream.cxx
@@ -25,12 +26,12 @@ if(GNUTLS_FOUND)
   target_include_directories(rdr SYSTEM PUBLIC ${GNUTLS_INCLUDE_DIR})
   target_link_libraries(rdr ${GNUTLS_LIBRARIES})
 endif()
-if (NETTLE_FOUND)
+if(NETTLE_FOUND)
   target_include_directories(rdr SYSTEM PUBLIC ${NETTLE_INCLUDE_DIRS})
   target_link_libraries(rdr ${NETTLE_LIBRARIES})
 endif()
 if(WIN32)
-	target_link_libraries(rdr ws2_32)
+  target_link_libraries(rdr ws2_32)
 endif()
 
 if(UNIX)

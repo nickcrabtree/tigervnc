@@ -1,17 +1,17 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011 Pierre Ossman for Cendio AB
  * Copyright 2017 Peter Astrand <astrand@cendio.se> for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -22,20 +22,20 @@
 #include <config.h>
 #endif
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
-#include <errno.h>
 #ifdef _WIN32
 #include <winsock2.h>
 #define errorNumber WSAGetLastError()
 #include <core/winerrno.h>
 #else
-#include <sys/types.h>
-#include <unistd.h>
-#include <sys/time.h>
-#include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
 #define errorNumber errno
 #endif
 
@@ -53,36 +53,30 @@ using namespace rdr;
 
 FdOutStream::FdOutStream(int fd_)
 #ifdef TCP_CORK
-  : BufferedOutStream(false),
+    : BufferedOutStream(false),
 #else
-  : BufferedOutStream(true),
+    : BufferedOutStream(true),
 #endif
-  fd(fd_), bytesWritten_(0)
-{
+      fd(fd_), bytesWritten_(0) {
   gettimeofday(&lastWrite, nullptr);
 }
 
-FdOutStream::~FdOutStream()
-{
-}
+FdOutStream::~FdOutStream() {}
 
-unsigned FdOutStream::getIdleTime()
-{
+unsigned FdOutStream::getIdleTime() {
   return core::msSince(&lastWrite);
 }
 
-void FdOutStream::cork(bool enable)
-{
+void FdOutStream::cork(bool enable) {
   BufferedOutStream::cork(enable);
 
 #ifdef TCP_CORK
   int one = enable ? 1 : 0;
-  setsockopt(fd, IPPROTO_TCP, TCP_CORK, (char *)&one, sizeof(one));
+  setsockopt(fd, IPPROTO_TCP, TCP_CORK, (char*)&one, sizeof(one));
 #endif
 }
 
-bool FdOutStream::flushBuffer()
-{
+bool FdOutStream::flushBuffer() {
   size_t n = writeFd(sentUpTo, ptr - sentUpTo);
   if (n == 0)
     return false;
@@ -101,8 +95,7 @@ bool FdOutStream::flushBuffer()
 // returning EINTR.
 //
 
-size_t FdOutStream::writeFd(const uint8_t* data, size_t length)
-{
+size_t FdOutStream::writeFd(const uint8_t* data, size_t length) {
   int n;
 
   do {
@@ -113,7 +106,7 @@ size_t FdOutStream::writeFd(const uint8_t* data, size_t length)
 
     FD_ZERO(&fds);
     FD_SET(fd, &fds);
-    n = select(fd+1, nullptr, &fds, nullptr, &tv);
+    n = select(fd + 1, nullptr, &fds, nullptr, &tv);
   } while (n < 0 && errorNumber == EINTR);
 
   if (n < 0)

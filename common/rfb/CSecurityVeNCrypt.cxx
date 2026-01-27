@@ -1,18 +1,18 @@
-/* 
+/*
  * Copyright (C) 2006 OCCAM Financial Technology
  * Copyright (C) 2005-2006 Martin Koegler
  * Copyright (C) 2010 TigerVNC Team
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -31,20 +31,18 @@
 
 #include <core/LogWriter.h>
 
-#include <rfb/Exception.h>
 #include <rdr/InStream.h>
 #include <rdr/OutStream.h>
 #include <rfb/CConnection.h>
 #include <rfb/CSecurityVeNCrypt.h>
+#include <rfb/Exception.h>
 
 using namespace rfb;
 
 static core::LogWriter vlog("CVeNCrypt");
 
-CSecurityVeNCrypt::CSecurityVeNCrypt(CConnection* cc_,
-                                     SecurityClient* sec)
-  : CSecurity(cc_), csecurity(nullptr), security(sec)
-{
+CSecurityVeNCrypt::CSecurityVeNCrypt(CConnection* cc_, SecurityClient* sec)
+    : CSecurity(cc_), csecurity(nullptr), security(sec) {
   haveRecvdMajorVersion = false;
   haveRecvdMinorVersion = false;
   haveSentVersion = false;
@@ -59,14 +57,12 @@ CSecurityVeNCrypt::CSecurityVeNCrypt(CConnection* cc_,
   availableTypes = nullptr;
 }
 
-CSecurityVeNCrypt::~CSecurityVeNCrypt()
-{
+CSecurityVeNCrypt::~CSecurityVeNCrypt() {
   delete[] availableTypes;
   delete csecurity;
 }
 
-bool CSecurityVeNCrypt::processMsg()
-{
+bool CSecurityVeNCrypt::processMsg() {
   rdr::InStream* is = cc->getInStream();
   rdr::OutStream* os = cc->getOutStream();
 
@@ -88,9 +84,8 @@ bool CSecurityVeNCrypt::processMsg()
   }
 
   /* major version in upper 8 bits and minor version in lower 8 bits */
-  uint16_t Version = (((uint16_t) majorVersion) << 8) |
-                      ((uint16_t) minorVersion);
-  
+  uint16_t Version = (((uint16_t)majorVersion) << 8) | ((uint16_t)minorVersion);
+
   if (!haveSentVersion) {
     /* Currently we don't support former VeNCrypt 0.1 */
     if (Version >= 0x0002) {
@@ -107,9 +102,9 @@ bool CSecurityVeNCrypt::processMsg()
       os->writeU8(0);
       os->flush();
       throw protocol_error("The server reported an unsupported VeNCrypt version");
-     }
+    }
 
-     haveSentVersion = true;
+    haveSentVersion = true;
   }
 
   /* Check that the server is OK */
@@ -123,7 +118,7 @@ bool CSecurityVeNCrypt::processMsg()
 
     haveAgreedVersion = true;
   }
-  
+
   /* get a number of types */
   if (!haveNumberOfTypes) {
     if (!is->hasData(1))
@@ -144,11 +139,9 @@ bool CSecurityVeNCrypt::processMsg()
       if (!is->hasData(4 * nAvailableTypes))
         return false;
 
-      for (int i = 0;i < nAvailableTypes;i++) {
+      for (int i = 0; i < nAvailableTypes; i++) {
         availableTypes[i] = is->readU32();
-        vlog.debug("Server offers security type %s (%d)",
-                   secTypeName(availableTypes[i]),
-                   availableTypes[i]);
+        vlog.debug("Server offers security type %s (%d)", secTypeName(availableTypes[i]), availableTypes[i]);
       }
 
       haveListOfTypes = true;
@@ -164,8 +157,7 @@ bool CSecurityVeNCrypt::processMsg()
 
       /* Honor server's security type order */
       for (i = 0; i < nAvailableTypes; i++) {
-        if (std::find(secTypes.begin(), secTypes.end(),
-                      availableTypes[i]) != secTypes.end()) {
+        if (std::find(secTypes.begin(), secTypes.end(), availableTypes[i]) != secTypes.end()) {
           chosenType = availableTypes[i];
           break;
         }
@@ -175,8 +167,7 @@ bool CSecurityVeNCrypt::processMsg()
       if (chosenType == secTypeInvalid || chosenType == secTypeVeNCrypt)
         throw protocol_error("No valid VeNCrypt sub-type");
 
-      vlog.info("Choosing security type %s (%d)", secTypeName(chosenType),
-		 chosenType);
+      vlog.info("Choosing security type %s (%d)", secTypeName(chosenType), chosenType);
 
       csecurity = security->GetCSecurity(cc, chosenType);
 
@@ -198,8 +189,7 @@ bool CSecurityVeNCrypt::processMsg()
   return csecurity->processMsg();
 }
 
-bool CSecurityVeNCrypt::isSecure() const
-{
+bool CSecurityVeNCrypt::isSecure() const {
   if (csecurity && csecurity->isSecure())
     return true;
   return false;

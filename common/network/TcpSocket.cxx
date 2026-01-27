@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -21,18 +21,18 @@
 #endif
 
 #ifdef WIN32
-//#include <io.h>
+// #include <io.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #define errorNumber WSAGetLastError()
 #else
 #define errorNumber errno
 #define closesocket close
-#include <sys/socket.h>
 #include <arpa/inet.h>
-#include <netinet/tcp.h>
-#include <netdb.h>
 #include <errno.h>
+#include <netdb.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
 #endif
 
 #include <assert.h>
@@ -60,8 +60,7 @@
 #endif
 
 #ifndef IN6_ARE_ADDR_EQUAL
-#define IN6_ARE_ADDR_EQUAL(a,b) \
-  (memcmp ((const void*)(a), (const void*)(b), sizeof (struct in6_addr)) == 0)
+#define IN6_ARE_ADDR_EQUAL(a, b) (memcmp((const void*)(a), (const void*)(b), sizeof(struct in6_addr)) == 0)
 #endif
 
 // Missing on older Windows and OS X
@@ -77,43 +76,40 @@ static core::BoolParameter UseIPv4("UseIPv4", "Use IPv4 for incoming and outgoin
 static core::BoolParameter UseIPv6("UseIPv6", "Use IPv6 for incoming and outgoing connections.", true);
 
 /* Tunnelling support. */
-int network::findFreeTcpPort (void)
-{
+int network::findFreeTcpPort(void) {
   int sock;
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = INADDR_ANY;
 
-  if ((sock = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+  if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     throw core::socket_error("Unable to create socket", errorNumber);
 
   addr.sin_port = 0;
-  if (bind (sock, (struct sockaddr *)&addr, sizeof (addr)) < 0)
+  if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0)
     throw core::socket_error("Unable to find free port", errorNumber);
 
   socklen_t n = sizeof(addr);
-  if (getsockname (sock, (struct sockaddr *)&addr, &n) < 0)
+  if (getsockname(sock, (struct sockaddr*)&addr, &n) < 0)
     throw core::socket_error("Unable to get port number", errorNumber);
 
-  closesocket (sock);
+  closesocket(sock);
   return ntohs(addr.sin_port);
 }
 
-static bool isAllSpace(const char *string) {
+static bool isAllSpace(const char* string) {
   if (string == nullptr)
     return false;
-  while(*string != '\0') {
-    if (! isspace(*string))
+  while (*string != '\0') {
+    if (!isspace(*string))
       return false;
     string++;
   }
   return true;
 }
 
-void network::getHostAndPort(const char* hi, std::string* host,
-                             int* port, int basePort)
-{
+void network::getHostAndPort(const char* hi, std::string* host, int* port, int basePort) {
   const char* hostStart;
   const char* hostEnd;
   const char* portStart;
@@ -122,7 +118,7 @@ void network::getHostAndPort(const char* hi, std::string* host,
     throw std::invalid_argument("NULL host specified");
 
   // Trim leading whitespace
-  while(isspace(*hi))
+  while (isspace(*hi))
     hi++;
 
   assert(host);
@@ -157,7 +153,7 @@ void network::getHostAndPort(const char* hi, std::string* host,
   }
 
   // Back up past trailing space
-  while(isspace(*(hostEnd - 1)) && hostEnd > hostStart)
+  while (isspace(*(hostEnd - 1)) && hostEnd > hostStart)
     hostEnd--;
 
   if (hostStart == hostEnd)
@@ -177,7 +173,7 @@ void network::getHostAndPort(const char* hi, std::string* host,
       *port = strtol(portStart + 1, &end, 10);
     else
       *port = strtol(portStart + 2, &end, 10);
-    if (*end != '\0' && ! isAllSpace(end))
+    if (*end != '\0' && !isAllSpace(end))
       throw std::invalid_argument("Invalid port specified");
 
     if ((portStart[1] != ':') && (*port < 100))
@@ -185,8 +181,7 @@ void network::getHostAndPort(const char* hi, std::string* host,
   }
 }
 
-int network::getSockPort(int sock)
-{
+int network::getSockPort(int sock) {
   vnc_sockaddr_t sa;
   socklen_t sa_size = sizeof(sa);
   if (getsockname(sock, &sa.u.sa, &sa_size) < 0)
@@ -202,14 +197,12 @@ int network::getSockPort(int sock)
 
 // -=- TcpSocket
 
-TcpSocket::TcpSocket(int sock) : Socket(sock)
-{
+TcpSocket::TcpSocket(int sock) : Socket(sock) {
   // Disable Nagle's algorithm, to reduce latency
   enableNagles(false);
 }
 
-TcpSocket::TcpSocket(const char *host, int port)
-{
+TcpSocket::TcpSocket(const char* host, int port) {
   int sock, err, result;
   struct addrinfo *ai, *current, hints;
 
@@ -260,22 +253,21 @@ TcpSocket::TcpSocket(const char *host, int port)
     getnameinfo(&sa.u.sa, salen, ntop, sizeof(ntop), nullptr, 0, NI_NUMERICHOST);
     vlog.debug("Connecting to %s [%s] port %d", host, ntop, port);
 
-    sock = socket (family, SOCK_STREAM, 0);
+    sock = socket(family, SOCK_STREAM, 0);
     if (sock == -1) {
       err = errorNumber;
       freeaddrinfo(ai);
       throw core::socket_error("Unable to create socket", err);
     }
 
-  /* Attempt to connect to the remote host */
+    /* Attempt to connect to the remote host */
     while ((result = connect(sock, &sa.u.sa, salen)) == -1) {
       err = errorNumber;
 #ifndef WIN32
       if (err == EINTR)
         continue;
 #endif
-      vlog.debug("Failed to connect to address %s port %d: %d",
-                 ntop, port, err);
+      vlog.debug("Failed to connect to address %s port %d: %d", ntop, port, err);
       closesocket(sock);
       sock = -1;
       break;
@@ -316,9 +308,7 @@ const char* TcpSocket::getPeerAddress() {
 
     buffer[0] = '[';
 
-    ret = getnameinfo(&sa.u.sa, sizeof(sa.u.sin6),
-                      buffer + 1, sizeof(buffer) - 2, nullptr, 0,
-                      NI_NUMERICHOST);
+    ret = getnameinfo(&sa.u.sa, sizeof(sa.u.sin6), buffer + 1, sizeof(buffer) - 2, nullptr, 0, NI_NUMERICHOST);
     if (ret != 0) {
       vlog.error("Unable to convert peer name to a string");
       return "(N/A)";
@@ -330,7 +320,7 @@ const char* TcpSocket::getPeerAddress() {
   }
 
   if (sa.u.sa.sa_family == AF_INET) {
-    char *name;
+    char* name;
 
     name = inet_ntoa(sa.u.sin.sin_addr);
     if (name == nullptr) {
@@ -367,8 +357,7 @@ const char* TcpSocket::getPeerEndpoint() {
 
 bool TcpSocket::enableNagles(bool enable) {
   int one = enable ? 0 : 1;
-  if (setsockopt(getFd(), IPPROTO_TCP, TCP_NODELAY,
-                 (char *)&one, sizeof(one)) < 0) {
+  if (setsockopt(getFd(), IPPROTO_TCP, TCP_NODELAY, (char*)&one, sizeof(one)) < 0) {
     int e = errorNumber;
     vlog.error("Unable to setsockopt TCP_NODELAY: %d", e);
     return false;
@@ -376,24 +365,20 @@ bool TcpSocket::enableNagles(bool enable) {
   return true;
 }
 
-TcpListener::TcpListener(int sock) : SocketListener(sock)
-{
-}
+TcpListener::TcpListener(int sock) : SocketListener(sock) {}
 
-TcpListener::TcpListener(const struct sockaddr *listenaddr,
-                         socklen_t listenaddrlen)
-{
+TcpListener::TcpListener(const struct sockaddr* listenaddr, socklen_t listenaddrlen) {
   int one = 1;
   vnc_sockaddr_t sa;
   int sock;
 
-  if ((sock = socket (listenaddr->sa_family, SOCK_STREAM, 0)) < 0)
+  if ((sock = socket(listenaddr->sa_family, SOCK_STREAM, 0)) < 0)
     throw core::socket_error("Unable to create listening socket", errorNumber);
 
-  memcpy (&sa, listenaddr, listenaddrlen);
+  memcpy(&sa, listenaddr, listenaddrlen);
 #ifdef IPV6_V6ONLY
   if (listenaddr->sa_family == AF_INET6) {
-    if (setsockopt (sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&one, sizeof(one))) {
+    if (setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&one, sizeof(one))) {
       int e = errorNumber;
       closesocket(sock);
       throw core::socket_error("Unable to set IPV6_V6ONLY", e);
@@ -410,8 +395,7 @@ TcpListener::TcpListener(const struct sockaddr *listenaddr,
   // that already has a listening socket on it. SO_EXCLUSIVEADDRUSE
   // might do what we want, but requires investigation.
 #ifndef WIN32
-  if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
-                 (char *)&one, sizeof(one)) < 0) {
+  if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&one, sizeof(one)) < 0) {
     int e = errorNumber;
     closesocket(sock);
     throw core::socket_error("Unable to create listening socket", e);
@@ -449,7 +433,7 @@ std::list<std::string> TcpListener::getMyAddresses() {
   if ((getaddrinfo(nullptr, "1", &hints, &ai)) != 0)
     return result;
 
-  for (current= ai; current != nullptr; current = current->ai_next) {
+  for (current = ai; current != nullptr; current = current->ai_next) {
     char addr[INET6_ADDRSTRLEN];
 
     switch (current->ai_family) {
@@ -465,8 +449,7 @@ std::list<std::string> TcpListener::getMyAddresses() {
       continue;
     }
 
-    getnameinfo(current->ai_addr, current->ai_addrlen, addr, INET6_ADDRSTRLEN,
-                nullptr, 0, NI_NUMERICHOST);
+    getnameinfo(current->ai_addr, current->ai_addrlen, addr, INET6_ADDRSTRLEN, nullptr, 0, NI_NUMERICHOST);
 
     result.push_back(addr);
   }
@@ -480,10 +463,7 @@ int TcpListener::getMyPort() {
   return getSockPort(getFd());
 }
 
-
-void network::createLocalTcpListeners(std::list<SocketListener*> *listeners,
-                                      int port)
-{
+void network::createLocalTcpListeners(std::list<SocketListener*>* listeners, int port) {
   struct addrinfo ai[2];
   vnc_sockaddr_t sa[2];
 
@@ -491,8 +471,8 @@ void network::createLocalTcpListeners(std::list<SocketListener*> *listeners,
   memset(sa, 0, sizeof(sa));
 
   sa[0].u.sin.sin_family = AF_INET;
-  sa[0].u.sin.sin_port = htons (port);
-  sa[0].u.sin.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+  sa[0].u.sin.sin_port = htons(port);
+  sa[0].u.sin.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
   ai[0].ai_family = sa[0].u.sin.sin_family;
   ai[0].ai_addr = &sa[0].u.sa;
@@ -500,7 +480,7 @@ void network::createLocalTcpListeners(std::list<SocketListener*> *listeners,
   ai[0].ai_next = &ai[1];
 
   sa[1].u.sin6.sin6_family = AF_INET6;
-  sa[1].u.sin6.sin6_port = htons (port);
+  sa[1].u.sin6.sin6_port = htons(port);
   sa[1].u.sin6.sin6_addr = in6addr_loopback;
 
   ai[1].ai_family = sa[1].u.sin6.sin6_family;
@@ -511,10 +491,7 @@ void network::createLocalTcpListeners(std::list<SocketListener*> *listeners,
   createTcpListeners(listeners, ai);
 }
 
-void network::createTcpListeners(std::list<SocketListener*> *listeners,
-                                 const char *addr,
-                                 int port)
-{
+void network::createTcpListeners(std::list<SocketListener*>* listeners, const char* addr, int port) {
   struct addrinfo *ai, hints;
   char service[16];
   int result;
@@ -529,14 +506,14 @@ void network::createTcpListeners(std::list<SocketListener*> *listeners,
   hints.ai_addr = nullptr;
   hints.ai_next = nullptr;
 
-  snprintf (service, sizeof (service) - 1, "%d", port);
-  service[sizeof (service) - 1] = '\0';
+  snprintf(service, sizeof(service) - 1, "%d", port);
+  service[sizeof(service) - 1] = '\0';
   if ((result = getaddrinfo(addr, service, &hints, &ai)) != 0)
     throw core::getaddrinfo_error("Unable to resolve listening address", result);
 
   try {
     createTcpListeners(listeners, ai);
-  } catch(...) {
+  } catch (...) {
     freeaddrinfo(ai);
     throw;
   }
@@ -544,10 +521,8 @@ void network::createTcpListeners(std::list<SocketListener*> *listeners,
   freeaddrinfo(ai);
 }
 
-void network::createTcpListeners(std::list<SocketListener*> *listeners,
-                                 const struct addrinfo *ai)
-{
-  const struct addrinfo *current;
+void network::createTcpListeners(std::list<SocketListener*>* listeners, const struct addrinfo* ai) {
+  const struct addrinfo* current;
   std::list<SocketListener*> new_listeners;
 
   initSockets();
@@ -569,8 +544,7 @@ void network::createTcpListeners(std::list<SocketListener*> *listeners,
     }
 
     try {
-      new_listeners.push_back(new TcpListener(current->ai_addr,
-                                              current->ai_addrlen));
+      new_listeners.push_back(new TcpListener(current->ai_addr, current->ai_addrlen));
     } catch (core::socket_error& e) {
       // Ignore this if it is due to lack of address family support on
       // the interface or on the system
@@ -585,9 +559,8 @@ void network::createTcpListeners(std::list<SocketListener*> *listeners,
     }
   }
 
-  listeners->splice (listeners->end(), new_listeners);
+  listeners->splice(listeners->end(), new_listeners);
 }
-
 
 TcpFilter::TcpFilter(const char* spec) {
   std::vector<std::string> patterns;
@@ -600,12 +573,9 @@ TcpFilter::TcpFilter(const char* spec) {
   }
 }
 
-TcpFilter::~TcpFilter() {
-}
+TcpFilter::~TcpFilter() {}
 
-
-static bool
-patternMatchIP(const TcpFilter::Pattern& pattern, vnc_sockaddr_t *sa) {
+static bool patternMatchIP(const TcpFilter::Pattern& pattern, vnc_sockaddr_t* sa) {
   switch (pattern.address.u.sa.sa_family) {
     unsigned long address;
 
@@ -614,9 +584,9 @@ patternMatchIP(const TcpFilter::Pattern& pattern, vnc_sockaddr_t *sa) {
       return false;
 
     address = sa->u.sin.sin_addr.s_addr;
-    if (address == htonl (INADDR_NONE)) return false;
-    return ((pattern.address.u.sin.sin_addr.s_addr &
-             pattern.mask.u.sin.sin_addr.s_addr) ==
+    if (address == htonl(INADDR_NONE))
+      return false;
+    return ((pattern.address.u.sin.sin_addr.s_addr & pattern.mask.u.sin.sin_addr.s_addr) ==
             (address & pattern.mask.u.sin.sin_addr.s_addr));
 
   case AF_INET6:
@@ -634,8 +604,7 @@ patternMatchIP(const TcpFilter::Pattern& pattern, vnc_sockaddr_t *sa) {
         mask = lastbits & 0xff;
       }
 
-      if ((pattern.address.u.sin6.sin6_addr.s6_addr[n] & mask) !=
-          (sa->u.sin6.sin6_addr.s6_addr[n] & mask))
+      if ((pattern.address.u.sin6.sin6_addr.s6_addr[n] & mask) != (sa->u.sin6.sin6_addr.s6_addr[n] & mask))
         return false;
 
       if (mask < 0xff)
@@ -655,8 +624,7 @@ patternMatchIP(const TcpFilter::Pattern& pattern, vnc_sockaddr_t *sa) {
   return false;
 }
 
-bool
-TcpFilter::verifyConnection(Socket* s) {
+bool TcpFilter::verifyConnection(Socket* s) {
   vnc_sockaddr_t sa;
   socklen_t sa_size = sizeof(sa);
 
@@ -664,7 +632,7 @@ TcpFilter::verifyConnection(Socket* s) {
     return false;
 
   std::list<TcpFilter::Pattern>::iterator i;
-  for (i=filter.begin(); i!=filter.end(); i++) {
+  for (i = filter.begin(); i != filter.end(); i++) {
     if (patternMatchIP(*i, &sa)) {
       switch ((*i).action) {
       case Accept:
@@ -685,7 +653,6 @@ TcpFilter::verifyConnection(Socket* s) {
   return false;
 }
 
-
 TcpFilter::Pattern TcpFilter::parsePattern(const char* p) {
   TcpFilter::Pattern pattern;
 
@@ -700,41 +667,40 @@ TcpFilter::Pattern TcpFilter::parsePattern(const char* p) {
 
   if (parts.empty() || parts[0].empty()) {
     // Match any address
-    memset (&pattern.address, 0, sizeof (pattern.address));
+    memset(&pattern.address, 0, sizeof(pattern.address));
     pattern.address.u.sa.sa_family = AF_UNSPEC;
     pattern.prefixlen = 0;
   } else {
     struct addrinfo hints;
-    struct addrinfo *ai;
+    struct addrinfo* ai;
     int result;
-    memset (&hints, 0, sizeof (hints));
+    memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_flags = AI_NUMERICHOST;
 
     // Take out brackets, if present
     if (parts[0][0] == '[') {
       parts[0].erase(0, 1);
-      if (!parts[0].empty() && parts[0][parts.size()-1] == ']')
-        parts[0].erase(parts.size()-1, 1);
+      if (!parts[0].empty() && parts[0][parts.size() - 1] == ']')
+        parts[0].erase(parts.size() - 1, 1);
     }
 
-    if ((result = getaddrinfo (parts[0].c_str(), nullptr, &hints, &ai)) != 0) {
+    if ((result = getaddrinfo(parts[0].c_str(), nullptr, &hints, &ai)) != 0) {
       throw core::getaddrinfo_error("Unable to resolve host by name", result);
     }
 
-    memcpy (&pattern.address.u.sa, ai->ai_addr, ai->ai_addrlen);
-    freeaddrinfo (ai);
+    memcpy(&pattern.address.u.sa, ai->ai_addr, ai->ai_addrlen);
+    freeaddrinfo(ai);
 
     family = pattern.address.u.sa.sa_family;
 
     if (parts.size() > 1) {
-      if (family == AF_INET &&
-          (parts[1].find('.') != std::string::npos)) {
+      if (family == AF_INET && (parts[1].find('.') != std::string::npos)) {
         throw std::invalid_argument("Mask no longer supported for "
                                     "filter, use prefix instead");
       }
 
-      pattern.prefixlen = (unsigned int) atoi(parts[1].c_str());
+      pattern.prefixlen = (unsigned int)atoi(parts[1].c_str());
     } else {
       switch (family) {
       case AF_INET:
@@ -751,19 +717,17 @@ TcpFilter::Pattern TcpFilter::parsePattern(const char* p) {
 
   family = pattern.address.u.sa.sa_family;
 
-  if (pattern.prefixlen > (family == AF_INET ? 32: 128))
-    throw std::invalid_argument(
-      core::format("Invalid prefix length for filter address: %u",
-                   pattern.prefixlen));
+  if (pattern.prefixlen > (family == AF_INET ? 32 : 128))
+    throw std::invalid_argument(core::format("Invalid prefix length for filter address: %u", pattern.prefixlen));
 
   // Compute mask from address and prefix length
-  memset (&pattern.mask, 0, sizeof (pattern.mask));
+  memset(&pattern.mask, 0, sizeof(pattern.mask));
   switch (family) {
     unsigned long mask;
   case AF_INET:
     mask = 0;
-    for (unsigned int i=0; i<pattern.prefixlen; i++)
-      mask |= 1<<(31-i);
+    for (unsigned int i = 0; i < pattern.prefixlen; i++)
+      mask |= 1 << (31 - i);
     pattern.mask.u.sin.sin_addr.s_addr = htonl(mask);
     break;
 
@@ -783,14 +747,19 @@ TcpFilter::Pattern TcpFilter::parsePattern(const char* p) {
   case AF_UNSPEC:
     // No mask to compute
     break;
-  default:
-    ; /* not reached */
+  default:; /* not reached */
   }
 
-  switch(p[0]) {
-  case '+': pattern.action = TcpFilter::Accept; break;
-  case '-': pattern.action = TcpFilter::Reject; break;
-  case '?': pattern.action = TcpFilter::Query; break;
+  switch (p[0]) {
+  case '+':
+    pattern.action = TcpFilter::Accept;
+    break;
+  case '-':
+    pattern.action = TcpFilter::Reject;
+    break;
+  case '?':
+    pattern.action = TcpFilter::Query;
+    break;
   };
 
   return pattern;
@@ -800,28 +769,32 @@ std::string TcpFilter::patternToStr(const TcpFilter::Pattern& p) {
   char addr[INET6_ADDRSTRLEN + 2];
 
   if (p.address.u.sa.sa_family == AF_INET) {
-    getnameinfo(&p.address.u.sa, sizeof(p.address.u.sin),
-                addr, sizeof(addr), nullptr, 0, NI_NUMERICHOST);
+    getnameinfo(&p.address.u.sa, sizeof(p.address.u.sin), addr, sizeof(addr), nullptr, 0, NI_NUMERICHOST);
   } else if (p.address.u.sa.sa_family == AF_INET6) {
     addr[0] = '[';
-    getnameinfo(&p.address.u.sa, sizeof(p.address.u.sin6),
-                addr + 1, sizeof(addr) - 2, nullptr, 0, NI_NUMERICHOST);
+    getnameinfo(&p.address.u.sa, sizeof(p.address.u.sin6), addr + 1, sizeof(addr) - 2, nullptr, 0, NI_NUMERICHOST);
     strcat(addr, "]");
   } else
     addr[0] = '\0';
 
   char action;
   switch (p.action) {
-  case Accept: action = '+'; break;
-  case Reject: action = '-'; break;
+  case Accept:
+    action = '+';
+    break;
+  case Reject:
+    action = '-';
+    break;
   default:
-  case Query: action = '?'; break;
+  case Query:
+    action = '?';
+    break;
   };
-  size_t resultlen = (1                   // action
-                      + strlen (addr)     // address
-                      + 1                 // slash
-                      + 3                 // prefix length, max 128
-                      + 1);               // terminating nul
+  size_t resultlen = (1              // action
+                      + strlen(addr) // address
+                      + 1            // slash
+                      + 3            // prefix length, max 128
+                      + 1);          // terminating nul
   char* result = new char[resultlen];
   if (addr[0] == '\0')
     snprintf(result, resultlen, "%c", action);
@@ -830,7 +803,7 @@ std::string TcpFilter::patternToStr(const TcpFilter::Pattern& p) {
 
   std::string out = result;
 
-  delete [] result;
+  delete[] result;
 
   return out;
 }

@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2024 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -42,93 +42,94 @@
 
 #include <rfb/screenTypes.h>
 
-namespace core { struct Point; }
+namespace core {
+struct Point;
+}
 
-namespace network { class Socket; }
+namespace network {
+class Socket;
+}
 
 namespace rfb {
 
-  struct ScreenSet;
-  class VNCServer;
+struct ScreenSet;
+class VNCServer;
 
-  class SDesktop {
-  protected:
-    SDesktop() {};
-  public:
-    virtual ~SDesktop() {}
+class SDesktop {
+protected:
+  SDesktop(){};
 
-    // init() is called immediately when the VNCServer gets a reference
-    // to the SDesktop, so that a reverse reference can be set up.
-    virtual void init(rfb::VNCServer* vs) = 0;
+public:
+  virtual ~SDesktop() {}
 
-    // start() is called by the server when the first client authenticates
-    // successfully, and can be used to begin any expensive tasks which are not
-    // needed when there are no clients.  A valid PixelBuffer must have been
-    // set via the VNCServer's setPixelBuffer() method by the time this call
-    // returns.
-    virtual void start() {}
+  // init() is called immediately when the VNCServer gets a reference
+  // to the SDesktop, so that a reverse reference can be set up.
+  virtual void init(rfb::VNCServer* vs) = 0;
 
-    // stop() is called by the server when there are no longer any
-    // authenticated clients, and therefore the desktop can cease any
-    // expensive tasks.
-    virtual void stop() {}
+  // start() is called by the server when the first client authenticates
+  // successfully, and can be used to begin any expensive tasks which are not
+  // needed when there are no clients.  A valid PixelBuffer must have been
+  // set via the VNCServer's setPixelBuffer() method by the time this call
+  // returns.
+  virtual void start() {}
 
-    // queryConnection() is called when a connection has been
-    // successfully authenticated.  The sock and userName arguments
-    // identify the socket and the name of the authenticated user, if
-    // any. At some point later VNCServer::approveConnection() should
-    // be called to either accept or reject the client.
-    virtual void queryConnection(network::Socket* sock,
-                                 const char* userName) = 0;
+  // stop() is called by the server when there are no longer any
+  // authenticated clients, and therefore the desktop can cease any
+  // expensive tasks.
+  virtual void stop() {}
 
-    // terminate() is called by the server when it wishes to terminate
-    // itself, e.g. because it was configured to terminate when no one is
-    // using it.
+  // queryConnection() is called when a connection has been
+  // successfully authenticated.  The sock and userName arguments
+  // identify the socket and the name of the authenticated user, if
+  // any. At some point later VNCServer::approveConnection() should
+  // be called to either accept or reject the client.
+  virtual void queryConnection(network::Socket* sock, const char* userName) = 0;
 
-    virtual void terminate() = 0;
+  // terminate() is called by the server when it wishes to terminate
+  // itself, e.g. because it was configured to terminate when no one is
+  // using it.
 
-    // setScreenLayout() requests to reconfigure the framebuffer and/or
-    // the layout of screens.
-    virtual unsigned int setScreenLayout(int /*fb_width*/,
-                                         int /*fb_height*/,
-                                         const ScreenSet& /*layout*/) {
-      return resultProhibited;
-    }
+  virtual void terminate() = 0;
 
-    // frameTick() is called whenever a frame update has been processed,
-    // signalling that a good time to render new data
-    virtual void frameTick(uint64_t msc) { (void)msc; }
+  // setScreenLayout() requests to reconfigure the framebuffer and/or
+  // the layout of screens.
+  virtual unsigned int setScreenLayout(int /*fb_width*/, int /*fb_height*/, const ScreenSet& /*layout*/) {
+    return resultProhibited;
+  }
 
-    // keyEvent() is called whenever a client sends an event that a
-    // key was pressed or released.
-    virtual void keyEvent(uint32_t /*keysym*/, uint32_t /*keycode*/,
-                          bool /*down*/) {};
+  // frameTick() is called whenever a frame update has been processed,
+  // signalling that a good time to render new data
+  virtual void frameTick(uint64_t msc) {
+    (void)msc;
+  }
 
-    // pointerEvent() is called whenever a client sends an event that
-    // the pointer moved, or a button was pressed or released.
-    virtual void pointerEvent(const core::Point& /*pos*/,
-                              uint16_t /*buttonMask*/) {};
+  // keyEvent() is called whenever a client sends an event that a
+  // key was pressed or released.
+  virtual void keyEvent(uint32_t /*keysym*/, uint32_t /*keycode*/, bool /*down*/){};
 
-    // handleClipboardRequest() is called whenever a client requests
-    // the server to send over its clipboard data. It will only be
-    // called after the server has first announced a clipboard change
-    // via VNCServer::announceClipboard().
-    virtual void handleClipboardRequest() {}
+  // pointerEvent() is called whenever a client sends an event that
+  // the pointer moved, or a button was pressed or released.
+  virtual void pointerEvent(const core::Point& /*pos*/, uint16_t /*buttonMask*/){};
 
-    // handleClipboardAnnounce() is called to indicate a change in the
-    // clipboard on a client. Call VNCServer::requestClipboard() to
-    // access the actual data.
-    virtual void handleClipboardAnnounce(bool /*available*/) {}
+  // handleClipboardRequest() is called whenever a client requests
+  // the server to send over its clipboard data. It will only be
+  // called after the server has first announced a clipboard change
+  // via VNCServer::announceClipboard().
+  virtual void handleClipboardRequest() {}
 
-    // handleClipboardData() is called when a client has sent over
-    // the clipboard data as a result of a previous call to
-    // VNCServer::requestClipboard(). Note that this function might
-    // never be called if the clipboard data was no longer available
-    // when the client received the request.
-    virtual void handleClipboardData(const char* /*data*/) {}
+  // handleClipboardAnnounce() is called to indicate a change in the
+  // clipboard on a client. Call VNCServer::requestClipboard() to
+  // access the actual data.
+  virtual void handleClipboardAnnounce(bool /*available*/) {}
 
-  };
-
+  // handleClipboardData() is called when a client has sent over
+  // the clipboard data as a result of a previous call to
+  // VNCServer::requestClipboard(). Note that this function might
+  // never be called if the clipboard data was no longer available
+  // when the client received the request.
+  virtual void handleClipboardData(const char* /*data*/) {}
 };
+
+}; // namespace rfb
 
 #endif // __RFB_SDESKTOP_H__

@@ -26,25 +26,20 @@
 #include <string.h>
 #include <syslog.h>
 
-#include <core/Logger_syslog.h>
 #include <core/LogWriter.h>
+#include <core/Logger_syslog.h>
 
 using namespace core;
 
-
-Logger_Syslog::Logger_Syslog(const char* loggerName)
-  : Logger(loggerName)
-{
+Logger_Syslog::Logger_Syslog(const char* loggerName) : Logger(loggerName) {
   openlog(nullptr, LOG_CONS | LOG_PID, LOG_USER);
 }
 
-Logger_Syslog::~Logger_Syslog()
-{
+Logger_Syslog::~Logger_Syslog() {
   closelog();
 }
 
-void Logger_Syslog::write(int level, const char *logname, const char *message)
-{
+void Logger_Syslog::write(int level, const char* logname, const char* message) {
   // Convert our priority level into syslog level
   int priority;
   if (level >= LogWriter::LEVEL_DEBUG) {
@@ -62,7 +57,6 @@ void Logger_Syslog::write(int level, const char *logname, const char *message)
 
 static Logger_Syslog logger("syslog");
 
-void core::initSyslogLogger()
-{
+void core::initSyslogLogger() {
   logger.registerLogger();
 }

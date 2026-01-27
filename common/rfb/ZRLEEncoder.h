@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2014-2022 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -25,48 +25,39 @@
 
 namespace rfb {
 
-  class ZRLEEncoder : public Encoder {
-  public:
-    ZRLEEncoder(SConnection* conn);
-    virtual ~ZRLEEncoder();
+class ZRLEEncoder : public Encoder {
+public:
+  ZRLEEncoder(SConnection* conn);
+  virtual ~ZRLEEncoder();
 
-    bool isSupported() override;
+  bool isSupported() override;
 
-    void setCompressLevel(int level) override;
+  void setCompressLevel(int level) override;
 
-    void writeRect(const PixelBuffer* pb,
-                   const Palette& palette) override;
-    void writeSolidRect(int width, int height, const PixelFormat& pf,
-                        const uint8_t* colour) override;
+  void writeRect(const PixelBuffer* pb, const Palette& palette) override;
+  void writeSolidRect(int width, int height, const PixelFormat& pf, const uint8_t* colour) override;
 
-  protected:
-    void writePaletteTile(const core::Rect& tile,
-                          const PixelBuffer* pb,
-                          const Palette& palette);
-    void writePaletteRLETile(const core::Rect& tile,
-                             const PixelBuffer* pb,
-                             const Palette& palette);
-    void writeRawTile(const core::Rect& tile, const PixelBuffer* pb);
+protected:
+  void writePaletteTile(const core::Rect& tile, const PixelBuffer* pb, const Palette& palette);
+  void writePaletteRLETile(const core::Rect& tile, const PixelBuffer* pb, const Palette& palette);
+  void writeRawTile(const core::Rect& tile, const PixelBuffer* pb);
 
-    void writePalette(const PixelFormat& pf, const Palette& palette);
+  void writePalette(const PixelFormat& pf, const Palette& palette);
 
-    void writePixels(const uint8_t* buffer, const PixelFormat& pf,
-                     unsigned int count);
+  void writePixels(const uint8_t* buffer, const PixelFormat& pf, unsigned int count);
 
-  protected:
-    // Templated, optimised methods
-    template<class T>
-    void writePaletteTile(int width, int height,
-                          const T* buffer, int stride,
-                          const PixelFormat& pf, const Palette& palette);
-    template<class T>
-    void writePaletteRLETile(int width, int height,
-                             const T* buffer, int stride,
-                             const PixelFormat& pf, const Palette& palette);
+protected:
+  // Templated, optimised methods
+  template <class T>
+  void writePaletteTile(int width, int height, const T* buffer, int stride, const PixelFormat& pf,
+                        const Palette& palette);
+  template <class T>
+  void writePaletteRLETile(int width, int height, const T* buffer, int stride, const PixelFormat& pf,
+                           const Palette& palette);
 
-  protected:
-    rdr::ZlibOutStream zos;
-    rdr::MemOutStream mos;
-  };
-}
+protected:
+  rdr::ZlibOutStream zos;
+  rdr::MemOutStream mos;
+};
+} // namespace rfb
 #endif

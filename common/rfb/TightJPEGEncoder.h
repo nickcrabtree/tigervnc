@@ -6,12 +6,12 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -25,32 +25,30 @@
 
 namespace rfb {
 
-  class TightJPEGEncoder : public Encoder {
-  public:
-    TightJPEGEncoder(SConnection* conn);
-    virtual ~TightJPEGEncoder();
+class TightJPEGEncoder : public Encoder {
+public:
+  TightJPEGEncoder(SConnection* conn);
+  virtual ~TightJPEGEncoder();
 
-    bool isSupported() override;
+  bool isSupported() override;
 
-    void setQualityLevel(int level) override;
-    void setFineQualityLevel(int quality, int subsampling) override;
+  void setQualityLevel(int level) override;
+  void setFineQualityLevel(int quality, int subsampling) override;
 
-    int getQualityLevel() override;
+  int getQualityLevel() override;
 
-    void writeRect(const PixelBuffer* pb,
-                   const Palette& palette) override;
-    void writeSolidRect(int width, int height, const PixelFormat& pf,
-                        const uint8_t* colour) override;
+  void writeRect(const PixelBuffer* pb, const Palette& palette) override;
+  void writeSolidRect(int width, int height, const PixelFormat& pf, const uint8_t* colour) override;
 
-  protected:
-    void writeCompact(uint32_t value, rdr::OutStream* os);
+protected:
+  void writeCompact(uint32_t value, rdr::OutStream* os);
 
-  protected:
-    JpegCompressor jc;
+protected:
+  JpegCompressor jc;
 
-    int qualityLevel;
-    int fineQuality;
-    int fineSubsampling;
-  };
-}
+  int qualityLevel;
+  int fineQuality;
+  int fineSubsampling;
+};
+} // namespace rfb
 #endif

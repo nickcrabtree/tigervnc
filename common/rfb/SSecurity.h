@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -48,26 +48,28 @@
 
 namespace rfb {
 
-  class SConnection;
+class SConnection;
 
-  class SSecurity {
-  public:
-    SSecurity(SConnection* sc_) : sc(sc_) {}
-    virtual ~SSecurity() {}
-    virtual bool processMsg() = 0;
-    virtual int getType() const = 0;
+class SSecurity {
+public:
+  SSecurity(SConnection* sc_) : sc(sc_) {}
+  virtual ~SSecurity() {}
+  virtual bool processMsg() = 0;
+  virtual int getType() const = 0;
 
-    // getUserName() gets the name of the user attempting authentication.  The
-    // storage is owned by the SSecurity object, so a copy must be taken if
-    // necessary.  Null may be returned to indicate that there is no user name
-    // for this security type.
-    virtual const char* getUserName() const = 0;
+  // getUserName() gets the name of the user attempting authentication.  The
+  // storage is owned by the SSecurity object, so a copy must be taken if
+  // necessary.  Null may be returned to indicate that there is no user name
+  // for this security type.
+  virtual const char* getUserName() const = 0;
 
-    virtual AccessRights getAccessRights() const { return AccessDefault; }
+  virtual AccessRights getAccessRights() const {
+    return AccessDefault;
+  }
 
-  protected:
-    SConnection* sc;
-  };
+protected:
+  SConnection* sc;
+};
 
-}
+} // namespace rfb
 #endif

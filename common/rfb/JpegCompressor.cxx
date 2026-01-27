@@ -1,17 +1,17 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2011 D. R. Commander.  All Rights Reserved.
  * Copyright 2014 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -26,9 +26,9 @@
 
 #include <core/Rect.h>
 
+#include <rfb/ClientParams.h>
 #include <rfb/JpegCompressor.h>
 #include <rfb/PixelFormat.h>
-#include <rfb/ClientParams.h>
 
 #include <stdio.h>
 extern "C" {
@@ -57,19 +57,15 @@ struct JPEG_ERROR_MGR {
   char lastError[JMSG_LENGTH_MAX];
 };
 
-static void
-JpegErrorExit(j_common_ptr cinfo)
-{
-  JPEG_ERROR_MGR *err = (JPEG_ERROR_MGR *)cinfo->err;
+static void JpegErrorExit(j_common_ptr cinfo) {
+  JPEG_ERROR_MGR* err = (JPEG_ERROR_MGR*)cinfo->err;
 
   (*cinfo->err->output_message)(cinfo);
   longjmp(err->jmpBuffer, 1);
 }
 
-static void
-JpegOutputMessage(j_common_ptr cinfo)
-{
-  JPEG_ERROR_MGR *err = (JPEG_ERROR_MGR *)cinfo->err;
+static void JpegOutputMessage(j_common_ptr cinfo) {
+  JPEG_ERROR_MGR* err = (JPEG_ERROR_MGR*)cinfo->err;
 
   (*cinfo->err->format_message)(cinfo, err->lastError);
 }
@@ -80,26 +76,22 @@ JpegOutputMessage(j_common_ptr cinfo)
 
 struct JPEG_DEST_MGR {
   struct jpeg_destination_mgr pub;
-  JpegCompressor *instance;
+  JpegCompressor* instance;
   size_t chunkSize;
 };
 
-static void
-JpegInitDestination(j_compress_ptr cinfo)
-{
-  JPEG_DEST_MGR *dest = (JPEG_DEST_MGR *)cinfo->dest;
-  JpegCompressor *jc = dest->instance;
+static void JpegInitDestination(j_compress_ptr cinfo) {
+  JPEG_DEST_MGR* dest = (JPEG_DEST_MGR*)cinfo->dest;
+  JpegCompressor* jc = dest->instance;
 
   jc->clear();
   dest->pub.next_output_byte = jc->getptr(jc->length());
   dest->pub.free_in_buffer = dest->chunkSize = jc->avail();
 }
 
-static boolean
-JpegEmptyOutputBuffer(j_compress_ptr cinfo)
-{
-  JPEG_DEST_MGR *dest = (JPEG_DEST_MGR *)cinfo->dest;
-  JpegCompressor *jc = dest->instance;
+static boolean JpegEmptyOutputBuffer(j_compress_ptr cinfo) {
+  JPEG_DEST_MGR* dest = (JPEG_DEST_MGR*)cinfo->dest;
+  JpegCompressor* jc = dest->instance;
 
   jc->setptr(jc->avail());
   dest->pub.next_output_byte = jc->getptr(jc->length());
@@ -108,17 +100,14 @@ JpegEmptyOutputBuffer(j_compress_ptr cinfo)
   return TRUE;
 }
 
-static void
-JpegTermDestination(j_compress_ptr cinfo)
-{
-  JPEG_DEST_MGR *dest = (JPEG_DEST_MGR *)cinfo->dest;
-  JpegCompressor *jc = dest->instance;
+static void JpegTermDestination(j_compress_ptr cinfo) {
+  JPEG_DEST_MGR* dest = (JPEG_DEST_MGR*)cinfo->dest;
+  JpegCompressor* jc = dest->instance;
 
   jc->setptr(dest->chunkSize - dest->pub.free_in_buffer);
 }
 
-JpegCompressor::JpegCompressor(int bufferLen) : MemOutStream(bufferLen)
-{
+JpegCompressor::JpegCompressor(int bufferLen) : MemOutStream(bufferLen) {
   cinfo = new jpeg_compress_struct;
 
   err = new struct JPEG_ERROR_MGR;
@@ -127,7 +116,7 @@ JpegCompressor::JpegCompressor(int bufferLen) : MemOutStream(bufferLen)
   err->pub.error_exit = JpegErrorExit;
   err->pub.output_message = JpegOutputMessage;
 
-  if(setjmp(err->jmpBuffer)) {
+  if (setjmp(err->jmpBuffer)) {
     // this will execute if libjpeg has an error
     throw std::runtime_error(err->lastError);
   }
@@ -139,12 +128,11 @@ JpegCompressor::JpegCompressor(int bufferLen) : MemOutStream(bufferLen)
   dest->pub.empty_output_buffer = JpegEmptyOutputBuffer;
   dest->pub.term_destination = JpegTermDestination;
   dest->instance = this;
-  cinfo->dest = (struct jpeg_destination_mgr *)dest;
+  cinfo->dest = (struct jpeg_destination_mgr*)dest;
 }
 
-JpegCompressor::~JpegCompressor(void)
-{
-  if(setjmp(err->jmpBuffer)) {
+JpegCompressor::~JpegCompressor(void) {
+  if (setjmp(err->jmpBuffer)) {
     // this will execute if libjpeg has an error
     return;
   }
@@ -157,23 +145,22 @@ JpegCompressor::~JpegCompressor(void)
   delete cinfo;
 }
 
-void JpegCompressor::compress(const uint8_t *buf, volatile int stride,
-                              const core::Rect& r,
-                              const PixelFormat& pf,
-                              int quality, int subsamp)
-{
+void JpegCompressor::compress(const uint8_t* buf, volatile int stride, const core::Rect& r, const PixelFormat& pf,
+                              int quality, int subsamp) {
   int w = r.width();
   int h = r.height();
   int pixelsize;
-  uint8_t * volatile srcBuf = nullptr;
+  uint8_t* volatile srcBuf = nullptr;
   volatile bool srcBufIsTemp = false;
-  JSAMPROW * volatile rowPointer = nullptr;
+  JSAMPROW* volatile rowPointer = nullptr;
 
-  if(setjmp(err->jmpBuffer)) {
+  if (setjmp(err->jmpBuffer)) {
     // this will execute if libjpeg has an error
     jpeg_abort_compress(cinfo);
-    if (srcBufIsTemp && srcBuf) delete[] srcBuf;
-    if (rowPointer) delete[] rowPointer;
+    if (srcBufIsTemp && srcBuf)
+      delete[] srcBuf;
+    if (rowPointer)
+      delete[] rowPointer;
     throw std::runtime_error(err->lastError);
   }
 
@@ -195,7 +182,7 @@ void JpegCompressor::compress(const uint8_t *buf, volatile int stride,
     cinfo->in_color_space = JCS_EXT_XBGR;
 
   if (cinfo->in_color_space != JCS_RGB) {
-    srcBuf = (uint8_t *)buf;
+    srcBuf = (uint8_t*)buf;
     pixelsize = 4;
   }
 #endif
@@ -206,7 +193,7 @@ void JpegCompressor::compress(const uint8_t *buf, volatile int stride,
   if (cinfo->in_color_space == JCS_RGB) {
     srcBuf = new uint8_t[w * h * pixelsize];
     srcBufIsTemp = true;
-    pf.rgbFromBuffer(srcBuf, (const uint8_t *)buf, w, stride, h);
+    pf.rgbFromBuffer(srcBuf, (const uint8_t*)buf, w, stride, h);
     stride = w;
   }
 
@@ -248,16 +235,15 @@ void JpegCompressor::compress(const uint8_t *buf, volatile int stride,
 
   jpeg_start_compress(cinfo, TRUE);
   while (cinfo->next_scanline < cinfo->image_height)
-    jpeg_write_scanlines(cinfo, &rowPointer[cinfo->next_scanline],
-      cinfo->image_height - cinfo->next_scanline);
+    jpeg_write_scanlines(cinfo, &rowPointer[cinfo->next_scanline], cinfo->image_height - cinfo->next_scanline);
 
   jpeg_finish_compress(cinfo);
 
-  if (srcBufIsTemp) delete[] srcBuf;
+  if (srcBufIsTemp)
+    delete[] srcBuf;
   delete[] rowPointer;
 }
 
-void JpegCompressor::writeBytes(const uint8_t* /*data*/, int /*length*/)
-{
+void JpegCompressor::writeBytes(const uint8_t* /*data*/, int /*length*/) {
   throw std::logic_error("writeBytes() is not valid with a JpegCompressor instance.  Use compress() instead.");
 }

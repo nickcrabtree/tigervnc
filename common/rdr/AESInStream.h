@@ -1,15 +1,15 @@
 /* Copyright (C) 2022 Dinglan Peng
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -21,29 +21,29 @@
 
 #ifdef HAVE_NETTLE
 
-#include <nettle/eax.h>
 #include <nettle/aes.h>
+#include <nettle/eax.h>
 #include <rdr/BufferedInStream.h>
 
 namespace rdr {
 
-  class AESInStream : public BufferedInStream {
-  public:
-    AESInStream(InStream* in, const uint8_t* key, int keySize);
-    virtual ~AESInStream();
+class AESInStream : public BufferedInStream {
+public:
+  AESInStream(InStream* in, const uint8_t* key, int keySize);
+  virtual ~AESInStream();
 
-  private:
-    bool fillBuffer() override;
+private:
+  bool fillBuffer() override;
 
-    int keySize;
-    InStream* in;
-    union {
-      struct EAX_CTX(aes128_ctx) eaxCtx128;
-      struct EAX_CTX(aes256_ctx) eaxCtx256;
-    };
-    uint8_t counter[16];
+  int keySize;
+  InStream* in;
+  union {
+    struct EAX_CTX(aes128_ctx) eaxCtx128;
+    struct EAX_CTX(aes256_ctx) eaxCtx256;
   };
-}
+  uint8_t counter[16];
+};
+} // namespace rdr
 
 #endif
 #endif

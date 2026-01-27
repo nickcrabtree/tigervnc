@@ -1,19 +1,19 @@
-/* 
+/*
  * Copyright (C) 2004 Red Hat Inc.
  * Copyright (C) 2005 Martin Koegler
  * Copyright (C) 2010 TigerVNC Team
  * Copyright 2012-2025 Pierre Ossman for Cendio AB
- *    
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -27,8 +27,8 @@
 #error "This header should not be included without HAVE_GNUTLS defined"
 #endif
 
-#include <rfb/Security.h>
 #include <rfb/SSecurity.h>
+#include <rfb/Security.h>
 
 #include <gnutls/gnutls.h>
 
@@ -40,44 +40,48 @@
 #endif
 
 namespace rdr {
-  class InStream;
-  class OutStream;
-  class TLSSocket;
-}
+class InStream;
+class OutStream;
+class TLSSocket;
+} // namespace rdr
 
 namespace rfb {
 
-  class SSecurityTLS : public SSecurity {
-  public:
-    SSecurityTLS(SConnection* sc, bool _anon);
-    virtual ~SSecurityTLS();
-    bool processMsg() override;
-    const char* getUserName() const override {return nullptr;}
-    int getType() const override { return anon ? secTypeTLSNone : secTypeX509None;}
+class SSecurityTLS : public SSecurity {
+public:
+  SSecurityTLS(SConnection* sc, bool _anon);
+  virtual ~SSecurityTLS();
+  bool processMsg() override;
+  const char* getUserName() const override {
+    return nullptr;
+  }
+  int getType() const override {
+    return anon ? secTypeTLSNone : secTypeX509None;
+  }
 
-    static core::StringParameter X509_CertFile;
-    static core::StringParameter X509_KeyFile;
+  static core::StringParameter X509_CertFile;
+  static core::StringParameter X509_KeyFile;
 
-  protected:
-    void shutdown();
-    void setParams();
+protected:
+  void shutdown();
+  void setParams();
 
-  private:
-    gnutls_session_t session;
-#if defined (SSECURITYTLS__USE_DEPRECATED_DH)
-    gnutls_dh_params_t dh_params;
+private:
+  gnutls_session_t session;
+#if defined(SSECURITYTLS__USE_DEPRECATED_DH)
+  gnutls_dh_params_t dh_params;
 #endif
-    gnutls_anon_server_credentials_t anon_cred;
-    gnutls_certificate_credentials_t cert_cred;
+  gnutls_anon_server_credentials_t anon_cred;
+  gnutls_certificate_credentials_t cert_cred;
 
-    bool anon;
+  bool anon;
 
-    rdr::TLSSocket* tlssock;
+  rdr::TLSSocket* tlssock;
 
-    rdr::InStream* rawis;
-    rdr::OutStream* rawos;
-  };
+  rdr::InStream* rawis;
+  rdr::OutStream* rawos;
+};
 
-}
+} // namespace rfb
 
 #endif

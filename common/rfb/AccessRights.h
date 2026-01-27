@@ -21,20 +21,19 @@
 
 #include <stdint.h>
 
-namespace rfb
-{
+namespace rfb {
 
-  typedef uint16_t AccessRights;
-  extern const AccessRights AccessNone;           // No rights at all
-  extern const AccessRights AccessView;           // View display contents
-  extern const AccessRights AccessKeyEvents;      // Send key events
-  extern const AccessRights AccessPtrEvents;      // Send pointer events
-  extern const AccessRights AccessCutText;        // Send/receive clipboard events
-  extern const AccessRights AccessSetDesktopSize; // Change desktop size
-  extern const AccessRights AccessNonShared;      // Exclusive access to the server
-  extern const AccessRights AccessDefault;        // The default rights, INCLUDING FUTURE ONES
-  extern const AccessRights AccessNoQuery;        // Connect without local user accepting
-  extern const AccessRights AccessFull;           // All of the available AND FUTURE rights
+typedef uint16_t AccessRights;
+extern const AccessRights AccessNone;           // No rights at all
+extern const AccessRights AccessView;           // View display contents
+extern const AccessRights AccessKeyEvents;      // Send key events
+extern const AccessRights AccessPtrEvents;      // Send pointer events
+extern const AccessRights AccessCutText;        // Send/receive clipboard events
+extern const AccessRights AccessSetDesktopSize; // Change desktop size
+extern const AccessRights AccessNonShared;      // Exclusive access to the server
+extern const AccessRights AccessDefault;        // The default rights, INCLUDING FUTURE ONES
+extern const AccessRights AccessNoQuery;        // Connect without local user accepting
+extern const AccessRights AccessFull;           // All of the available AND FUTURE rights
 
 } /* namespace rfb */
 

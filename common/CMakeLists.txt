@@ -9,6 +9,5 @@ add_subdirectory(rfb)
 # is passed (additionally, libvnc is not used on Windows.)
 
 if(NOT WIN32)
-  set_target_properties(core rdr network rfb
-    PROPERTIES COMPILE_FLAGS -fPIC)
+  set_target_properties(core rdr network rfb PROPERTIES COMPILE_FLAGS -fPIC)
 endif()

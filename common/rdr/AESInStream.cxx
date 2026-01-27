@@ -1,15 +1,15 @@
 /* Copyright (C) 2022 Dinglan Peng
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -29,10 +29,7 @@
 #ifdef HAVE_NETTLE
 using namespace rdr;
 
-AESInStream::AESInStream(InStream* _in, const uint8_t* key,
-                         int _keySize)
-  : keySize(_keySize), in(_in), counter()
-{
+AESInStream::AESInStream(InStream* _in, const uint8_t* key, int _keySize) : keySize(_keySize), in(_in), counter() {
   if (keySize == 128)
     EAX_SET_KEY(&eaxCtx128, aes128_set_encrypt_key, aes128_encrypt, key);
   else if (keySize == 256)
@@ -43,8 +40,7 @@ AESInStream::AESInStream(InStream* _in, const uint8_t* key,
 
 AESInStream::~AESInStream() {}
 
-bool AESInStream::fillBuffer()
-{
+bool AESInStream::fillBuffer() {
   if (!in->hasData(2))
     return false;
   const uint8_t* buf = in->getptr(2);

@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2016-2024 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -87,7 +87,7 @@ int Timer::getNextTimeout() {
 
 void Timer::insertTimer(Timer* t) {
   std::list<Timer*>::iterator i;
-  for (i=pending.begin(); i!=pending.end(); i++) {
+  for (i = pending.begin(); i != pending.end(); i++) {
     if (t->isBefore((*i)->dueTime)) {
       pending.insert(i, t);
       return;
@@ -136,8 +136,7 @@ void Timer::stop() {
 }
 
 bool Timer::isStarted() {
-  return std::find(pending.begin(), pending.end(),
-                   this) != pending.end();
+  return std::find(pending.begin(), pending.end(), this) != pending.end();
 }
 
 int Timer::getTimeoutMs() {
@@ -149,7 +148,5 @@ int Timer::getRemainingMs() {
 }
 
 bool Timer::isBefore(timeval other) {
-  return (dueTime.tv_sec < other.tv_sec) ||
-    ((dueTime.tv_sec == other.tv_sec) &&
-     (dueTime.tv_usec < other.tv_usec));
+  return (dueTime.tv_sec < other.tv_sec) || ((dueTime.tv_sec == other.tv_sec) && (dueTime.tv_usec < other.tv_usec));
 }

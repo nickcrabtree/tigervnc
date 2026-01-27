@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (c) 2012 University of Oslo.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -21,14 +21,14 @@
 #include <config.h>
 #endif
 
-#include <sys/stat.h>
+#include <errno.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <stddef.h>
-#include <string.h>
 
 #include <core/Exception.h>
 #include <core/LogWriter.h>
@@ -41,12 +41,9 @@ static core::LogWriter vlog("UnixSocket");
 
 // -=- UnixSocket
 
-UnixSocket::UnixSocket(int sock) : Socket(sock)
-{
-}
+UnixSocket::UnixSocket(int sock) : Socket(sock) {}
 
-UnixSocket::UnixSocket(const char *path)
-{
+UnixSocket::UnixSocket(const char* path) {
   int sock, err, result;
   sockaddr_un addr;
   socklen_t salen;
@@ -64,7 +61,7 @@ UnixSocket::UnixSocket(const char *path)
   addr.sun_family = AF_UNIX;
   strcpy(addr.sun_path, path);
   salen = sizeof(addr);
-  while ((result = connect(sock, (sockaddr *)&addr, salen)) == -1) {
+  while ((result = connect(sock, (sockaddr*)&addr, salen)) == -1) {
     err = errno;
     close(sock);
     break;
@@ -85,7 +82,7 @@ const char* UnixSocket::getPeerAddress() {
   // test a bit.
 
   salen = sizeof(addr);
-  if (getpeername(getFd(), (struct sockaddr *)&addr, &salen) != 0) {
+  if (getpeername(getFd(), (struct sockaddr*)&addr, &salen) != 0) {
     vlog.error("Unable to get peer name for socket");
     return "";
   }
@@ -94,7 +91,7 @@ const char* UnixSocket::getPeerAddress() {
     return addr.sun_path;
 
   salen = sizeof(addr);
-  if (getsockname(getFd(), (struct sockaddr *)&addr, &salen) != 0) {
+  if (getsockname(getFd(), (struct sockaddr*)&addr, &salen) != 0) {
     vlog.error("Unable to get local name for socket");
     return "";
   }
@@ -111,8 +108,7 @@ const char* UnixSocket::getPeerEndpoint() {
   return getPeerAddress();
 }
 
-UnixListener::UnixListener(const char *path, int mode)
-{
+UnixListener::UnixListener(const char* path, int mode) {
   struct sockaddr_un addr;
   mode_t saved_umask;
   int err, result;
@@ -132,7 +128,7 @@ UnixListener::UnixListener(const char *path, int mode)
   addr.sun_family = AF_UNIX;
   strcpy(addr.sun_path, path);
   saved_umask = umask(0777);
-  result = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+  result = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
   err = errno;
   umask(saved_umask);
   if (result < 0) {
@@ -150,12 +146,11 @@ UnixListener::UnixListener(const char *path, int mode)
   listen(fd);
 }
 
-UnixListener::~UnixListener()
-{
+UnixListener::~UnixListener() {
   struct sockaddr_un addr;
   socklen_t salen = sizeof(addr);
 
-  if (getsockname(getFd(), (struct sockaddr *)&addr, &salen) == 0)
+  if (getsockname(getFd(), (struct sockaddr*)&addr, &salen) == 0)
     unlink(addr.sun_path);
 }
 

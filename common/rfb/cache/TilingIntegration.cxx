@@ -6,7 +6,8 @@
 #include <core/Region.h>
 #include <rfb/ServerCore.h>
 
-namespace rfb { namespace cache {
+namespace rfb {
+namespace cache {
 
 static core::LogWriter vlog("TilingIntegration");
 
@@ -20,9 +21,7 @@ struct TileKey {
   uint64_t hash = 0;
 };
 
-inline TileKey computeTileKey(const core::Rect& tileRect,
-                              const PixelBuffer* pb)
-{
+inline TileKey computeTileKey(const core::Rect& tileRect, const PixelBuffer* pb) {
   TileKey k;
   if (!pb || tileRect.is_empty())
     return k;
@@ -39,9 +38,7 @@ inline TileKey computeTileKey(const core::Rect& tileRect,
 
 } // anonymous namespace
 
-TileCacheState PersistentCacheQuery::classifyTile(const core::Rect& tileRect,
-                                                  const PixelBuffer* pb)
-{
+TileCacheState PersistentCacheQuery::classifyTile(const core::Rect& tileRect, const PixelBuffer* pb) {
   if (!conn_ || !pb)
     return TileCacheState::NotCacheable;
 
@@ -64,12 +61,8 @@ TileCacheState PersistentCacheQuery::classifyTile(const core::Rect& tileRect,
   return TileCacheState::InitCandidate;
 }
 
-void analyzeRegionTilingLogOnly(const core::Region& region,
-                                int tileSize,
-                                int minTiles,
-                                const PixelBuffer* pb,
-                                CacheQueryInterface& cacheQuery)
-{
+void analyzeRegionTilingLogOnly(const core::Region& region, int tileSize, int minTiles, const PixelBuffer* pb,
+                                CacheQueryInterface& cacheQuery) {
   if (!pb || region.is_empty() || tileSize <= 0)
     return;
 
@@ -91,19 +84,17 @@ void analyzeRegionTilingLogOnly(const core::Region& region,
       ++initCandCount;
   }
 
-  vlog.info("Tiling analysis: bounds=[%d,%d-%d,%d] tiles=%dx%d hits=%d init=%d",
-            bounds.tl.x, bounds.tl.y, bounds.br.x, bounds.br.y,
-            tilesX, tilesY, hitCount, initCandCount);
+  vlog.info("Tiling analysis: bounds=[%d,%d-%d,%d] tiles=%dx%d hits=%d init=%d", bounds.tl.x, bounds.tl.y, bounds.br.x,
+            bounds.br.y, tilesX, tilesY, hitCount, initCandCount);
 
   MaxRect maxRect;
   if (findLargestHitRectangle(tiles, tilesX, tilesY, minTiles, maxRect)) {
-    vlog.info("Tiling analysis: largest HIT rect [%d,%d-%d,%d] tiles=%ux%u",
-              maxRect.rect.tl.x, maxRect.rect.tl.y,
-              maxRect.rect.br.x, maxRect.rect.br.y,
-              maxRect.tilesWide, maxRect.tilesHigh);
+    vlog.info("Tiling analysis: largest HIT rect [%d,%d-%d,%d] tiles=%ux%u", maxRect.rect.tl.x, maxRect.rect.tl.y,
+              maxRect.rect.br.x, maxRect.rect.br.y, maxRect.tilesWide, maxRect.tilesHigh);
   } else {
     vlog.info("Tiling analysis: no HIT rectangle >= %d tiles", minTiles);
   }
 }
 
-}} // namespace rfb::cache
+} // namespace cache
+} // namespace rfb

@@ -27,15 +27,15 @@
 
 namespace core {
 
-  class Logger_Syslog : public Logger {
-  public:
-    Logger_Syslog(const char* loggerName);
-    virtual ~Logger_Syslog();
+class Logger_Syslog : public Logger {
+public:
+  Logger_Syslog(const char* loggerName);
+  virtual ~Logger_Syslog();
 
-    void write(int level, const char *logname, const char *message) override;
-  };
-
-  void initSyslogLogger();
+  void write(int level, const char* logname, const char* message) override;
 };
+
+void initSyslogLogger();
+}; // namespace core
 
 #endif

@@ -32,49 +32,53 @@
 
 namespace rdr {
 
-  class InStream;
-  class OutStream;
+class InStream;
+class OutStream;
 
-  class TLSInStream;
-  class TLSOutStream;
+class TLSInStream;
+class TLSOutStream;
 
-  class TLSSocket {
-  public:
-    TLSSocket(InStream* in, OutStream* out, gnutls_session_t session);
-    virtual ~TLSSocket();
+class TLSSocket {
+public:
+  TLSSocket(InStream* in, OutStream* out, gnutls_session_t session);
+  virtual ~TLSSocket();
 
-    TLSInStream& inStream() { return tlsin; }
-    TLSOutStream& outStream() { return tlsout; }
+  TLSInStream& inStream() {
+    return tlsin;
+  }
+  TLSOutStream& outStream() {
+    return tlsout;
+  }
 
-    bool handshake();
-    void shutdown();
+  bool handshake();
+  void shutdown();
 
-  protected:
-    /* Used by the stream classes */
-    size_t readTLS(uint8_t* buf, size_t len);
-    size_t writeTLS(const uint8_t* data, size_t length);
+protected:
+  /* Used by the stream classes */
+  size_t readTLS(uint8_t* buf, size_t len);
+  size_t writeTLS(const uint8_t* data, size_t length);
 
-    friend TLSInStream;
-    friend TLSOutStream;
+  friend TLSInStream;
+  friend TLSOutStream;
 
-  private:
-    ssize_t pull(void* data, size_t size);
-    ssize_t push(const void* data, size_t size);
+private:
+  ssize_t pull(void* data, size_t size);
+  ssize_t push(const void* data, size_t size);
 
-    gnutls_session_t session;
+  gnutls_session_t session;
 
-    InStream* in;
-    OutStream* out;
+  InStream* in;
+  OutStream* out;
 
-    TLSInStream tlsin;
-    TLSOutStream tlsout;
+  TLSInStream tlsin;
+  TLSOutStream tlsout;
 
-    bool streamEmpty;
+  bool streamEmpty;
 
-    std::exception_ptr saved_exception;
-  };
+  std::exception_ptr saved_exception;
+};
 
-}
+} // namespace rdr
 
 #endif
 

@@ -30,8 +30,7 @@
 
 using namespace rdr;
 
-FileInStream::FileInStream(const char *fileName)
-{
+FileInStream::FileInStream(const char* fileName) {
   file = fopen(fileName, "rb");
   if (!file)
     throw core::posix_error("fopen", errno);
@@ -44,8 +43,7 @@ FileInStream::~FileInStream(void) {
   }
 }
 
-bool FileInStream::fillBuffer()
-{
+bool FileInStream::fillBuffer() {
   size_t n = fread((uint8_t*)end, 1, availSpace(), file);
   if (n == 0) {
     if (ferror(file))

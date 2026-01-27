@@ -1,15 +1,15 @@
 /* Copyright (C) 2022 Dinglan Peng
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -31,10 +31,8 @@ using namespace rdr;
 
 const int MaxMessageSize = 8192;
 
-AESOutStream::AESOutStream(OutStream* _out, const uint8_t* key,
-                           int _keySize)
-  : keySize(_keySize), out(_out), counter()
-{
+AESOutStream::AESOutStream(OutStream* _out, const uint8_t* key, int _keySize)
+    : keySize(_keySize), out(_out), counter() {
   msg = new uint8_t[MaxMessageSize + 16 + 2];
   if (keySize == 128)
     EAX_SET_KEY(&eaxCtx128, aes128_set_encrypt_key, aes128_encrypt, key);
@@ -44,25 +42,21 @@ AESOutStream::AESOutStream(OutStream* _out, const uint8_t* key,
     throw std::out_of_range("Incorrect key size");
 }
 
-AESOutStream::~AESOutStream()
-{
-    delete[] msg;
+AESOutStream::~AESOutStream() {
+  delete[] msg;
 }
 
-void AESOutStream::flush()
-{
+void AESOutStream::flush() {
   BufferedOutStream::flush();
   out->flush();
 }
 
-void AESOutStream::cork(bool enable)
-{
+void AESOutStream::cork(bool enable) {
   BufferedOutStream::cork(enable);
   out->cork(enable);
 }
 
-bool AESOutStream::flushBuffer()
-{
+bool AESOutStream::flushBuffer() {
   while (sentUpTo < ptr) {
     size_t n = ptr - sentUpTo;
     if (n > MaxMessageSize)
@@ -73,9 +67,7 @@ bool AESOutStream::flushBuffer()
   return true;
 }
 
-
-void AESOutStream::writeMessage(const uint8_t* data, size_t length)
-{
+void AESOutStream::writeMessage(const uint8_t* data, size_t length) {
   msg[0] = (length & 0xff00) >> 8;
   msg[1] = length & 0xff;
 

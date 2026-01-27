@@ -1,17 +1,17 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2011 D. R. Commander.  All Rights Reserved.
  * Copyright 2014-2019 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -27,24 +27,20 @@
 #include <core/LogWriter.h>
 #include <core/string.h>
 
-#include <rfb/encodings.h>
-#include <rfb/ledStates.h>
-#include <rfb/clipboardTypes.h>
 #include <rfb/ClientParams.h>
 #include <rfb/Cursor.h>
 #include <rfb/ScreenSet.h>
+#include <rfb/clipboardTypes.h>
+#include <rfb/encodings.h>
+#include <rfb/ledStates.h>
 
 using namespace rfb;
 
 static core::LogWriter vlog("ClientParams");
 
 ClientParams::ClientParams()
-  : majorVersion(0), minorVersion(0),
-    compressLevel(2), qualityLevel(-1), fineQualityLevel(-1),
-    subsampling(subsampleUndefined),
-    width_(0), height_(0),
-    cursorPos_(0, 0), ledState_(ledUnknown)
-{
+    : majorVersion(0), minorVersion(0), compressLevel(2), qualityLevel(-1), fineQualityLevel(-1),
+      subsampling(subsampleUndefined), width_(0), height_(0), cursorPos_(0, 0), ledState_(ledUnknown) {
   setName("");
 
   screenLayout_ = new ScreenSet();
@@ -53,28 +49,24 @@ ClientParams::ClientParams()
 
   cursor_ = new Cursor(0, 0, {}, nullptr);
 
-  clipFlags = clipboardUTF8 | clipboardRTF | clipboardHTML |
-              clipboardRequest | clipboardNotify | clipboardProvide;
+  clipFlags = clipboardUTF8 | clipboardRTF | clipboardHTML | clipboardRequest | clipboardNotify | clipboardProvide;
   memset(clipSizes, 0, sizeof(clipSizes));
   clipSizes[0] = 20 * 1024 * 1024;
 }
 
-ClientParams::~ClientParams()
-{
+ClientParams::~ClientParams() {
   delete screenLayout_;
   delete cursor_;
   delete pf_;
 }
 
-void ClientParams::setDimensions(int width, int height)
-{
+void ClientParams::setDimensions(int width, int height) {
   ScreenSet layout;
   layout.add_screen(rfb::Screen(0, 0, 0, width, height, 0));
   setDimensions(width, height, layout);
 }
 
-void ClientParams::setDimensions(int width, int height, const ScreenSet& layout)
-{
+void ClientParams::setDimensions(int width, int height, const ScreenSet& layout) {
   if (!layout.validate(width, height)) {
     char buffer[2048];
     vlog.debug("Invalid screen layout for %dx%d:", width, height);
@@ -90,8 +82,7 @@ void ClientParams::setDimensions(int width, int height, const ScreenSet& layout)
   screenLayout_ = new ScreenSet(layout);
 }
 
-void ClientParams::setPF(const PixelFormat& pf)
-{
+void ClientParams::setPF(const PixelFormat& pf) {
   delete pf_;
   pf_ = new PixelFormat(pf);
 
@@ -99,29 +90,24 @@ void ClientParams::setPF(const PixelFormat& pf)
     throw std::invalid_argument("setPF: Not 8, 16 or 32 bpp?");
 }
 
-void ClientParams::setName(const char* name)
-{
+void ClientParams::setName(const char* name) {
   name_ = name;
 }
 
-void ClientParams::setCursor(const Cursor& other)
-{
+void ClientParams::setCursor(const Cursor& other) {
   delete cursor_;
   cursor_ = new Cursor(other);
 }
 
-void ClientParams::setCursorPos(const core::Point& pos)
-{
+void ClientParams::setCursorPos(const core::Point& pos) {
   cursorPos_ = pos;
 }
 
-bool ClientParams::supportsEncoding(int32_t encoding) const
-{
+bool ClientParams::supportsEncoding(int32_t encoding) const {
   return encodings_.count(encoding) != 0;
 }
 
-void ClientParams::setEncodings(int nEncodings, const int32_t* encodings)
-{
+void ClientParams::setEncodings(int nEncodings, const int32_t* encodings) {
   compressLevel = -1;
   qualityLevel = -1;
   fineQualityLevel = -1;
@@ -130,7 +116,7 @@ void ClientParams::setEncodings(int nEncodings, const int32_t* encodings)
   encodings_.clear();
   encodings_.insert(encodingRaw);
 
-  for (int i = nEncodings-1; i >= 0; i--) {
+  for (int i = nEncodings - 1; i >= 0; i--) {
     switch (encodings[i]) {
     case pseudoEncodingSubsamp1X:
       subsampling = subsampleNone;
@@ -152,32 +138,27 @@ void ClientParams::setEncodings(int nEncodings, const int32_t* encodings)
       break;
     }
 
-    if (encodings[i] >= pseudoEncodingCompressLevel0 &&
-        encodings[i] <= pseudoEncodingCompressLevel9)
+    if (encodings[i] >= pseudoEncodingCompressLevel0 && encodings[i] <= pseudoEncodingCompressLevel9)
       compressLevel = encodings[i] - pseudoEncodingCompressLevel0;
 
-    if (encodings[i] >= pseudoEncodingQualityLevel0 &&
-        encodings[i] <= pseudoEncodingQualityLevel9)
+    if (encodings[i] >= pseudoEncodingQualityLevel0 && encodings[i] <= pseudoEncodingQualityLevel9)
       qualityLevel = encodings[i] - pseudoEncodingQualityLevel0;
 
-    if (encodings[i] >= pseudoEncodingFineQualityLevel0 &&
-        encodings[i] <= pseudoEncodingFineQualityLevel100)
+    if (encodings[i] >= pseudoEncodingFineQualityLevel0 && encodings[i] <= pseudoEncodingFineQualityLevel100)
       fineQualityLevel = encodings[i] - pseudoEncodingFineQualityLevel0;
 
     encodings_.insert(encodings[i]);
   }
 }
 
-void ClientParams::setLEDState(unsigned int state)
-{
+void ClientParams::setLEDState(unsigned int state) {
   ledState_ = state;
 }
 
-uint32_t ClientParams::clipboardSize(unsigned int format) const
-{
+uint32_t ClientParams::clipboardSize(unsigned int format) const {
   int i;
 
-  for (i = 0;i < 16;i++) {
+  for (i = 0; i < 16; i++) {
     if (((unsigned)1 << i) == format)
       return clipSizes[i];
   }
@@ -185,22 +166,20 @@ uint32_t ClientParams::clipboardSize(unsigned int format) const
   throw std::invalid_argument(core::format("Invalid clipboard format 0x%x", format));
 }
 
-void ClientParams::setClipboardCaps(uint32_t flags, const uint32_t* lengths)
-{
+void ClientParams::setClipboardCaps(uint32_t flags, const uint32_t* lengths) {
   int i, num;
 
   clipFlags = flags;
 
   num = 0;
-  for (i = 0;i < 16;i++) {
+  for (i = 0; i < 16; i++) {
     if (!(flags & (1 << i)))
       continue;
     clipSizes[i] = lengths[num++];
   }
 }
 
-bool ClientParams::supportsLocalCursor() const
-{
+bool ClientParams::supportsLocalCursor() const {
   if (supportsEncoding(pseudoEncodingCursorWithAlpha))
     return true;
   if (supportsEncoding(pseudoEncodingVMwareCursor))
@@ -212,15 +191,13 @@ bool ClientParams::supportsLocalCursor() const
   return false;
 }
 
-bool ClientParams::supportsCursorPosition() const
-{
+bool ClientParams::supportsCursorPosition() const {
   if (supportsEncoding(pseudoEncodingVMwareCursorPosition))
     return true;
   return false;
 }
 
-bool ClientParams::supportsDesktopSize() const
-{
+bool ClientParams::supportsDesktopSize() const {
   if (supportsEncoding(pseudoEncodingExtendedDesktopSize))
     return true;
   if (supportsEncoding(pseudoEncodingDesktopSize))
@@ -228,8 +205,7 @@ bool ClientParams::supportsDesktopSize() const
   return false;
 }
 
-bool ClientParams::supportsLEDState() const
-{
+bool ClientParams::supportsLEDState() const {
   if (supportsEncoding(pseudoEncodingLEDState))
     return true;
   if (supportsEncoding(pseudoEncodingVMwareLEDState))
@@ -237,22 +213,19 @@ bool ClientParams::supportsLEDState() const
   return false;
 }
 
-bool ClientParams::supportsFence() const
-{
+bool ClientParams::supportsFence() const {
   if (supportsEncoding(pseudoEncodingFence))
     return true;
   return false;
 }
 
-bool ClientParams::supportsContinuousUpdates() const
-{
+bool ClientParams::supportsContinuousUpdates() const {
   if (supportsEncoding(pseudoEncodingContinuousUpdates))
     return true;
   return false;
 }
 
-bool ClientParams::supportsExtendedMouseButtons() const
-{
+bool ClientParams::supportsExtendedMouseButtons() const {
   if (supportsEncoding(pseudoEncodingExtendedMouseButtons))
     return true;
   return false;

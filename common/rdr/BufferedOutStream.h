@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011-2020 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -30,44 +30,44 @@
 
 namespace rdr {
 
-  class BufferedOutStream : public OutStream {
+class BufferedOutStream : public OutStream {
 
-  public:
-    virtual ~BufferedOutStream();
+public:
+  virtual ~BufferedOutStream();
 
-    size_t length() override;
-    void flush() override;
+  size_t length() override;
+  void flush() override;
 
-    // hasBufferedData() checks if there is any data yet to be flushed
+  // hasBufferedData() checks if there is any data yet to be flushed
 
-    bool hasBufferedData();
+  bool hasBufferedData();
 
-  private:
-    // flushBuffer() requests that the stream be flushed. Returns true if it is
-    // able to progress the output (which might still not mean any bytes
-    // actually moved) and can be called again.
+private:
+  // flushBuffer() requests that the stream be flushed. Returns true if it is
+  // able to progress the output (which might still not mean any bytes
+  // actually moved) and can be called again.
 
-    virtual bool flushBuffer() = 0;
+  virtual bool flushBuffer() = 0;
 
-    void overrun(size_t needed) override;
+  void overrun(size_t needed) override;
 
-  private:
-    size_t bufSize;
-    size_t offset;
-    uint8_t* start;
+private:
+  size_t bufSize;
+  size_t offset;
+  uint8_t* start;
 
-    struct timeval lastSizeCheck;
-    size_t peakUsage;
+  struct timeval lastSizeCheck;
+  size_t peakUsage;
 
-    bool emulateCork;
+  bool emulateCork;
 
-  protected:
-    uint8_t* sentUpTo;
+protected:
+  uint8_t* sentUpTo;
 
-  protected:
-    BufferedOutStream(bool emulateCork=true);
-  };
+protected:
+  BufferedOutStream(bool emulateCork = true);
+};
 
-}
+} // namespace rdr
 
 #endif

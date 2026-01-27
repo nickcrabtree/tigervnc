@@ -1,16 +1,16 @@
 /* Copyright (C) 2005 Martin Koegler
  * Copyright (C) 2006 OCCAM Financial Technology
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -24,14 +24,14 @@
 #include <core/Configuration.h>
 #include <core/string.h>
 
-#include <rfb/SSecurityPlain.h>
-#include <rfb/SConnection.h>
-#include <rfb/Exception.h>
 #include <rdr/InStream.h>
+#include <rfb/Exception.h>
+#include <rfb/SConnection.h>
+#include <rfb/SSecurityPlain.h>
 #if !defined(WIN32) && !defined(__APPLE__)
+#include <pwd.h>
 #include <rfb/UnixPasswordValidator.h>
 #include <unistd.h>
-#include <pwd.h>
 #endif
 #ifdef WIN32
 #include <rfb/WinPasswdValidator.h>
@@ -39,23 +39,22 @@
 
 using namespace rfb;
 
-core::StringListParameter PasswordValidator::plainUsers
-("PlainUsers",
- "Users permitted to access via Plain security type (including TLSPlain, X509Plain etc.)"
+core::StringListParameter PasswordValidator::plainUsers(
+    "PlainUsers",
+    "Users permitted to access via Plain security type (including TLSPlain, X509Plain etc.)"
 #ifdef HAVE_NETTLE
- " or RSA-AES security types (RA2, RA2ne, RA2_256, RA2ne_256)"
+    " or RSA-AES security types (RA2, RA2ne, RA2_256, RA2ne_256)"
 #endif
- ,
- {});
+    ,
+    {});
 
-bool PasswordValidator::validUser(const char* username)
-{
+bool PasswordValidator::validUser(const char* username) {
   for (const char* user : plainUsers) {
     if (strcmp(user, "*") == 0)
       return true;
 #if !defined(WIN32) && !defined(__APPLE__)
     if (strcmp(user, "%u") == 0) {
-      struct passwd *pw = getpwnam(username);
+      struct passwd* pw = getpwnam(username);
       if (pw && pw->pw_uid == getuid())
         return true;
     }
@@ -68,8 +67,7 @@ bool PasswordValidator::validUser(const char* username)
   return false;
 }
 
-SSecurityPlain::SSecurityPlain(SConnection* sc_) : SSecurity(sc_)
-{
+SSecurityPlain::SSecurityPlain(SConnection* sc_) : SSecurity(sc_) {
 #ifdef WIN32
   valid = new WinPasswdValidator();
 #elif !defined(__APPLE__)
@@ -81,8 +79,7 @@ SSecurityPlain::SSecurityPlain(SConnection* sc_) : SSecurity(sc_)
   state = 0;
 }
 
-bool SSecurityPlain::processMsg()
-{
+bool SSecurityPlain::processMsg() {
   rdr::InStream* is = sc->getInStream();
   char password[1024];
 
@@ -120,4 +117,3 @@ bool SSecurityPlain::processMsg()
 
   return true;
 }
-

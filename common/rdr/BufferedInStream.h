@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2020 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -30,34 +30,36 @@
 
 namespace rdr {
 
-  class BufferedInStream : public InStream {
+class BufferedInStream : public InStream {
 
-  public:
-    virtual ~BufferedInStream();
+public:
+  virtual ~BufferedInStream();
 
-    size_t pos() override;
+  size_t pos() override;
 
-  protected:
-    size_t availSpace() { return start + bufSize - end; }
+protected:
+  size_t availSpace() {
+    return start + bufSize - end;
+  }
 
-    void ensureSpace(size_t needed);
+  void ensureSpace(size_t needed);
 
-  private:
-    virtual bool fillBuffer() = 0;
+private:
+  virtual bool fillBuffer() = 0;
 
-    bool overrun(size_t needed) override;
+  bool overrun(size_t needed) override;
 
-  private:
-    size_t bufSize;
-    size_t offset;
-    uint8_t* start;
+private:
+  size_t bufSize;
+  size_t offset;
+  uint8_t* start;
 
-    struct timeval lastSizeCheck;
-    size_t peakUsage;
+  struct timeval lastSizeCheck;
+  size_t peakUsage;
 
-  protected:
-    BufferedInStream();
-  };
+protected:
+  BufferedInStream();
+};
 
 } // end of namespace rdr
 

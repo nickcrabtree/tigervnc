@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (C) 2022 Dinglan Peng
- *    
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -38,8 +38,8 @@
 #include <core/LogWriter.h>
 #include <core/string.h>
 
-#include <rfb/CSecurityRSAAES.h>
 #include <rfb/CConnection.h>
+#include <rfb/CSecurityRSAAES.h>
 #include <rfb/Exception.h>
 
 #include <rdr/AESInStream.h>
@@ -60,25 +60,18 @@ using namespace rfb;
 
 static core::LogWriter vlog("CSecurityRSAAES");
 
-CSecurityRSAAES::CSecurityRSAAES(CConnection* cc_, uint32_t _secType,
-                                 int _keySize, bool _isAllEncrypted)
-  : CSecurity(cc_), state(ReadPublicKey),
-    keySize(_keySize), isAllEncrypted(_isAllEncrypted), secType(_secType),
-    clientKey(), clientPublicKey(), serverKey(),
-    serverKeyN(nullptr), serverKeyE(nullptr),
-    clientKeyN(nullptr), clientKeyE(nullptr),
-    rais(nullptr), raos(nullptr), rawis(nullptr), rawos(nullptr)
-{
+CSecurityRSAAES::CSecurityRSAAES(CConnection* cc_, uint32_t _secType, int _keySize, bool _isAllEncrypted)
+    : CSecurity(cc_), state(ReadPublicKey), keySize(_keySize), isAllEncrypted(_isAllEncrypted), secType(_secType),
+      clientKey(), clientPublicKey(), serverKey(), serverKeyN(nullptr), serverKeyE(nullptr), clientKeyN(nullptr),
+      clientKeyE(nullptr), rais(nullptr), raos(nullptr), rawis(nullptr), rawos(nullptr) {
   assert(keySize == 128 || keySize == 256);
 }
 
-CSecurityRSAAES::~CSecurityRSAAES()
-{
+CSecurityRSAAES::~CSecurityRSAAES() {
   cleanup();
 }
 
-void CSecurityRSAAES::cleanup()
-{
+void CSecurityRSAAES::cleanup() {
   if (raos) {
     try {
       if (raos->hasBufferedData()) {
@@ -114,35 +107,34 @@ void CSecurityRSAAES::cleanup()
     delete raos;
 }
 
-bool CSecurityRSAAES::processMsg()
-{
+bool CSecurityRSAAES::processMsg() {
   switch (state) {
-    case ReadPublicKey:
-      if (!readPublicKey())
-        return false;
-      verifyServer();
-      writePublicKey();
-      writeRandom();
-      state = ReadRandom;
-      /* fall through */
-    case ReadRandom:
-      if (!readRandom())
-        return false;
-      setCipher();
-      writeHash();
-      state = ReadHash;
-      /* fall through */
-    case ReadHash:
-      if (!readHash())
-        return false;
-      clearSecrets();
-      state = ReadSubtype;
-      /* fall through */
-    case ReadSubtype:
-      if (!readSubtype())
-        return false;
-      writeCredentials();
-      return true;
+  case ReadPublicKey:
+    if (!readPublicKey())
+      return false;
+    verifyServer();
+    writePublicKey();
+    writeRandom();
+    state = ReadRandom;
+    /* fall through */
+  case ReadRandom:
+    if (!readRandom())
+      return false;
+    setCipher();
+    writeHash();
+    state = ReadHash;
+    /* fall through */
+  case ReadHash:
+    if (!readHash())
+      return false;
+    clearSecrets();
+    state = ReadSubtype;
+    /* fall through */
+  case ReadSubtype:
+    if (!readSubtype())
+      return false;
+    writeCredentials();
+    return true;
   }
 
   throw std::logic_error("Invalid state");
@@ -150,16 +142,14 @@ bool CSecurityRSAAES::processMsg()
   return false;
 }
 
-static void random_func(void*, size_t length, uint8_t* dst)
-{
+static void random_func(void*, size_t length, uint8_t* dst) {
   rdr::RandomStream rs;
   if (!rs.hasData(length))
     throw std::runtime_error("Failed to generate random");
   rs.readBytes(dst, length);
 }
 
-void CSecurityRSAAES::writePublicKey()
-{
+void CSecurityRSAAES::writePublicKey() {
   rdr::OutStream* os = cc->getOutStream();
   // generate client key
   rsa_public_key_init(&clientPublicKey);
@@ -172,9 +162,7 @@ void CSecurityRSAAES::writePublicKey()
   clientKey.size = rsaKeySize;
   // set e = 65537
   mpz_set_ui(clientPublicKey.e, 65537);
-  if (!rsa_generate_keypair(&clientPublicKey, &clientKey,
-                            nullptr, random_func, nullptr, nullptr,
-                            clientKeyLength, 0))
+  if (!rsa_generate_keypair(&clientPublicKey, &clientKey, nullptr, random_func, nullptr, nullptr, clientKeyLength, 0))
     throw std::runtime_error("Failed to generate key");
   clientKeyN = new uint8_t[rsaKeySize];
   clientKeyE = new uint8_t[rsaKeySize];
@@ -186,8 +174,7 @@ void CSecurityRSAAES::writePublicKey()
   os->flush();
 }
 
-bool CSecurityRSAAES::readPublicKey()
-{
+bool CSecurityRSAAES::readPublicKey() {
   rdr::InStream* is = cc->getInStream();
   if (!is->hasData(4))
     return false;
@@ -213,14 +200,10 @@ bool CSecurityRSAAES::readPublicKey()
   return true;
 }
 
-void CSecurityRSAAES::verifyServer()
-{
-  uint8_t lenServerKey[4] = {
-    (uint8_t)((serverKeyLength & 0xff000000) >> 24),
-    (uint8_t)((serverKeyLength & 0xff0000) >> 16),
-    (uint8_t)((serverKeyLength & 0xff00) >> 8),
-    (uint8_t)(serverKeyLength & 0xff)
-  };
+void CSecurityRSAAES::verifyServer() {
+  uint8_t lenServerKey[4] = {(uint8_t)((serverKeyLength & 0xff000000) >> 24),
+                             (uint8_t)((serverKeyLength & 0xff0000) >> 16), (uint8_t)((serverKeyLength & 0xff00) >> 8),
+                             (uint8_t)(serverKeyLength & 0xff)};
   uint8_t f[8];
   struct sha1_ctx ctx;
   sha1_init(&ctx);
@@ -228,18 +211,17 @@ void CSecurityRSAAES::verifyServer()
   sha1_update(&ctx, serverKey.size, serverKeyN);
   sha1_update(&ctx, serverKey.size, serverKeyE);
   sha1_digest(&ctx, sizeof(f), f);
-  const char *title = "Server key fingerprint";
-  std::string text = core::format(
-    "The server has provided the following identifying information:\n"
-    "Fingerprint: %02x-%02x-%02x-%02x-%02x-%02x-%02x-%02x\n"
-    "Please verify that the information is correct and press \"Yes\". "
-    "Otherwise press \"No\"", f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7]);
+  const char* title = "Server key fingerprint";
+  std::string text = core::format("The server has provided the following identifying information:\n"
+                                  "Fingerprint: %02x-%02x-%02x-%02x-%02x-%02x-%02x-%02x\n"
+                                  "Please verify that the information is correct and press \"Yes\". "
+                                  "Otherwise press \"No\"",
+                                  f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7]);
   if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, title, text.c_str()))
     throw auth_cancelled();
 }
 
-void CSecurityRSAAES::writeRandom()
-{
+void CSecurityRSAAES::writeRandom() {
   rdr::RandomStream rs;
   rdr::OutStream* os = cc->getOutStream();
   if (!rs.hasData(keySize / 8))
@@ -249,8 +231,7 @@ void CSecurityRSAAES::writeRandom()
   mpz_init(x);
   int res;
   try {
-    res = rsa_encrypt(&serverKey, &rs, random_func, keySize / 8,
-                      clientRandom, x);
+    res = rsa_encrypt(&serverKey, &rs, random_func, keySize / 8, clientRandom, x);
   } catch (...) {
     mpz_clear(x);
     throw;
@@ -268,8 +249,7 @@ void CSecurityRSAAES::writeRandom()
   delete[] buffer;
 }
 
-bool CSecurityRSAAES::readRandom()
-{
+bool CSecurityRSAAES::readRandom() {
   rdr::InStream* is = cc->getInStream();
   if (!is->hasData(2))
     return false;
@@ -286,8 +266,7 @@ bool CSecurityRSAAES::readRandom()
   mpz_t x;
   nettle_mpz_init_set_str_256_u(x, size, buffer);
   delete[] buffer;
-  if (!rsa_decrypt(&clientKey, &randomSize, serverRandom, x) ||
-      randomSize != (size_t)keySize / 8) {
+  if (!rsa_decrypt(&clientKey, &randomSize, serverRandom, x) || randomSize != (size_t)keySize / 8) {
     mpz_clear(x);
     throw protocol_error("Failed to decrypt server random");
   }
@@ -295,8 +274,7 @@ bool CSecurityRSAAES::readRandom()
   return true;
 }
 
-void CSecurityRSAAES::setCipher()
-{
+void CSecurityRSAAES::setCipher() {
   rawis = cc->getInStream();
   rawos = cc->getOutStream();
   uint8_t key[32];
@@ -329,23 +307,14 @@ void CSecurityRSAAES::setCipher()
     cc->setStreams(rais, raos);
 }
 
-void CSecurityRSAAES::writeHash()
-{
+void CSecurityRSAAES::writeHash() {
   uint8_t hash[32];
   size_t len = serverKeyLength;
-  uint8_t lenServerKey[4] = {
-    (uint8_t)((len & 0xff000000) >> 24),
-    (uint8_t)((len & 0xff0000) >> 16),
-    (uint8_t)((len & 0xff00) >> 8),
-    (uint8_t)(len & 0xff)
-  };
+  uint8_t lenServerKey[4] = {(uint8_t)((len & 0xff000000) >> 24), (uint8_t)((len & 0xff0000) >> 16),
+                             (uint8_t)((len & 0xff00) >> 8), (uint8_t)(len & 0xff)};
   len = clientKeyLength;
-  uint8_t lenClientKey[4] = {
-    (uint8_t)((len & 0xff000000) >> 24),
-    (uint8_t)((len & 0xff0000) >> 16),
-    (uint8_t)((len & 0xff00) >> 8),
-    (uint8_t)(len & 0xff)
-  };
+  uint8_t lenClientKey[4] = {(uint8_t)((len & 0xff000000) >> 24), (uint8_t)((len & 0xff0000) >> 16),
+                             (uint8_t)((len & 0xff00) >> 8), (uint8_t)(len & 0xff)};
   int hashSize;
   if (keySize == 128) {
     hashSize = 20;
@@ -374,8 +343,7 @@ void CSecurityRSAAES::writeHash()
   raos->flush();
 }
 
-bool CSecurityRSAAES::readHash()
-{
+bool CSecurityRSAAES::readHash() {
   uint8_t hash[32];
   uint8_t realHash[32];
   int hashSize = keySize == 128 ? 20 : 32;
@@ -383,19 +351,11 @@ bool CSecurityRSAAES::readHash()
     return false;
   rais->readBytes(hash, hashSize);
   size_t len = serverKeyLength;
-  uint8_t lenServerKey[4] = {
-    (uint8_t)((len & 0xff000000) >> 24),
-    (uint8_t)((len & 0xff0000) >> 16),
-    (uint8_t)((len & 0xff00) >> 8),
-    (uint8_t)(len & 0xff)
-  };
+  uint8_t lenServerKey[4] = {(uint8_t)((len & 0xff000000) >> 24), (uint8_t)((len & 0xff0000) >> 16),
+                             (uint8_t)((len & 0xff00) >> 8), (uint8_t)(len & 0xff)};
   len = clientKeyLength;
-  uint8_t lenClientKey[4] = {
-    (uint8_t)((len & 0xff000000) >> 24),
-    (uint8_t)((len & 0xff0000) >> 16),
-    (uint8_t)((len & 0xff00) >> 8),
-    (uint8_t)(len & 0xff)
-  };
+  uint8_t lenClientKey[4] = {(uint8_t)((len & 0xff000000) >> 24), (uint8_t)((len & 0xff0000) >> 16),
+                             (uint8_t)((len & 0xff00) >> 8), (uint8_t)(len & 0xff)};
   if (keySize == 128) {
     struct sha1_ctx ctx;
     sha1_init(&ctx);
@@ -422,8 +382,7 @@ bool CSecurityRSAAES::readHash()
   return true;
 }
 
-void CSecurityRSAAES::clearSecrets()
-{
+void CSecurityRSAAES::clearSecrets() {
   rsa_private_key_clear(&clientKey);
   rsa_public_key_clear(&clientPublicKey);
   rsa_public_key_clear(&serverKey);
@@ -442,8 +401,7 @@ void CSecurityRSAAES::clearSecrets()
   memset(clientRandom, 0, sizeof(clientRandom));
 }
 
-bool CSecurityRSAAES::readSubtype()
-{
+bool CSecurityRSAAES::readSubtype() {
   if (!rais->hasData(1))
     return false;
   subtype = rais->readU8();
@@ -452,8 +410,7 @@ bool CSecurityRSAAES::readSubtype()
   return true;
 }
 
-void CSecurityRSAAES::writeCredentials()
-{
+void CSecurityRSAAES::writeCredentials() {
   std::string username;
   std::string password;
 

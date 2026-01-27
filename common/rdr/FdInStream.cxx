@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -20,9 +20,9 @@
 #include <config.h>
 #endif
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
-#include <errno.h>
 #include <sys/time.h>
 #ifdef _WIN32
 #include <winsock2.h>
@@ -30,8 +30,8 @@
 #define close closesocket
 #include <core/winerrno.h>
 #else
-#include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 #define errorNumber errno
 #endif
@@ -47,19 +47,14 @@
 
 using namespace rdr;
 
-FdInStream::FdInStream(int fd_, bool closeWhenDone_)
-  : fd(fd_), closeWhenDone(closeWhenDone_)
-{
+FdInStream::FdInStream(int fd_, bool closeWhenDone_) : fd(fd_), closeWhenDone(closeWhenDone_) {}
+
+FdInStream::~FdInStream() {
+  if (closeWhenDone)
+    close(fd);
 }
 
-FdInStream::~FdInStream()
-{
-  if (closeWhenDone) close(fd);
-}
-
-
-bool FdInStream::fillBuffer()
-{
+bool FdInStream::fillBuffer() {
   size_t n = readFd((uint8_t*)end, availSpace());
   if (n == 0)
     return false;
@@ -78,8 +73,7 @@ bool FdInStream::fillBuffer()
 // returning EINTR.
 //
 
-size_t FdInStream::readFd(uint8_t* buf, size_t len)
-{
+size_t FdInStream::readFd(uint8_t* buf, size_t len) {
   int n;
   do {
     fd_set fds;
@@ -89,7 +83,7 @@ size_t FdInStream::readFd(uint8_t* buf, size_t len)
 
     FD_ZERO(&fds);
     FD_SET(fd, &fds);
-    n = select(fd+1, &fds, nullptr, nullptr, &tv);
+    n = select(fd + 1, &fds, nullptr, nullptr, &tv);
   } while (n < 0 && errorNumber == EINTR);
 
   if (n < 0)

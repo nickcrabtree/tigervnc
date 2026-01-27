@@ -1,17 +1,17 @@
-/* 
+/*
  * Copyright (C) 2006 Martin Koegler
  * Copyright (C) 2010 TigerVNC Team
- *    
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -23,8 +23,8 @@
 #endif
 
 #include <assert.h>
-#include <string.h>
 #include <security/pam_appl.h>
+#include <string.h>
 
 #include <core/Configuration.h>
 #include <core/LogWriter.h>
@@ -35,32 +35,26 @@ using namespace rfb;
 
 static core::LogWriter vlog("UnixPasswordValidator");
 
-static core::StringParameter pamService
-  ("PAMService", "Service name for PAM password validation", "vnc");
-core::AliasParameter pam_service("pam_service", "Alias for PAMService",
-                                 &pamService);
+static core::StringParameter pamService("PAMService", "Service name for PAM password validation", "vnc");
+core::AliasParameter pam_service("pam_service", "Alias for PAMService", &pamService);
 
 std::string UnixPasswordValidator::displayName;
 
-typedef struct
-{
-  const char *username;
-  const char *password;
-  std::string &msg;
+typedef struct {
+  const char* username;
+  const char* password;
+  std::string& msg;
 } AuthData;
 
 #if defined(__sun)
-static int pam_callback(int count, struct pam_message **in,
-                        struct pam_response **out, void *ptr)
+static int pam_callback(int count, struct pam_message** in, struct pam_response** out, void* ptr)
 #else
-static int pam_callback(int count, const struct pam_message **in,
-                        struct pam_response **out, void *ptr)
+static int pam_callback(int count, const struct pam_message** in, struct pam_response** out, void* ptr)
 #endif
 {
   int i;
-  AuthData *auth = (AuthData *) ptr;
-  struct pam_response *resp =
-    (struct pam_response *) malloc (sizeof (struct pam_response) * count);
+  AuthData* auth = (AuthData*)ptr;
+  struct pam_response* resp = (struct pam_response*)malloc(sizeof(struct pam_response) * count);
 
   if (!resp && count)
     return PAM_CONV_ERR;
@@ -69,19 +63,19 @@ static int pam_callback(int count, const struct pam_message **in,
     resp[i].resp_retcode = PAM_SUCCESS;
     switch (in[i]->msg_style) {
     case PAM_TEXT_INFO:
-      vlog.info("%s info: %s", (const char *) pamService, in[i]->msg);
+      vlog.info("%s info: %s", (const char*)pamService, in[i]->msg);
       auth->msg = in[i]->msg;
       resp[i].resp = nullptr;
       break;
     case PAM_ERROR_MSG:
-      vlog.error("%s error: %s", (const char *) pamService, in[i]->msg);
+      vlog.error("%s error: %s", (const char*)pamService, in[i]->msg);
       auth->msg = in[i]->msg;
       resp[i].resp = nullptr;
       break;
-    case PAM_PROMPT_ECHO_ON:	/* Send Username */
+    case PAM_PROMPT_ECHO_ON: /* Send Username */
       resp[i].resp = strdup(auth->username);
       break;
-    case PAM_PROMPT_ECHO_OFF:	/* Send Password */
+    case PAM_PROMPT_ECHO_OFF: /* Send Password */
       resp[i].resp = strdup(auth->password);
       break;
     default:
@@ -94,22 +88,16 @@ static int pam_callback(int count, const struct pam_message **in,
   return PAM_SUCCESS;
 }
 
-bool UnixPasswordValidator::validateInternal(SConnection * /* sc */,
-					     const char *username,
-					     const char *password,
-					     std::string &msg)
-{
+bool UnixPasswordValidator::validateInternal(SConnection* /* sc */, const char* username, const char* password,
+                                             std::string& msg) {
   int ret;
-  AuthData auth = { username, password, msg };
-  struct pam_conv conv = {
-    pam_callback,
-    &auth
-  };
-  pam_handle_t *pamh = nullptr;
+  AuthData auth = {username, password, msg};
+  struct pam_conv conv = {pam_callback, &auth};
+  pam_handle_t* pamh = nullptr;
   ret = pam_start(pamService, username, &conv, &pamh);
   if (ret != PAM_SUCCESS) {
     /* Can't call pam_strerror() here because the content of pamh undefined */
-    vlog.error("pam_start(%s) failed: %d", (const char *) pamService, ret);
+    vlog.error("pam_start(%s) failed: %d", (const char*)pamService, ret);
     return false;
   }
 #ifdef PAM_XDISPLAY

@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2014-2022 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -22,31 +22,24 @@
 #endif
 
 #include <rdr/OutStream.h>
-#include <rfb/encodings.h>
-#include <rfb/SConnection.h>
-#include <rfb/PixelFormat.h>
-#include <rfb/PixelBuffer.h>
 #include <rfb/Palette.h>
+#include <rfb/PixelBuffer.h>
+#include <rfb/PixelFormat.h>
 #include <rfb/RREEncoder.h>
+#include <rfb/SConnection.h>
+#include <rfb/encodings.h>
 
 using namespace rfb;
 
-RREEncoder::RREEncoder(SConnection* conn_) :
-  Encoder(conn_, encodingRRE, EncoderPlain)
-{
-}
+RREEncoder::RREEncoder(SConnection* conn_) : Encoder(conn_, encodingRRE, EncoderPlain) {}
 
-RREEncoder::~RREEncoder()
-{
-}
+RREEncoder::~RREEncoder() {}
 
-bool RREEncoder::isSupported()
-{
+bool RREEncoder::isSupported() {
   return conn->client.supportsEncoding(encodingRRE);
 }
 
-void RREEncoder::writeRect(const PixelBuffer* pb, const Palette& palette)
-{
+void RREEncoder::writeRect(const PixelBuffer* pb, const Palette& palette) {
   uint8_t* imageBuf;
   int stride;
   uint32_t bg;
@@ -73,7 +66,7 @@ void RREEncoder::writeRect(const PixelBuffer* pb, const Palette& palette)
     // Some crazy person is using this encoder for high colour
     // data. Just pick the first pixel as the background colour.
     bg = 0;
-    memcpy(&bg, imageBuf, pb->getPF().bpp/8);
+    memcpy(&bg, imageBuf, pb->getPF().bpp / 8);
   }
 
   int nSubrects = -1;
@@ -97,21 +90,16 @@ void RREEncoder::writeRect(const PixelBuffer* pb, const Palette& palette)
   mos.clear();
 }
 
-void RREEncoder::writeSolidRect(int /*width*/, int /*height*/,
-                                const PixelFormat& pf,
-                                const uint8_t* colour)
-{
+void RREEncoder::writeSolidRect(int /*width*/, int /*height*/, const PixelFormat& pf, const uint8_t* colour) {
   rdr::OutStream* os;
 
   os = conn->getOutStream();
 
   os->writeU32(0);
-  os->writeBytes(colour, pf.bpp/8);
+  os->writeBytes(colour, pf.bpp / 8);
 }
 
-template<class T>
-inline void RREEncoder::writePixel(rdr::OutStream* os, T pixel)
-{
+template <class T> inline void RREEncoder::writePixel(rdr::OutStream* os, T pixel) {
   if (sizeof(T) == 1)
     os->writeOpaque8(pixel);
   else if (sizeof(T) == 2)
@@ -120,16 +108,12 @@ inline void RREEncoder::writePixel(rdr::OutStream* os, T pixel)
     os->writeOpaque32(pixel);
 }
 
-template<class T>
-int RREEncoder::rreEncode(T* data, int w, int h,
-                          rdr::OutStream* os, T bg)
-{
+template <class T> int RREEncoder::rreEncode(T* data, int w, int h, rdr::OutStream* os, T bg) {
   writePixel(os, bg);
 
   int nSubrects = 0;
 
-  for (int y = 0; y < h; y++)
-  {
+  for (int y = 0; y < h; y++) {
     int x = 0;
     while (x < w) {
       if (*data == bg) {
@@ -139,17 +123,19 @@ int RREEncoder::rreEncode(T* data, int w, int h,
       }
 
       // Find horizontal subrect first
-      T* ptr = data+1;
-      T* eol = data+w-x;
-      while (ptr < eol && *ptr == *data) ptr++;
+      T* ptr = data + 1;
+      T* eol = data + w - x;
+      while (ptr < eol && *ptr == *data)
+        ptr++;
       int sw = ptr - data;
 
       ptr = data + w;
       int sh = 1;
-      while (sh < h-y) {
+      while (sh < h - y) {
         eol = ptr + sw;
         while (ptr < eol)
-          if (*ptr++ != *data) goto endOfHorizSubrect;
+          if (*ptr++ != *data)
+            goto endOfHorizSubrect;
         ptr += w - sw;
         sh++;
       }
@@ -157,21 +143,23 @@ int RREEncoder::rreEncode(T* data, int w, int h,
 
       // Find vertical subrect
       int vh;
-      for (vh = sh; vh < h-y; vh++)
-        if (data[vh*w] != *data) break;
+      for (vh = sh; vh < h - y; vh++)
+        if (data[vh * w] != *data)
+          break;
 
       if (vh != sh) {
-        ptr = data+1;
+        ptr = data + 1;
         int vw;
         for (vw = 1; vw < sw; vw++) {
           for (int i = 0; i < vh; i++)
-            if (ptr[i*w] != *data) goto endOfVertSubrect;
+            if (ptr[i * w] != *data)
+              goto endOfVertSubrect;
           ptr++;
         }
       endOfVertSubrect:
 
         // If vertical subrect bigger than horizontal then use that.
-        if (sw*sh < vw*vh) {
+        if (sw * sh < vw * vh) {
           sw = vw;
           sh = vh;
         }
@@ -184,11 +172,12 @@ int RREEncoder::rreEncode(T* data, int w, int h,
       os->writeU16(sw);
       os->writeU16(sh);
 
-      ptr = data+w;
-      T* eor = data+w*sh;
+      ptr = data + w;
+      T* eor = data + w * sh;
       while (ptr < eor) {
         eol = ptr + sw;
-        while (ptr < eol) *ptr++ = bg;
+        while (ptr < eol)
+          *ptr++ = bg;
         ptr += w - sw;
       }
       x += sw;

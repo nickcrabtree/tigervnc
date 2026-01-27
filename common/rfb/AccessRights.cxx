@@ -22,19 +22,18 @@
 
 #include "AccessRights.h"
 
-namespace rfb
-{
+namespace rfb {
 
-  // AccessRights values
-  const AccessRights AccessNone           = 0x0000;
-  const AccessRights AccessView           = 0x0001;
-  const AccessRights AccessKeyEvents      = 0x0002;
-  const AccessRights AccessPtrEvents      = 0x0004;
-  const AccessRights AccessCutText        = 0x0008;
-  const AccessRights AccessSetDesktopSize = 0x0010;
-  const AccessRights AccessNonShared      = 0x0020;
-  const AccessRights AccessDefault        = 0x03ff;
-  const AccessRights AccessNoQuery        = 0x0400;
-  const AccessRights AccessFull           = 0xffff;
+// AccessRights values
+const AccessRights AccessNone = 0x0000;
+const AccessRights AccessView = 0x0001;
+const AccessRights AccessKeyEvents = 0x0002;
+const AccessRights AccessPtrEvents = 0x0004;
+const AccessRights AccessCutText = 0x0008;
+const AccessRights AccessSetDesktopSize = 0x0010;
+const AccessRights AccessNonShared = 0x0020;
+const AccessRights AccessDefault = 0x03ff;
+const AccessRights AccessNoQuery = 0x0400;
+const AccessRights AccessFull = 0xffff;
 
 } /* namespace rfb */

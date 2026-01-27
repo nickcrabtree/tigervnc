@@ -1,17 +1,17 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2005 Constantin Kaplinsky.  All Rights Reserved.
  * Copyright 2014-2022 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -28,11 +28,11 @@
 
 #include <rdr/OutStream.h>
 
-#include <rfb/encodings.h>
-#include <rfb/SConnection.h>
 #include <rfb/HextileEncoder.h>
 #include <rfb/Palette.h>
 #include <rfb/PixelBuffer.h>
+#include <rfb/SConnection.h>
+#include <rfb/encodings.h>
 #include <rfb/hextileConstants.h>
 
 using namespace rfb;
@@ -45,23 +45,15 @@ core::BoolParameter improvedHextile("ImprovedHextile",
                                     "CPU time",
                                     true);
 
-HextileEncoder::HextileEncoder(SConnection* conn_) :
-  Encoder(conn_, encodingHextile, EncoderPlain)
-{
-}
+HextileEncoder::HextileEncoder(SConnection* conn_) : Encoder(conn_, encodingHextile, EncoderPlain) {}
 
-HextileEncoder::~HextileEncoder()
-{
-}
+HextileEncoder::~HextileEncoder() {}
 
-bool HextileEncoder::isSupported()
-{
+bool HextileEncoder::isSupported() {
   return conn->client.supportsEncoding(encodingHextile);
 }
 
-void HextileEncoder::writeRect(const PixelBuffer* pb,
-                               const Palette& /*palette*/)
-{
+void HextileEncoder::writeRect(const PixelBuffer* pb, const Palette& /*palette*/) {
   rdr::OutStream* os = conn->getOutStream();
   switch (pb->getPF().bpp) {
   case 8:
@@ -88,28 +80,23 @@ void HextileEncoder::writeRect(const PixelBuffer* pb,
   }
 }
 
-void HextileEncoder::writeSolidRect(int width, int height,
-                                    const PixelFormat& pf,
-                                    const uint8_t* colour)
-{
+void HextileEncoder::writeSolidRect(int width, int height, const PixelFormat& pf, const uint8_t* colour) {
   rdr::OutStream* os;
   int tiles;
 
   os = conn->getOutStream();
 
-  tiles = ((width + 15)/16) * ((height + 15)/16);
+  tiles = ((width + 15) / 16) * ((height + 15) / 16);
 
   os->writeU8(hextileBgSpecified);
-  os->writeBytes(colour, pf.bpp/8);
+  os->writeBytes(colour, pf.bpp / 8);
   tiles--;
 
   while (tiles--)
-      os->writeU8(0);
+    os->writeU8(0);
 }
 
-template<class T>
-inline void HextileEncoder::writePixel(rdr::OutStream* os, T pixel)
-{
+template <class T> inline void HextileEncoder::writePixel(rdr::OutStream* os, T pixel) {
   if (sizeof(T) == 1)
     os->writeOpaque8(pixel);
   else if (sizeof(T) == 2)
@@ -118,16 +105,13 @@ inline void HextileEncoder::writePixel(rdr::OutStream* os, T pixel)
     os->writeOpaque32(pixel);
 }
 
-template<class T>
-void HextileEncoder::hextileEncode(rdr::OutStream* os,
-                                   const PixelBuffer* pb)
-{
+template <class T> void HextileEncoder::hextileEncode(rdr::OutStream* os, const PixelBuffer* pb) {
   core::Rect t;
   T buf[256];
   T oldBg = 0, oldFg = 0;
   bool oldBgValid = false;
   bool oldFgValid = false;
-  uint8_t encoded[256*sizeof(T)];
+  uint8_t encoded[256 * sizeof(T)];
 
   for (t.tl.y = 0; t.tl.y < pb->height(); t.tl.y += 16) {
 
@@ -162,38 +146,34 @@ void HextileEncoder::hextileEncode(rdr::OutStream* os,
           }
         }
 
-        encodedLen = hextileEncodeTile(buf, t.width(), t.height(),
-                                       tileType, encoded, bg);
+        encodedLen = hextileEncodeTile(buf, t.width(), t.height(), tileType, encoded, bg);
 
         if (encodedLen < 0) {
           pb->getImage(buf, t);
           os->writeU8(hextileRaw);
-          os->writeBytes((const uint8_t*)buf,
-                         t.width() * t.height() * sizeof(T));
+          os->writeBytes((const uint8_t*)buf, t.width() * t.height() * sizeof(T));
           oldBgValid = oldFgValid = false;
           continue;
         }
       }
 
       os->writeU8(tileType);
-      if (tileType & hextileBgSpecified) writePixel(os, bg);
-      if (tileType & hextileFgSpecified) writePixel(os, fg);
-      if (tileType & hextileAnySubrects) os->writeBytes(encoded, encodedLen);
+      if (tileType & hextileBgSpecified)
+        writePixel(os, bg);
+      if (tileType & hextileFgSpecified)
+        writePixel(os, fg);
+      if (tileType & hextileAnySubrects)
+        os->writeBytes(encoded, encodedLen);
     }
   }
 }
 
-template<class T>
-int HextileEncoder::hextileEncodeTile(T* data, int w, int h,
-                                      int tileType, uint8_t* encoded,
-                                      T bg)
-{
+template <class T> int HextileEncoder::hextileEncodeTile(T* data, int w, int h, int tileType, uint8_t* encoded, T bg) {
   uint8_t* nSubrectsPtr = encoded;
   *nSubrectsPtr = 0;
   encoded++;
 
-  for (int y = 0; y < h; y++)
-  {
+  for (int y = 0; y < h; y++) {
     int x = 0;
     while (x < w) {
       if (*data == bg) {
@@ -203,17 +183,19 @@ int HextileEncoder::hextileEncodeTile(T* data, int w, int h,
       }
 
       // Find horizontal subrect first
-      T* ptr = data+1;
-      T* eol = data+w-x;
-      while (ptr < eol && *ptr == *data) ptr++;
+      T* ptr = data + 1;
+      T* eol = data + w - x;
+      while (ptr < eol && *ptr == *data)
+        ptr++;
       int sw = ptr - data;
 
       ptr = data + w;
       int sh = 1;
-      while (sh < h-y) {
+      while (sh < h - y) {
         eol = ptr + sw;
         while (ptr < eol)
-          if (*ptr++ != *data) goto endOfSubrect;
+          if (*ptr++ != *data)
+            goto endOfSubrect;
         ptr += w - sw;
         sh++;
       }
@@ -222,7 +204,7 @@ int HextileEncoder::hextileEncodeTile(T* data, int w, int h,
       (*nSubrectsPtr)++;
 
       if (tileType & hextileSubrectsColoured) {
-        if (encoded - nSubrectsPtr + sizeof(T) > w*h*sizeof(T))
+        if (encoded - nSubrectsPtr + sizeof(T) > w * h * sizeof(T))
           return -1;
 
         if (sizeof(T) == 1) {
@@ -238,16 +220,17 @@ int HextileEncoder::hextileEncodeTile(T* data, int w, int h,
         }
       }
 
-      if ((size_t)(encoded - nSubrectsPtr + 2) > w*h*sizeof(T))
+      if ((size_t)(encoded - nSubrectsPtr + 2) > w * h * sizeof(T))
         return -1;
       *encoded++ = (x << 4) | y;
-      *encoded++ = ((sw-1) << 4) | (sh-1);
+      *encoded++ = ((sw - 1) << 4) | (sh - 1);
 
-      ptr = data+w;
-      T* eor = data+w*sh;
+      ptr = data + w;
+      T* eor = data + w * sh;
       while (ptr < eor) {
         eol = ptr + sw;
-        while (ptr < eol) *ptr++ = bg;
+        while (ptr < eol)
+          *ptr++ = bg;
         ptr += w - sw;
       }
       x += sw;
@@ -257,9 +240,7 @@ int HextileEncoder::hextileEncodeTile(T* data, int w, int h,
   return encoded - nSubrectsPtr;
 }
 
-template<class T>
-int HextileEncoder::testTileType(T* data, int w, int h, T* bg, T* fg)
-{
+template <class T> int HextileEncoder::testTileType(T* data, int w, int h, T* bg, T* fg) {
   T pix1 = *data;
   T* end = data + w * h;
 
@@ -269,7 +250,7 @@ int HextileEncoder::testTileType(T* data, int w, int h, T* bg, T* fg)
 
   if (ptr == end) {
     *bg = pix1;
-    return 0;                   // solid-color tile
+    return 0; // solid-color tile
   }
 
   int count1 = ptr - data;
@@ -289,9 +270,11 @@ int HextileEncoder::testTileType(T* data, int w, int h, T* bg, T* fg)
   }
 
   if (count1 >= count2) {
-    *bg = pix1; *fg = pix2;
+    *bg = pix1;
+    *fg = pix2;
   } else {
-    *bg = pix2; *fg = pix1;
+    *bg = pix2;
+    *fg = pix1;
   }
   return tileType;
 }
@@ -300,17 +283,15 @@ int HextileEncoder::testTileType(T* data, int w, int h, T* bg, T* fg)
 // This class analyzes a separate tile and encodes its subrectangles.
 //
 
-template<class T>
-class HextileTile {
+template <class T> class HextileTile {
 
- public:
-
-  HextileTile ();
+public:
+  HextileTile();
 
   //
   // Initialize existing object instance with new tile data.
   //
-  void newTile(const T *src, int w, int h);
+  void newTile(const T* src, int w, int h);
 
   //
   // Flags can include: hextileRaw, hextileAnySubrects and
@@ -318,23 +299,31 @@ class HextileTile {
   // flags make no sense. Also, hextileSubrectsColoured is meaningful
   // only when hextileAnySubrects is set as well.
   //
-  int getFlags() const { return m_flags; }
+  int getFlags() const {
+    return m_flags;
+  }
 
   //
   // Returns the size of encoded subrects data, including subrect count.
   // The size is zero if flags do not include hextileAnySubrects.
   //
-  size_t getSize() const { return m_size; }
+  size_t getSize() const {
+    return m_size;
+  }
 
   //
   // Return optimal background.
   //
-  int getBackground() const { return m_background; }
+  int getBackground() const {
+    return m_background;
+  }
 
   //
   // Return foreground if flags include hextileSubrectsColoured.
   //
-  int getForeground() const { return m_foreground; }
+  int getForeground() const {
+    return m_foreground;
+  }
 
   //
   // Encode subrects. This function may be called only if
@@ -344,14 +333,13 @@ class HextileTile {
   //
   void encode(uint8_t* dst) const;
 
- protected:
-
+protected:
   //
   // Analyze the tile pixels, fill in all the data fields.
   //
   void analyze();
 
-  const T *m_tile;
+  const T* m_tile;
   int m_width;
   int m_height;
 
@@ -364,23 +352,17 @@ class HextileTile {
   uint8_t m_coords[256 * 2];
   T m_colors[256];
 
- private:
-
+private:
   bool m_processed[16][16];
   Palette m_pal;
 };
 
-template<class T>
+template <class T>
 HextileTile<T>::HextileTile()
-  : m_tile(nullptr), m_width(0), m_height(0),
-    m_size(0), m_flags(0), m_background(0), m_foreground(0),
-    m_numSubrects(0)
-{
-}
+    : m_tile(nullptr), m_width(0), m_height(0), m_size(0), m_flags(0), m_background(0), m_foreground(0),
+      m_numSubrects(0) {}
 
-template<class T>
-void HextileTile<T>::newTile(const T *src, int w, int h)
-{
+template <class T> void HextileTile<T>::newTile(const T* src, int w, int h) {
   m_tile = src;
   m_width = w;
   m_height = h;
@@ -388,13 +370,11 @@ void HextileTile<T>::newTile(const T *src, int w, int h)
   analyze();
 }
 
-template<class T>
-void HextileTile<T>::analyze()
-{
+template <class T> void HextileTile<T>::analyze() {
   assert(m_tile && m_width && m_height);
 
-  const T *ptr = m_tile;
-  const T *end = &m_tile[m_width * m_height];
+  const T* ptr = m_tile;
+  const T* end = &m_tile[m_width * m_height];
   T color = *ptr++;
   while (ptr != end && *ptr == color)
     ptr++;
@@ -410,8 +390,8 @@ void HextileTile<T>::analyze()
   // Compute number of complete rows of the same color, at the top
   int y = (ptr - m_tile) / m_width;
 
-  T *colorsPtr = m_colors;
-  uint8_t *coordsPtr = m_coords;
+  T* colorsPtr = m_colors;
+  uint8_t* coordsPtr = m_coords;
   m_pal.clear();
   m_numSubrects = 0;
 
@@ -456,8 +436,7 @@ void HextileTile<T>::analyze()
       *coordsPtr++ = (uint8_t)((x << 4) | (y & 0x0F));
       *coordsPtr++ = (uint8_t)(((sw - 1) << 4) | ((sh - 1) & 0x0F));
 
-      if (!m_pal.insert(color, 1) ||
-          ((size_t)m_pal.size() > (48 + 2 * sizeof(T)*8))) {
+      if (!m_pal.insert(color, 1) || ((size_t)m_pal.size() > (48 + 2 * sizeof(T) * 8))) {
         // Handle palette overflow
         m_flags = hextileRaw;
         m_size = 0;
@@ -496,13 +475,11 @@ void HextileTile<T>::analyze()
   }
 }
 
-template<class T>
-void HextileTile<T>::encode(uint8_t *dst) const
-{
+template <class T> void HextileTile<T>::encode(uint8_t* dst) const {
   assert(m_numSubrects && (m_flags & hextileAnySubrects));
 
   // Zero subrects counter
-  uint8_t *numSubrectsPtr = dst;
+  uint8_t* numSubrectsPtr = dst;
   *dst++ = 0;
 
   for (int i = 0; i < m_numSubrects; i++) {
@@ -535,16 +512,13 @@ void HextileTile<T>::encode(uint8_t *dst) const
 // Main encoding function.
 //
 
-template<class T>
-void HextileEncoder::hextileEncodeBetter(rdr::OutStream* os,
-                                         const PixelBuffer* pb)
-{
+template <class T> void HextileEncoder::hextileEncodeBetter(rdr::OutStream* os, const PixelBuffer* pb) {
   core::Rect t;
   T buf[256];
   T oldBg = 0, oldFg = 0;
   bool oldBgValid = false;
   bool oldFgValid = false;
-  uint8_t encoded[256*sizeof(T)];
+  uint8_t encoded[256 * sizeof(T)];
 
   HextileTile<T> tile;
 
@@ -562,11 +536,9 @@ void HextileEncoder::hextileEncodeBetter(rdr::OutStream* os,
       int tileType = tile.getFlags();
       size_t encodedLen = tile.getSize();
 
-      if ( (tileType & hextileRaw) != 0 ||
-           encodedLen >= t.width() * t.height() * sizeof(T)) {
+      if ((tileType & hextileRaw) != 0 || encodedLen >= t.width() * t.height() * sizeof(T)) {
         os->writeU8(hextileRaw);
-        os->writeBytes((const uint8_t*)buf,
-                       t.width() * t.height() * sizeof(T));
+        os->writeBytes((const uint8_t*)buf, t.width() * t.height() * sizeof(T));
         oldBgValid = oldFgValid = false;
         continue;
       }
@@ -595,9 +567,12 @@ void HextileEncoder::hextileEncodeBetter(rdr::OutStream* os,
       }
 
       os->writeU8(tileType);
-      if (tileType & hextileBgSpecified) writePixel(os, bg);
-      if (tileType & hextileFgSpecified) writePixel(os, fg);
-      if (tileType & hextileAnySubrects) os->writeBytes(encoded, encodedLen);
+      if (tileType & hextileBgSpecified)
+        writePixel(os, bg);
+      if (tileType & hextileFgSpecified)
+        writePixel(os, fg);
+      if (tileType & hextileAnySubrects)
+        os->writeBytes(encoded, encodedLen);
     }
   }
 }

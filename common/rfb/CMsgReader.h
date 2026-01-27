@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2019 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -28,103 +28,103 @@
 #include <vector>
 
 #include <core/Rect.h>
+#include <rfb/CacheKey.h>
 #include <rfb/PixelFormat.h>
 #include <rfb/ServerParams.h>
-#include <rfb/CacheKey.h>
 
-namespace rdr { class InStream; }
+namespace rdr {
+class InStream;
+}
 
 namespace rfb {
 
-  class CMsgHandler;
+class CMsgHandler;
 
-  class CMsgReader {
-  public:
-    CMsgReader(CMsgHandler* handler, rdr::InStream* is);
-    virtual ~CMsgReader();
+class CMsgReader {
+public:
+  CMsgReader(CMsgHandler* handler, rdr::InStream* is);
+  virtual ~CMsgReader();
 
-    bool readServerInit();
+  bool readServerInit();
 
-    // readMsg() reads a message, calling the handler as appropriate.
-    bool readMsg();
+  // readMsg() reads a message, calling the handler as appropriate.
+  bool readMsg();
 
-    rdr::InStream* getInStream() { return is; }
+  rdr::InStream* getInStream() {
+    return is;
+  }
 
-    int imageBufIdealSize;
+  int imageBufIdealSize;
 
-  protected:
-    bool readSetColourMapEntries();
-    bool readBell();
-    bool readServerCutText();
-    bool readExtendedClipboard(int32_t len);
-    bool readFence();
-    bool readEndOfContinuousUpdates();
+protected:
+  bool readSetColourMapEntries();
+  bool readBell();
+  bool readServerCutText();
+  bool readExtendedClipboard(int32_t len);
+  bool readFence();
+  bool readEndOfContinuousUpdates();
 
-    bool readFramebufferUpdate();
+  bool readFramebufferUpdate();
 
-    bool readRect(const core::Rect& r, int encoding,
-                  const ServerParams* serverOverride = nullptr);
+  bool readRect(const core::Rect& r, int encoding, const ServerParams* serverOverride = nullptr);
 
-    bool readSetXCursor(int width, int height,
-                        const core::Point& hotspot);
-    bool readSetCursor(int width, int height,
-                       const core::Point& hotspot);
-    bool readSetCursorWithAlpha(int width, int height,
-                                const core::Point& hotspot);
-    bool readSetVMwareCursor(int width, int height,
-                             const core::Point& hotspot);
-    bool readSetDesktopName(int x, int y, int w, int h);
-    bool readExtendedDesktopSize(int x, int y, int w, int h);
-    bool readLEDState();
-    bool readVMwareLEDState();
-    
-    // Cache protocol extension (ContentCache - session-only)
-    bool readCachedRect(const core::Rect& r);
-    bool readCachedRectInit(const core::Rect& r);
-    
-    // PersistentCache protocol extension (cross-session)
-    bool readPersistentCachedRect(const core::Rect& r);
-    bool readPersistentCachedRectInit(const core::Rect& r);
-    
-    // Cache seed: associate existing framebuffer pixels with cache ID
-    bool readCachedRectSeed(const core::Rect& r);
+  bool readSetXCursor(int width, int height, const core::Point& hotspot);
+  bool readSetCursor(int width, int height, const core::Point& hotspot);
+  bool readSetCursorWithAlpha(int width, int height, const core::Point& hotspot);
+  bool readSetVMwareCursor(int width, int height, const core::Point& hotspot);
+  bool readSetDesktopName(int x, int y, int w, int h);
+  bool readExtendedDesktopSize(int x, int y, int w, int h);
+  bool readLEDState();
+  bool readVMwareLEDState();
 
-  private:
-    CMsgHandler* handler;
-    rdr::InStream* is;
+  // Cache protocol extension (legacy CachedRect - session-only)
+  bool readCachedRect(const core::Rect& r);
+  bool readCachedRectInit(const core::Rect& r);
 
-    enum stateEnum {
-      MSGSTATE_IDLE,
-      MSGSTATE_MESSAGE,
-      MSGSTATE_RECT_HEADER,
-      MSGSTATE_RECT_DATA,
-    };
+  // PersistentCache protocol extension (cross-session)
+  bool readPersistentCachedRect(const core::Rect& r);
+  bool readPersistentCachedRectWithOffset(const core::Rect& r);
+  bool readPersistentCachedRectInit(const core::Rect& r);
 
-    stateEnum state;
+  // Cache seed: associate existing framebuffer pixels with cache ID
+  bool readCachedRectSeed(const core::Rect& r);
 
-    uint8_t currentMsgType;
-    int nUpdateRectsLeft;
-    core::Rect dataRect;
-    int rectEncoding;
+private:
+  CMsgHandler* handler;
+  rdr::InStream* is;
 
-    int cursorEncoding;
-
-    // State for incremental CachedRectInit decode to avoid nested restore points
-    bool pendingCacheInitActive;
-    CacheKey pendingCacheKey;
-    int pendingCacheEncoding;
-    
-    // State for PersistentCachedRectInit decode
-    bool pendingPersistentCacheInitActive;
-    CacheKey pendingPersistentCacheKey;
-    int pendingPersistentCacheEncoding;
-    uint8_t pendingPersistentCacheFlags;
-    PixelFormat pendingPersistentCachePF;
-    bool pendingPersistentCacheHasPF;
-
-    static const int maxCursorSize = 256;
+  enum stateEnum {
+    MSGSTATE_IDLE,
+    MSGSTATE_MESSAGE,
+    MSGSTATE_RECT_HEADER,
+    MSGSTATE_RECT_DATA,
   };
 
-}
+  stateEnum state;
+
+  uint8_t currentMsgType;
+  int nUpdateRectsLeft;
+  core::Rect dataRect;
+  int rectEncoding;
+
+  int cursorEncoding;
+
+  // State for incremental CachedRectInit decode to avoid nested restore points
+  bool pendingCacheInitActive;
+  CacheKey pendingCacheKey;
+  int pendingCacheEncoding;
+
+  // State for PersistentCachedRectInit decode
+  bool pendingPersistentCacheInitActive;
+  CacheKey pendingPersistentCacheKey;
+  int pendingPersistentCacheEncoding;
+  uint8_t pendingPersistentCacheFlags;
+  PixelFormat pendingPersistentCachePF;
+  bool pendingPersistentCacheHasPF;
+
+  static const int maxCursorSize = 256;
+};
+
+} // namespace rfb
 
 #endif

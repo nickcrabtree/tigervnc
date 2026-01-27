@@ -1,7 +1,8 @@
-#include <rfb/cache/BandwidthStats.h>
 #include <core/string.h>
+#include <rfb/cache/BandwidthStats.h>
 
-namespace rfb { namespace cache {
+namespace rfb {
+namespace cache {
 
 static inline size_t estimateCompressed(size_t uncompressedBytes) {
   // For user-facing "sales pitch" metrics we deliberately assume a very
@@ -14,16 +15,10 @@ static inline size_t estimateCompressed(size_t uncompressedBytes) {
 std::string CacheProtocolStats::formatSummary(const char* label) const {
   const uint64_t saved = bandwidthSaved();
   const double pct = reductionPercentage();
-  return core::format("%s: %s bandwidth saving (%.1f%% reduction)",
-                      label,
-                      core::iecPrefix(saved, "B").c_str(),
-                      pct);
+  return core::format("%s: %s bandwidth saving (%.1f%% reduction)", label, core::iecPrefix(saved, "B").c_str(), pct);
 }
 
-void trackContentCacheRef(CacheProtocolStats& stats,
-                          const core::Rect& r,
-                          const rfb::PixelFormat& pf)
-{
+void trackContentCacheRef(CacheProtocolStats& stats, const core::Rect& r, const rfb::PixelFormat& pf) {
   (void)pf; // Not needed for ContentCache reference accounting
   // 20 bytes per ref (12 header + 8 cacheId)
   const size_t refBytes = 20;
@@ -33,19 +28,14 @@ void trackContentCacheRef(CacheProtocolStats& stats,
   stats.cachedRectCount++;
 }
 
-void trackContentCacheInit(CacheProtocolStats& stats,
-                           size_t compressedBytes)
-{
+void trackContentCacheInit(CacheProtocolStats& stats, size_t compressedBytes) {
   const size_t overhead = 24; // 12 header + 8 cacheId + 4 encoding
   stats.cachedRectInitBytes += overhead + compressedBytes;
   stats.alternativeBytes += 16 + compressedBytes; // 12 header + 4 encoding + compressed
   stats.cachedRectInitCount++;
 }
 
-void trackPersistentCacheRef(CacheProtocolStats& stats,
-                             const core::Rect& r,
-                             const rfb::PixelFormat& pf)
-{
+void trackPersistentCacheRef(CacheProtocolStats& stats, const core::Rect& r, const rfb::PixelFormat& pf) {
   (void)pf; // Encoding choice is implicit; we just need an estimated baseline.
   // Overhead matches CachedRect: 20 bytes (12 header + 8 ID).
   const size_t overhead = 20;
@@ -55,9 +45,7 @@ void trackPersistentCacheRef(CacheProtocolStats& stats,
   stats.cachedRectCount++;
 }
 
-void trackPersistentCacheInit(CacheProtocolStats& stats,
-                              size_t compressedBytes)
-{
+void trackPersistentCacheInit(CacheProtocolStats& stats, size_t compressedBytes) {
   // Overhead matches CachedRectInit: 24 bytes (12 header + 8 ID + 4 encoding)
   const size_t overhead = 24;
   stats.cachedRectInitBytes += overhead + compressedBytes;
@@ -65,4 +53,5 @@ void trackPersistentCacheInit(CacheProtocolStats& stats,
   stats.cachedRectInitCount++;
 }
 
-}} // namespace rfb::cache
+} // namespace cache
+} // namespace rfb

@@ -1,17 +1,17 @@
 /* Copyright (C) 2000-2005 Constantin Kaplinsky.  All Rights Reserved.
  * Copyright (C) 2011 D. R. Commander.  All Rights Reserved.
  * Copyright 2014 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -21,53 +21,59 @@
 #define __RFB_PALETTE_H__
 
 #include <assert.h>
-#include <string.h>
 #include <stdint.h>
+#include <string.h>
 
 namespace rfb {
-  class Palette {
-  public:
-    Palette() { clear(); }
-    ~Palette() {}
+class Palette {
+public:
+  Palette() {
+    clear();
+  }
+  ~Palette() {}
 
-    int size() const { return numColours; }
+  int size() const {
+    return numColours;
+  }
 
-    void clear() { numColours = 0; memset(hash, 0, sizeof(hash)); }
+  void clear() {
+    numColours = 0;
+    memset(hash, 0, sizeof(hash));
+  }
 
-    inline bool insert(uint32_t colour, int numPixels);
-    inline unsigned char lookup(uint32_t colour) const;
-    inline uint32_t getColour(unsigned char index) const;
-    inline int getCount(unsigned char index) const;
+  inline bool insert(uint32_t colour, int numPixels);
+  inline unsigned char lookup(uint32_t colour) const;
+  inline uint32_t getColour(unsigned char index) const;
+  inline int getCount(unsigned char index) const;
 
-  protected:
-    inline unsigned char genHash(uint32_t colour) const;
+protected:
+  inline unsigned char genHash(uint32_t colour) const;
 
-  protected:
-    int numColours;
+protected:
+  int numColours;
 
-    struct PaletteListNode {
-      PaletteListNode *next;
-      unsigned char idx;
-      uint32_t colour;
-    };
-
-    struct PaletteEntry {
-      PaletteListNode *listNode;
-      int numPixels;
-    };
-
-    // This is the raw list of colours, allocated from 0 and up
-    PaletteListNode list[256];
-    // Hash table for quick lookup into the list above
-    PaletteListNode *hash[256];
-    // Occurances of each colour, where the 0:th entry is the most common.
-    // Indices also refer to this array.
-    PaletteEntry entry[256];
+  struct PaletteListNode {
+    PaletteListNode* next;
+    unsigned char idx;
+    uint32_t colour;
   };
-}
 
-inline bool rfb::Palette::insert(uint32_t colour, int numPixels)
-{
+  struct PaletteEntry {
+    PaletteListNode* listNode;
+    int numPixels;
+  };
+
+  // This is the raw list of colours, allocated from 0 and up
+  PaletteListNode list[256];
+  // Hash table for quick lookup into the list above
+  PaletteListNode* hash[256];
+  // Occurances of each colour, where the 0:th entry is the most common.
+  // Indices also refer to this array.
+  PaletteEntry entry[256];
+};
+} // namespace rfb
+
+inline bool rfb::Palette::insert(uint32_t colour, int numPixels) {
   PaletteListNode* pnode;
   PaletteListNode* prev_pnode;
   unsigned char hash_key, idx;
@@ -87,9 +93,9 @@ inline bool rfb::Palette::insert(uint32_t colour, int numPixels)
 
       // The extra pixels might mean we have to adjust the sort list
       while (idx > 0) {
-        if (entry[idx-1].numPixels >= numPixels)
+        if (entry[idx - 1].numPixels >= numPixels)
           break;
-        entry[idx] = entry[idx-1];
+        entry[idx] = entry[idx - 1];
         entry[idx].listNode->idx = idx;
         idx--;
       }
@@ -127,9 +133,9 @@ inline bool rfb::Palette::insert(uint32_t colour, int numPixels)
   // Move palette entries with lesser pixel counts.
   idx = numColours;
   while (idx > 0) {
-    if (entry[idx-1].numPixels >= numPixels)
+    if (entry[idx - 1].numPixels >= numPixels)
       break;
-    entry[idx] = entry[idx-1];
+    entry[idx] = entry[idx - 1];
     entry[idx].listNode->idx = idx;
     idx--;
   }
@@ -144,8 +150,7 @@ inline bool rfb::Palette::insert(uint32_t colour, int numPixels)
   return true;
 }
 
-inline unsigned char rfb::Palette::lookup(uint32_t colour) const
-{
+inline unsigned char rfb::Palette::lookup(uint32_t colour) const {
   unsigned char hash_key;
   PaletteListNode* pnode;
 
@@ -164,18 +169,15 @@ inline unsigned char rfb::Palette::lookup(uint32_t colour) const
   return 0;
 }
 
-inline uint32_t rfb::Palette::getColour(unsigned char index) const
-{
+inline uint32_t rfb::Palette::getColour(unsigned char index) const {
   return entry[index].listNode->colour;
 }
 
-inline int rfb::Palette::getCount(unsigned char index) const
-{
+inline int rfb::Palette::getCount(unsigned char index) const {
   return entry[index].numPixels;
 }
 
-inline unsigned char rfb::Palette::genHash(uint32_t colour) const
-{
+inline unsigned char rfb::Palette::genHash(uint32_t colour) const {
   unsigned char hash_key;
 
   // djb2 hash function

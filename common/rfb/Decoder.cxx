@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2014 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -25,50 +25,36 @@
 
 #include <core/Region.h>
 
-#include <rfb/encodings.h>
-#include <rfb/Decoder.h>
-#include <rfb/RawDecoder.h>
 #include <rfb/CopyRectDecoder.h>
-#include <rfb/RREDecoder.h>
+#include <rfb/Decoder.h>
 #include <rfb/HextileDecoder.h>
-#include <rfb/ZRLEDecoder.h>
+#include <rfb/RREDecoder.h>
+#include <rfb/RawDecoder.h>
 #include <rfb/TightDecoder.h>
+#include <rfb/ZRLEDecoder.h>
+#include <rfb/encodings.h>
 #ifdef HAVE_H264
 #include <rfb/H264Decoder.h>
 #endif
 
 using namespace rfb;
 
-Decoder::Decoder(enum DecoderFlags flags_) : flags(flags_)
-{
-}
+Decoder::Decoder(enum DecoderFlags flags_) : flags(flags_) {}
 
-Decoder::~Decoder()
-{
-}
+Decoder::~Decoder() {}
 
-void Decoder::getAffectedRegion(const core::Rect& rect,
-                                const uint8_t* /*buffer*/,
-                                size_t /*buflen*/,
-                                const ServerParams& /*server*/,
-                                core::Region* region)
-{
+void Decoder::getAffectedRegion(const core::Rect& rect, const uint8_t* /*buffer*/, size_t /*buflen*/,
+                                const ServerParams& /*server*/, core::Region* region) {
   region->reset(rect);
 }
 
-bool Decoder::doRectsConflict(const core::Rect& /*rectA*/,
-                              const uint8_t* /*bufferA*/,
-                              size_t /*buflenA*/,
-                              const core::Rect& /*rectB*/,
-                              const uint8_t* /*bufferB*/,
-                              size_t /*buflenB*/,
-                              const ServerParams& /*server*/)
-{
+bool Decoder::doRectsConflict(const core::Rect& /*rectA*/, const uint8_t* /*bufferA*/, size_t /*buflenA*/,
+                              const core::Rect& /*rectB*/, const uint8_t* /*bufferB*/, size_t /*buflenB*/,
+                              const ServerParams& /*server*/) {
   return false;
 }
 
-bool Decoder::supported(int encoding)
-{
+bool Decoder::supported(int encoding) {
   switch (encoding) {
   case encodingRaw:
   case encodingCopyRect:
@@ -85,8 +71,7 @@ bool Decoder::supported(int encoding)
   }
 }
 
-Decoder* Decoder::createDecoder(int encoding)
-{
+Decoder* Decoder::createDecoder(int encoding) {
   switch (encoding) {
   case encodingRaw:
     return new RawDecoder();

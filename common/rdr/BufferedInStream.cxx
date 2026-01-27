@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2020 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -32,26 +32,21 @@ using namespace rdr;
 static const size_t DEFAULT_BUF_SIZE = 8192;
 static const size_t MAX_BUF_SIZE = 32 * 1024 * 1024;
 
-BufferedInStream::BufferedInStream()
-  : bufSize(DEFAULT_BUF_SIZE), offset(0)
-{
+BufferedInStream::BufferedInStream() : bufSize(DEFAULT_BUF_SIZE), offset(0) {
   ptr = end = start = new uint8_t[bufSize];
   gettimeofday(&lastSizeCheck, nullptr);
   peakUsage = 0;
 }
 
-BufferedInStream::~BufferedInStream()
-{
-  delete [] start;
+BufferedInStream::~BufferedInStream() {
+  delete[] start;
 }
 
-size_t BufferedInStream::pos()
-{
+size_t BufferedInStream::pos() {
   return offset + ptr - start;
 }
 
-void BufferedInStream::ensureSpace(size_t needed)
-{
+void BufferedInStream::ensureSpace(size_t needed) {
   struct timeval now;
 
   // Given argument is how much free space is needed, but for allocation
@@ -64,10 +59,9 @@ void BufferedInStream::ensureSpace(size_t needed)
     uint8_t* newBuffer;
 
     if (needed > MAX_BUF_SIZE)
-      throw std::out_of_range(core::format(
-        "BufferedInStream overrun: requested size of %lu bytes exceeds "
-        "maximum of %lu bytes",
-        (long unsigned)needed, (long unsigned)MAX_BUF_SIZE));
+      throw std::out_of_range(core::format("BufferedInStream overrun: requested size of %lu bytes exceeds "
+                                           "maximum of %lu bytes",
+                                           (long unsigned)needed, (long unsigned)MAX_BUF_SIZE));
 
     newSize = DEFAULT_BUF_SIZE;
     while (newSize < needed)
@@ -75,7 +69,7 @@ void BufferedInStream::ensureSpace(size_t needed)
 
     newBuffer = new uint8_t[newSize];
     memcpy(newBuffer, ptr, end - ptr);
-    delete [] start;
+    delete[] start;
     bufSize = newSize;
 
     offset += ptr - start;
@@ -92,8 +86,7 @@ void BufferedInStream::ensureSpace(size_t needed)
   // Time to shrink an excessive buffer?
   gettimeofday(&now, nullptr);
   if ((avail() == 0) && (bufSize > DEFAULT_BUF_SIZE) &&
-      ((now.tv_sec < lastSizeCheck.tv_sec) ||
-       (now.tv_sec > (lastSizeCheck.tv_sec + 5)))) {
+      ((now.tv_sec < lastSizeCheck.tv_sec) || (now.tv_sec > (lastSizeCheck.tv_sec + 5)))) {
     if (peakUsage < (bufSize / 2)) {
       size_t newSize;
 
@@ -102,7 +95,7 @@ void BufferedInStream::ensureSpace(size_t needed)
         newSize *= 2;
 
       // We know the buffer is empty, so just reset everything
-      delete [] start;
+      delete[] start;
       ptr = end = start = new uint8_t[newSize];
       bufSize = newSize;
     }
@@ -121,8 +114,7 @@ void BufferedInStream::ensureSpace(size_t needed)
   }
 }
 
-bool BufferedInStream::overrun(size_t needed)
-{
+bool BufferedInStream::overrun(size_t needed) {
   // Caller should normally only invoke overrun() when needed > avail(),
   // but be robust if called with a smaller value to avoid assertions
   // and potential crashes in production.

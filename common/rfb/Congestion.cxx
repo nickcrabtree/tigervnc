@@ -1,15 +1,15 @@
 /* Copyright 2009-2018 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -42,11 +42,11 @@
 #include <sys/time.h>
 
 #ifdef __linux__
-#include <sys/ioctl.h>
-#include <sys/socket.h>
+#include <linux/sockios.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <linux/sockios.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
 #endif
 
 #include <core/LogWriter.h>
@@ -81,11 +81,9 @@ static inline bool isAfter(unsigned a, unsigned b) {
 
 static core::LogWriter vlog("Congestion");
 
-Congestion::Congestion() :
-    lastPosition(0), extraBuffer(0),
-    baseRTT(-1), congWindow(INITIAL_WINDOW), inSlowStart(true),
-    safeBaseRTT(-1), measurements(0), minRTT(-1), minCongestedRTT(-1)
-{
+Congestion::Congestion()
+    : lastPosition(0), extraBuffer(0), baseRTT(-1), congWindow(INITIAL_WINDOW), inSlowStart(true), safeBaseRTT(-1),
+      measurements(0), minRTT(-1), minCongestedRTT(-1) {
   gettimeofday(&lastUpdate, nullptr);
   gettimeofday(&lastSent, nullptr);
   memset(&lastPong, 0, sizeof(lastPong));
@@ -93,12 +91,9 @@ Congestion::Congestion() :
   gettimeofday(&lastAdjustment, nullptr);
 }
 
-Congestion::~Congestion()
-{
-}
+Congestion::~Congestion() {}
 
-void Congestion::updatePosition(unsigned pos)
-{
+void Congestion::updatePosition(unsigned pos) {
   struct timeval now;
   unsigned idle, delta, consumed;
 
@@ -112,11 +107,10 @@ void Congestion::updatePosition(unsigned pos)
   // We use a very crude RTO calculation in order to keep things simple
   // FIXME: should implement RFC 2861
   idle = core::msBetween(&lastSent, &now);
-  if (idle > 100 && idle > baseRTT*2) {
+  if (idle > 100 && idle > baseRTT * 2) {
 
 #ifdef CONGESTION_DEBUG
-    vlog.debug("Connection idle for %d ms, resetting congestion control",
-               idle);
+    vlog.debug("Connection idle for %d ms, resetting congestion control", idle);
 #endif
 
     // Close congestion window and redo wire latency measurement
@@ -146,8 +140,7 @@ void Congestion::updatePosition(unsigned pos)
   lastUpdate = now;
 }
 
-void Congestion::sentPing()
-{
+void Congestion::sentPing() {
   struct RTTInfo rttInfo;
 
   memset(&rttInfo, 0, sizeof(struct RTTInfo));
@@ -160,8 +153,7 @@ void Congestion::sentPing()
   pings.push_back(rttInfo);
 }
 
-void Congestion::gotPong()
-{
+void Congestion::gotPong() {
   struct timeval now;
   struct RTTInfo rttInfo;
   unsigned rtt, delay;
@@ -222,16 +214,14 @@ void Congestion::gotPong()
   updateCongestion();
 }
 
-bool Congestion::isCongested()
-{
+bool Congestion::isCongested() {
   if (getInFlight() < congWindow)
     return false;
 
   return true;
 }
 
-int Congestion::getUncongestedETA()
-{
+int Congestion::getUncongestedETA() {
   unsigned targetAcked;
 
   const struct RTTInfo* prevPing;
@@ -257,7 +247,7 @@ int Congestion::getUncongestedETA()
   // Walk the ping queue and figure out which one we are waiting for to
   // get to an uncongested state
 
-  for (iter = pings.begin(); ;++iter) {
+  for (iter = pings.begin();; ++iter) {
     struct RTTInfo curPing;
 
     // If we aren't waiting for a pong that will clear the congested
@@ -297,8 +287,7 @@ int Congestion::getUncongestedETA()
   }
 }
 
-size_t Congestion::getBandwidth()
-{
+size_t Congestion::getBandwidth() {
   size_t bandwidth;
 
   // No measurements yet? Guess RTT of 60 ms
@@ -315,28 +304,23 @@ size_t Congestion::getBandwidth()
   return bandwidth;
 }
 
-void Congestion::debugTrace(const char* filename, int fd)
-{
+void Congestion::debugTrace(const char* filename, int fd) {
   (void)filename;
   (void)fd;
 #ifdef CONGESTION_TRACE
 #ifdef __linux__
-  FILE *f;
+  FILE* f;
   f = fopen(filename, "ab");
   if (f != nullptr) {
     struct tcp_info info;
     int buffered;
     socklen_t len;
     len = sizeof(info);
-    if ((getsockopt(fd, IPPROTO_TCP,
-                    TCP_INFO, &info, &len) == 0) &&
-        (ioctl(fd, SIOCOUTQ, &buffered) == 0)) {
+    if ((getsockopt(fd, IPPROTO_TCP, TCP_INFO, &info, &len) == 0) && (ioctl(fd, SIOCOUTQ, &buffered) == 0)) {
       struct timeval now;
       gettimeofday(&now, nullptr);
-      fprintf(f, "%u.%06u,%u,%u,%u,%u\n",
-              (unsigned)now.tv_sec, (unsigned)now.tv_usec,
-              congWindow, info.tcpi_snd_cwnd * info.tcpi_snd_mss,
-              getInFlight(), buffered);
+      fprintf(f, "%u.%06u,%u,%u,%u,%u\n", (unsigned)now.tv_sec, (unsigned)now.tv_usec, congWindow,
+              info.tcpi_snd_cwnd * info.tcpi_snd_mss, getInFlight(), buffered);
     }
     fclose(f);
   }
@@ -344,8 +328,7 @@ void Congestion::debugTrace(const char* filename, int fd)
 #endif
 }
 
-unsigned Congestion::getExtraBuffer()
-{
+unsigned Congestion::getExtraBuffer() {
   unsigned elapsed;
   unsigned consumed;
 
@@ -361,8 +344,7 @@ unsigned Congestion::getExtraBuffer()
     return extraBuffer - consumed;
 }
 
-unsigned Congestion::getInFlight()
-{
+unsigned Congestion::getInFlight() {
   struct RTTInfo nextPong;
   unsigned etaNext, delay, elapsed, acked;
 
@@ -416,8 +398,7 @@ unsigned Congestion::getInFlight()
   return lastPosition - acked;
 }
 
-void Congestion::updateCongestion()
-{
+void Congestion::updateCongestion() {
   unsigned diff;
 
   // We want at least three measurements to avoid noise
@@ -433,7 +414,7 @@ void Congestion::updateCongestion()
 
   diff = minRTT - baseRTT;
 
-  if (diff > 100 && diff > baseRTT/2) {
+  if (diff > 100 && diff > baseRTT / 2) {
     // We have no way of detecting loss, so assume massive latency
     // spike means packet loss. Adjust the window and go directly
     // to congestion avoidance.
@@ -490,14 +471,11 @@ void Congestion::updateCongestion()
     congWindow = MAXIMUM_WINDOW;
 
 #ifdef CONGESTION_DEBUG
-  vlog.debug("RTT: %d/%d ms (%d ms), Window: %d KiB, Bandwidth: %g Mbps%s",
-             minRTT, minCongestedRTT, baseRTT, congWindow / 1024,
-             congWindow * 8.0 / baseRTT / 1000.0,
-             inSlowStart ? " (slow start)" : "");
+  vlog.debug("RTT: %d/%d ms (%d ms), Window: %d KiB, Bandwidth: %g Mbps%s", minRTT, minCongestedRTT, baseRTT,
+             congWindow / 1024, congWindow * 8.0 / baseRTT / 1000.0, inSlowStart ? " (slow start)" : "");
 #endif
 
   measurements = 0;
   gettimeofday(&lastAdjustment, nullptr);
   minRTT = minCongestedRTT = -1;
 }
-

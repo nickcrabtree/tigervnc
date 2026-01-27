@@ -26,19 +26,18 @@
 
 namespace rdr {
 
-  class FileInStream : public BufferedInStream {
+class FileInStream : public BufferedInStream {
 
-  public:
+public:
+  FileInStream(const char* fileName);
+  ~FileInStream(void);
 
-    FileInStream(const char *fileName);
-    ~FileInStream(void);
+private:
+  bool fillBuffer() override;
 
-  private:
-    bool fillBuffer() override;
-
-  private:
-    FILE *file;
-  };
+private:
+  FILE* file;
+};
 
 } // end of namespace rdr
 

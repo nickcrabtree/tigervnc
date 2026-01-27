@@ -1,10 +1,11 @@
 #pragma once
 
-#include <rfb/cache/TilingAnalysis.h>
 #include <rfb/ContentHash.h>
 #include <rfb/SConnection.h>
+#include <rfb/cache/TilingAnalysis.h>
 
-namespace rfb { namespace cache {
+namespace rfb {
+namespace cache {
 
 // Concrete CacheQueryInterface implementation for PersistentCache. The
 // unified cache engine exposes a single 64-bit ID space, so tiling
@@ -12,11 +13,9 @@ namespace rfb { namespace cache {
 // the server side.
 class PersistentCacheQuery : public CacheQueryInterface {
 public:
-  PersistentCacheQuery(SConnection* conn)
-    : conn_(conn) {}
+  PersistentCacheQuery(SConnection* conn) : conn_(conn) {}
 
-  TileCacheState classifyTile(const core::Rect& tileRect,
-                              const PixelBuffer* pb) override;
+  TileCacheState classifyTile(const core::Rect& tileRect, const PixelBuffer* pb) override;
 
 private:
   SConnection* conn_;
@@ -36,10 +35,8 @@ private:
 // Logs via "TilingIntegration" LogWriter with details about how many
 // tiles are hits, how many maximal rectangles were found, etc.
 
-void analyzeRegionTilingLogOnly(const core::Region& region,
-                                int tileSize,
-                                int minTiles,
-                                const PixelBuffer* pb,
+void analyzeRegionTilingLogOnly(const core::Region& region, int tileSize, int minTiles, const PixelBuffer* pb,
                                 CacheQueryInterface& cacheQuery);
 
-}} // namespace rfb::cache
+} // namespace cache
+} // namespace rfb

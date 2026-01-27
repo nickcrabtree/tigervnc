@@ -8,15 +8,15 @@
 #ifndef __RFB_CACHE_KEY_H__
 #define __RFB_CACHE_KEY_H__
 
-#include <stdint.h>
-#include <cstddef>
-#include <functional>
 #include <array>
+#include <cstddef>
 #include <cstring>
+#include <functional>
+#include <stdint.h>
 
 namespace rfb {
 
-  // 16-byte content-addressable cache key.
+// 16-byte content-addressable cache key.
 //
 // This key is the canonical protocol identity for cached rectangles.
 // It is computed as a stable 128-bit hash over a canonical 32bpp/24-depth
@@ -28,11 +28,15 @@ namespace rfb {
 struct CacheKey {
   std::array<uint8_t, 16> bytes;
 
-  CacheKey() { bytes.fill(0); }
+  CacheKey() {
+    bytes.fill(0);
+  }
 
   explicit CacheKey(const uint8_t* p) {
-    if (p) std::memcpy(bytes.data(), p, 16);
-    else bytes.fill(0);
+    if (p)
+      std::memcpy(bytes.data(), p, 16);
+    else
+      bytes.fill(0);
   }
 
   bool operator==(const CacheKey& other) const {

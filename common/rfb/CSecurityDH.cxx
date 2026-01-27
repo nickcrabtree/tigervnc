@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (C) 2022 Dinglan Peng
- *    
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -32,13 +32,13 @@
 #include <assert.h>
 
 #include <nettle/aes.h>
-#include <nettle/md5.h>
 #include <nettle/bignum.h>
-#include <rfb/CSecurityDH.h>
-#include <rfb/CConnection.h>
+#include <nettle/md5.h>
 #include <rdr/InStream.h>
 #include <rdr/OutStream.h>
 #include <rdr/RandomStream.h>
+#include <rfb/CConnection.h>
+#include <rfb/CSecurityDH.h>
 #include <rfb/Exception.h>
 
 using namespace rfb;
@@ -46,9 +46,7 @@ using namespace rfb;
 const int MinKeyLength = 128;
 const int MaxKeyLength = 1024;
 
-CSecurityDH::CSecurityDH(CConnection* cc_)
-  : CSecurity(cc_), keyLength(0)
-{
+CSecurityDH::CSecurityDH(CConnection* cc_) : CSecurity(cc_), keyLength(0) {
   mpz_init(g);
   mpz_init(p);
   mpz_init(A);
@@ -57,8 +55,7 @@ CSecurityDH::CSecurityDH(CConnection* cc_)
   mpz_init(k);
 }
 
-CSecurityDH::~CSecurityDH()
-{
+CSecurityDH::~CSecurityDH() {
   mpz_clear(g);
   mpz_clear(p);
   mpz_clear(A);
@@ -67,8 +64,7 @@ CSecurityDH::~CSecurityDH()
   mpz_clear(k);
 }
 
-bool CSecurityDH::processMsg()
-{
+bool CSecurityDH::processMsg() {
   if (readKey()) {
     writeCredentials();
     return true;
@@ -76,8 +72,7 @@ bool CSecurityDH::processMsg()
   return false;
 }
 
-bool CSecurityDH::readKey()
-{
+bool CSecurityDH::readKey() {
   rdr::InStream* is = cc->getInStream();
   if (!is->hasData(4))
     return false;
@@ -101,8 +96,7 @@ bool CSecurityDH::readKey()
   return true;
 }
 
-void CSecurityDH::writeCredentials()
-{
+void CSecurityDH::writeCredentials() {
   std::string username;
   std::string password;
   rdr::RandomStream rs;

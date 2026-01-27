@@ -1,17 +1,17 @@
 /* Copyright (C) 2000-2003 Constantin Kaplinsky.  All Rights Reserved.
  * Copyright (C) 2011 D. R. Commander.  All Rights Reserved.
  * Copyright 2014-2022 Pierre Ossman for Cendio AB
- *    
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -25,12 +25,12 @@
 #include <assert.h>
 
 #include <rdr/OutStream.h>
-#include <rfb/PixelBuffer.h>
 #include <rfb/Palette.h>
-#include <rfb/encodings.h>
+#include <rfb/PixelBuffer.h>
 #include <rfb/SConnection.h>
-#include <rfb/TightEncoder.h>
 #include <rfb/TightConstants.h>
+#include <rfb/TightEncoder.h>
+#include <rfb/encodings.h>
 
 using namespace rfb;
 
@@ -48,35 +48,29 @@ struct TightConf {
 // reports.
 
 static const TightConf conf[10] = {
-  { 0, 0, 0 }, // 0
-  { 1, 1, 1 }, // 1
-  { 3, 3, 2 }, // 2
-  { 5, 5, 2 }, // 3
-  { 6, 7, 3 }, // 4
-  { 7, 8, 4 }, // 5
-  { 7, 8, 5 }, // 6
-  { 8, 9, 6 }, // 7
-  { 9, 9, 7 }, // 8
-  { 9, 9, 9 }  // 9
+    {0, 0, 0}, // 0
+    {1, 1, 1}, // 1
+    {3, 3, 2}, // 2
+    {5, 5, 2}, // 3
+    {6, 7, 3}, // 4
+    {7, 8, 4}, // 5
+    {7, 8, 5}, // 6
+    {8, 9, 6}, // 7
+    {9, 9, 7}, // 8
+    {9, 9, 9}  // 9
 };
 
-TightEncoder::TightEncoder(SConnection* conn_) :
-  Encoder(conn_, encodingTight, EncoderPlain, 256)
-{
+TightEncoder::TightEncoder(SConnection* conn_) : Encoder(conn_, encodingTight, EncoderPlain, 256) {
   setCompressLevel(-1);
 }
 
-TightEncoder::~TightEncoder()
-{
-}
+TightEncoder::~TightEncoder() {}
 
-bool TightEncoder::isSupported()
-{
+bool TightEncoder::isSupported() {
   return conn->client.supportsEncoding(encodingTight);
 }
 
-void TightEncoder::setCompressLevel(int level)
-{
+void TightEncoder::setCompressLevel(int level) {
   if (level < 0 || level > 9)
     level = 2;
 
@@ -85,8 +79,7 @@ void TightEncoder::setCompressLevel(int level)
   rawZlibLevel = conf[level].rawZlibLevel;
 }
 
-void TightEncoder::writeRect(const PixelBuffer* pb, const Palette& palette)
-{
+void TightEncoder::writeRect(const PixelBuffer* pb, const Palette& palette) {
   switch (palette.size()) {
   case 0:
     writeFullColourRect(pb);
@@ -102,10 +95,7 @@ void TightEncoder::writeRect(const PixelBuffer* pb, const Palette& palette)
   }
 }
 
-void TightEncoder::writeSolidRect(int /*width*/, int /*height*/,
-                                  const PixelFormat& pf,
-                                  const uint8_t* colour)
-{
+void TightEncoder::writeSolidRect(int /*width*/, int /*height*/, const PixelFormat& pf, const uint8_t* colour) {
   rdr::OutStream* os;
 
   os = conn->getOutStream();
@@ -114,8 +104,7 @@ void TightEncoder::writeSolidRect(int /*width*/, int /*height*/,
   writePixels(colour, pf, 1, os);
 }
 
-void TightEncoder::writeMonoRect(const PixelBuffer* pb, const Palette& palette)
-{
+void TightEncoder::writeMonoRect(const PixelBuffer* pb, const Palette& palette) {
   const uint8_t* buffer;
   int stride;
 
@@ -123,21 +112,17 @@ void TightEncoder::writeMonoRect(const PixelBuffer* pb, const Palette& palette)
 
   switch (pb->getPF().bpp) {
   case 32:
-    writeMonoRect(pb->width(), pb->height(), (uint32_t*)buffer, stride,
-                  pb->getPF(), palette);
+    writeMonoRect(pb->width(), pb->height(), (uint32_t*)buffer, stride, pb->getPF(), palette);
     break;
   case 16:
-    writeMonoRect(pb->width(), pb->height(), (uint16_t*)buffer, stride,
-                  pb->getPF(), palette);
+    writeMonoRect(pb->width(), pb->height(), (uint16_t*)buffer, stride, pb->getPF(), palette);
     break;
   default:
-    writeMonoRect(pb->width(), pb->height(), (uint8_t*)buffer, stride,
-                  pb->getPF(), palette);
+    writeMonoRect(pb->width(), pb->height(), (uint8_t*)buffer, stride, pb->getPF(), palette);
   }
 }
 
-void TightEncoder::writeIndexedRect(const PixelBuffer* pb, const Palette& palette)
-{
+void TightEncoder::writeIndexedRect(const PixelBuffer* pb, const Palette& palette) {
   const uint8_t* buffer;
   int stride;
 
@@ -145,12 +130,10 @@ void TightEncoder::writeIndexedRect(const PixelBuffer* pb, const Palette& palett
 
   switch (pb->getPF().bpp) {
   case 32:
-    writeIndexedRect(pb->width(), pb->height(), (uint32_t*)buffer, stride,
-                     pb->getPF(), palette);
+    writeIndexedRect(pb->width(), pb->height(), (uint32_t*)buffer, stride, pb->getPF(), palette);
     break;
   case 16:
-    writeIndexedRect(pb->width(), pb->height(), (uint16_t*)buffer, stride,
-                     pb->getPF(), palette);
+    writeIndexedRect(pb->width(), pb->height(), (uint16_t*)buffer, stride, pb->getPF(), palette);
     break;
   default:
     // It's more efficient to just do raw pixels
@@ -158,8 +141,7 @@ void TightEncoder::writeIndexedRect(const PixelBuffer* pb, const Palette& palett
   }
 }
 
-void TightEncoder::writeFullColourRect(const PixelBuffer* pb)
-{
+void TightEncoder::writeFullColourRect(const PixelBuffer* pb) {
   const int streamId = 0;
 
   rdr::OutStream* os;
@@ -175,7 +157,7 @@ void TightEncoder::writeFullColourRect(const PixelBuffer* pb)
 
   // Set up compression
   if ((pb->getPF().bpp != 32) || !pb->getPF().is888())
-    length = pb->getRect().area() * pb->getPF().bpp/8;
+    length = pb->getRect().area() * pb->getPF().bpp / 8;
   else
     length = pb->getRect().area() * 3;
 
@@ -187,40 +169,37 @@ void TightEncoder::writeFullColourRect(const PixelBuffer* pb)
 
   while (h--) {
     writePixels(buffer, pb->getPF(), pb->width(), zos);
-    buffer += stride * pb->getPF().bpp/8;
+    buffer += stride * pb->getPF().bpp / 8;
   }
 
   // Finish the zlib stream
   flushZlibOutStream(zos);
 }
 
-void TightEncoder::writePixels(const uint8_t* buffer, const PixelFormat& pf,
-                               unsigned int count, rdr::OutStream* os)
-{
+void TightEncoder::writePixels(const uint8_t* buffer, const PixelFormat& pf, unsigned int count, rdr::OutStream* os) {
   uint8_t rgb[2048];
 
   if ((pf.bpp != 32) || !pf.is888()) {
-    os->writeBytes(buffer, count * pf.bpp/8);
+    os->writeBytes(buffer, count * pf.bpp / 8);
     return;
   }
 
   while (count) {
     unsigned int iter_count;
 
-    iter_count = sizeof(rgb)/3;
+    iter_count = sizeof(rgb) / 3;
     if (iter_count > count)
       iter_count = count;
 
     pf.rgbFromBuffer(rgb, buffer, iter_count);
     os->writeBytes(rgb, iter_count * 3);
 
-    buffer += iter_count * pf.bpp/8;
+    buffer += iter_count * pf.bpp / 8;
     count -= iter_count;
   }
 }
 
-void TightEncoder::writeCompact(rdr::OutStream* os, uint32_t value)
-{
+void TightEncoder::writeCompact(rdr::OutStream* os, uint32_t value) {
   uint8_t b;
   b = value & 0x7F;
   if (value <= 0x7F) {
@@ -237,8 +216,7 @@ void TightEncoder::writeCompact(rdr::OutStream* os, uint32_t value)
   }
 }
 
-rdr::OutStream* TightEncoder::getZlibOutStream(int streamId, int level, size_t length)
-{
+rdr::OutStream* TightEncoder::getZlibOutStream(int streamId, int level, size_t length) {
   // Minimum amount of data to be compressed. This value should not be
   // changed, doing so will break compatibility with existing clients.
   if (length < 12)
@@ -254,8 +232,7 @@ rdr::OutStream* TightEncoder::getZlibOutStream(int streamId, int level, size_t l
   return &zlibStreams[streamId];
 }
 
-void TightEncoder::flushZlibOutStream(rdr::OutStream* os_)
-{
+void TightEncoder::flushZlibOutStream(rdr::OutStream* os_) {
   rdr::OutStream* os;
   rdr::ZlibOutStream* zos;
 
@@ -274,12 +251,9 @@ void TightEncoder::flushZlibOutStream(rdr::OutStream* os_)
   memStream.clear();
 }
 
-template<class T>
-void TightEncoder::writeMonoRect(int width, int height,
-                                 const T* buffer, int stride,
-                                 const PixelFormat& pf,
-                                 const Palette& palette)
-{
+template <class T>
+void TightEncoder::writeMonoRect(int width, int height, const T* buffer, int stride, const PixelFormat& pf,
+                                 const Palette& palette) {
   rdr::OutStream* os;
 
   const int streamId = 1;
@@ -303,7 +277,7 @@ void TightEncoder::writeMonoRect(int width, int height,
   writePixels((uint8_t*)pal, pf, 2, os);
 
   // Set up compression
-  length = (width + 7)/8 * height;
+  length = (width + 7) / 8 * height;
   zos = getZlibOutStream(streamId, monoZlibLevel, length);
 
   // Encode the data
@@ -357,12 +331,9 @@ void TightEncoder::writeMonoRect(int width, int height,
   flushZlibOutStream(zos);
 }
 
-template<class T>
-void TightEncoder::writeIndexedRect(int width, int height,
-                                    const T* buffer, int stride,
-                                    const PixelFormat& pf,
-                                    const Palette& palette)
-{
+template <class T>
+void TightEncoder::writeIndexedRect(int width, int height, const T* buffer, int stride, const PixelFormat& pf,
+                                    const Palette& palette) {
   rdr::OutStream* os;
 
   const int streamId = 2;

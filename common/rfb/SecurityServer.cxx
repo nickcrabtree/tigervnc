@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (C) 2010 TigerVNC Team
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -27,10 +27,10 @@
 #include <rfb/SecurityServer.h>
 
 #include <rfb/SSecurityNone.h>
-#include <rfb/SSecurityStack.h>
 #include <rfb/SSecurityPlain.h>
-#include <rfb/SSecurityVncAuth.h>
+#include <rfb/SSecurityStack.h>
 #include <rfb/SSecurityVeNCrypt.h>
+#include <rfb/SSecurityVncAuth.h>
 #ifdef HAVE_GNUTLS
 #include <rfb/SSecurityTLS.h>
 #endif
@@ -40,40 +40,53 @@
 
 using namespace rfb;
 
-core::EnumListParameter SecurityServer::secTypes
-("SecurityTypes",
- "Specify which security scheme to use (None, VncAuth, Plain"
+core::EnumListParameter SecurityServer::secTypes("SecurityTypes",
+                                                 "Specify which security scheme to use (None, VncAuth, Plain"
 #ifdef HAVE_GNUTLS
- ", TLSNone, TLSVnc, TLSPlain, X509None, X509Vnc, X509Plain"
+                                                 ", TLSNone, TLSVnc, TLSPlain, X509None, X509Vnc, X509Plain"
 #endif
 #ifdef HAVE_NETTLE
- ", RA2, RA2ne, RA2_256, RA2ne_256"
+                                                 ", RA2, RA2ne, RA2_256, RA2ne_256"
 #endif
- ")",
- { "None", "VncAuth", "Plain",
+                                                 ")",
+                                                 {
+                                                     "None",
+                                                     "VncAuth",
+                                                     "Plain",
 #ifdef HAVE_GNUTLS
- "TLSNone", "TLSVnc", "TLSPlain", "X509None", "X509Vnc", "X509Plain",
+                                                     "TLSNone",
+                                                     "TLSVnc",
+                                                     "TLSPlain",
+                                                     "X509None",
+                                                     "X509Vnc",
+                                                     "X509Plain",
 #endif
 #ifdef HAVE_NETTLE
- "RA2", "RA2ne", "RA2_256", "RA2ne_256",
+                                                     "RA2",
+                                                     "RA2ne",
+                                                     "RA2_256",
+                                                     "RA2ne_256",
 #endif
- },
- {
+                                                 },
+                                                 {
 #ifdef HAVE_GNUTLS
- "TLSVnc",
+                                                     "TLSVnc",
 #endif
- "VncAuth"});
+                                                     "VncAuth"});
 
-SSecurity* SecurityServer::GetSSecurity(SConnection* sc, uint32_t secType)
-{
+SSecurity* SecurityServer::GetSSecurity(SConnection* sc, uint32_t secType) {
   if (!IsSupported(secType))
     goto bail;
 
   switch (secType) {
-  case secTypeNone: return new SSecurityNone(sc);
-  case secTypeVncAuth: return new SSecurityVncAuth(sc);
-  case secTypeVeNCrypt: return new SSecurityVeNCrypt(sc, this);
-  case secTypePlain: return new SSecurityPlain(sc);
+  case secTypeNone:
+    return new SSecurityNone(sc);
+  case secTypeVncAuth:
+    return new SSecurityVncAuth(sc);
+  case secTypeVeNCrypt:
+    return new SSecurityVeNCrypt(sc, this);
+  case secTypePlain:
+    return new SSecurityPlain(sc);
 #ifdef HAVE_GNUTLS
   case secTypeTLSNone:
     return new SSecurityStack(sc, secTypeTLSNone, new SSecurityTLS(sc, true));
@@ -103,4 +116,3 @@ SSecurity* SecurityServer::GetSSecurity(SConnection* sc, uint32_t secType)
 bail:
   throw std::invalid_argument("Security type not supported");
 }
-

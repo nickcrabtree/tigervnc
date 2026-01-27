@@ -2,17 +2,17 @@
  * Copyright (C) 2005-2006 Martin Koegler
  * Copyright (C) 2006 OCCAM Financial Technology
  * Copyright (C) 2010 TigerVNC Team
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -28,11 +28,11 @@
 
 #include <core/LogWriter.h>
 
-#include <rfb/SConnection.h>
-#include <rfb/SecurityServer.h>
-#include <rfb/SSecurityVeNCrypt.h>
 #include <rfb/Exception.h>
+#include <rfb/SConnection.h>
+#include <rfb/SSecurityVeNCrypt.h>
 #include <rfb/Security.h>
+#include <rfb/SecurityServer.h>
 
 #include <rdr/InStream.h>
 #include <rdr/OutStream.h>
@@ -41,10 +41,7 @@ using namespace rfb;
 
 static core::LogWriter vlog("SVeNCrypt");
 
-SSecurityVeNCrypt::SSecurityVeNCrypt(SConnection* sc_,
-                                     SecurityServer *sec)
-  : SSecurity(sc_), security(sec)
-{
+SSecurityVeNCrypt::SSecurityVeNCrypt(SConnection* sc_, SecurityServer* sec) : SSecurity(sc_), security(sec) {
   ssecurity = nullptr;
   haveSentVersion = false;
   haveRecvdMajorVersion = false;
@@ -58,14 +55,12 @@ SSecurityVeNCrypt::SSecurityVeNCrypt(SConnection* sc_,
   subTypes = nullptr;
 }
 
-SSecurityVeNCrypt::~SSecurityVeNCrypt()
-{
+SSecurityVeNCrypt::~SSecurityVeNCrypt() {
   delete ssecurity;
-  delete [] subTypes;
+  delete[] subTypes;
 }
 
-bool SSecurityVeNCrypt::processMsg()
-{
+bool SSecurityVeNCrypt::processMsg() {
   rdr::InStream* is = sc->getInStream();
   rdr::OutStream* os = sc->getOutStream();
   uint8_t i;
@@ -100,14 +95,14 @@ bool SSecurityVeNCrypt::processMsg()
     uint16_t Version = (((uint16_t)majorVersion) << 8) | ((uint16_t)minorVersion);
 
     switch (Version) {
-    case 0x0000: /* 0.0 - The client cannot support us! */
-    case 0x0001: /* 0.1 Legacy VeNCrypt, not supported */
+    case 0x0000:         /* 0.0 - The client cannot support us! */
+    case 0x0001:         /* 0.1 Legacy VeNCrypt, not supported */
       os->writeU8(0xFF); /* This is not OK */
       os->flush();
       throw protocol_error("The client cannot support the server's "
-                              "VeNCrypt version");
+                           "VeNCrypt version");
 
-    case 0x0002: /* 0.2 */
+    case 0x0002:      /* 0.2 */
       os->writeU8(0); /* OK */
       break;
 
@@ -135,12 +130,12 @@ bool SSecurityVeNCrypt::processMsg()
       listSubTypes.pop_front();
     }
 
-    if (numTypes) { 
+    if (numTypes) {
       os->writeU8(numTypes);
       for (i = 0; i < numTypes; i++)
-	os->writeU32(subTypes[i]);
+        os->writeU32(subTypes[i]);
 
-      os->flush(); 
+      os->flush();
       haveSentTypes = true;
     } else
       throw protocol_error("There are no VeNCrypt sub-types to send to the client");
@@ -155,16 +150,15 @@ bool SSecurityVeNCrypt::processMsg()
 
     for (i = 0; i < numTypes; i++) {
       if (chosenType == subTypes[i]) {
-	haveChosenType = true;
-	break;
+        haveChosenType = true;
+        break;
       }
     }
 
     if (!haveChosenType)
       chosenType = secTypeInvalid;
 
-    vlog.info("Client requests security type %s (%d)", secTypeName(chosenType),
-	       chosenType);
+    vlog.info("Client requests security type %s (%d)", secTypeName(chosenType), chosenType);
 
     /* Set up the stack according to the chosen type */
     if (chosenType == secTypeInvalid || chosenType == secTypeVeNCrypt)
@@ -177,15 +171,13 @@ bool SSecurityVeNCrypt::processMsg()
   return ssecurity->processMsg();
 }
 
-const char* SSecurityVeNCrypt::getUserName() const
-{
+const char* SSecurityVeNCrypt::getUserName() const {
   if (ssecurity == nullptr)
     return nullptr;
   return ssecurity->getUserName();
 }
 
-AccessRights SSecurityVeNCrypt::getAccessRights() const
-{
+AccessRights SSecurityVeNCrypt::getAccessRights() const {
   if (ssecurity == nullptr)
     return SSecurity::getAccessRights();
   return ssecurity->getAccessRights();

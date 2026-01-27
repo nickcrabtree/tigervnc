@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -34,8 +34,8 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
-#include <sys/socket.h> /* for socklen_t */
 #include <netinet/in.h> /* for struct sockaddr_in */
+#include <sys/socket.h> /* for socklen_t */
 #endif
 
 #include <list>
@@ -46,76 +46,72 @@
 
 namespace network {
 
-  /* Tunnelling support. */
-  int findFreeTcpPort (void);
+/* Tunnelling support. */
+int findFreeTcpPort(void);
 
-  void getHostAndPort(const char* hi, std::string* host,
-                      int* port, int basePort=5900);
+void getHostAndPort(const char* hi, std::string* host, int* port, int basePort = 5900);
 
-  int getSockPort(int sock);
+int getSockPort(int sock);
 
-  class TcpSocket : public Socket {
-  public:
-    TcpSocket(int sock);
-    TcpSocket(const char *name, int port);
+class TcpSocket : public Socket {
+public:
+  TcpSocket(int sock);
+  TcpSocket(const char* name, int port);
 
-    const char* getPeerAddress() override;
-    const char* getPeerEndpoint() override;
+  const char* getPeerAddress() override;
+  const char* getPeerEndpoint() override;
 
-  protected:
-    bool enableNagles(bool enable);
+protected:
+  bool enableNagles(bool enable);
+};
+
+class TcpListener : public SocketListener {
+public:
+  TcpListener(const struct sockaddr* listenaddr, socklen_t listenaddrlen);
+  TcpListener(int sock);
+
+  int getMyPort() override;
+
+  static std::list<std::string> getMyAddresses();
+
+protected:
+  Socket* createSocket(int fd) override;
+};
+
+void createLocalTcpListeners(std::list<SocketListener*>* listeners, int port);
+void createTcpListeners(std::list<SocketListener*>* listeners, const char* addr, int port);
+void createTcpListeners(std::list<SocketListener*>* listeners, const struct addrinfo* ai);
+
+typedef struct vnc_sockaddr {
+  union {
+    sockaddr sa;
+    sockaddr_in sin;
+    sockaddr_in6 sin6;
+  } u;
+} vnc_sockaddr_t;
+
+class TcpFilter : public ConnectionFilter {
+public:
+  TcpFilter(const char* filter);
+  virtual ~TcpFilter();
+
+  bool verifyConnection(Socket* s) override;
+
+  typedef enum { Accept, Reject, Query } Action;
+  struct Pattern {
+    Action action;
+    vnc_sockaddr_t address;
+    unsigned int prefixlen;
+
+    vnc_sockaddr_t mask; // computed from address and prefix
   };
+  static Pattern parsePattern(const char* s);
+  static std::string patternToStr(const Pattern& p);
 
-  class TcpListener : public SocketListener {
-  public:
-    TcpListener(const struct sockaddr *listenaddr, socklen_t listenaddrlen);
-    TcpListener(int sock);
+protected:
+  std::list<Pattern> filter;
+};
 
-    int getMyPort() override;
-
-    static std::list<std::string> getMyAddresses();
-
-  protected:
-    Socket* createSocket(int fd) override;
-  };
-
-  void createLocalTcpListeners(std::list<SocketListener*> *listeners,
-                               int port);
-  void createTcpListeners(std::list<SocketListener*> *listeners,
-                          const char *addr,
-                          int port);
-  void createTcpListeners(std::list<SocketListener*> *listeners,
-                          const struct addrinfo *ai);
-
-  typedef struct vnc_sockaddr {
-    union {
-      sockaddr     sa;
-      sockaddr_in  sin;
-      sockaddr_in6 sin6;
-    } u;
-  } vnc_sockaddr_t;
-
-  class TcpFilter : public ConnectionFilter {
-  public:
-    TcpFilter(const char* filter);
-    virtual ~TcpFilter();
-
-    bool verifyConnection(Socket* s) override;
-
-    typedef enum {Accept, Reject, Query} Action;
-    struct Pattern {
-      Action action;
-      vnc_sockaddr_t address;
-      unsigned int prefixlen;
-
-      vnc_sockaddr_t mask; // computed from address and prefix
-    };
-    static Pattern parsePattern(const char* s);
-    static std::string patternToStr(const Pattern& p);
-  protected:
-    std::list<Pattern> filter;
-  };
-
-}
+} // namespace network
 
 #endif // __NETWORK_TCP_SOCKET_H__

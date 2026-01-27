@@ -4,18 +4,13 @@
 
 #include <core/LogWriter.h>
 
-namespace rfb { namespace cache {
+namespace rfb {
+namespace cache {
 
 static core::LogWriter vlog("TilingAnalysis");
 
-void buildTilingGrid(const core::Rect& bounds,
-                     int tileSize,
-                     const PixelBuffer* pb,
-                     CacheQueryInterface& cacheQuery,
-                     std::vector<TileInfo>& tiles,
-                     int& tilesX,
-                     int& tilesY)
-{
+void buildTilingGrid(const core::Rect& bounds, int tileSize, const PixelBuffer* pb, CacheQueryInterface& cacheQuery,
+                     std::vector<TileInfo>& tiles, int& tilesX, int& tilesY) {
   tiles.clear();
   tilesX = tilesY = 0;
 
@@ -52,12 +47,8 @@ void buildTilingGrid(const core::Rect& bounds,
   }
 }
 
-bool findLargestHitRectangle(const std::vector<TileInfo>& tiles,
-                             int tilesX,
-                             int tilesY,
-                             int minTiles,
-                             MaxRect& outMax)
-{
+bool findLargestHitRectangle(const std::vector<TileInfo>& tiles, int tilesX, int tilesY, int minTiles,
+                             MaxRect& outMax) {
   if (tiles.empty() || tilesX <= 0 || tilesY <= 0)
     return false;
 
@@ -119,4 +110,5 @@ bool findLargestHitRectangle(const std::vector<TileInfo>& tiles,
   return true;
 }
 
-}} // namespace rfb::cache
+} // namespace cache
+} // namespace rfb

@@ -4,17 +4,17 @@
  * Copyright (C) 2010 TigerVNC Team
  * Copyright (C) 2010 m-privacy GmbH
  * Copyright 2012-2025 Pierre Ossman for Cendio AB
- *    
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -38,8 +38,8 @@
 #include <core/string.h>
 #include <core/xdgdirs.h>
 
-#include <rfb/CSecurityTLS.h>
 #include <rfb/CConnection.h>
+#include <rfb/CSecurityTLS.h>
 #include <rfb/Exception.h>
 
 #include <rdr/TLSException.h>
@@ -51,15 +51,12 @@ using namespace rfb;
 
 static const char* configdirfn(const char* fn);
 
-core::StringParameter CSecurityTLS::X509CA("X509CA", "X509 CA certificate",
-                                           configdirfn("x509_ca.pem"));
-core::StringParameter CSecurityTLS::X509CRL("X509CRL", "X509 CRL file",
-                                            configdirfn("x509_crl.pem"));
+core::StringParameter CSecurityTLS::X509CA("X509CA", "X509 CA certificate", configdirfn("x509_ca.pem"));
+core::StringParameter CSecurityTLS::X509CRL("X509CRL", "X509 CRL file", configdirfn("x509_crl.pem"));
 
 static core::LogWriter vlog("TLS");
 
-static const char* configdirfn(const char* fn)
-{
+static const char* configdirfn(const char* fn) {
   static char full_path[PATH_MAX];
   const char* configdir;
 
@@ -72,18 +69,14 @@ static const char* configdirfn(const char* fn)
 }
 
 CSecurityTLS::CSecurityTLS(CConnection* cc_, bool _anon)
-  : CSecurity(cc_), session(nullptr),
-    anon_cred(nullptr), cert_cred(nullptr),
-    anon(_anon), tlssock(nullptr),
-    rawis(nullptr), rawos(nullptr)
-{
+    : CSecurity(cc_), session(nullptr), anon_cred(nullptr), cert_cred(nullptr), anon(_anon), tlssock(nullptr),
+      rawis(nullptr), rawos(nullptr) {
   int err = gnutls_global_init();
   if (err != GNUTLS_E_SUCCESS)
     throw rdr::tls_error("gnutls_global_init()", err);
 }
 
-void CSecurityTLS::shutdown()
-{
+void CSecurityTLS::shutdown() {
   if (tlssock)
     tlssock->shutdown();
 
@@ -114,16 +107,13 @@ void CSecurityTLS::shutdown()
   }
 }
 
-
-CSecurityTLS::~CSecurityTLS()
-{
+CSecurityTLS::~CSecurityTLS() {
   shutdown();
 
   gnutls_global_deinit();
 }
 
-bool CSecurityTLS::processMsg()
-{
+bool CSecurityTLS::processMsg() {
   rdr::InStream* is = cc->getInStream();
   rdr::OutStream* os = cc->getOutStream();
   client = cc;
@@ -161,8 +151,7 @@ bool CSecurityTLS::processMsg()
     throw;
   }
 
-  vlog.debug("TLS handshake completed with %s",
-             gnutls_session_get_desc(session));
+  vlog.debug("TLS handshake completed with %s", gnutls_session_get_desc(session));
 
   checkSession();
 
@@ -171,8 +160,7 @@ bool CSecurityTLS::processMsg()
   return true;
 }
 
-void CSecurityTLS::setParam()
-{
+void CSecurityTLS::setParam() {
   static const char kx_anon_priority[] = "+ANON-ECDH:+ANON-DH";
 
   int ret;
@@ -180,7 +168,7 @@ void CSecurityTLS::setParam()
   // Custom priority string specified?
   if (strcmp(Security::GnuTLSPriority, "") != 0) {
     std::string prio;
-    const char *err;
+    const char* err;
 
     prio = (const char*)Security::GnuTLSPriority;
     if (anon) {
@@ -195,7 +183,7 @@ void CSecurityTLS::setParam()
       throw rdr::tls_error("gnutls_set_priority_direct()", ret);
     }
   } else if (anon) {
-    const char *err;
+    const char* err;
 
 #if GNUTLS_VERSION_NUMBER >= 0x030603
     ret = gnutls_set_default_priority_append(session, kx_anon_priority, &err, 0);
@@ -265,9 +253,8 @@ void CSecurityTLS::setParam()
     }
 
     if (valid) {
-      if (gnutls_server_name_set(session, GNUTLS_NAME_DNS,
-                                 client->getServerName(),
-                                 strlen(client->getServerName())) != GNUTLS_E_SUCCESS)
+      if (gnutls_server_name_set(session, GNUTLS_NAME_DNS, client->getServerName(), strlen(client->getServerName())) !=
+          GNUTLS_E_SUCCESS)
         vlog.error("Failed to configure the server name for TLS handshake");
     }
 
@@ -275,21 +262,16 @@ void CSecurityTLS::setParam()
   }
 }
 
-void CSecurityTLS::checkSession()
-{
-  const unsigned allowed_errors = GNUTLS_CERT_INVALID |
-				  GNUTLS_CERT_SIGNER_NOT_FOUND |
-				  GNUTLS_CERT_SIGNER_NOT_CA |
-				  GNUTLS_CERT_NOT_ACTIVATED |
-				  GNUTLS_CERT_EXPIRED |
-				  GNUTLS_CERT_INSECURE_ALGORITHM;
+void CSecurityTLS::checkSession() {
+  const unsigned allowed_errors = GNUTLS_CERT_INVALID | GNUTLS_CERT_SIGNER_NOT_FOUND | GNUTLS_CERT_SIGNER_NOT_CA |
+                                  GNUTLS_CERT_NOT_ACTIVATED | GNUTLS_CERT_EXPIRED | GNUTLS_CERT_INSECURE_ALGORITHM;
   unsigned int status;
-  const gnutls_datum_t *cert_list;
+  const gnutls_datum_t* cert_list;
   unsigned int cert_list_size = 0;
   int err, known;
   bool hostname_match;
 
-  const char *hostsDir;
+  const char* hostsDir;
   gnutls_datum_t info;
   size_t len;
 
@@ -297,8 +279,7 @@ void CSecurityTLS::checkSession()
     return;
 
   if (gnutls_certificate_type_get(session) != GNUTLS_CRT_X509) {
-    gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                      GNUTLS_A_UNSUPPORTED_CERTIFICATE);
+    gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_UNSUPPORTED_CERTIFICATE);
     throw protocol_error("Unsupported certificate type");
   }
 
@@ -318,10 +299,7 @@ void CSecurityTLS::checkSession()
     if (fatal_status != 0) {
       std::string error;
 
-      err = gnutls_certificate_verification_status_print(fatal_status,
-                                                         GNUTLS_CRT_X509,
-                                                         &status_str,
-                                                         0);
+      err = gnutls_certificate_verification_status_print(fatal_status, GNUTLS_CRT_X509, &status_str, 0);
       if (err != GNUTLS_E_SUCCESS) {
         gnutls_alert_send_appropriate(session, err);
         throw rdr::tls_error("Failed to get certificate error description", err);
@@ -331,16 +309,11 @@ void CSecurityTLS::checkSession()
 
       gnutls_free(status_str.data);
 
-      gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                        GNUTLS_A_BAD_CERTIFICATE);
-      throw protocol_error(
-        core::format("Invalid server certificate: %s", error.c_str()));
+      gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_BAD_CERTIFICATE);
+      throw protocol_error(core::format("Invalid server certificate: %s", error.c_str()));
     }
 
-    err = gnutls_certificate_verification_status_print(status,
-                                                       GNUTLS_CRT_X509,
-                                                       &status_str,
-                                                       0);
+    err = gnutls_certificate_verification_status_print(status, GNUTLS_CRT_X509, &status_str, 0);
     if (err != GNUTLS_E_SUCCESS) {
       gnutls_alert_send_appropriate(session, err);
       throw rdr::tls_error("Failed to get certificate error description", err);
@@ -355,8 +328,7 @@ void CSecurityTLS::checkSession()
 
   cert_list = gnutls_certificate_get_peers(session, &cert_list_size);
   if (!cert_list_size) {
-    gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                      GNUTLS_A_UNSUPPORTED_CERTIFICATE);
+    gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_UNSUPPORTED_CERTIFICATE);
     throw protocol_error("Empty certificate chain");
   }
 
@@ -394,9 +366,8 @@ void CSecurityTLS::checkSession()
   std::string dbPath;
   dbPath = (std::string)hostsDir + "/x509_known_hosts";
 
-  known = gnutls_verify_stored_pubkey(dbPath.c_str(), nullptr,
-                                      client->getServerName(), nullptr,
-                                      GNUTLS_CRT_X509, &cert_list[0], 0);
+  known = gnutls_verify_stored_pubkey(dbPath.c_str(), nullptr, client->getServerName(), nullptr, GNUTLS_CRT_X509,
+                                      &cert_list[0], 0);
 
   /* Previously known? */
   if (known == GNUTLS_E_SUCCESS) {
@@ -405,8 +376,7 @@ void CSecurityTLS::checkSession()
     return;
   }
 
-  if ((known != GNUTLS_E_NO_CERTIFICATE_FOUND) &&
-      (known != GNUTLS_E_CERTIFICATE_KEY_MISMATCH)) {
+  if ((known != GNUTLS_E_NO_CERTIFICATE_FOUND) && (known != GNUTLS_E_CERTIFICATE_KEY_MISMATCH)) {
     gnutls_alert_send_appropriate(session, known);
     throw rdr::tls_error("Could not load known hosts database", known);
   }
@@ -430,50 +400,38 @@ void CSecurityTLS::checkSession()
     vlog.info("Server host not previously known");
     vlog.info("%s", info.data);
 
-    if (status & (GNUTLS_CERT_INVALID |
-                  GNUTLS_CERT_SIGNER_NOT_FOUND |
-                  GNUTLS_CERT_SIGNER_NOT_CA)) {
-      text = core::format(
-        "This certificate has been signed by an unknown authority:\n"
-        "\n"
-        "%s\n"
-        "\n"
-        "Someone could be trying to impersonate the site and you "
-        "should not continue.\n"
-        "\n"
-        "Do you want to make an exception for this server?",
-        info.data);
+    if (status & (GNUTLS_CERT_INVALID | GNUTLS_CERT_SIGNER_NOT_FOUND | GNUTLS_CERT_SIGNER_NOT_CA)) {
+      text = core::format("This certificate has been signed by an unknown authority:\n"
+                          "\n"
+                          "%s\n"
+                          "\n"
+                          "Someone could be trying to impersonate the site and you "
+                          "should not continue.\n"
+                          "\n"
+                          "Do you want to make an exception for this server?",
+                          info.data);
 
-      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
-                           "Unknown certificate issuer",
-                           text.c_str())) {
-        gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                          GNUTLS_A_UNKNOWN_CA);
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, "Unknown certificate issuer", text.c_str())) {
+        gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_UNKNOWN_CA);
         throw auth_cancelled();
       }
 
-      status &= ~(GNUTLS_CERT_INVALID |
-                  GNUTLS_CERT_SIGNER_NOT_FOUND |
-                  GNUTLS_CERT_SIGNER_NOT_CA);
+      status &= ~(GNUTLS_CERT_INVALID | GNUTLS_CERT_SIGNER_NOT_FOUND | GNUTLS_CERT_SIGNER_NOT_CA);
     }
 
     if (status & GNUTLS_CERT_NOT_ACTIVATED) {
-      text = core::format(
-        "This certificate is not yet valid:\n"
-        "\n"
-        "%s\n"
-        "\n"
-        "Someone could be trying to impersonate the site and you "
-        "should not continue.\n"
-        "\n"
-        "Do you want to make an exception for this server?",
-        info.data);
+      text = core::format("This certificate is not yet valid:\n"
+                          "\n"
+                          "%s\n"
+                          "\n"
+                          "Someone could be trying to impersonate the site and you "
+                          "should not continue.\n"
+                          "\n"
+                          "Do you want to make an exception for this server?",
+                          info.data);
 
-      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
-                           "Certificate is not yet valid",
-                           text.c_str())) {
-        gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                          GNUTLS_A_BAD_CERTIFICATE);
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, "Certificate is not yet valid", text.c_str())) {
+        gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_BAD_CERTIFICATE);
         throw auth_cancelled();
       }
 
@@ -481,22 +439,18 @@ void CSecurityTLS::checkSession()
     }
 
     if (status & GNUTLS_CERT_EXPIRED) {
-      text = core::format(
-        "This certificate has expired:\n"
-        "\n"
-        "%s\n"
-        "\n"
-        "Someone could be trying to impersonate the site and you "
-        "should not continue.\n"
-        "\n"
-        "Do you want to make an exception for this server?",
-        info.data);
+      text = core::format("This certificate has expired:\n"
+                          "\n"
+                          "%s\n"
+                          "\n"
+                          "Someone could be trying to impersonate the site and you "
+                          "should not continue.\n"
+                          "\n"
+                          "Do you want to make an exception for this server?",
+                          info.data);
 
-      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
-                           "Expired certificate",
-                           text.c_str())) {
-        gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                          GNUTLS_A_BAD_CERTIFICATE);
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, "Expired certificate", text.c_str())) {
+        gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_BAD_CERTIFICATE);
         throw auth_cancelled();
       }
 
@@ -504,22 +458,18 @@ void CSecurityTLS::checkSession()
     }
 
     if (status & GNUTLS_CERT_INSECURE_ALGORITHM) {
-      text = core::format(
-        "This certificate uses an insecure algorithm:\n"
-        "\n"
-        "%s\n"
-        "\n"
-        "Someone could be trying to impersonate the site and you "
-        "should not continue.\n"
-        "\n"
-        "Do you want to make an exception for this server?",
-        info.data);
+      text = core::format("This certificate uses an insecure algorithm:\n"
+                          "\n"
+                          "%s\n"
+                          "\n"
+                          "Someone could be trying to impersonate the site and you "
+                          "should not continue.\n"
+                          "\n"
+                          "Do you want to make an exception for this server?",
+                          info.data);
 
-      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
-                           "Insecure certificate algorithm",
-                           text.c_str())) {
-        gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                          GNUTLS_A_BAD_CERTIFICATE);
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, "Insecure certificate algorithm", text.c_str())) {
+        gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_BAD_CERTIFICATE);
         throw auth_cancelled();
       }
 
@@ -528,29 +478,24 @@ void CSecurityTLS::checkSession()
 
     if (status != 0) {
       vlog.error("Unhandled certificate problems: 0x%x", status);
-      gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                        GNUTLS_A_BAD_CERTIFICATE);
+      gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_BAD_CERTIFICATE);
       throw std::logic_error("Unhandled certificate problems");
     }
 
     if (!hostname_match) {
-      text = core::format(
-        "The specified hostname \"%s\" does not match the certificate "
-        "provided by the server:\n"
-        "\n"
-        "%s\n"
-        "\n"
-        "Someone could be trying to impersonate the site and you "
-        "should not continue.\n"
-        "\n"
-        "Do you want to make an exception for this server?",
-        client->getServerName(), info.data);
+      text = core::format("The specified hostname \"%s\" does not match the certificate "
+                          "provided by the server:\n"
+                          "\n"
+                          "%s\n"
+                          "\n"
+                          "Someone could be trying to impersonate the site and you "
+                          "should not continue.\n"
+                          "\n"
+                          "Do you want to make an exception for this server?",
+                          client->getServerName(), info.data);
 
-      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
-                           "Certificate hostname mismatch",
-                           text.c_str())) {
-        gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                          GNUTLS_A_BAD_CERTIFICATE);
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, "Certificate hostname mismatch", text.c_str())) {
+        gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_BAD_CERTIFICATE);
         throw auth_cancelled();
       }
     }
@@ -560,53 +505,41 @@ void CSecurityTLS::checkSession()
     vlog.info("Server host key mismatch");
     vlog.info("%s", info.data);
 
-    if (status & (GNUTLS_CERT_INVALID |
-                  GNUTLS_CERT_SIGNER_NOT_FOUND |
-                  GNUTLS_CERT_SIGNER_NOT_CA)) {
-      text = core::format(
-        "This host is previously known with a different certificate, "
-        "and the new certificate has been signed by an unknown "
-        "authority:\n"
-        "\n"
-        "%s\n"
-        "\n"
-        "Someone could be trying to impersonate the site and you "
-        "should not continue.\n"
-        "\n"
-        "Do you want to make an exception for this server?",
-        info.data);
+    if (status & (GNUTLS_CERT_INVALID | GNUTLS_CERT_SIGNER_NOT_FOUND | GNUTLS_CERT_SIGNER_NOT_CA)) {
+      text = core::format("This host is previously known with a different certificate, "
+                          "and the new certificate has been signed by an unknown "
+                          "authority:\n"
+                          "\n"
+                          "%s\n"
+                          "\n"
+                          "Someone could be trying to impersonate the site and you "
+                          "should not continue.\n"
+                          "\n"
+                          "Do you want to make an exception for this server?",
+                          info.data);
 
-      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
-                           "Unexpected server certificate",
-                           text.c_str())) {
-        gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                          GNUTLS_A_UNKNOWN_CA);
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, "Unexpected server certificate", text.c_str())) {
+        gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_UNKNOWN_CA);
         throw auth_cancelled();
       }
 
-      status &= ~(GNUTLS_CERT_INVALID |
-                  GNUTLS_CERT_SIGNER_NOT_FOUND |
-                  GNUTLS_CERT_SIGNER_NOT_CA);
+      status &= ~(GNUTLS_CERT_INVALID | GNUTLS_CERT_SIGNER_NOT_FOUND | GNUTLS_CERT_SIGNER_NOT_CA);
     }
 
     if (status & GNUTLS_CERT_NOT_ACTIVATED) {
-      text = core::format(
-        "This host is previously known with a different certificate, "
-        "and the new certificate is not yet valid:\n"
-        "\n"
-        "%s\n"
-        "\n"
-        "Someone could be trying to impersonate the site and you "
-        "should not continue.\n"
-        "\n"
-        "Do you want to make an exception for this server?",
-        info.data);
+      text = core::format("This host is previously known with a different certificate, "
+                          "and the new certificate is not yet valid:\n"
+                          "\n"
+                          "%s\n"
+                          "\n"
+                          "Someone could be trying to impersonate the site and you "
+                          "should not continue.\n"
+                          "\n"
+                          "Do you want to make an exception for this server?",
+                          info.data);
 
-      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
-                           "Unexpected server certificate",
-                           text.c_str())) {
-        gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                          GNUTLS_A_BAD_CERTIFICATE);
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, "Unexpected server certificate", text.c_str())) {
+        gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_BAD_CERTIFICATE);
         throw auth_cancelled();
       }
 
@@ -614,23 +547,19 @@ void CSecurityTLS::checkSession()
     }
 
     if (status & GNUTLS_CERT_EXPIRED) {
-      text = core::format(
-        "This host is previously known with a different certificate, "
-        "and the new certificate has expired:\n"
-        "\n"
-        "%s\n"
-        "\n"
-        "Someone could be trying to impersonate the site and you "
-        "should not continue.\n"
-        "\n"
-        "Do you want to make an exception for this server?",
-        info.data);
+      text = core::format("This host is previously known with a different certificate, "
+                          "and the new certificate has expired:\n"
+                          "\n"
+                          "%s\n"
+                          "\n"
+                          "Someone could be trying to impersonate the site and you "
+                          "should not continue.\n"
+                          "\n"
+                          "Do you want to make an exception for this server?",
+                          info.data);
 
-      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
-                           "Unexpected server certificate",
-                           text.c_str())) {
-        gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                          GNUTLS_A_BAD_CERTIFICATE);
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, "Unexpected server certificate", text.c_str())) {
+        gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_BAD_CERTIFICATE);
         throw auth_cancelled();
       }
 
@@ -638,23 +567,19 @@ void CSecurityTLS::checkSession()
     }
 
     if (status & GNUTLS_CERT_INSECURE_ALGORITHM) {
-      text = core::format(
-        "This host is previously known with a different certificate, "
-        "and the new certificate uses an insecure algorithm:\n"
-        "\n"
-        "%s\n"
-        "\n"
-        "Someone could be trying to impersonate the site and you "
-        "should not continue.\n"
-        "\n"
-        "Do you want to make an exception for this server?",
-        info.data);
+      text = core::format("This host is previously known with a different certificate, "
+                          "and the new certificate uses an insecure algorithm:\n"
+                          "\n"
+                          "%s\n"
+                          "\n"
+                          "Someone could be trying to impersonate the site and you "
+                          "should not continue.\n"
+                          "\n"
+                          "Do you want to make an exception for this server?",
+                          info.data);
 
-      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
-                           "Unexpected server certificate",
-                           text.c_str())) {
-        gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                          GNUTLS_A_BAD_CERTIFICATE);
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, "Unexpected server certificate", text.c_str())) {
+        gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_BAD_CERTIFICATE);
         throw auth_cancelled();
       }
 
@@ -663,38 +588,32 @@ void CSecurityTLS::checkSession()
 
     if (status != 0) {
       vlog.error("Unhandled certificate problems: 0x%x", status);
-      gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                        GNUTLS_A_BAD_CERTIFICATE);
+      gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_BAD_CERTIFICATE);
       throw std::logic_error("Unhandled certificate problems");
     }
 
     if (!hostname_match) {
-      text = core::format(
-        "This host is previously known with a different certificate, "
-        "and the specified hostname \"%s\" does not match the new "
-        "certificate provided by the server:\n"
-        "\n"
-        "%s\n"
-        "\n"
-        "Someone could be trying to impersonate the site and you "
-        "should not continue.\n"
-        "\n"
-        "Do you want to make an exception for this server?",
-        client->getServerName(), info.data);
+      text = core::format("This host is previously known with a different certificate, "
+                          "and the specified hostname \"%s\" does not match the new "
+                          "certificate provided by the server:\n"
+                          "\n"
+                          "%s\n"
+                          "\n"
+                          "Someone could be trying to impersonate the site and you "
+                          "should not continue.\n"
+                          "\n"
+                          "Do you want to make an exception for this server?",
+                          client->getServerName(), info.data);
 
-      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
-                           "Unexpected server certificate",
-                           text.c_str())) {
-        gnutls_alert_send(session, GNUTLS_AL_FATAL,
-                          GNUTLS_A_BAD_CERTIFICATE);
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, "Unexpected server certificate", text.c_str())) {
+        gnutls_alert_send(session, GNUTLS_AL_FATAL, GNUTLS_A_BAD_CERTIFICATE);
         throw auth_cancelled();
       }
     }
   }
 
-  if (gnutls_store_pubkey(dbPath.c_str(), nullptr,
-                          client->getServerName(), nullptr,
-                          GNUTLS_CRT_X509, &cert_list[0], 0, 0))
+  if (gnutls_store_pubkey(dbPath.c_str(), nullptr, client->getServerName(), nullptr, GNUTLS_CRT_X509, &cert_list[0], 0,
+                          0))
     vlog.error("Failed to store server certificate to known hosts database");
 
   vlog.info("Exception added for server host");
@@ -702,4 +621,3 @@ void CSecurityTLS::checkSession()
   gnutls_x509_crt_deinit(crt);
   gnutls_free(info.data);
 }
-

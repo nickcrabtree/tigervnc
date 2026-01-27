@@ -5,12 +5,12 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -23,35 +23,34 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 #ifndef WIN32
-#include <pwd.h>
 #include <limits.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #else
+#include <shlobj.h>
 #include <windows.h>
 #include <wininet.h> /* MinGW needs it */
-#include <shlobj.h>
 #define stat _stat
 #define mkdir(path, mode) mkdir(path)
 #endif
 
 #include <core/xdgdirs.h>
 
-static const char* getvncdir(bool userDir, const char *xdg_env, const char *xdg_def)
-{
+static const char* getvncdir(bool userDir, const char* xdg_env, const char* xdg_def) {
   static char dir[PATH_MAX], legacy[PATH_MAX];
   struct stat st;
 
 #ifndef WIN32
   char *homedir, *xdgdir;
   uid_t uid;
-  struct passwd *passwd;
+  struct passwd* passwd;
 #else
   BOOL ret;
 #endif
@@ -79,8 +78,8 @@ static const char* getvncdir(bool userDir, const char *xdg_env, const char *xdg_
 
   snprintf(legacy, sizeof(legacy), "%s/.vnc", homedir);
 #else
-  (void) xdg_def;
-  (void) xdg_env;
+  (void)xdg_def;
+  (void)xdg_env;
 
   if (userDir)
     ret = SHGetSpecialFolderPath(nullptr, dir, CSIDL_PROFILE, FALSE);
@@ -109,30 +108,25 @@ static const char* getvncdir(bool userDir, const char *xdg_env, const char *xdg_
   return (stat(dir, &st) != 0 && stat(legacy, &st) == 0) ? legacy : dir;
 }
 
-const char* core::getuserhomedir()
-{
+const char* core::getuserhomedir() {
   return getvncdir(true, nullptr, nullptr);
 }
 
-const char* core::getvncconfigdir()
-{
+const char* core::getvncconfigdir() {
   return getvncdir(false, "XDG_CONFIG_HOME", ".config");
 }
 
-const char* core::getvncdatadir()
-{
+const char* core::getvncdatadir() {
   return getvncdir(false, "XDG_DATA_HOME", ".local/share");
 }
 
-const char* core::getvncstatedir()
-{
+const char* core::getvncstatedir() {
   return getvncdir(false, "XDG_STATE_HOME", ".local/state");
 }
 
-int core::mkdir_p(const char *path_, mode_t mode)
-{
-  char *path = strdup(path_);
-  char *p;
+int core::mkdir_p(const char* path_, mode_t mode) {
+  char* path = strdup(path_);
+  char* p;
 
 #ifdef WIN32
   (void)mode;
