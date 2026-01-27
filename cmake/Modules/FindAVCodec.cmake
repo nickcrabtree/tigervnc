@@ -23,23 +23,21 @@ if(PKG_CONFIG_FOUND)
   pkg_check_modules(PC_AVCodec QUIET libavcodec)
 endif()
 
-find_path(AVCodec_INCLUDE_DIR NAMES libavcodec/avcodec.h
-  HINTS
-    ${PC_AVCodec_INCLUDE_DIRS}
-)
+find_path(
+  AVCodec_INCLUDE_DIR
+  NAMES libavcodec/avcodec.h
+  HINTS ${PC_AVCodec_INCLUDE_DIRS})
 mark_as_advanced(AVCodec_INCLUDE_DIR)
 
-find_library(AVCodec_LIBRARY NAMES avcodec
-  HINTS
-    ${PC_AVCodec_LIBRARY_DIRS}
-)
+find_library(
+  AVCodec_LIBRARY
+  NAMES avcodec
+  HINTS ${PC_AVCodec_LIBRARY_DIRS})
 mark_as_advanced(AVCodec_LIBRARY)
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(AVCodec
-  REQUIRED_VARS
-    AVCodec_LIBRARY AVCodec_INCLUDE_DIR
-)
+find_package_handle_standard_args(AVCodec REQUIRED_VARS AVCodec_LIBRARY
+                                                        AVCodec_INCLUDE_DIR)
 
 if(AVCodec_FOUND)
   set(AVCODEC_INCLUDE_DIRS ${AVCodec_INCLUDE_DIR})

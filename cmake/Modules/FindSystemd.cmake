@@ -23,23 +23,21 @@ if(PKG_CONFIG_FOUND)
   pkg_check_modules(PC_Systemd QUIET libsystemd)
 endif()
 
-find_path(Systemd_INCLUDE_DIR NAMES systemd/sd-daemon.h
-  HINTS
-    ${PC_Systemd_INCLUDE_DIRS}
-)
+find_path(
+  Systemd_INCLUDE_DIR
+  NAMES systemd/sd-daemon.h
+  HINTS ${PC_Systemd_INCLUDE_DIRS})
 mark_as_advanced(Systemd_INCLUDE_DIR)
 
-find_library(Systemd_LIBRARY NAMES systemd
-  HINTS
-    ${PC_Systemd_LIBRARY_DIRS}
-)
+find_library(
+  Systemd_LIBRARY
+  NAMES systemd
+  HINTS ${PC_Systemd_LIBRARY_DIRS})
 mark_as_advanced(Systemd_LIBRARY)
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(Systemd
-  REQUIRED_VARS
-    Systemd_LIBRARY Systemd_INCLUDE_DIR
-)
+find_package_handle_standard_args(Systemd REQUIRED_VARS Systemd_LIBRARY
+                                                        Systemd_INCLUDE_DIR)
 
 if(Systemd_FOUND)
   set(SYSTEMD_INCLUDE_DIRS ${Systemd_INCLUDE_DIR})
