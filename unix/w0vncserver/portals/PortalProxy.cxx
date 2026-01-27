@@ -36,10 +36,7 @@
 
 static core::LogWriter vlog("PortalProxy");
 
-PortalProxy::PortalProxy(const char* name, const char* objectPath,
-                         const char* interfaceName)
-  : proxy(nullptr)
-{
+PortalProxy::PortalProxy(const char* name, const char* objectPath, const char* interfaceName) : proxy(nullptr) {
   GError* error = nullptr;
 
   connection = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
@@ -50,9 +47,8 @@ PortalProxy::PortalProxy(const char* name, const char* objectPath,
     throw std::runtime_error(error_message);
   }
 
-  proxy = g_dbus_proxy_new_sync(connection, G_DBUS_PROXY_FLAGS_NONE,
-                                nullptr, name, objectPath,
-                                interfaceName, nullptr, &error);
+  proxy = g_dbus_proxy_new_sync(connection, G_DBUS_PROXY_FLAGS_NONE, nullptr, name, objectPath, interfaceName, nullptr,
+                                &error);
 
   if (error) {
     std::string error_message(error->message);
@@ -73,11 +69,8 @@ PortalProxy::~PortalProxy() {
   }
 }
 
-void PortalProxy::call(const char* method, GVariant* parameters,
-                       const char* requestHandleToken,
-                       std::function<void(GVariant* parameters)> signalCallback,
-                       GDBusCallFlags flags)
-{
+void PortalProxy::call(const char* method, GVariant* parameters, const char* requestHandleToken,
+                       std::function<void(GVariant* parameters)> signalCallback, GDBusCallFlags flags) {
   GError* error = nullptr;
   GVariant* result;
 
@@ -97,37 +90,28 @@ void PortalProxy::call(const char* method, GVariant* parameters,
     call = new PortalCall{signalCallback, 0, this};
 
     call->signalId = g_dbus_connection_signal_subscribe(
-                       connection,
-                       "org.freedesktop.portal.Desktop",
-                       "org.freedesktop.portal.Request",
-                       "Response", requestHandle.c_str(),
-                       nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
-                       [](GDBusConnection*, const char*, const char*,
-                          const char*, const char*,
-                          GVariant *parameters_, void* userData) {
-                            PortalCall* call_ = (PortalCall*)userData;
-                            PortalProxy* self = call_->parent;
+        connection, "org.freedesktop.portal.Desktop", "org.freedesktop.portal.Request", "Response",
+        requestHandle.c_str(), nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
+        [](GDBusConnection*, const char*, const char*, const char*, const char*, GVariant* parameters_,
+           void* userData) {
+          PortalCall* call_ = (PortalCall*)userData;
+          PortalProxy* self = call_->parent;
 
-                            g_dbus_connection_signal_unsubscribe(self->connection,
-                                                                 call_->signalId);
-                            self->pendingCalls.remove(call_->signalId);
+          g_dbus_connection_signal_unsubscribe(self->connection, call_->signalId);
+          self->pendingCalls.remove(call_->signalId);
 
-                            call_->callback(parameters_);
-                       },
-                       call, [](void* userData) {
-                         delete (PortalCall*)userData;
-                       });
+          call_->callback(parameters_);
+        },
+        call, [](void* userData) { delete (PortalCall*)userData; });
 
     pendingCalls.push_back(call->signalId);
   }
 
-  result = g_dbus_proxy_call_sync(proxy, method, parameters,
-                                  flags, 3000, nullptr, &error);
+  result = g_dbus_proxy_call_sync(proxy, method, parameters, flags, 3000, nullptr, &error);
 
   if (error) {
     // FIXME: We probably want to improve the error handling here
-    vlog.error("call(): error calling %s: %s", method,
-               error->message);
+    vlog.error("call(): error calling %s: %s", method, error->message);
     g_error_free(error);
     return;
   }
@@ -135,8 +119,7 @@ void PortalProxy::call(const char* method, GVariant* parameters,
   g_variant_unref(result);
 }
 
-std::string PortalProxy::newToken()
-{
+std::string PortalProxy::newToken() {
   std::string token;
   uuid_t uuid;
   char uuidStr[37];
@@ -156,13 +139,11 @@ std::string PortalProxy::newToken()
   return token;
 }
 
-std::string PortalProxy::newHandle()
-{
+std::string PortalProxy::newHandle() {
   return core::format("w0vncserver_%s", newToken().c_str());
 }
 
-bool PortalProxy::interfacesAvailable(std::vector<std::string> interfaces)
-{
+bool PortalProxy::interfacesAvailable(std::vector<std::string> interfaces) {
   GError* error = nullptr;
   GDBusConnection* connection;
   GVariant* result;
@@ -179,17 +160,9 @@ bool PortalProxy::interfacesAvailable(std::vector<std::string> interfaces)
     throw std::runtime_error(error_message);
   }
 
-  result = g_dbus_connection_call_sync(connection,
-                              "org.freedesktop.portal.Desktop",
-                              "/org/freedesktop/portal/desktop",
-                              "org.freedesktop.DBus.Introspectable",
-                              "Introspect",
-                              nullptr,
-                              G_VARIANT_TYPE("(s)"),
-                              G_DBUS_CALL_FLAGS_NONE,
-                              3000,
-                              nullptr,
-                              &error);
+  result = g_dbus_connection_call_sync(connection, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+                                       "org.freedesktop.DBus.Introspectable", "Introspect", nullptr,
+                                       G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE, 3000, nullptr, &error);
 
   if (error) {
     std::string error_message(error->message);
@@ -210,8 +183,7 @@ bool PortalProxy::interfacesAvailable(std::vector<std::string> interfaces)
 
   interfaceMissing = false;
   for (std::string interface : interfaces) {
-    interfaceInfo = g_dbus_node_info_lookup_interface(nodeInfo,
-                                                      interface.c_str());
+    interfaceInfo = g_dbus_node_info_lookup_interface(nodeInfo, interface.c_str());
     if (!interfaceInfo) {
       vlog.debug("Interface '%s' not found", interface.c_str());
       interfaceMissing = true;
@@ -226,8 +198,7 @@ bool PortalProxy::interfacesAvailable(std::vector<std::string> interfaces)
   return !interfaceMissing;
 }
 
-std::string PortalProxy::newRequestHandle(std::string token)
-{
+std::string PortalProxy::newRequestHandle(std::string token) {
   std::string uniqueName;
   std::string requestHandle;
 
@@ -238,11 +209,10 @@ std::string PortalProxy::newRequestHandle(std::string token)
    * initial ':' removed, and all '.' replaced by '_'.
    * e.g. :15759.1 -> 15759_1
    */
-  uniqueName.erase(0,1);
+  uniqueName.erase(0, 1);
   std::replace(uniqueName.begin(), uniqueName.end(), '.', '_');
 
-  requestHandle = core::format("/org/freedesktop/portal/desktop/request/%s/%s",
-                               uniqueName.c_str(), token.c_str());
+  requestHandle = core::format("/org/freedesktop/portal/desktop/request/%s/%s", uniqueName.c_str(), token.c_str());
 
   return requestHandle;
 }

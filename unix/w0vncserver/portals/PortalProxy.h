@@ -22,26 +22,23 @@
 #include <stdint.h>
 
 #include <functional>
+#include <list>
 #include <string>
 #include <vector>
-#include <list>
 
 #include <gio/gio.h>
 
 class PortalProxy {
 public:
-  PortalProxy(const char* name, const char* objectPath,
-              const char* interfaceName);
+  PortalProxy(const char* name, const char* objectPath, const char* interfaceName);
   ~PortalProxy();
 
   // Call a DBUS method using the proxy. Will call
   // signalCallback() when a response signal is received. A
   // requestHandleToken must be set to link the response signal.
   // signalCallback can be set to nullptr is no response is expected.
-  void call(const char* method, GVariant* parameters,
-            const char* requestHandleToken = nullptr,
-            std::function<void(GVariant* parameters)>
-              signalCallback = nullptr,
+  void call(const char* method, GVariant* parameters, const char* requestHandleToken = nullptr,
+            std::function<void(GVariant* parameters)> signalCallback = nullptr,
             GDBusCallFlags flags = G_DBUS_CALL_FLAGS_NONE);
 
   // Generates a unique request token
@@ -52,7 +49,9 @@ public:
   // Checks if interfaces are available
   static bool interfacesAvailable(std::vector<std::string> interfaces);
 
-  GDBusProxy* getProxy() const { return proxy; }
+  GDBusProxy* getProxy() const {
+    return proxy;
+  }
 
 private:
   // Generates a request handle from a token.

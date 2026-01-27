@@ -23,50 +23,39 @@
 #include <assert.h>
 #include <pwd.h>
 
-#include <glib.h>
-#include <glib-unix.h>
 #include <gio/gio.h>
+#include <glib-unix.h>
+#include <glib.h>
 
+#include <core/LogWriter.h>
+#include <core/Logger_stdio.h>
 #include <network/TcpSocket.h>
 #include <network/UnixSocket.h>
-#include <rfb/VNCServerST.h>
-#include <rfb/ServerCore.h>
 #include <rdr/FdOutStream.h>
-#include <core/Logger_stdio.h>
-#include <core/LogWriter.h>
+#include <rfb/ServerCore.h>
+#include <rfb/VNCServerST.h>
 
 #include "GSocketSource.h"
-#include "RFBTimerSource.h"
 #include "PortalDesktop.h"
+#include "RFBTimerSource.h"
 
 static core::LogWriter vlog("main");
 
 static const char* defaultDesktopName();
 
-core::IntParameter
-  rfbport("rfbport",
-          "TCP port to listen for RFB protocol", 5900, -1, 65535);
-core::StringParameter
-  rfbunixpath("rfbunixpath",
-              "Unix socket to listen for RFB protocol", "");
-core::IntParameter
-  rfbunixmode("rfbunixmode",
-              "Unix socket access mode", 0600, 0000, 0777);
-core::BoolParameter
-  localhostOnly("localhost",
-                "Only allow connections from localhost", false);
-core::StringParameter
-  desktopName("desktop", "Name of VNC desktop", defaultDesktopName());
-core::StringParameter
-  interface("interface",
-            "Listen on the specified network address", "all");
+core::IntParameter rfbport("rfbport", "TCP port to listen for RFB protocol", 5900, -1, 65535);
+core::StringParameter rfbunixpath("rfbunixpath", "Unix socket to listen for RFB protocol", "");
+core::IntParameter rfbunixmode("rfbunixmode", "Unix socket access mode", 0600, 0000, 0777);
+core::BoolParameter localhostOnly("localhost", "Only allow connections from localhost", false);
+core::StringParameter desktopName("desktop", "Name of VNC desktop", defaultDesktopName());
+core::StringParameter interface("interface", "Listen on the specified network address", "all");
 
 char* programName;
 static GMainLoop* loop = nullptr;
 static GDBusConnection* connection = nullptr;
 static bool fatalError = false;
 
-void fatal_error(const char *error, ...) {
+void fatal_error(const char* error, ...) {
   char exitError[1024];
 
   // Prioritise the first error we get as that is probably the most
@@ -87,8 +76,7 @@ void fatal_error(const char *error, ...) {
   g_main_loop_quit(loop);
 }
 
-static const char* defaultDesktopName()
-{
+static const char* defaultDesktopName() {
   long host_max = sysconf(_SC_HOST_NAME_MAX);
   if (host_max < 0)
     return "";
@@ -112,35 +100,31 @@ static const char* defaultDesktopName()
   return name;
 }
 
-static void printVersion(FILE *fp)
-{
+static void printVersion(FILE* fp) {
   fprintf(fp, "TigerVNC server version %s\n", PACKAGE_VERSION);
 }
 
-static void usage()
-{
+static void usage() {
   printVersion(stderr);
   fprintf(stderr, "\nUsage: %s [<parameters>]\n", programName);
   fprintf(stderr, "       %s --version\n", programName);
-  fprintf(stderr,"\n"
-          "Parameters can be turned on with -<param> or off with -<param>=0\n"
-          "Parameters which take a value can be specified as "
-          "-<param> <value>\n"
-          "Other valid forms are <param>=<value> -<param>=<value> "
-          "--<param>=<value>\n"
-          "Parameter names are case-insensitive.  The parameters are:\n\n");
+  fprintf(stderr, "\n"
+                  "Parameters can be turned on with -<param> or off with -<param>=0\n"
+                  "Parameters which take a value can be specified as "
+                  "-<param> <value>\n"
+                  "Other valid forms are <param>=<value> -<param>=<value> "
+                  "--<param>=<value>\n"
+                  "Parameter names are case-insensitive.  The parameters are:\n\n");
   core::Configuration::listParams(79, 14);
   exit(1);
 }
 
-int CleanupSignalHandler(void*)
-{
+int CleanupSignalHandler(void*) {
   g_main_loop_quit(loop);
   return 1;
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
   std::list<network::SocketListener*> listeners;
   int32_t sigintTag;
   int32_t sigtermTag;
@@ -170,30 +154,23 @@ int main(int argc, char** argv)
       continue;
     }
 
-    if (strcmp(argv[i], "-h") == 0 ||
-        strcmp(argv[i], "-help") == 0 ||
-        strcmp(argv[i], "--help") == 0) {
+    if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-help") == 0 || strcmp(argv[i], "--help") == 0) {
       usage();
     }
 
-    if (strcmp(argv[i], "-v") == 0 ||
-        strcmp(argv[i], "-version") == 0 ||
-        strcmp(argv[i], "--version") == 0) {
+    if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "-version") == 0 || strcmp(argv[i], "--version") == 0) {
       printVersion(stderr);
       return 0;
     }
 
     if (argv[i][0] == '-') {
-      fprintf(stderr, "%s: Unrecognized option '%s'\n",
-              programName, argv[i]);
-      fprintf(stderr, "See '%s --help' for more information.\n",
-              programName);
+      fprintf(stderr, "%s: Unrecognized option '%s'\n", programName, argv[i]);
+      fprintf(stderr, "See '%s --help' for more information.\n", programName);
       exit(1);
     }
 
     fprintf(stderr, "%s: Extra argument '%s'\n", programName, argv[i]);
-    fprintf(stderr, "See '%s --help' for more information.\n",
-            programName);
+    fprintf(stderr, "See '%s --help' for more information.\n", programName);
     exit(1);
   }
 
@@ -205,7 +182,7 @@ int main(int argc, char** argv)
 
     if ((int)rfbport != -1) {
       std::list<network::SocketListener*> tcp_listeners;
-      const char *addr = interface;
+      const char* addr = interface;
 
       if (strcasecmp(addr, "all") == 0)
         addr = nullptr;
@@ -215,10 +192,9 @@ int main(int argc, char** argv)
         createTcpListeners(&tcp_listeners, addr, (int)rfbport);
 
       if (!tcp_listeners.empty()) {
-        listeners.splice (listeners.end(), tcp_listeners);
+        listeners.splice(listeners.end(), tcp_listeners);
         vlog.info("Listening for VNC connections on %s interface(s), port %d",
-                  localhostOnly ? "local" : (const char*)interface,
-                  (int)rfbport);
+                  localhostOnly ? "local" : (const char*)interface, (int)rfbport);
       }
     }
   } catch (std::exception& e) {

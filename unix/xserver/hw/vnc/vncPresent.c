@@ -25,8 +25,7 @@
 
 #include <present.h>
 
-static RRCrtcPtr vncPresentGetCrtc(WindowPtr window)
-{
+static RRCrtcPtr vncPresentGetCrtc(WindowPtr window) {
   ScreenPtr pScreen = window->drawable.pScreen;
   rrScrPrivPtr rp = rrGetScrPriv(pScreen);
 
@@ -44,50 +43,40 @@ static RRCrtcPtr vncPresentGetCrtc(WindowPtr window)
   return NULL;
 }
 
-static int vncPresentGetUstMsc(RRCrtcPtr crtc, CARD64 *ust, CARD64 *msc)
-{
+static int vncPresentGetUstMsc(RRCrtcPtr crtc, CARD64* ust, CARD64* msc) {
   *ust = GetTimeInMicros();
   *msc = vncGetMsc(crtc->pScreen->myNum);
 
   return Success;
 }
 
-static int vncPresentQueueVBlank(RRCrtcPtr crtc, uint64_t event_id,
-                                 uint64_t msc)
-{
+static int vncPresentQueueVBlank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc) {
   vncQueueMsc(crtc->pScreen->myNum, event_id, msc);
   return Success;
 }
 
-void vncPresentMscEvent(uint64_t id, uint64_t msc)
-{
+void vncPresentMscEvent(uint64_t id, uint64_t msc) {
   present_event_notify(id, GetTimeInMicros(), msc);
 }
 
-static void vncPresentAbortVBlank(RRCrtcPtr crtc, uint64_t event_id,
-                                  uint64_t msc)
-{
+static void vncPresentAbortVBlank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc) {
   vncAbortMsc(crtc->pScreen->myNum, event_id);
 }
 
-static void vncPresentFlush(WindowPtr window)
-{
-}
+static void vncPresentFlush(WindowPtr window) {}
 
 static present_screen_info_rec vncPresentScreenInfo = {
-  .version = PRESENT_SCREEN_INFO_VERSION,
+    .version = PRESENT_SCREEN_INFO_VERSION,
 
-  .get_crtc = vncPresentGetCrtc,
-  .get_ust_msc = vncPresentGetUstMsc,
-  .queue_vblank = vncPresentQueueVBlank,
-  .abort_vblank = vncPresentAbortVBlank,
-  .flush = vncPresentFlush,
+    .get_crtc = vncPresentGetCrtc,
+    .get_ust_msc = vncPresentGetUstMsc,
+    .queue_vblank = vncPresentQueueVBlank,
+    .abort_vblank = vncPresentAbortVBlank,
+    .flush = vncPresentFlush,
 
-  .capabilities = PresentCapabilityNone,
+    .capabilities = PresentCapabilityNone,
 };
 
-Bool
-vncPresentInit(ScreenPtr screen)
-{
+Bool vncPresentInit(ScreenPtr screen) {
   return present_screen_init(screen, &vncPresentScreenInfo);
 }

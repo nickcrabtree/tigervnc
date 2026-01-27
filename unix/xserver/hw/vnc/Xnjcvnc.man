@@ -1,9 +1,9 @@
 .TH Xnjcvnc 1 "" "TigerVNC" "Virtual Network Computing"
 .SH NAME
-Xnjcvnc \- the X VNC server 
+Xnjcvnc \- the X VNC server
 .SH SYNOPSIS
 .B Xnjcvnc
-.RI [ options ] 
+.RI [ options ]
 .RI : display#
 .SH DESCRIPTION
 .B Xnjcvnc

@@ -7,12 +7,12 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -22,8 +22,8 @@
 #ifndef __VNCINPUT_H__
 #define __VNCINPUT_H__
 
-#include <stdlib.h>
 #include <X11/X.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,7 +33,7 @@ void vncInitInputDevice(void);
 
 void vncPointerButtonAction(int buttonMask);
 void vncPointerMove(int x, int y);
-void vncGetPointerPos(int *x, int *y);
+void vncGetPointerPos(int* x, int* y);
 
 void vncKeyboardEvent(KeySym keysym, unsigned xtcode, int down);
 
@@ -45,12 +45,12 @@ unsigned vncGetKeyboardState(void);
 unsigned vncGetLevelThreeMask(void);
 
 KeyCode vncPressShift(void);
-size_t vncReleaseShift(KeyCode *keys, size_t maxKeys);
+size_t vncReleaseShift(KeyCode* keys, size_t maxKeys);
 
 KeyCode vncPressLevelThree(void);
-size_t vncReleaseLevelThree(KeyCode *keys, size_t maxKeys);
+size_t vncReleaseLevelThree(KeyCode* keys, size_t maxKeys);
 
-KeyCode vncKeysymToKeycode(KeySym keysym, unsigned state, unsigned *new_state);
+KeyCode vncKeysymToKeycode(KeySym keysym, unsigned state, unsigned* new_state);
 
 int vncIsAffectedByNumLock(KeyCode keycode);
 

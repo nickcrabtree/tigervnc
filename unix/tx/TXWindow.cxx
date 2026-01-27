@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -23,10 +23,10 @@
 #include <config.h>
 #endif
 
-#include <X11/Xatom.h>
 #include "TXWindow.h"
-#include <list>
+#include <X11/Xatom.h>
 #include <limits.h>
+#include <list>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,9 +54,8 @@ char* TXWindow::defaultWindowClass;
 
 TXGlobalEventHandler* TXWindow::globalEventHandler = nullptr;
 
-void TXWindow::init(Display* dpy, const char* defaultWindowClass_)
-{
-  cmap = DefaultColormap(dpy,DefaultScreen(dpy));
+void TXWindow::init(Display* dpy, const char* defaultWindowClass_) {
+  cmap = DefaultColormap(dpy, DefaultScreen(dpy));
   wmProtocols = XInternAtom(dpy, "WM_PROTOCOLS", False);
   wmDeleteWindow = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
   wmTakeFocus = XInternAtom(dpy, "WM_TAKE_FOCUS", False);
@@ -82,12 +81,11 @@ void TXWindow::init(Display* dpy, const char* defaultWindowClass_)
   scrollbarBg = cols[4].pixel;
   white = enabledBg = cols[5].pixel;
   defaultGC = XCreateGC(dpy, DefaultRootWindow(dpy), 0, nullptr);
-  defaultFS
-    = XLoadQueryFont(dpy, "-*-helvetica-medium-r-*-*-12-*-*-*-*-*-*-*");
+  defaultFS = XLoadQueryFont(dpy, "-*-helvetica-medium-r-*-*-12-*-*-*-*-*-*-*");
   if (!defaultFS) {
     defaultFS = XLoadQueryFont(dpy, "fixed");
     if (!defaultFS) {
-      fprintf(stderr,"Failed to load any font\n");
+      fprintf(stderr, "Failed to load any font\n");
       exit(1);
     }
   }
@@ -97,17 +95,14 @@ void TXWindow::init(Display* dpy, const char* defaultWindowClass_)
   XSetFont(dpy, defaultGC, defaultFont);
   XSelectInput(dpy, DefaultRootWindow(dpy), PropertyChangeMask);
 
-  static unsigned char dotBits[] = { 0x06, 0x0f, 0x0f, 0x06};
-  dot = XCreateBitmapFromData(dpy, DefaultRootWindow(dpy), (char*)dotBits,
-                              dotSize, dotSize);
-  static unsigned char tickBits[] = { 0x80, 0xc0, 0xe2, 0x76, 0x3e, 0x1c, 0x08, 0x00};
-  tick = XCreateBitmapFromData(dpy, DefaultRootWindow(dpy), (char*)tickBits,
-                               tickSize, tickSize);
+  static unsigned char dotBits[] = {0x06, 0x0f, 0x0f, 0x06};
+  dot = XCreateBitmapFromData(dpy, DefaultRootWindow(dpy), (char*)dotBits, dotSize, dotSize);
+  static unsigned char tickBits[] = {0x80, 0xc0, 0xe2, 0x76, 0x3e, 0x1c, 0x08, 0x00};
+  tick = XCreateBitmapFromData(dpy, DefaultRootWindow(dpy), (char*)tickBits, tickSize, tickSize);
   defaultWindowClass = strdup(defaultWindowClass_);
 }
 
-void TXWindow::handleXEvents(Display* dpy)
-{
+void TXWindow::handleXEvents(Display* dpy) {
   while (XPending(dpy)) {
     XEvent ev;
     XNextEvent(dpy, &ev);
@@ -117,8 +112,7 @@ void TXWindow::handleXEvents(Display* dpy)
     }
     if (ev.type == MappingNotify) {
       XRefreshKeyboardMapping(&ev.xmapping);
-    } else if (ev.type == PropertyNotify &&
-               ev.xproperty.window == DefaultRootWindow(dpy) &&
+    } else if (ev.type == PropertyNotify && ev.xproperty.window == DefaultRootWindow(dpy) &&
                ev.xproperty.atom == XA_CUT_BUFFER0) {
       cutBufferTime = ev.xproperty.time;
     } else {
@@ -131,15 +125,13 @@ void TXWindow::handleXEvents(Display* dpy)
   }
 }
 
-TXGlobalEventHandler* TXWindow::setGlobalEventHandler(TXGlobalEventHandler* h)
-{
+TXGlobalEventHandler* TXWindow::setGlobalEventHandler(TXGlobalEventHandler* h) {
   TXGlobalEventHandler* old = globalEventHandler;
   globalEventHandler = h;
   return old;
 }
 
-void TXWindow::getColours(Display* dpy, XColor* cols, int nCols)
-{
+void TXWindow::getColours(Display* dpy, XColor* cols, int nCols) {
   std::vector<bool> got;
 
   bool failed = false;
@@ -173,7 +165,7 @@ void TXWindow::getColours(Display* dpy, XColor* cols, int nCols)
   // unlikely except for the lowest unallocated pixel - this works because of
   // the way the X server allocates new pixels).
 
-  int cmapSize = DisplayCells(dpy,DefaultScreen(dpy));
+  int cmapSize = DisplayCells(dpy, DefaultScreen(dpy));
 
   XColor* cm = new XColor[cmapSize];
   std::vector<bool> shared;
@@ -187,7 +179,7 @@ void TXWindow::getColours(Display* dpy, XColor* cols, int nCols)
 
   XQueryColors(dpy, cmap, cm, cmapSize);
 
-  for (i = cmapSize-1; i >= 0; i--) {
+  for (i = cmapSize - 1; i >= 0; i--) {
     if (XAllocColor(dpy, cmap, &cm[i])) {
       if (cm[i].pixel == (unsigned long)i) {
         shared[i] = true;
@@ -203,10 +195,10 @@ void TXWindow::getColours(Display* dpy, XColor* cols, int nCols)
     if (!got[j]) {
       for (i = 0; i < cmapSize; i++) {
         if (shared[i]) {
-          unsigned long rd = (cm[i].red - cols[j].red)/2;
-          unsigned long gd = (cm[i].green - cols[j].green)/2;
-          unsigned long bd = (cm[i].blue - cols[j].blue)/2;
-          unsigned long distance = (rd*rd + gd*gd + bd*bd);
+          unsigned long rd = (cm[i].red - cols[j].red) / 2;
+          unsigned long gd = (cm[i].green - cols[j].green) / 2;
+          unsigned long bd = (cm[i].blue - cols[j].blue) / 2;
+          unsigned long distance = (rd * rd + gd * gd + bd * bd);
 
           if (distance < minDistance) {
             minDistance = distance;
@@ -228,8 +220,7 @@ void TXWindow::getColours(Display* dpy, XColor* cols, int nCols)
   }
 }
 
-Window TXWindow::windowWithName(Display* dpy, Window top, const char* name)
-{
+Window TXWindow::windowWithName(Display* dpy, Window top, const char* name) {
   char* windowName;
   if (XFetchName(dpy, top, &windowName)) {
     if (strcmp(windowName, name) == 0) {
@@ -242,7 +233,7 @@ Window TXWindow::windowWithName(Display* dpy, Window top, const char* name)
   Window* children;
   Window dummy;
   unsigned int nchildren;
-  if (!XQueryTree(dpy, top, &dummy, &dummy, &children,&nchildren) || !children)
+  if (!XQueryTree(dpy, top, &dummy, &dummy, &children, &nchildren) || !children)
     return 0;
 
   for (int i = 0; i < (int)nchildren; i++) {
@@ -256,48 +247,40 @@ Window TXWindow::windowWithName(Display* dpy, Window top, const char* name)
   return 0;
 }
 
-
-TXWindow::TXWindow(Display* dpy_, int w, int h, TXWindow* parent_,
-                   int borderWidth)
-  : dpy(dpy_), xPad(3), yPad(3), bevel(2), parent(parent_), width_(w),
-    height_(h), eventHandler(nullptr), dwc(nullptr), eventMask(0),
-    toplevel_(false)
-{
+TXWindow::TXWindow(Display* dpy_, int w, int h, TXWindow* parent_, int borderWidth)
+    : dpy(dpy_), xPad(3), yPad(3), bevel(2), parent(parent_), width_(w), height_(h), eventHandler(nullptr),
+      dwc(nullptr), eventMask(0), toplevel_(false) {
   sizeHints.flags = 0;
   XSetWindowAttributes attr;
   attr.background_pixel = defaultBg;
   attr.border_pixel = 0;
   Window par = parent ? parent->win() : DefaultRootWindow(dpy);
-  win_ = XCreateWindow(dpy, par, 0, 0, width_, height_, borderWidth,
-                      CopyFromParent, CopyFromParent,
-                      (Visual*)CopyFromParent,
-                      CWBackPixel | CWBorderPixel, &attr);
-  if (parent) map();
+  win_ = XCreateWindow(dpy, par, 0, 0, width_, height_, borderWidth, CopyFromParent, CopyFromParent,
+                       (Visual*)CopyFromParent, CWBackPixel | CWBorderPixel, &attr);
+  if (parent)
+    map();
 
   windows.push_back(this);
 }
 
-TXWindow::~TXWindow()
-{
+TXWindow::~TXWindow() {
   windows.remove(this);
   XDestroyWindow(dpy, win());
 }
 
-void TXWindow::toplevel(const char* name, TXDeleteWindowCallback* dwc_,
-                        int argc, char** argv, const char* windowClass,
-                        bool iconic)
-{
+void TXWindow::toplevel(const char* name, TXDeleteWindowCallback* dwc_, int argc, char** argv, const char* windowClass,
+                        bool iconic) {
   toplevel_ = true;
   XWMHints wmHints;
-  wmHints.flags = InputHint|StateHint;
+  wmHints.flags = InputHint | StateHint;
   wmHints.input = True;
   wmHints.initial_state = iconic ? IconicState : NormalState;
   XClassHint classHint;
-  if (!windowClass) windowClass = defaultWindowClass;
+  if (!windowClass)
+    windowClass = defaultWindowClass;
   classHint.res_name = (char*)name;
   classHint.res_class = (char*)windowClass;
-  XSetWMProperties(dpy, win(), nullptr, nullptr, argv, argc,
-                   &sizeHints, &wmHints, &classHint);
+  XSetWMProperties(dpy, win(), nullptr, nullptr, argv, argc, &sizeHints, &wmHints, &classHint);
   XStoreName(dpy, win(), name);
   XSetIconName(dpy, win(), name);
   Atom protocols[10];
@@ -310,8 +293,7 @@ void TXWindow::toplevel(const char* name, TXDeleteWindowCallback* dwc_,
   addEventMask(StructureNotifyMask);
 }
 
-void TXWindow::setName(const char* name)
-{
+void TXWindow::setName(const char* name) {
   XClassHint classHint;
   memset(&classHint, 0, sizeof(classHint));
   XGetClassHint(dpy, win(), &classHint);
@@ -320,19 +302,17 @@ void TXWindow::setName(const char* name)
   XSetClassHint(dpy, win(), &classHint);
   XFree(classHint.res_class);
   XStoreName(dpy, win(), name);
-  XSetIconName(dpy, win(), name);    
+  XSetIconName(dpy, win(), name);
 }
 
-void TXWindow::setMaxSize(int w, int h)
-{
+void TXWindow::setMaxSize(int w, int h) {
   sizeHints.flags |= PMaxSize;
   sizeHints.max_width = w;
   sizeHints.max_height = h;
   XSetWMNormalHints(dpy, win(), &sizeHints);
 }
 
-void TXWindow::setUSPosition(int x, int y)
-{
+void TXWindow::setUSPosition(int x, int y) {
   sizeHints.flags |= USPosition;
   sizeHints.x = x;
   sizeHints.y = y;
@@ -340,38 +320,33 @@ void TXWindow::setUSPosition(int x, int y)
   move(x, y);
 }
 
-void TXWindow::setGeometry(const char* geom, int x, int y, int w, int h)
-{
+void TXWindow::setGeometry(const char* geom, int x, int y, int w, int h) {
   char defGeom[256];
-  sprintf(defGeom,"%dx%d+%d+%d",w,h,x,y);
-  XWMGeometry(dpy, DefaultScreen(dpy), strEmptyToNull((char*)geom), defGeom,
-              0, &sizeHints, &x, &y, &w, &h, &sizeHints.win_gravity);
+  sprintf(defGeom, "%dx%d+%d+%d", w, h, x, y);
+  XWMGeometry(dpy, DefaultScreen(dpy), strEmptyToNull((char*)geom), defGeom, 0, &sizeHints, &x, &y, &w, &h,
+              &sizeHints.win_gravity);
   sizeHints.flags |= PWinGravity;
   setUSPosition(x, y);
   resize(w, h);
 }
 
-TXEventHandler* TXWindow::setEventHandler(TXEventHandler* h)
-{
+TXEventHandler* TXWindow::setEventHandler(TXEventHandler* h) {
   TXEventHandler* old = eventHandler;
   eventHandler = h;
   return old;
 }
 
-void TXWindow::addEventMask(long mask)
-{
+void TXWindow::addEventMask(long mask) {
   eventMask |= mask;
   XSelectInput(dpy, win(), eventMask);
 }
 
-void TXWindow::removeEventMask(long mask)
-{
+void TXWindow::removeEventMask(long mask) {
   eventMask &= ~mask;
   XSelectInput(dpy, win(), eventMask);
 }
 
-void TXWindow::unmap()
-{
+void TXWindow::unmap() {
   XUnmapWindow(dpy, win());
   if (toplevel_) {
     XUnmapEvent ue;
@@ -380,30 +355,25 @@ void TXWindow::unmap()
     ue.event = DefaultRootWindow(dpy);
     ue.window = win();
     ue.from_configure = False;
-    XSendEvent(dpy, DefaultRootWindow(dpy), False,
-               (SubstructureRedirectMask|SubstructureNotifyMask),
-               (XEvent*)&ue);
+    XSendEvent(dpy, DefaultRootWindow(dpy), False, (SubstructureRedirectMask | SubstructureNotifyMask), (XEvent*)&ue);
   }
 }
 
-void TXWindow::resize(int w, int h)
-{
-  //if (w == width_ && h == height_) return;
+void TXWindow::resize(int w, int h) {
+  // if (w == width_ && h == height_) return;
   XResizeWindow(dpy, win(), w, h);
   width_ = w;
   height_ = h;
   resizeNotify();
 }
 
-void TXWindow::setBorderWidth(int bw)
-{
+void TXWindow::setBorderWidth(int bw) {
   XWindowChanges c;
   c.border_width = bw;
   XConfigureWindow(dpy, win(), CWBorderWidth, &c);
 }
 
-void TXWindow::ownSelection(Atom selection, Time time)
-{
+void TXWindow::ownSelection(Atom selection, Time time) {
   XSetSelectionOwner(dpy, selection, win(), time);
   if (XGetSelectionOwner(dpy, selection) == win()) {
     selectionOwner_[selection] = true;
@@ -411,14 +381,14 @@ void TXWindow::ownSelection(Atom selection, Time time)
   }
 }
 
-void TXWindow::handleXEvent(XEvent* ev)
-{
+void TXWindow::handleXEvent(XEvent* ev) {
   switch (ev->type) {
 
   case ClientMessage:
     if (ev->xclient.message_type == wmProtocols) {
       if ((Atom)ev->xclient.data.l[0] == wmDeleteWindow) {
-        if (dwc) dwc->deleteWindow(this);
+        if (dwc)
+          dwc->deleteWindow(this);
       } else if ((Atom)ev->xclient.data.l[0] == wmTakeFocus) {
         takeFocus(ev->xclient.data.l[1]);
       }
@@ -438,10 +408,9 @@ void TXWindow::handleXEvent(XEvent* ev)
       Atom type;
       int format;
       unsigned long nitems, after;
-      unsigned char *data;
-      XGetWindowProperty(dpy, win(), ev->xselection.property, 0, 16384, True,
-                         AnyPropertyType, &type, &format,
-                         &nitems, &after, &data);
+      unsigned char* data;
+      XGetWindowProperty(dpy, win(), ev->xselection.property, 0, 16384, True, AnyPropertyType, &type, &format, &nitems,
+                         &after, &data);
       if (type != None) {
         selectionNotify(&ev->xselection, type, format, nitems, data);
         XFree(data);
@@ -451,76 +420,74 @@ void TXWindow::handleXEvent(XEvent* ev)
     selectionNotify(&ev->xselection, 0, 0, 0, nullptr);
     break;
 
-  case SelectionRequest:
-    {
-      XSelectionEvent se;
-      se.type = SelectionNotify;
-      se.display = ev->xselectionrequest.display;
-      se.requestor = ev->xselectionrequest.requestor;
-      se.selection = ev->xselectionrequest.selection;
-      se.time = ev->xselectionrequest.time;
-      se.target = ev->xselectionrequest.target;
-      if (ev->xselectionrequest.property == None)
-        ev->xselectionrequest.property = ev->xselectionrequest.target;
-      if (!selectionOwner_[se.selection]) {
-        se.property = None;
-      } else {
-        se.property = ev->xselectionrequest.property;
-        if (se.target == xaTARGETS) {
-          Atom targets[3];
-          targets[0] = xaTIMESTAMP;
-          targets[1] = XA_STRING;
-          targets[2] = xaUTF8_STRING;
-          XChangeProperty(dpy, se.requestor, se.property, XA_ATOM, 32,
-                          PropModeReplace, (unsigned char*)targets, 3);
-        } else if (se.target == xaTIMESTAMP) {
-          Time t = selectionOwnTime[se.selection];
-          XChangeProperty(dpy, se.requestor, se.property, XA_INTEGER, 32,
-                          PropModeReplace, (unsigned char*)&t, 1);
-        } else if (se.target == XA_STRING || se.target == xaUTF8_STRING) {
-          if (!selectionRequest(se.requestor, se.selection, se.target, se.property))
-            se.property = None;
-        } else {
+  case SelectionRequest: {
+    XSelectionEvent se;
+    se.type = SelectionNotify;
+    se.display = ev->xselectionrequest.display;
+    se.requestor = ev->xselectionrequest.requestor;
+    se.selection = ev->xselectionrequest.selection;
+    se.time = ev->xselectionrequest.time;
+    se.target = ev->xselectionrequest.target;
+    if (ev->xselectionrequest.property == None)
+      ev->xselectionrequest.property = ev->xselectionrequest.target;
+    if (!selectionOwner_[se.selection]) {
+      se.property = None;
+    } else {
+      se.property = ev->xselectionrequest.property;
+      if (se.target == xaTARGETS) {
+        Atom targets[3];
+        targets[0] = xaTIMESTAMP;
+        targets[1] = XA_STRING;
+        targets[2] = xaUTF8_STRING;
+        XChangeProperty(dpy, se.requestor, se.property, XA_ATOM, 32, PropModeReplace, (unsigned char*)targets, 3);
+      } else if (se.target == xaTIMESTAMP) {
+        Time t = selectionOwnTime[se.selection];
+        XChangeProperty(dpy, se.requestor, se.property, XA_INTEGER, 32, PropModeReplace, (unsigned char*)&t, 1);
+      } else if (se.target == XA_STRING || se.target == xaUTF8_STRING) {
+        if (!selectionRequest(se.requestor, se.selection, se.target, se.property))
           se.property = None;
-        }
+      } else {
+        se.property = None;
       }
-      XSendEvent(dpy, se.requestor, False, 0, (XEvent*)&se);
-      break;
     }
+    XSendEvent(dpy, se.requestor, False, 0, (XEvent*)&se);
+    break;
+  }
 
   case SelectionClear:
     selectionOwner_[ev->xselectionclear.selection] = false;
     break;
   }
 
-  if (eventHandler) eventHandler->handleEvent(this, ev);
+  if (eventHandler)
+    eventHandler->handleEvent(this, ev);
 }
 
-void TXWindow::drawBevel(GC gc, int x, int y, int w, int h, int b,
-                         unsigned long middle, unsigned long tl,
-                         unsigned long br, bool round)
-{
+void TXWindow::drawBevel(GC gc, int x, int y, int w, int h, int b, unsigned long middle, unsigned long tl,
+                         unsigned long br, bool round) {
   if (round) {
     XGCValues gcv;
     gcv.line_width = b;
     XChangeGC(dpy, gc, GCLineWidth, &gcv);
     XSetForeground(dpy, gc, middle);
-    XFillArc(dpy, win(), gc,  x, y, w-b/2, h-b/2, 0, 360*64);
+    XFillArc(dpy, win(), gc, x, y, w - b / 2, h - b / 2, 0, 360 * 64);
     XSetForeground(dpy, gc, tl);
-    XDrawArc(dpy, win(), gc,  x, y, w-b/2, h-b/2, 45*64, 180*64);
+    XDrawArc(dpy, win(), gc, x, y, w - b / 2, h - b / 2, 45 * 64, 180 * 64);
     XSetForeground(dpy, gc, br);
-    XDrawArc(dpy, win(), gc,  x, y, w-b/2, h-b/2, 225*64, 180*64);
+    XDrawArc(dpy, win(), gc, x, y, w - b / 2, h - b / 2, 225 * 64, 180 * 64);
   } else {
     XSetForeground(dpy, gc, middle);
-    if (w-2*b > 0 && h-2*b > 0)
-      XFillRectangle(dpy, win(), gc, x+b, y+b, w-2*b, h-2*b);
+    if (w - 2 * b > 0 && h - 2 * b > 0)
+      XFillRectangle(dpy, win(), gc, x + b, y + b, w - 2 * b, h - 2 * b);
     XSetForeground(dpy, gc, tl);
     XFillRectangle(dpy, win(), gc, x, y, w, b);
     XFillRectangle(dpy, win(), gc, x, y, b, h);
     XSetForeground(dpy, gc, br);
     for (int i = 0; i < b; i++) {
-      if (w-i > 0) XFillRectangle(dpy, win(), gc, x+i, y+h-1-i, w-i, 1); 
-      if (h-1-i > 0) XFillRectangle(dpy, win(), gc, x+w-1-i, y+i+1, 1, h-1-i);
+      if (w - i > 0)
+        XFillRectangle(dpy, win(), gc, x + i, y + h - 1 - i, w - i, 1);
+      if (h - 1 - i > 0)
+        XFillRectangle(dpy, win(), gc, x + w - 1 - i, y + i + 1, 1, h - 1 - i);
     }
   }
 }

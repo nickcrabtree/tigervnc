@@ -32,6 +32,7 @@ private:
   int prepare(int* timeout);
   int check();
   int dispatch();
+
 private:
   GSource* source;
   static GSourceFuncs sourceFuncs;

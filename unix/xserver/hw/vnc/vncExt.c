@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011-2015 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -22,10 +22,10 @@
 #endif
 
 #define NEED_EVENTS
-#include "misc.h"
-#include "os.h"
 #include "dixstruct.h"
 #include "extnsionst.h"
+#include "misc.h"
+#include "os.h"
 #include "scrnintstr.h"
 
 #define _VNCEXT_SERVER_
@@ -34,14 +34,14 @@
 
 #include "xorg-version.h"
 
-#include "vncExtInit.h"
 #include "RFBGlue.h"
+#include "vncExtInit.h"
 
 static int ProcVncExtDispatch(ClientPtr client);
 static int SProcVncExtDispatch(ClientPtr client);
 static void vncResetProc(ExtensionEntry* extEntry);
 
-static void vncClientStateChange(CallbackListPtr*, void *, void *);
+static void vncClientStateChange(CallbackListPtr*, void*, void*);
 
 static int vncErrorBase = 0;
 static int vncEventBase = 0;
@@ -57,13 +57,11 @@ struct VncInputSelect {
   struct VncInputSelect* next;
 };
 
-void vncAddExtension(void)
-{
+void vncAddExtension(void) {
   ExtensionEntry* extEntry;
 
-  extEntry = AddExtension(VNCEXTNAME, VncExtNumberEvents, VncExtNumberErrors,
-                          ProcVncExtDispatch, SProcVncExtDispatch, vncResetProc,
-                          StandardMinorOpcode);
+  extEntry = AddExtension(VNCEXTNAME, VncExtNumberEvents, VncExtNumberErrors, ProcVncExtDispatch, SProcVncExtDispatch,
+                          vncResetProc, StandardMinorOpcode);
   if (!extEntry) {
     FatalError("vncAddExtension: AddExtension failed\n");
   }
@@ -76,8 +74,7 @@ void vncAddExtension(void)
   }
 }
 
-int vncNotifyQueryConnect(void)
-{
+int vncNotifyQueryConnect(void) {
   int count;
   xVncExtQueryConnectNotifyEvent ev;
 
@@ -92,8 +89,7 @@ int vncNotifyQueryConnect(void)
         swaps(&ev.sequenceNumber);
         swapl(&ev.window);
       }
-      WriteToClient(cur->client, sizeof(xVncExtQueryConnectNotifyEvent),
-                    (char *)&ev);
+      WriteToClient(cur->client, sizeof(xVncExtQueryConnectNotifyEvent), (char*)&ev);
       count++;
     }
   }
@@ -101,23 +97,20 @@ int vncNotifyQueryConnect(void)
   return count;
 }
 
-static int ProcVncExtSetParam(ClientPtr client)
-{
+static int ProcVncExtSetParam(ClientPtr client) {
   char *param, *value;
   xVncExtSetParamReply rep;
 
   REQUEST(xVncExtSetParamReq);
-  REQUEST_FIXED_SIZE(xVncExtSetParamReq,
-                     ((stuff->paramLen + 3) & ~3) +
-                     ((stuff->valueLen + 3) & ~3));
+  REQUEST_FIXED_SIZE(xVncExtSetParamReq, ((stuff->paramLen + 3) & ~3) + ((stuff->valueLen + 3) & ~3));
 
-  param = malloc(stuff->paramLen+1);
+  param = malloc(stuff->paramLen + 1);
   if (param == NULL)
     return BadAlloc;
   strncpy(param, (char*)&stuff[1], stuff->paramLen);
   param[stuff->paramLen] = '\0';
 
-  value = malloc(stuff->valueLen+1);
+  value = malloc(stuff->valueLen + 1);
   if (value == NULL) {
     free(param);
     return BadAlloc;
@@ -133,9 +126,7 @@ static int ProcVncExtSetParam(ClientPtr client)
   /*
    * Prevent change of clipboard related parameters if clipboard is disabled.
    */
-  if (vncNoClipboard &&
-      (strcasecmp(param, "SendCutText") == 0 ||
-       strcasecmp(param, "AcceptCutText") == 0))
+  if (vncNoClipboard && (strcasecmp(param, "SendCutText") == 0 || strcasecmp(param, "AcceptCutText") == 0))
     goto deny;
 
   if (!vncOverrideParam(param, value))
@@ -155,20 +146,18 @@ deny:
     swaps(&rep.sequenceNumber);
     swapl(&rep.length);
   }
-  WriteToClient(client, sizeof(xVncExtSetParamReply), (char *)&rep);
+  WriteToClient(client, sizeof(xVncExtSetParamReply), (char*)&rep);
   return (client->noClientException);
 }
 
-static int SProcVncExtSetParam(ClientPtr client)
-{
+static int SProcVncExtSetParam(ClientPtr client) {
   REQUEST(xVncExtSetParamReq);
   swaps(&stuff->length);
   REQUEST_AT_LEAST_SIZE(xVncExtSetParamReq);
   return ProcVncExtSetParam(client);
 }
 
-static int ProcVncExtGetParam(ClientPtr client)
-{
+static int ProcVncExtGetParam(ClientPtr client) {
   char* param;
   char* value;
   size_t len;
@@ -177,7 +166,7 @@ static int ProcVncExtGetParam(ClientPtr client)
   REQUEST(xVncExtGetParamReq);
   REQUEST_FIXED_SIZE(xVncExtGetParamReq, stuff->paramLen);
 
-  param = malloc(stuff->paramLen+1);
+  param = malloc(stuff->paramLen + 1);
   if (param == NULL)
     return BadAlloc;
   strncpy(param, (char*)&stuff[1], stuff->paramLen);
@@ -200,23 +189,21 @@ static int ProcVncExtGetParam(ClientPtr client)
     swapl(&rep.length);
     swaps(&rep.valueLen);
   }
-  WriteToClient(client, sizeof(xVncExtGetParamReply), (char *)&rep);
+  WriteToClient(client, sizeof(xVncExtGetParamReply), (char*)&rep);
   if (value)
     WriteToClient(client, len, value);
   free(value);
   return (client->noClientException);
 }
 
-static int SProcVncExtGetParam(ClientPtr client)
-{
+static int SProcVncExtGetParam(ClientPtr client) {
   REQUEST(xVncExtGetParamReq);
   swaps(&stuff->length);
   REQUEST_AT_LEAST_SIZE(xVncExtGetParamReq);
   return ProcVncExtGetParam(client);
 }
 
-static int ProcVncExtGetParamDesc(ClientPtr client)
-{
+static int ProcVncExtGetParamDesc(ClientPtr client) {
   char* param;
   const char* desc;
   size_t len;
@@ -225,7 +212,7 @@ static int ProcVncExtGetParamDesc(ClientPtr client)
   REQUEST(xVncExtGetParamDescReq);
   REQUEST_FIXED_SIZE(xVncExtGetParamDescReq, stuff->paramLen);
 
-  param = malloc(stuff->paramLen+1);
+  param = malloc(stuff->paramLen + 1);
   if (param == NULL)
     return BadAlloc;
   strncpy(param, (char*)&stuff[1], stuff->paramLen);
@@ -248,24 +235,22 @@ static int ProcVncExtGetParamDesc(ClientPtr client)
     swapl(&rep.length);
     swaps(&rep.descLen);
   }
-  WriteToClient(client, sizeof(xVncExtGetParamDescReply), (char *)&rep);
+  WriteToClient(client, sizeof(xVncExtGetParamDescReply), (char*)&rep);
   if (desc)
     WriteToClient(client, len, desc);
   return (client->noClientException);
 }
 
-static int SProcVncExtGetParamDesc(ClientPtr client)
-{
+static int SProcVncExtGetParamDesc(ClientPtr client) {
   REQUEST(xVncExtGetParamDescReq);
   swaps(&stuff->length);
   REQUEST_AT_LEAST_SIZE(xVncExtGetParamDescReq);
   return ProcVncExtGetParamDesc(client);
 }
 
-static int ProcVncExtListParams(ClientPtr client)
-{
+static int ProcVncExtListParams(ClientPtr client) {
   xVncExtListParamsReply rep;
-  char *params;
+  char* params;
   size_t len;
 
   REQUEST_SIZE_MATCH(xVncExtListParamsReq);
@@ -286,22 +271,20 @@ static int ProcVncExtListParams(ClientPtr client)
     swapl(&rep.length);
     swaps(&rep.nParams);
   }
-  WriteToClient(client, sizeof(xVncExtListParamsReply), (char *)&rep);
+  WriteToClient(client, sizeof(xVncExtListParamsReply), (char*)&rep);
   WriteToClient(client, len, (char*)params);
   free(params);
   return (client->noClientException);
 }
 
-static int SProcVncExtListParams(ClientPtr client)
-{
+static int SProcVncExtListParams(ClientPtr client) {
   REQUEST(xVncExtListParamsReq);
   swaps(&stuff->length);
   REQUEST_SIZE_MATCH(xVncExtListParamsReq);
   return ProcVncExtListParams(client);
 }
 
-static int ProcVncExtSelectInput(ClientPtr client)
-{
+static int ProcVncExtSelectInput(ClientPtr client) {
   struct VncInputSelect** nextPtr;
   struct VncInputSelect* cur;
   REQUEST(xVncExtSelectInputReq);
@@ -334,8 +317,7 @@ static int ProcVncExtSelectInput(ClientPtr client)
   return (client->noClientException);
 }
 
-static int SProcVncExtSelectInput(ClientPtr client)
-{
+static int SProcVncExtSelectInput(ClientPtr client) {
   REQUEST(xVncExtSelectInputReq);
   swaps(&stuff->length);
   REQUEST_SIZE_MATCH(xVncExtSelectInputReq);
@@ -344,15 +326,14 @@ static int SProcVncExtSelectInput(ClientPtr client)
   return ProcVncExtSelectInput(client);
 }
 
-static int ProcVncExtConnect(ClientPtr client)
-{
-  char *address;
+static int ProcVncExtConnect(ClientPtr client) {
+  char* address;
   xVncExtConnectReply rep;
 
   REQUEST(xVncExtConnectReq);
   REQUEST_FIXED_SIZE(xVncExtConnectReq, stuff->strLen);
 
-  address = malloc(stuff->strLen+1);
+  address = malloc(stuff->strLen + 1);
   if (address == NULL)
     return BadAlloc;
   strncpy(address, (char*)&stuff[1], stuff->strLen);
@@ -360,7 +341,7 @@ static int ProcVncExtConnect(ClientPtr client)
 
   rep.success = 0;
   if (vncConnectClient(address, (int)stuff->viewOnly) == 0)
-        rep.success = 1;
+    rep.success = 1;
 
   rep.type = X_Reply;
   rep.length = 0;
@@ -369,24 +350,21 @@ static int ProcVncExtConnect(ClientPtr client)
     swaps(&rep.sequenceNumber);
     swapl(&rep.length);
   }
-  WriteToClient(client, sizeof(xVncExtConnectReply), (char *)&rep);
+  WriteToClient(client, sizeof(xVncExtConnectReply), (char*)&rep);
 
   free(address);
 
   return (client->noClientException);
 }
 
-static int SProcVncExtConnect(ClientPtr client)
-{
+static int SProcVncExtConnect(ClientPtr client) {
   REQUEST(xVncExtConnectReq);
   swaps(&stuff->length);
   REQUEST_AT_LEAST_SIZE(xVncExtConnectReq);
   return ProcVncExtConnect(client);
 }
 
-
-static int ProcVncExtGetQueryConnect(ClientPtr client)
-{
+static int ProcVncExtGetQueryConnect(ClientPtr client) {
   uint32_t opaqueId;
   const char *qcAddress, *qcUsername;
   int qcTimeout;
@@ -412,7 +390,7 @@ static int ProcVncExtGetQueryConnect(ClientPtr client)
     swapl(&rep.opaqueId);
     swapl(&rep.length);
   }
-  WriteToClient(client, sizeof(xVncExtGetQueryConnectReply), (char *)&rep);
+  WriteToClient(client, sizeof(xVncExtGetQueryConnectReply), (char*)&rep);
   if (qcTimeout)
     WriteToClient(client, strlen(qcAddress), qcAddress);
   if (qcTimeout)
@@ -420,17 +398,14 @@ static int ProcVncExtGetQueryConnect(ClientPtr client)
   return (client->noClientException);
 }
 
-static int SProcVncExtGetQueryConnect(ClientPtr client)
-{
+static int SProcVncExtGetQueryConnect(ClientPtr client) {
   REQUEST(xVncExtGetQueryConnectReq);
   swaps(&stuff->length);
   REQUEST_SIZE_MATCH(xVncExtGetQueryConnectReq);
   return ProcVncExtGetQueryConnect(client);
 }
 
-
-static int ProcVncExtApproveConnect(ClientPtr client)
-{
+static int ProcVncExtApproveConnect(ClientPtr client) {
   REQUEST(xVncExtApproveConnectReq);
   REQUEST_SIZE_MATCH(xVncExtApproveConnectReq);
   vncApproveConnection(stuff->opaqueId, stuff->approve);
@@ -439,8 +414,7 @@ static int ProcVncExtApproveConnect(ClientPtr client)
   return (client->noClientException);
 }
 
-static int SProcVncExtApproveConnect(ClientPtr client)
-{
+static int SProcVncExtApproveConnect(ClientPtr client) {
   REQUEST(xVncExtApproveConnectReq);
   swaps(&stuff->length);
   swapl(&stuff->opaqueId);
@@ -448,9 +422,7 @@ static int SProcVncExtApproveConnect(ClientPtr client)
   return ProcVncExtApproveConnect(client);
 }
 
-
-static int ProcVncExtDispatch(ClientPtr client)
-{
+static int ProcVncExtDispatch(ClientPtr client) {
   REQUEST(xReq);
   switch (stuff->data) {
   case X_VncExtSetParam:
@@ -474,8 +446,7 @@ static int ProcVncExtDispatch(ClientPtr client)
   }
 }
 
-static int SProcVncExtDispatch(ClientPtr client)
-{
+static int SProcVncExtDispatch(ClientPtr client) {
   REQUEST(xReq);
   switch (stuff->data) {
   case X_VncExtSetParam:
@@ -499,13 +470,11 @@ static int SProcVncExtDispatch(ClientPtr client)
   }
 }
 
-static void vncResetProc(ExtensionEntry* extEntry)
-{
+static void vncResetProc(ExtensionEntry* extEntry) {
   vncExtensionClose();
 }
 
-static void vncClientStateChange(CallbackListPtr * l, void * d, void * p)
-{
+static void vncClientStateChange(CallbackListPtr* l, void* d, void* p) {
   ClientPtr client = ((NewClientInfoRec*)p)->client;
   if (client->clientState == ClientStateGone) {
     struct VncInputSelect** nextPtr = &vncInputSelectHead;

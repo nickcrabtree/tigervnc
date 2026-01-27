@@ -12,7 +12,7 @@ TigerVNC::Common - Common infrastructure
   use TigerVNC::Common;
 
   # Either that or wrapperMode => 'tigervncserver'
-  my $options =  { wrapperMode => 'x0tigervncserver' }; 
+  my $options =  { wrapperMode => 'x0tigervncserver' };
 
   #
   # First, we ensure that we're operating in a sane environment.
@@ -233,7 +233,7 @@ Routine to make sure we're operating in a sane environment.
 Returns 1 if we run in a sane environment, 0 otherwise.
 
 
-=cut 
+=cut
 
 sub sanityCheck {
   my ($options) = @_;

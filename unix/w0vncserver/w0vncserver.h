@@ -16,5 +16,4 @@
  * USA.
  */
 
-void fatal_error(const char *error, ...)
-       __attribute__((__format__ (__printf__, 1, 2)));
+void fatal_error(const char* error, ...) __attribute__((__format__(__printf__, 1, 2)));

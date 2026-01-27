@@ -23,23 +23,23 @@
 #include <assert.h>
 #include <stdint.h>
 
-#include <glib.h>
 #include <glib-object.h>
+#include <glib.h>
 
 #include <pipewire/pipewire.h>
+#include <spa/buffer/buffer.h>
 #include <spa/param/video/raw.h>
 #include <spa/utils/defs.h>
-#include <spa/buffer/buffer.h>
 
 #include <pixman.h>
 
 #include <core/LogWriter.h>
 #include <core/string.h>
-#include <rfb/VNCServer.h>
 #include <rfb/PixelFormat.h>
+#include <rfb/VNCServer.h>
 
-#include "PipeWireStream.h"
 #include "PipeWirePixelBuffer.h"
+#include "PipeWireStream.h"
 
 struct PipeWireCursor {
   uint32_t w;
@@ -52,21 +52,16 @@ struct PipeWireCursor {
 
 static core::LogWriter vlog("PipewirePixelBuffer");
 
-PipeWirePixelBuffer::PipeWirePixelBuffer(int32_t pipewireFd,
-                                         uint32_t pipewireId,
-                                         rfb::VNCServer* server_)
-  : PipeWireStream(pipewireFd, pipewireId), server(server_)
-{
+PipeWirePixelBuffer::PipeWirePixelBuffer(int32_t pipewireFd, uint32_t pipewireId, rfb::VNCServer* server_)
+    : PipeWireStream(pipewireFd, pipewireId), server(server_) {
   cursor = new PipeWireCursor();
 }
 
-PipeWirePixelBuffer::~PipeWirePixelBuffer()
-{
+PipeWirePixelBuffer::~PipeWirePixelBuffer() {
   delete cursor;
 }
 
-void PipeWirePixelBuffer::processBuffer(pw_buffer* buffer)
-{
+void PipeWirePixelBuffer::processBuffer(pw_buffer* buffer) {
   spa_buffer* spaBuffer;
 
   spaBuffer = buffer->buffer;
@@ -76,17 +71,14 @@ void PipeWirePixelBuffer::processBuffer(pw_buffer* buffer)
   processFrame(spaBuffer);
 }
 
-void PipeWirePixelBuffer::setParameters(int width, int height,
-                                        rfb::PixelFormat pf)
-{
+void PipeWirePixelBuffer::setParameters(int width, int height, rfb::PixelFormat pf) {
   setSize(width, height);
   setPF(pf);
   pipewirePixelFormat = pf;
   server->setPixelBuffer(this);
 }
 
-void PipeWirePixelBuffer::processFrame(spa_buffer* buffer)
-{
+void PipeWirePixelBuffer::processFrame(spa_buffer* buffer) {
   int srcStride;
   int dstStride;
   uint8_t* srcBuffer;
@@ -97,11 +89,11 @@ void PipeWirePixelBuffer::processFrame(spa_buffer* buffer)
 
   chunk = buffer->datas[0].chunk;
 
-  if (chunk->size == 0 || chunk->flags  & SPA_CHUNK_FLAG_CORRUPTED)
+  if (chunk->size == 0 || chunk->flags & SPA_CHUNK_FLAG_CORRUPTED)
     return;
 
   // Check size
-  if (chunk->size != (uint32_t) (width() * height() * (pipewirePixelFormat.bpp / 8))) {
+  if (chunk->size != (uint32_t)(width() * height() * (pipewirePixelFormat.bpp / 8))) {
     vlog.error("Invalid chunk size: %d", chunk->size);
     return;
   }
@@ -116,10 +108,8 @@ void PipeWirePixelBuffer::processFrame(spa_buffer* buffer)
   srcStride = chunk->stride / (pipewirePixelFormat.bpp / 8);
   dstBuffer = getBufferRW(getRect(), &dstStride);
 
-  ret = pixman_blt((uint32_t*)srcBuffer, (uint32_t*)dstBuffer,
-                   srcStride, dstStride, pipewirePixelFormat.bpp,
-                   getPF().bpp, rect.tl.x, rect.tl.y, rect.tl.x,
-                   rect.tl.y, rect.width(), rect.height());
+  ret = pixman_blt((uint32_t*)srcBuffer, (uint32_t*)dstBuffer, srcStride, dstStride, pipewirePixelFormat.bpp,
+                   getPF().bpp, rect.tl.x, rect.tl.y, rect.tl.x, rect.tl.y, rect.width(), rect.height());
   commitBufferRW(rect);
 
   if (!ret)
@@ -129,8 +119,7 @@ void PipeWirePixelBuffer::processFrame(spa_buffer* buffer)
   accumulatedDamage.clear();
 }
 
-void PipeWirePixelBuffer::processCursor(spa_buffer* buffer)
-{
+void PipeWirePixelBuffer::processCursor(spa_buffer* buffer) {
   spa_meta_cursor* cursorData;
   spa_meta_bitmap* cursorBitmap;
   uint8_t* cursorBuffer;
@@ -138,9 +127,7 @@ void PipeWirePixelBuffer::processCursor(spa_buffer* buffer)
   if (!hasCursorData(buffer))
     return;
 
-  cursorData = (spa_meta_cursor*)spa_buffer_find_meta_data(buffer,
-                                                           SPA_META_Cursor,
-                                                           sizeof(*cursorData));
+  cursorData = (spa_meta_cursor*)spa_buffer_find_meta_data(buffer, SPA_META_Cursor, sizeof(*cursorData));
   assert(cursorData);
 
   cursor->x = cursorData->position.x;
@@ -154,8 +141,7 @@ void PipeWirePixelBuffer::processCursor(spa_buffer* buffer)
   if (!cursorData->bitmap_offset)
     return;
 
-  cursorBitmap = SPA_MEMBER(cursorData, cursorData->bitmap_offset,
-                            struct spa_meta_bitmap);
+  cursorBitmap = SPA_MEMBER(cursorData, cursorData->bitmap_offset, struct spa_meta_bitmap);
   if (!supportedCursorPixelformat(cursorBitmap->format))
     return;
 
@@ -164,12 +150,10 @@ void PipeWirePixelBuffer::processCursor(spa_buffer* buffer)
   cursor->w = cursorBitmap->size.width;
   cursor->h = cursorBitmap->size.height;
 
-  setCursor(cursor->w, cursor->h, cursor->hotspotX,
-            cursor->hotspotY, cursorBuffer);
+  setCursor(cursor->w, cursor->h, cursor->hotspotX, cursor->hotspotY, cursorBuffer);
 }
 
-void PipeWirePixelBuffer::processDamage(spa_buffer* buffer)
-{
+void PipeWirePixelBuffer::processDamage(spa_buffer* buffer) {
   spa_meta* damage;
   core::Region damagedRegion;
   spa_meta_region* metaRegion;
@@ -180,8 +164,7 @@ void PipeWirePixelBuffer::processDamage(spa_buffer* buffer)
     return;
 
   spa_meta_for_each(metaRegion, damage) {
-    core::Point tl{metaRegion->region.position.x,
-                   metaRegion->region.position.y};
+    core::Point tl{metaRegion->region.position.x, metaRegion->region.position.y};
     core::Point br{static_cast<int>(tl.x + metaRegion->region.size.width),
                    static_cast<int>(tl.y + metaRegion->region.size.height)};
     damagedRegion.assign_union({{tl, br}});
@@ -190,31 +173,25 @@ void PipeWirePixelBuffer::processDamage(spa_buffer* buffer)
   accumulatedDamage.assign_union(damagedRegion);
 }
 
-bool PipeWirePixelBuffer::hasCursorData(spa_buffer* buffer)
-{
+bool PipeWirePixelBuffer::hasCursorData(spa_buffer* buffer) {
   spa_meta_cursor* mcs;
 
-  mcs = (spa_meta_cursor*)spa_buffer_find_meta_data(buffer,
-                                                    SPA_META_Cursor,
-                                                    sizeof(*mcs));
+  mcs = (spa_meta_cursor*)spa_buffer_find_meta_data(buffer, SPA_META_Cursor, sizeof(*mcs));
 
   if (mcs && spa_meta_cursor_is_valid(mcs)) {
-      // We got new cursor position / new cursor bitmap
-      return true;
-    }
+    // We got new cursor position / new cursor bitmap
+    return true;
+  }
 
   return false;
 }
 
-void PipeWirePixelBuffer::setCursor(int width, int height, int hotX,
-                                    int hotY,
-                                    const unsigned char* rgbaData)
-{
+void PipeWirePixelBuffer::setCursor(int width, int height, int hotX, int hotY, const unsigned char* rgbaData) {
   // Copied from XserverDesktop.cc
   uint8_t* cursorData;
 
-  uint8_t *out;
-  const unsigned char *in;
+  uint8_t* out;
+  const unsigned char* in;
 
   cursorData = new uint8_t[width * height * 4];
 
@@ -229,9 +206,9 @@ void PipeWirePixelBuffer::setCursor(int width, int height, int hotX,
       if (alpha == 0)
         alpha = 1; // Avoid division by zero
 
-      *out++ = (unsigned)*in++ * 255/alpha;
-      *out++ = (unsigned)*in++ * 255/alpha;
-      *out++ = (unsigned)*in++ * 255/alpha;
+      *out++ = (unsigned)*in++ * 255 / alpha;
+      *out++ = (unsigned)*in++ * 255 / alpha;
+      *out++ = (unsigned)*in++ * 255 / alpha;
       *out++ = *in++;
     }
   }
@@ -239,14 +216,12 @@ void PipeWirePixelBuffer::setCursor(int width, int height, int hotX,
   try {
     server->setCursor(width, height, {hotX, hotY}, cursorData);
   } catch (std::exception& e) {
-    vlog.error("PipewirePixelBuffer::setCursor: %s",e.what());
+    vlog.error("PipewirePixelBuffer::setCursor: %s", e.what());
   }
 
-  delete [] cursorData;
+  delete[] cursorData;
 }
 
-bool PipeWirePixelBuffer::supportedCursorPixelformat(int format_)
-{
-  return format_ == SPA_VIDEO_FORMAT_RGBx ||
-         format_ == SPA_VIDEO_FORMAT_RGBA;
+bool PipeWirePixelBuffer::supportedCursorPixelformat(int format_) {
+  return format_ == SPA_VIDEO_FORMAT_RGBx || format_ == SPA_VIDEO_FORMAT_RGBA;
 }

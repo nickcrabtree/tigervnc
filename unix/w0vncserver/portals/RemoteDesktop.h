@@ -26,7 +26,9 @@
 
 #include <gio/gio.h>
 
-namespace rfb { class VNCServer; }
+namespace rfb {
+class VNCServer;
+}
 
 class PortalProxy;
 

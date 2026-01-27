@@ -45,26 +45,24 @@ typedef struct vncDRI3DrawScreenPrivateRec {
 } vncDRI3DrawScreenPrivateRec, *vncDRI3DrawScreenPrivatePtr;
 
 typedef struct vncDRI3GCPrivateRec {
-  const GCFuncs *funcs;
-  const GCOps *ops;
+  const GCFuncs* funcs;
+  const GCOps* ops;
 } vncDRI3GCPrivateRec, *vncDRI3GCPrivatePtr;
 
-#define wrap(priv, real, mem, func) {\
-  priv->mem = real->mem; \
-  real->mem = func; \
-}
+#define wrap(priv, real, mem, func)                                                                                    \
+  {                                                                                                                    \
+    priv->mem = real->mem;                                                                                             \
+    real->mem = func;                                                                                                  \
+  }
 
-#define unwrap(priv, real, mem) {\
-  real->mem = priv->mem; \
-}
+#define unwrap(priv, real, mem)                                                                                        \
+  { real->mem = priv->mem; }
 
-static inline vncDRI3DrawScreenPrivatePtr vncDRI3DrawScreenPrivate(ScreenPtr screen)
-{
+static inline vncDRI3DrawScreenPrivatePtr vncDRI3DrawScreenPrivate(ScreenPtr screen) {
   return (vncDRI3DrawScreenPrivatePtr)dixLookupPrivate(&(screen)->devPrivates, &vncDRI3DrawScreenPrivateKey);
 }
 
-static inline vncDRI3GCPrivatePtr vncDRI3GCPrivate(GCPtr gc)
-{
+static inline vncDRI3GCPrivatePtr vncDRI3GCPrivate(GCPtr gc) {
   return (vncDRI3GCPrivatePtr)dixLookupPrivate(&(gc)->devPrivates, &vncDRI3GCPrivateKey);
 }
 
@@ -73,9 +71,7 @@ static GCOps vncDRI3GCOps;
 
 /* GC functions */
 
-static void vncDRI3ValidateGC(GCPtr gc, unsigned long changes,
-                              DrawablePtr drawable)
-{
+static void vncDRI3ValidateGC(GCPtr gc, unsigned long changes, DrawablePtr drawable) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   unwrap(gcPriv, gc, funcs);
@@ -92,8 +88,7 @@ static void vncDRI3ValidateGC(GCPtr gc, unsigned long changes,
   wrap(gcPriv, gc, funcs, &vncDRI3GCFuncs);
 }
 
-static void vncDRI3ChangeGC(GCPtr gc, unsigned long mask)
-{
+static void vncDRI3ChangeGC(GCPtr gc, unsigned long mask) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
   unwrap(gcPriv, gc, funcs);
   if (gcPriv->ops != NULL)
@@ -104,8 +99,7 @@ static void vncDRI3ChangeGC(GCPtr gc, unsigned long mask)
   wrap(gcPriv, gc, funcs, &vncDRI3GCFuncs);
 }
 
-static void vncDRI3CopyGC(GCPtr src, unsigned long mask, GCPtr dst)
-{
+static void vncDRI3CopyGC(GCPtr src, unsigned long mask, GCPtr dst) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(dst);
   unwrap(gcPriv, dst, funcs);
   if (gcPriv->ops != NULL)
@@ -116,8 +110,7 @@ static void vncDRI3CopyGC(GCPtr src, unsigned long mask, GCPtr dst)
   wrap(gcPriv, dst, funcs, &vncDRI3GCFuncs);
 }
 
-static void vncDRI3DestroyGC(GCPtr gc)
-{
+static void vncDRI3DestroyGC(GCPtr gc) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
   unwrap(gcPriv, gc, funcs);
   if (gcPriv->ops != NULL)
@@ -128,8 +121,7 @@ static void vncDRI3DestroyGC(GCPtr gc)
   wrap(gcPriv, gc, funcs, &vncDRI3GCFuncs);
 }
 
-static void vncDRI3ChangeClip(GCPtr gc, int type, void *value, int nrects)
-{
+static void vncDRI3ChangeClip(GCPtr gc, int type, void* value, int nrects) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
   unwrap(gcPriv, gc, funcs);
   if (gcPriv->ops != NULL)
@@ -140,8 +132,7 @@ static void vncDRI3ChangeClip(GCPtr gc, int type, void *value, int nrects)
   wrap(gcPriv, gc, funcs, &vncDRI3GCFuncs);
 }
 
-static void vncDRI3DestroyClip(GCPtr gc)
-{
+static void vncDRI3DestroyClip(GCPtr gc) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
   unwrap(gcPriv, gc, funcs);
   if (gcPriv->ops != NULL)
@@ -152,8 +143,7 @@ static void vncDRI3DestroyClip(GCPtr gc)
   wrap(gcPriv, gc, funcs, &vncDRI3GCFuncs);
 }
 
-static void vncDRI3CopyClip(GCPtr dst, GCPtr src)
-{
+static void vncDRI3CopyClip(GCPtr dst, GCPtr src) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(dst);
   unwrap(gcPriv, dst, funcs);
   if (gcPriv->ops != NULL)
@@ -166,10 +156,8 @@ static void vncDRI3CopyClip(GCPtr dst, GCPtr src)
 
 /* GC operations */
 
-static void vncDRI3FillSpans(DrawablePtr drawable, GCPtr gc, int nInit,
-                             DDXPointPtr pptInit, int *pwidthInit,
-                             int fSorted)
-{
+static void vncDRI3FillSpans(DrawablePtr drawable, GCPtr gc, int nInit, DDXPointPtr pptInit, int* pwidthInit,
+                             int fSorted) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -184,10 +172,8 @@ static void vncDRI3FillSpans(DrawablePtr drawable, GCPtr gc, int nInit,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3SetSpans(DrawablePtr drawable, GCPtr gc, char *psrc,
-                            DDXPointPtr ppt, int *pwidth, int nspans,
-                            int fSorted)
-{
+static void vncDRI3SetSpans(DrawablePtr drawable, GCPtr gc, char* psrc, DDXPointPtr ppt, int* pwidth, int nspans,
+                            int fSorted) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -202,10 +188,8 @@ static void vncDRI3SetSpans(DrawablePtr drawable, GCPtr gc, char *psrc,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3PutImage(DrawablePtr drawable, GCPtr gc, int depth,
-                            int x, int y, int w, int h, int leftPad,
-                            int format, char *pBits)
-{
+static void vncDRI3PutImage(DrawablePtr drawable, GCPtr gc, int depth, int x, int y, int w, int h, int leftPad,
+                            int format, char* pBits) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -220,10 +204,8 @@ static void vncDRI3PutImage(DrawablePtr drawable, GCPtr gc, int depth,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static RegionPtr vncDRI3CopyArea(DrawablePtr src, DrawablePtr dst,
-                                 GCPtr gc, int srcx, int srcy,
-                                 int w, int h, int dstx, int dsty)
-{
+static RegionPtr vncDRI3CopyArea(DrawablePtr src, DrawablePtr dst, GCPtr gc, int srcx, int srcy, int w, int h, int dstx,
+                                 int dsty) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
   RegionPtr ret;
 
@@ -241,11 +223,8 @@ static RegionPtr vncDRI3CopyArea(DrawablePtr src, DrawablePtr dst,
   return ret;
 }
 
-static RegionPtr vncDRI3CopyPlane(DrawablePtr src, DrawablePtr dst,
-                                  GCPtr gc, int srcx, int srcy,
-                                  int w, int h, int dstx, int dsty,
-                                  unsigned long plane)
-{
+static RegionPtr vncDRI3CopyPlane(DrawablePtr src, DrawablePtr dst, GCPtr gc, int srcx, int srcy, int w, int h,
+                                  int dstx, int dsty, unsigned long plane) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
   RegionPtr ret;
 
@@ -263,9 +242,7 @@ static RegionPtr vncDRI3CopyPlane(DrawablePtr src, DrawablePtr dst,
   return ret;
 }
 
-static void vncDRI3PolyPoint(DrawablePtr drawable, GCPtr gc, int mode,
-                             int npt, xPoint *pts)
-{
+static void vncDRI3PolyPoint(DrawablePtr drawable, GCPtr gc, int mode, int npt, xPoint* pts) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -280,9 +257,7 @@ static void vncDRI3PolyPoint(DrawablePtr drawable, GCPtr gc, int mode,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3Polylines(DrawablePtr drawable, GCPtr gc, int mode,
-                             int npt, DDXPointPtr ppts)
-{
+static void vncDRI3Polylines(DrawablePtr drawable, GCPtr gc, int mode, int npt, DDXPointPtr ppts) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -297,9 +272,7 @@ static void vncDRI3Polylines(DrawablePtr drawable, GCPtr gc, int mode,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3PolySegment(DrawablePtr drawable, GCPtr gc, int nseg,
-                               xSegment *segs)
-{
+static void vncDRI3PolySegment(DrawablePtr drawable, GCPtr gc, int nseg, xSegment* segs) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -314,9 +287,7 @@ static void vncDRI3PolySegment(DrawablePtr drawable, GCPtr gc, int nseg,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3PolyRectangle(DrawablePtr drawable, GCPtr gc,
-                                 int nrects, xRectangle *rects)
-{
+static void vncDRI3PolyRectangle(DrawablePtr drawable, GCPtr gc, int nrects, xRectangle* rects) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -331,9 +302,7 @@ static void vncDRI3PolyRectangle(DrawablePtr drawable, GCPtr gc,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3PolyArc(DrawablePtr drawable, GCPtr gc, int narcs,
-                           xArc *arcs)
-{
+static void vncDRI3PolyArc(DrawablePtr drawable, GCPtr gc, int narcs, xArc* arcs) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -348,10 +317,7 @@ static void vncDRI3PolyArc(DrawablePtr drawable, GCPtr gc, int narcs,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3FillPolygon(DrawablePtr drawable, GCPtr gc,
-                               int shape, int mode, int count,
-                               DDXPointPtr pts)
-{
+static void vncDRI3FillPolygon(DrawablePtr drawable, GCPtr gc, int shape, int mode, int count, DDXPointPtr pts) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -366,9 +332,7 @@ static void vncDRI3FillPolygon(DrawablePtr drawable, GCPtr gc,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3PolyFillRect(DrawablePtr drawable, GCPtr gc,
-                                int nrects, xRectangle *rects)
-{
+static void vncDRI3PolyFillRect(DrawablePtr drawable, GCPtr gc, int nrects, xRectangle* rects) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -383,9 +347,7 @@ static void vncDRI3PolyFillRect(DrawablePtr drawable, GCPtr gc,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3PolyFillArc(DrawablePtr drawable, GCPtr gc,
-                               int narcs, xArc *arcs)
-{
+static void vncDRI3PolyFillArc(DrawablePtr drawable, GCPtr gc, int narcs, xArc* arcs) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -400,9 +362,7 @@ static void vncDRI3PolyFillArc(DrawablePtr drawable, GCPtr gc,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static int vncDRI3PolyText8(DrawablePtr drawable, GCPtr gc,
-                            int x, int y, int count, char *chars)
-{
+static int vncDRI3PolyText8(DrawablePtr drawable, GCPtr gc, int x, int y, int count, char* chars) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
   int ret;
 
@@ -420,10 +380,7 @@ static int vncDRI3PolyText8(DrawablePtr drawable, GCPtr gc,
   return ret;
 }
 
-static int vncDRI3PolyText16(DrawablePtr drawable, GCPtr gc,
-                             int x, int y, int count,
-                             unsigned short *chars)
-{
+static int vncDRI3PolyText16(DrawablePtr drawable, GCPtr gc, int x, int y, int count, unsigned short* chars) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
   int ret;
 
@@ -441,9 +398,7 @@ static int vncDRI3PolyText16(DrawablePtr drawable, GCPtr gc,
   return ret;
 }
 
-static void vncDRI3ImageText8(DrawablePtr drawable, GCPtr gc,
-                              int x, int y, int count, char *chars)
-{
+static void vncDRI3ImageText8(DrawablePtr drawable, GCPtr gc, int x, int y, int count, char* chars) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -458,10 +413,7 @@ static void vncDRI3ImageText8(DrawablePtr drawable, GCPtr gc,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3ImageText16(DrawablePtr drawable, GCPtr gc,
-                               int x, int y, int count,
-                               unsigned short *chars)
-{
+static void vncDRI3ImageText16(DrawablePtr drawable, GCPtr gc, int x, int y, int count, unsigned short* chars) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -476,10 +428,8 @@ static void vncDRI3ImageText16(DrawablePtr drawable, GCPtr gc,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3ImageGlyphBlt(DrawablePtr drawable, GCPtr gc, int x,
-                                 int y, unsigned int nglyph,
-                                 CharInfoPtr *ppci, void * pglyphBase)
-{
+static void vncDRI3ImageGlyphBlt(DrawablePtr drawable, GCPtr gc, int x, int y, unsigned int nglyph, CharInfoPtr* ppci,
+                                 void* pglyphBase) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -494,10 +444,8 @@ static void vncDRI3ImageGlyphBlt(DrawablePtr drawable, GCPtr gc, int x,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3PolyGlyphBlt(DrawablePtr drawable, GCPtr gc, int x,
-                                int y, unsigned int nglyph,
-                                CharInfoPtr *ppci, void * pglyphBase)
-{
+static void vncDRI3PolyGlyphBlt(DrawablePtr drawable, GCPtr gc, int x, int y, unsigned int nglyph, CharInfoPtr* ppci,
+                                void* pglyphBase) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -512,10 +460,7 @@ static void vncDRI3PolyGlyphBlt(DrawablePtr drawable, GCPtr gc, int x,
   vncDRI3SyncDrawableToGPU(drawable);
 }
 
-static void vncDRI3PushPixels(GCPtr gc, PixmapPtr pBitMap,
-                              DrawablePtr drawable,
-                              int w, int h, int x, int y)
-{
+static void vncDRI3PushPixels(GCPtr gc, PixmapPtr pBitMap, DrawablePtr drawable, int w, int h, int x, int y) {
   vncDRI3GCPrivatePtr gcPriv = vncDRI3GCPrivate(gc);
 
   /* FIXME: Compute what we need to sync */
@@ -531,40 +476,39 @@ static void vncDRI3PushPixels(GCPtr gc, PixmapPtr pBitMap,
 }
 
 static GCFuncs vncDRI3GCFuncs = {
-  .ValidateGC = vncDRI3ValidateGC,
-  .ChangeGC = vncDRI3ChangeGC,
-  .CopyGC = vncDRI3CopyGC,
-  .DestroyGC = vncDRI3DestroyGC,
-  .ChangeClip = vncDRI3ChangeClip,
-  .DestroyClip = vncDRI3DestroyClip,
-  .CopyClip = vncDRI3CopyClip,
+    .ValidateGC = vncDRI3ValidateGC,
+    .ChangeGC = vncDRI3ChangeGC,
+    .CopyGC = vncDRI3CopyGC,
+    .DestroyGC = vncDRI3DestroyGC,
+    .ChangeClip = vncDRI3ChangeClip,
+    .DestroyClip = vncDRI3DestroyClip,
+    .CopyClip = vncDRI3CopyClip,
 };
 
 static GCOps vncDRI3GCOps = {
-  .FillSpans = vncDRI3FillSpans,
-  .SetSpans = vncDRI3SetSpans,
-  .PutImage = vncDRI3PutImage,
-  .CopyArea = vncDRI3CopyArea,
-  .CopyPlane = vncDRI3CopyPlane,
-  .PolyPoint = vncDRI3PolyPoint,
-  .Polylines = vncDRI3Polylines,
-  .PolySegment = vncDRI3PolySegment,
-  .PolyRectangle = vncDRI3PolyRectangle,
-  .PolyArc = vncDRI3PolyArc,
-  .FillPolygon = vncDRI3FillPolygon,
-  .PolyFillRect = vncDRI3PolyFillRect,
-  .PolyFillArc = vncDRI3PolyFillArc,
-  .PolyText8 = vncDRI3PolyText8,
-  .PolyText16 = vncDRI3PolyText16,
-  .ImageText8 = vncDRI3ImageText8,
-  .ImageText16 = vncDRI3ImageText16,
-  .ImageGlyphBlt = vncDRI3ImageGlyphBlt,
-  .PolyGlyphBlt = vncDRI3PolyGlyphBlt,
-  .PushPixels = vncDRI3PushPixels,
+    .FillSpans = vncDRI3FillSpans,
+    .SetSpans = vncDRI3SetSpans,
+    .PutImage = vncDRI3PutImage,
+    .CopyArea = vncDRI3CopyArea,
+    .CopyPlane = vncDRI3CopyPlane,
+    .PolyPoint = vncDRI3PolyPoint,
+    .Polylines = vncDRI3Polylines,
+    .PolySegment = vncDRI3PolySegment,
+    .PolyRectangle = vncDRI3PolyRectangle,
+    .PolyArc = vncDRI3PolyArc,
+    .FillPolygon = vncDRI3FillPolygon,
+    .PolyFillRect = vncDRI3PolyFillRect,
+    .PolyFillArc = vncDRI3PolyFillArc,
+    .PolyText8 = vncDRI3PolyText8,
+    .PolyText16 = vncDRI3PolyText16,
+    .ImageText8 = vncDRI3ImageText8,
+    .ImageText16 = vncDRI3ImageText16,
+    .ImageGlyphBlt = vncDRI3ImageGlyphBlt,
+    .PolyGlyphBlt = vncDRI3PolyGlyphBlt,
+    .PushPixels = vncDRI3PushPixels,
 };
 
-static Bool vncDRI3CreateGC(GCPtr gc)
-{
+static Bool vncDRI3CreateGC(GCPtr gc) {
   ScreenPtr screen = gc->pScreen;
   vncDRI3DrawScreenPrivatePtr screenPriv = vncDRI3DrawScreenPrivate(screen);
   vncDRI3GCPrivatePtr gcPriv;
@@ -581,11 +525,8 @@ static Bool vncDRI3CreateGC(GCPtr gc)
   return ret;
 }
 
-static void vncDRI3SourceValidate(DrawablePtr drawable,
-                                  int x, int y,
-                                  int width, int height,
-                                  unsigned int subWindowMode)
-{
+static void vncDRI3SourceValidate(DrawablePtr drawable, int x, int y, int width, int height,
+                                  unsigned int subWindowMode) {
   ScreenPtr screen = drawable->pScreen;
   vncDRI3DrawScreenPrivatePtr screenPriv = vncDRI3DrawScreenPrivate(screen);
 
@@ -598,12 +539,8 @@ static void vncDRI3SourceValidate(DrawablePtr drawable,
   wrap(screenPriv, screen, SourceValidate, vncDRI3SourceValidate);
 }
 
-static void vncDRI3Composite(CARD8 op, PicturePtr pSrc,
-                             PicturePtr pMask, PicturePtr pDst,
-                             INT16 xSrc, INT16 ySrc, INT16 xMask,
-                             INT16 yMask, INT16 xDst, INT16 yDst,
-                             CARD16 width, CARD16 height)
-{
+static void vncDRI3Composite(CARD8 op, PicturePtr pSrc, PicturePtr pMask, PicturePtr pDst, INT16 xSrc, INT16 ySrc,
+                             INT16 xMask, INT16 yMask, INT16 xDst, INT16 yDst, CARD16 width, CARD16 height) {
   ScreenPtr screen = pDst->pDrawable->pScreen;
   PictureScreenPtr ps = GetPictureScreen(screen);
   vncDRI3DrawScreenPrivatePtr screenPriv = vncDRI3DrawScreenPrivate(screen);
@@ -611,18 +548,14 @@ static void vncDRI3Composite(CARD8 op, PicturePtr pSrc,
   vncDRI3SyncDrawableFromGPU(pDst->pDrawable);
 
   unwrap(screenPriv, ps, Composite);
-  (*ps->Composite)(op, pSrc, pMask, pDst, xSrc, ySrc,
-                   xMask, yMask, xDst, yDst, width, height);
+  (*ps->Composite)(op, pSrc, pMask, pDst, xSrc, ySrc, xMask, yMask, xDst, yDst, width, height);
   wrap(screenPriv, ps, Composite, vncDRI3Composite);
 
   vncDRI3SyncDrawableToGPU(pDst->pDrawable);
 }
 
-static void vncDRI3Glyphs(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-                          PictFormatPtr maskFormat,
-                          INT16 xSrc, INT16 ySrc, int nlists,
-                          GlyphListPtr lists, GlyphPtr * glyphs)
-{
+static void vncDRI3Glyphs(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
+                          int nlists, GlyphListPtr lists, GlyphPtr* glyphs) {
   ScreenPtr screen = pDst->pDrawable->pScreen;
   PictureScreenPtr ps = GetPictureScreen(screen);
   vncDRI3DrawScreenPrivatePtr screenPriv = vncDRI3DrawScreenPrivate(screen);
@@ -630,16 +563,13 @@ static void vncDRI3Glyphs(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
   vncDRI3SyncDrawableFromGPU(pDst->pDrawable);
 
   unwrap(screenPriv, ps, Glyphs);
-  (*ps->Glyphs)(op, pSrc, pDst, maskFormat, xSrc, ySrc,
-                nlists, lists, glyphs);
+  (*ps->Glyphs)(op, pSrc, pDst, maskFormat, xSrc, ySrc, nlists, lists, glyphs);
   wrap(screenPriv, ps, Glyphs, vncDRI3Glyphs);
 
   vncDRI3SyncDrawableToGPU(pDst->pDrawable);
 }
 
-static void vncDRI3CompositeRects(CARD8 op, PicturePtr pDst,
-            xRenderColor * color, int nRect, xRectangle *rects)
-{
+static void vncDRI3CompositeRects(CARD8 op, PicturePtr pDst, xRenderColor* color, int nRect, xRectangle* rects) {
   ScreenPtr screen = pDst->pDrawable->pScreen;
   PictureScreenPtr ps = GetPictureScreen(screen);
   vncDRI3DrawScreenPrivatePtr screenPriv = vncDRI3DrawScreenPrivate(screen);
@@ -653,10 +583,8 @@ static void vncDRI3CompositeRects(CARD8 op, PicturePtr pDst,
   vncDRI3SyncDrawableToGPU(pDst->pDrawable);
 }
 
-static void vncDRI3Trapezoids(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int ntrap, xTrapezoid * traps)
-{
+static void vncDRI3Trapezoids(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc,
+                              INT16 ySrc, int ntrap, xTrapezoid* traps) {
   ScreenPtr screen = pDst->pDrawable->pScreen;
   PictureScreenPtr ps = GetPictureScreen(screen);
   vncDRI3DrawScreenPrivatePtr screenPriv = vncDRI3DrawScreenPrivate(screen);
@@ -665,17 +593,14 @@ static void vncDRI3Trapezoids(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
   vncDRI3SyncDrawableFromGPU(pDst->pDrawable);
 
   unwrap(screenPriv, ps, Trapezoids);
-  (*ps->Trapezoids)(op, pSrc, pDst, maskFormat, xSrc, ySrc,
-                    ntrap, traps);
+  (*ps->Trapezoids)(op, pSrc, pDst, maskFormat, xSrc, ySrc, ntrap, traps);
   wrap(screenPriv, ps, Trapezoids, vncDRI3Trapezoids);
 
   vncDRI3SyncDrawableToGPU(pDst->pDrawable);
 }
 
-static void vncDRI3Triangles(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int ntri, xTriangle * tris)
-{
+static void vncDRI3Triangles(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc,
+                             INT16 ySrc, int ntri, xTriangle* tris) {
   ScreenPtr screen = pDst->pDrawable->pScreen;
   PictureScreenPtr ps = GetPictureScreen(screen);
   vncDRI3DrawScreenPrivatePtr screenPriv = vncDRI3DrawScreenPrivate(screen);
@@ -690,10 +615,8 @@ static void vncDRI3Triangles(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
   vncDRI3SyncDrawableToGPU(pDst->pDrawable);
 }
 
-static void vncDRI3TriStrip(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int npoint, xPointFixed * points)
-{
+static void vncDRI3TriStrip(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc,
+                            INT16 ySrc, int npoint, xPointFixed* points) {
   ScreenPtr screen = pDst->pDrawable->pScreen;
   PictureScreenPtr ps = GetPictureScreen(screen);
   vncDRI3DrawScreenPrivatePtr screenPriv = vncDRI3DrawScreenPrivate(screen);
@@ -702,17 +625,14 @@ static void vncDRI3TriStrip(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
   vncDRI3SyncDrawableFromGPU(pDst->pDrawable);
 
   unwrap(screenPriv, ps, TriStrip);
-  (*ps->TriStrip)(op, pSrc, pDst, maskFormat, xSrc, ySrc,
-                  npoint, points);
+  (*ps->TriStrip)(op, pSrc, pDst, maskFormat, xSrc, ySrc, npoint, points);
   wrap(screenPriv, ps, TriStrip, vncDRI3TriStrip)
 
-  vncDRI3SyncDrawableToGPU(pDst->pDrawable);
+      vncDRI3SyncDrawableToGPU(pDst->pDrawable);
 }
 
-static void vncDRI3TriFan(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int npoint, xPointFixed * points)
-{
+static void vncDRI3TriFan(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
+                          int npoint, xPointFixed* points) {
   ScreenPtr screen = pDst->pDrawable->pScreen;
   PictureScreenPtr ps = GetPictureScreen(screen);
   vncDRI3DrawScreenPrivatePtr screenPriv = vncDRI3DrawScreenPrivate(screen);
@@ -727,8 +647,7 @@ static void vncDRI3TriFan(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
   vncDRI3SyncDrawableToGPU(pDst->pDrawable);
 }
 
-static Bool vncDRI3DrawCloseScreen(ScreenPtr screen)
-{
+static Bool vncDRI3DrawCloseScreen(ScreenPtr screen) {
   vncDRI3DrawScreenPrivatePtr screenPriv = vncDRI3DrawScreenPrivate(screen);
   PictureScreenPtr ps;
 
@@ -751,17 +670,13 @@ static Bool vncDRI3DrawCloseScreen(ScreenPtr screen)
   return (*screen->CloseScreen)(screen);
 }
 
-Bool vncDRI3DrawInit(ScreenPtr screen)
-{
+Bool vncDRI3DrawInit(ScreenPtr screen) {
   vncDRI3DrawScreenPrivatePtr screenPriv;
   PictureScreenPtr ps;
 
-  if (!dixRegisterPrivateKey(&vncDRI3DrawScreenPrivateKey,
-                             PRIVATE_SCREEN,
-                             sizeof(vncDRI3DrawScreenPrivateRec)))
+  if (!dixRegisterPrivateKey(&vncDRI3DrawScreenPrivateKey, PRIVATE_SCREEN, sizeof(vncDRI3DrawScreenPrivateRec)))
     return FALSE;
-  if (!dixRegisterPrivateKey(&vncDRI3GCPrivateKey, PRIVATE_GC,
-                             sizeof(vncDRI3GCPrivateRec)))
+  if (!dixRegisterPrivateKey(&vncDRI3GCPrivateKey, PRIVATE_GC, sizeof(vncDRI3GCPrivateRec)))
     return FALSE;
 
   screenPriv = vncDRI3DrawScreenPrivate(screen);

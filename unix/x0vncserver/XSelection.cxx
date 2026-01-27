@@ -24,20 +24,13 @@
 
 #include <x0vncserver/XSelection.h>
 
-core::BoolParameter
-  setPrimary("SetPrimary",
-             "Set the PRIMARY as well as the CLIPBOARD selection",
-             true);
-core::BoolParameter
-  sendPrimary("SendPrimary",
-              "Send the PRIMARY as well as the CLIPBOARD selection",
-              true);
+core::BoolParameter setPrimary("SetPrimary", "Set the PRIMARY as well as the CLIPBOARD selection", true);
+core::BoolParameter sendPrimary("SendPrimary", "Send the PRIMARY as well as the CLIPBOARD selection", true);
 
 static core::LogWriter vlog("XSelection");
 
 XSelection::XSelection(Display* dpy_, XSelectionHandler* handler_)
-    : TXWindow(dpy_, 1, 1, nullptr), handler(handler_), announcedSelection(None)
-{
+    : TXWindow(dpy_, 1, 1, nullptr), handler(handler_), announcedSelection(None) {
   probeProperty = XInternAtom(dpy, "TigerVNC_ProbeProperty", False);
   transferProperty = XInternAtom(dpy, "TigerVNC_TransferProperty", False);
   timestampProperty = XInternAtom(dpy, "TigerVNC_TimestampProperty", False);
@@ -45,29 +38,25 @@ XSelection::XSelection(Display* dpy_, XSelectionHandler* handler_)
   addEventMask(PropertyChangeMask); // Required for PropertyNotify events
 }
 
-static Bool PropertyEventMatcher(Display* /* dpy */, XEvent* ev, XPointer prop)
-{
+static Bool PropertyEventMatcher(Display* /* dpy */, XEvent* ev, XPointer prop) {
   if (ev->type == PropertyNotify && ev->xproperty.atom == *((Atom*)prop))
     return True;
   else
     return False;
 }
 
-Time XSelection::getXServerTime()
-{
+Time XSelection::getXServerTime() {
   XEvent ev;
   uint8_t data = 0;
 
   // Trigger a PropertyNotify event to extract server time
-  XChangeProperty(dpy, win(), timestampProperty, XA_STRING, 8, PropModeReplace,
-                  &data, sizeof(data));
+  XChangeProperty(dpy, win(), timestampProperty, XA_STRING, 8, PropModeReplace, &data, sizeof(data));
   XIfEvent(dpy, &ev, &PropertyEventMatcher, (XPointer)&timestampProperty);
   return ev.xproperty.time;
 }
 
 // Takes ownership of selections, backed by given data.
-void XSelection::handleClientClipboardData(const char* data)
-{
+void XSelection::handleClientClipboardData(const char* data) {
   vlog.debug("Received client clipboard data, taking selection ownership");
 
   Time time = getXServerTime();
@@ -86,22 +75,20 @@ void XSelection::handleClientClipboardData(const char* data)
 }
 
 // We own the selection and another X app has asked for data
-bool XSelection::selectionRequest(Window requestor, Atom selection, Atom target,
-                                  Atom property)
-{
+bool XSelection::selectionRequest(Window requestor, Atom selection, Atom target, Atom property) {
   if (clientData.empty() || requestor == win() || !selectionOwner(selection))
     return false;
 
   if (target == XA_STRING) {
     std::string latin1 = core::utf8ToLatin1(clientData.data(), clientData.length());
-    XChangeProperty(dpy, requestor, property, XA_STRING, 8, PropModeReplace,
-                    (unsigned char*)latin1.data(), latin1.length());
+    XChangeProperty(dpy, requestor, property, XA_STRING, 8, PropModeReplace, (unsigned char*)latin1.data(),
+                    latin1.length());
     return true;
   }
 
   if (target == xaUTF8_STRING) {
-    XChangeProperty(dpy, requestor, property, xaUTF8_STRING, 8, PropModeReplace,
-                    (unsigned char*)clientData.data(), clientData.length());
+    XChangeProperty(dpy, requestor, property, xaUTF8_STRING, 8, PropModeReplace, (unsigned char*)clientData.data(),
+                    clientData.length());
     return true;
   }
 
@@ -109,8 +96,7 @@ bool XSelection::selectionRequest(Window requestor, Atom selection, Atom target,
 }
 
 // Selection-owner change implies a change in selection data.
-void XSelection::handleSelectionOwnerChange(Window owner, Atom selection, Time time)
-{
+void XSelection::handleSelectionOwnerChange(Window owner, Atom selection, Time time) {
   if (selection != XA_PRIMARY && selection != xaCLIPBOARD)
     return;
   if (selection == XA_PRIMARY && !sendPrimary)
@@ -128,23 +114,18 @@ void XSelection::handleSelectionOwnerChange(Window owner, Atom selection, Time t
   XConvertSelection(dpy, selection, xaTARGETS, probeProperty, win(), time);
 }
 
-void XSelection::announceSelection(Atom selection)
-{
+void XSelection::announceSelection(Atom selection) {
   announcedSelection = selection;
   handler->handleXSelectionAnnounce(selection != None);
 }
 
-void XSelection::requestSelectionData()
-{
+void XSelection::requestSelectionData() {
   if (announcedSelection != None)
-    XConvertSelection(dpy, announcedSelection, xaTARGETS, transferProperty, win(),
-                      CurrentTime);
+    XConvertSelection(dpy, announcedSelection, xaTARGETS, transferProperty, win(), CurrentTime);
 }
 
 // Some information about selection is received from current owner
-void XSelection::selectionNotify(XSelectionEvent* ev, Atom type, int format,
-                                 int nitems, void* data)
-{
+void XSelection::selectionNotify(XSelectionEvent* ev, Atom type, int format, int nitems, void* data) {
   if (!ev || !data || type == None)
     return;
 
@@ -172,11 +153,9 @@ void XSelection::selectionNotify(XSelectionEvent* ev, Atom type, int format,
 
     // Prefer UTF-8 if available
     if (utf8Supported)
-      XConvertSelection(dpy, ev->selection, xaUTF8_STRING, transferProperty, win(),
-                        ev->time);
+      XConvertSelection(dpy, ev->selection, xaUTF8_STRING, transferProperty, win(), ev->time);
     else if (stringSupported)
-      XConvertSelection(dpy, ev->selection, XA_STRING, transferProperty, win(),
-                        ev->time);
+      XConvertSelection(dpy, ev->selection, XA_STRING, transferProperty, win(), ev->time);
   } else if (ev->target == xaUTF8_STRING || ev->target == XA_STRING) {
     if (type == xaINCR) {
       // Incremental transfer is not supported

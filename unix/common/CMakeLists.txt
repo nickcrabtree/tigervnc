@@ -1,5 +1,4 @@
-add_library(unixcommon STATIC
-  randr.cxx)
+add_library(unixcommon STATIC randr.cxx)
 
 target_include_directories(unixcommon PUBLIC ${CMAKE_SOURCE_DIR}/common)
 target_include_directories(unixcommon PUBLIC ${CMAKE_SOURCE_DIR}/unix/common)
@@ -10,6 +9,5 @@ if(UNIX)
 endif()
 
 if(NOT WIN32)
-  set_target_properties(unixcommon
-    PROPERTIES COMPILE_FLAGS -fPIC)
+  set_target_properties(unixcommon PROPERTIES COMPILE_FLAGS -fPIC)
 endif()

@@ -12,7 +12,7 @@ TigerVNC::OptionTie - Helper package for TigerVNC::Config
   use TigerVNC::OptionTie;
 
   tie ${"config::$name"}, 'TigerVNC::OptionTie', sub { &{$store}($name, @_) };
- 
+
 =head1 DESCRIPTION
 
 This package is used to redirect scalar assignments in the config namespace to the options hash.

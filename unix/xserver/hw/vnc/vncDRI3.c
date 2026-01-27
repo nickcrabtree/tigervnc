@@ -38,7 +38,7 @@
 #error "This code is not compatible with accessors"
 #endif
 
-const char *renderNode = "auto";
+const char* renderNode = "auto";
 
 static DevPrivateKeyRec vncDRI3ScreenPrivateKey;
 static DevPrivateKeyRec vncDRI3PixmapPrivateKey;
@@ -49,44 +49,40 @@ typedef struct vncDRI3ScreenPrivate {
   DestroyPixmapProcPtr DestroyPixmap;
 
 #ifdef HAVE_GBM
-  const char *devicePath;
-  struct gbm_device *device;
+  const char* devicePath;
+  struct gbm_device* device;
   int fd;
 #endif
 } vncDRI3ScreenPrivateRec, *vncDRI3ScreenPrivatePtr;
 
 typedef struct vncDRI3PixmapPrivate {
 #ifdef HAVE_GBM
-  struct gbm_bo *bo;
+  struct gbm_bo* bo;
 #endif
 } vncDRI3PixmapPrivateRec, *vncDRI3PixmapPrivatePtr;
 
-#define wrap(priv, real, mem, func) {\
-  priv->mem = real->mem; \
-  real->mem = func; \
-}
+#define wrap(priv, real, mem, func)                                                                                    \
+  {                                                                                                                    \
+    priv->mem = real->mem;                                                                                             \
+    real->mem = func;                                                                                                  \
+  }
 
-#define unwrap(priv, real, mem) {\
-  real->mem = priv->mem; \
-}
+#define unwrap(priv, real, mem)                                                                                        \
+  { real->mem = priv->mem; }
 
-static inline vncDRI3ScreenPrivatePtr vncDRI3ScreenPrivate(ScreenPtr screen)
-{
+static inline vncDRI3ScreenPrivatePtr vncDRI3ScreenPrivate(ScreenPtr screen) {
   return (vncDRI3ScreenPrivatePtr)dixLookupPrivate(&(screen)->devPrivates, &vncDRI3ScreenPrivateKey);
 }
 
-static inline vncDRI3PixmapPrivatePtr vncDRI3PixmapPrivate(PixmapPtr pixmap)
-{
+static inline vncDRI3PixmapPrivatePtr vncDRI3PixmapPrivate(PixmapPtr pixmap) {
   return (vncDRI3PixmapPrivatePtr)dixLookupPrivate(&(pixmap)->devPrivates, &vncDRI3PixmapPrivateKey);
 }
 
-static int vncDRI3Open(ScreenPtr screen, RRProviderPtr provider,
-                       int *fd)
-{
+static int vncDRI3Open(ScreenPtr screen, RRProviderPtr provider, int* fd) {
 #ifdef HAVE_GBM
   vncDRI3ScreenPrivatePtr screenPriv = vncDRI3ScreenPrivate(screen);
 
-  *fd = open(screenPriv->devicePath, O_RDWR|O_CLOEXEC);
+  *fd = open(screenPriv->devicePath, O_RDWR | O_CLOEXEC);
   if (*fd < 0)
     return BadAlloc;
 
@@ -98,8 +94,7 @@ static int vncDRI3Open(ScreenPtr screen, RRProviderPtr provider,
 
 /* Taken from glamor */
 #ifdef HAVE_GBM
-static uint32_t gbm_format_for_depth(CARD8 depth)
-{
+static uint32_t gbm_format_for_depth(CARD8 depth) {
   switch (depth) {
   case 16:
     return GBM_FORMAT_RGB565;
@@ -115,20 +110,17 @@ static uint32_t gbm_format_for_depth(CARD8 depth)
 }
 #endif
 
-static PixmapPtr vncPixmapFromFd(ScreenPtr screen, int fd,
-                                 CARD16 width, CARD16 height,
-                                 CARD16 stride, CARD8 depth,
-                                 CARD8 bpp)
-{
+static PixmapPtr vncPixmapFromFd(ScreenPtr screen, int fd, CARD16 width, CARD16 height, CARD16 stride, CARD8 depth,
+                                 CARD8 bpp) {
 #ifdef HAVE_GBM
   vncDRI3ScreenPrivatePtr screenPriv = vncDRI3ScreenPrivate(screen);
   vncDRI3PixmapPrivatePtr pixmapPriv;
 
   struct gbm_import_fd_data data;
-  struct gbm_bo *bo;
+  struct gbm_bo* bo;
   PixmapPtr pixmap;
 
-  if (bpp != sizeof(FbBits)*8) {
+  if (bpp != sizeof(FbBits) * 8) {
     ErrorF("Incompatible bits per pixel given for GPU buffer\n");
     return NULL;
   }
@@ -144,8 +136,7 @@ static PixmapPtr vncPixmapFromFd(ScreenPtr screen, int fd,
   data.stride = stride;
   data.format = gbm_format_for_depth(depth);
 
-  bo = gbm_bo_import(screenPriv->device, GBM_BO_IMPORT_FD, &data,
-                     GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
+  bo = gbm_bo_import(screenPriv->device, GBM_BO_IMPORT_FD, &data, GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
   if (bo == NULL)
     return NULL;
 
@@ -162,8 +153,7 @@ static PixmapPtr vncPixmapFromFd(ScreenPtr screen, int fd,
 #endif
 }
 
-static Bool vncDRI3DestroyPixmap(PixmapPtr pixmap)
-{
+static Bool vncDRI3DestroyPixmap(PixmapPtr pixmap) {
   ScreenPtr screen = pixmap->drawable.pScreen;
   vncDRI3ScreenPrivatePtr screenPriv = vncDRI3ScreenPrivate(screen);
   Bool ret;
@@ -187,8 +177,7 @@ static Bool vncDRI3DestroyPixmap(PixmapPtr pixmap)
 }
 
 #ifdef HAVE_GBM
-static int vncDRI3FdFromPixmapVisitWindow(WindowPtr window, void *data)
-{
+static int vncDRI3FdFromPixmapVisitWindow(WindowPtr window, void* data) {
   ScreenPtr screen = window->drawable.pScreen;
   PixmapPtr pixmap = data;
 
@@ -199,25 +188,21 @@ static int vncDRI3FdFromPixmapVisitWindow(WindowPtr window, void *data)
 }
 #endif
 
-static int vncFdFromPixmap(ScreenPtr screen, PixmapPtr pixmap,
-                           CARD16 *stride, CARD32 *size)
-{
+static int vncFdFromPixmap(ScreenPtr screen, PixmapPtr pixmap, CARD16* stride, CARD32* size) {
 #ifdef HAVE_GBM
   vncDRI3ScreenPrivatePtr screenPriv = vncDRI3ScreenPrivate(screen);
   vncDRI3PixmapPrivatePtr pixmapPriv = vncDRI3PixmapPrivate(pixmap);
 
-  if (pixmap->drawable.bitsPerPixel != sizeof(FbBits)*8) {
+  if (pixmap->drawable.bitsPerPixel != sizeof(FbBits) * 8) {
     ErrorF("Incompatible bits per pixel given for pixmap\n");
     return -1;
   }
 
   if (pixmapPriv->bo == NULL) {
     /* GBM_BO_USE_LINEAR ? */
-    pixmapPriv->bo = gbm_bo_create(screenPriv->device,
-                                   pixmap->drawable.width,
-                                   pixmap->drawable.height,
-                                   gbm_format_for_depth(pixmap->drawable.depth),
-                                   GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
+    pixmapPriv->bo =
+        gbm_bo_create(screenPriv->device, pixmap->drawable.width, pixmap->drawable.height,
+                      gbm_format_for_depth(pixmap->drawable.depth), GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
     if (pixmapPriv->bo == NULL) {
       ErrorF("Failed to create GPU buffer: %s\n", strerror(errno));
       return -1;
@@ -247,8 +232,7 @@ static int vncFdFromPixmap(ScreenPtr screen, PixmapPtr pixmap,
 #endif
 }
 
-Bool vncDRI3IsHardwarePixmap(PixmapPtr pixmap)
-{
+Bool vncDRI3IsHardwarePixmap(PixmapPtr pixmap) {
 #ifdef HAVE_GBM
   vncDRI3PixmapPrivatePtr pixmapPriv = vncDRI3PixmapPrivate(pixmap);
   return pixmapPriv->bo != NULL;
@@ -257,8 +241,7 @@ Bool vncDRI3IsHardwarePixmap(PixmapPtr pixmap)
 #endif
 }
 
-Bool vncDRI3IsHardwareDrawable(DrawablePtr drawable)
-{
+Bool vncDRI3IsHardwareDrawable(DrawablePtr drawable) {
   PixmapPtr pixmap;
   int xoff, yoff;
 
@@ -269,19 +252,18 @@ Bool vncDRI3IsHardwareDrawable(DrawablePtr drawable)
   return vncDRI3IsHardwarePixmap(pixmap);
 }
 
-Bool vncDRI3SyncPixmapToGPU(PixmapPtr pixmap)
-{
+Bool vncDRI3SyncPixmapToGPU(PixmapPtr pixmap) {
 #ifdef HAVE_GBM
   vncDRI3PixmapPrivatePtr pixmapPriv = vncDRI3PixmapPrivate(pixmap);
 
   int width, height;
 
-  FbBits *bo_data;
+  FbBits* bo_data;
   uint32_t bo_stride;
-  void *map_data;
+  void* map_data;
   uint32_t bo_bpp;
 
-  FbBits *pixmap_data;
+  FbBits* pixmap_data;
   int pixmap_stride;
   int pixmap_bpp;
 
@@ -294,34 +276,29 @@ Bool vncDRI3SyncPixmapToGPU(PixmapPtr pixmap)
   height = gbm_bo_get_height(pixmapPriv->bo);
 
   map_data = NULL;
-  bo_data = gbm_bo_map(pixmapPriv->bo, 0, 0, width, height,
-                       GBM_BO_TRANSFER_WRITE, &bo_stride, &map_data);
+  bo_data = gbm_bo_map(pixmapPriv->bo, 0, 0, width, height, GBM_BO_TRANSFER_WRITE, &bo_stride, &map_data);
   if (bo_data == NULL) {
     ErrorF("Could not map GPU buffer: %s\n", strerror(errno));
     return FALSE;
   }
 
   bo_bpp = gbm_bo_get_bpp(pixmapPriv->bo);
-  assert(bo_bpp == sizeof(FbBits)*8);
-  assert((bo_stride % (bo_bpp/8)) == 0);
+  assert(bo_bpp == sizeof(FbBits) * 8);
+  assert((bo_stride % (bo_bpp / 8)) == 0);
 
-  fbGetPixmapBitsData(pixmap, pixmap_data,
-                      pixmap_stride, pixmap_bpp);
+  fbGetPixmapBitsData(pixmap, pixmap_data, pixmap_stride, pixmap_bpp);
   assert(pixmap_data != NULL);
-  assert(pixmap_bpp == sizeof(FbBits)*8);
+  assert(pixmap_bpp == sizeof(FbBits) * 8);
 
   assert(bo_bpp == pixmap_bpp);
 
   /* Try accelerated copy first */
-  ret = pixman_blt((uint32_t*)pixmap_data, (uint32_t*)bo_data,
-                   pixmap_stride, bo_stride / (bo_bpp/8),
-                   pixmap_bpp, bo_bpp, 0, 0, 0, 0, width, height);
+  ret = pixman_blt((uint32_t*)pixmap_data, (uint32_t*)bo_data, pixmap_stride, bo_stride / (bo_bpp / 8), pixmap_bpp,
+                   bo_bpp, 0, 0, 0, 0, width, height);
   if (!ret) {
     /* Fall back to slow pure C version */
-    fbBlt(pixmap_data, pixmap_stride, 0,
-          bo_data, bo_stride / (bo_bpp/8), 0,
-          width * bo_bpp, height,
-          GXcopy, FB_ALLONES, bo_bpp, FALSE, FALSE);
+    fbBlt(pixmap_data, pixmap_stride, 0, bo_data, bo_stride / (bo_bpp / 8), 0, width * bo_bpp, height, GXcopy,
+          FB_ALLONES, bo_bpp, FALSE, FALSE);
   }
 
   gbm_bo_unmap(pixmapPriv->bo, map_data);
@@ -330,19 +307,18 @@ Bool vncDRI3SyncPixmapToGPU(PixmapPtr pixmap)
   return TRUE;
 }
 
-Bool vncDRI3SyncPixmapFromGPU(PixmapPtr pixmap)
-{
+Bool vncDRI3SyncPixmapFromGPU(PixmapPtr pixmap) {
 #ifdef HAVE_GBM
   vncDRI3PixmapPrivatePtr pixmapPriv = vncDRI3PixmapPrivate(pixmap);
 
   int width, height;
 
-  FbBits *bo_data;
+  FbBits* bo_data;
   uint32_t bo_stride;
-  void *map_data;
+  void* map_data;
   uint32_t bo_bpp;
 
-  FbBits *pixmap_data;
+  FbBits* pixmap_data;
   int pixmap_stride;
   int pixmap_bpp;
 
@@ -355,34 +331,29 @@ Bool vncDRI3SyncPixmapFromGPU(PixmapPtr pixmap)
   height = gbm_bo_get_height(pixmapPriv->bo);
 
   map_data = NULL;
-  bo_data = gbm_bo_map(pixmapPriv->bo, 0, 0, width, height,
-                       GBM_BO_TRANSFER_READ, &bo_stride, &map_data);
+  bo_data = gbm_bo_map(pixmapPriv->bo, 0, 0, width, height, GBM_BO_TRANSFER_READ, &bo_stride, &map_data);
   if (bo_data == NULL) {
     ErrorF("Could not map GPU buffer: %s\n", strerror(errno));
     return FALSE;
   }
 
   bo_bpp = gbm_bo_get_bpp(pixmapPriv->bo);
-  assert(bo_bpp == sizeof(FbBits)*8);
-  assert((bo_stride % (bo_bpp/8)) == 0);
+  assert(bo_bpp == sizeof(FbBits) * 8);
+  assert((bo_stride % (bo_bpp / 8)) == 0);
 
-  fbGetPixmapBitsData(pixmap, pixmap_data,
-                      pixmap_stride, pixmap_bpp);
+  fbGetPixmapBitsData(pixmap, pixmap_data, pixmap_stride, pixmap_bpp);
   assert(pixmap_data != NULL);
-  assert(pixmap_bpp == sizeof(FbBits)*8);
+  assert(pixmap_bpp == sizeof(FbBits) * 8);
 
   assert(bo_bpp == pixmap_bpp);
 
   /* Try accelerated copy first */
-  ret = pixman_blt((uint32_t*)bo_data, (uint32_t*)pixmap_data,
-                   bo_stride / (bo_bpp/8), pixmap_stride,
-                   bo_bpp, pixmap_bpp, 0, 0, 0, 0, width, height);
+  ret = pixman_blt((uint32_t*)bo_data, (uint32_t*)pixmap_data, bo_stride / (bo_bpp / 8), pixmap_stride, bo_bpp,
+                   pixmap_bpp, 0, 0, 0, 0, width, height);
   if (!ret) {
     /* Fall back to slow pure C version */
-    fbBlt(bo_data, bo_stride / (bo_bpp/8), 0,
-          pixmap_data, pixmap_stride, 0,
-          width * bo_bpp, height,
-          GXcopy, FB_ALLONES, bo_bpp, FALSE, FALSE);
+    fbBlt(bo_data, bo_stride / (bo_bpp / 8), 0, pixmap_data, pixmap_stride, 0, width * bo_bpp, height, GXcopy,
+          FB_ALLONES, bo_bpp, FALSE, FALSE);
   }
 
   gbm_bo_unmap(pixmapPriv->bo, map_data);
@@ -391,8 +362,7 @@ Bool vncDRI3SyncPixmapFromGPU(PixmapPtr pixmap)
   return TRUE;
 }
 
-Bool vncDRI3SyncDrawableToGPU(DrawablePtr drawable)
-{
+Bool vncDRI3SyncDrawableToGPU(DrawablePtr drawable) {
   PixmapPtr pixmap;
   int xoff, yoff;
 
@@ -403,8 +373,7 @@ Bool vncDRI3SyncDrawableToGPU(DrawablePtr drawable)
   return vncDRI3SyncPixmapToGPU(pixmap);
 }
 
-Bool vncDRI3SyncDrawableFromGPU(DrawablePtr drawable)
-{
+Bool vncDRI3SyncDrawableFromGPU(DrawablePtr drawable) {
   PixmapPtr pixmap;
   int xoff, yoff;
 
@@ -416,15 +385,14 @@ Bool vncDRI3SyncDrawableFromGPU(DrawablePtr drawable)
 }
 
 static const dri3_screen_info_rec vncDRI3ScreenInfo = {
-  .version = 1,
+    .version = 1,
 
-  .open = vncDRI3Open,
-  .pixmap_from_fd = vncPixmapFromFd,
-  .fd_from_pixmap = vncFdFromPixmap,
+    .open = vncDRI3Open,
+    .pixmap_from_fd = vncPixmapFromFd,
+    .fd_from_pixmap = vncFdFromPixmap,
 };
 
-static Bool vncDRI3CloseScreen(ScreenPtr screen)
-{
+static Bool vncDRI3CloseScreen(ScreenPtr screen) {
   vncDRI3ScreenPrivatePtr screenPriv = vncDRI3ScreenPrivate(screen);
 
   unwrap(screenPriv, screen, CloseScreen);
@@ -442,8 +410,7 @@ static Bool vncDRI3CloseScreen(ScreenPtr screen)
   return (*screen->CloseScreen)(screen);
 }
 
-Bool vncDRI3Init(ScreenPtr screen)
-{
+Bool vncDRI3Init(ScreenPtr screen) {
   vncDRI3ScreenPrivatePtr screenPriv;
 
   /*
@@ -459,17 +426,14 @@ Bool vncDRI3Init(ScreenPtr screen)
   if (renderNode[0] == '\0')
     return TRUE;
 
-  if ((renderNode[0] != '/') &&
-      (strcasecmp(renderNode, "auto") != 0)) {
+  if ((renderNode[0] != '/') && (strcasecmp(renderNode, "auto") != 0)) {
     ErrorF("Invalid render node path \"%s\"\n", renderNode);
     return FALSE;
   }
 
-  if (!dixRegisterPrivateKey(&vncDRI3ScreenPrivateKey, PRIVATE_SCREEN,
-                             sizeof(vncDRI3ScreenPrivateRec)))
+  if (!dixRegisterPrivateKey(&vncDRI3ScreenPrivateKey, PRIVATE_SCREEN, sizeof(vncDRI3ScreenPrivateRec)))
     return FALSE;
-  if (!dixRegisterPrivateKey(&vncDRI3PixmapPrivateKey, PRIVATE_PIXMAP,
-                             sizeof(vncDRI3PixmapPrivateRec)))
+  if (!dixRegisterPrivateKey(&vncDRI3PixmapPrivateKey, PRIVATE_PIXMAP, sizeof(vncDRI3PixmapPrivateRec)))
     return FALSE;
 
   if (!vncDRI3DrawInit(screen))
@@ -493,8 +457,8 @@ Bool vncDRI3Init(ScreenPtr screen)
     }
 
     screenPriv->devicePath = NULL;
-    for (size_t i = 0;i < globbuf.gl_pathc;i++) {
-      if (access(globbuf.gl_pathv[i], R_OK|W_OK) == 0) {
+    for (size_t i = 0; i < globbuf.gl_pathc; i++) {
+      if (access(globbuf.gl_pathv[i], R_OK | W_OK) == 0) {
         screenPriv->devicePath = strdup(globbuf.gl_pathv[i]);
         break;
       }
@@ -510,10 +474,9 @@ Bool vncDRI3Init(ScreenPtr screen)
     screenPriv->devicePath = renderNode;
   }
 
-  screenPriv->fd = open(screenPriv->devicePath, O_RDWR|O_CLOEXEC);
+  screenPriv->fd = open(screenPriv->devicePath, O_RDWR | O_CLOEXEC);
   if (screenPriv->fd < 0) {
-    ErrorF("Failed to open \"%s\": %s\n",
-           screenPriv->devicePath, strerror(errno));
+    ErrorF("Failed to open \"%s\": %s\n", screenPriv->devicePath, strerror(errno));
     return FALSE;
   }
 

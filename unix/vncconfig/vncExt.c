@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -20,8 +20,8 @@
 #include <config.h>
 #endif
 
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #define NEED_REPLIES
 #include <X11/Xlib.h>
@@ -29,42 +29,42 @@
 #define _VNCEXT_PROTO_
 #include "vncExt.h"
 
-static Bool XVncExtQueryConnectNotifyWireToEvent(Display* dpy, XEvent* e,
-                                                 xEvent* w);
+static Bool XVncExtQueryConnectNotifyWireToEvent(Display* dpy, XEvent* e, xEvent* w);
 
 static Bool extensionInited = False;
 static XExtCodes* codes = 0;
 
-static Bool checkExtension(Display* dpy)
-{
+static Bool checkExtension(Display* dpy) {
   if (!extensionInited) {
     extensionInited = True;
     codes = XInitExtension(dpy, VNCEXTNAME);
-    if (!codes) return False;
-    XESetWireToEvent(dpy, codes->first_event + VncExtQueryConnectNotify,
-                     XVncExtQueryConnectNotifyWireToEvent);
+    if (!codes)
+      return False;
+    XESetWireToEvent(dpy, codes->first_event + VncExtQueryConnectNotify, XVncExtQueryConnectNotifyWireToEvent);
   }
   return codes != 0;
 }
 
-Bool XVncExtQueryExtension(Display* dpy, int* event_basep, int* error_basep)
-{
-  if (!checkExtension(dpy)) return False;
+Bool XVncExtQueryExtension(Display* dpy, int* event_basep, int* error_basep) {
+  if (!checkExtension(dpy))
+    return False;
   *event_basep = codes->first_event;
   *error_basep = codes->first_error;
   return True;
 }
 
-Bool XVncExtSetParam(Display* dpy, const char* param, const char* value)
-{
+Bool XVncExtSetParam(Display* dpy, const char* param, const char* value) {
   xVncExtSetParamReq* req;
   xVncExtSetParamReply rep;
 
   int paramLen = strlen(param);
-  if (paramLen > 65535) return False;
+  if (paramLen > 65535)
+    return False;
   int valueLen = strlen(value);
-  if (valueLen > 65535) return False;
-  if (!checkExtension(dpy)) return False;
+  if (valueLen > 65535)
+    return False;
+  if (!checkExtension(dpy))
+    return False;
 
   LockDisplay(dpy);
   GetReq(VncExtSetParam, req);
@@ -75,7 +75,7 @@ Bool XVncExtSetParam(Display* dpy, const char* param, const char* value)
   req->valueLen = valueLen;
   Data(dpy, param, paramLen);
   Data(dpy, value, valueLen);
-  if (!_XReply(dpy, (xReply *)&rep, 0, xFalse)) {
+  if (!_XReply(dpy, (xReply*)&rep, 0, xFalse)) {
     UnlockDisplay(dpy);
     SyncHandle();
     return False;
@@ -85,16 +85,17 @@ Bool XVncExtSetParam(Display* dpy, const char* param, const char* value)
   return rep.success;
 }
 
-Bool XVncExtGetParam(Display* dpy, const char* param, char** value, int* len)
-{
+Bool XVncExtGetParam(Display* dpy, const char* param, char** value, int* len) {
   xVncExtGetParamReq* req;
   xVncExtGetParamReply rep;
 
   int paramLen = strlen(param);
   *value = 0;
   *len = 0;
-  if (paramLen > 255) return False;
-  if (!checkExtension(dpy)) return False;
+  if (paramLen > 255)
+    return False;
+  if (!checkExtension(dpy))
+    return False;
 
   LockDisplay(dpy);
   GetReq(VncExtGetParam, req);
@@ -103,16 +104,16 @@ Bool XVncExtGetParam(Display* dpy, const char* param, char** value, int* len)
   req->length += (paramLen + 3) >> 2;
   req->paramLen = paramLen;
   Data(dpy, param, paramLen);
-  if (!_XReply(dpy, (xReply *)&rep, 0, xFalse)) {
+  if (!_XReply(dpy, (xReply*)&rep, 0, xFalse)) {
     UnlockDisplay(dpy);
     SyncHandle();
     return False;
   }
   if (rep.success) {
     *len = rep.valueLen;
-    *value = (char*) Xmalloc (*len+1);
+    *value = (char*)Xmalloc(*len + 1);
     if (!*value) {
-      _XEatData(dpy, (*len+1)&~1);
+      _XEatData(dpy, (*len + 1) & ~1);
       return False;
     }
     _XReadPad(dpy, *value, *len);
@@ -123,15 +124,16 @@ Bool XVncExtGetParam(Display* dpy, const char* param, char** value, int* len)
   return rep.success;
 }
 
-char* XVncExtGetParamDesc(Display* dpy, const char* param)
-{
+char* XVncExtGetParamDesc(Display* dpy, const char* param) {
   xVncExtGetParamDescReq* req;
   xVncExtGetParamDescReply rep;
   char* desc = 0;
 
   int paramLen = strlen(param);
-  if (paramLen > 255) return False;
-  if (!checkExtension(dpy)) return False;
+  if (paramLen > 255)
+    return False;
+  if (!checkExtension(dpy))
+    return False;
 
   LockDisplay(dpy);
   GetReq(VncExtGetParamDesc, req);
@@ -140,15 +142,15 @@ char* XVncExtGetParamDesc(Display* dpy, const char* param)
   req->length += (paramLen + 3) >> 2;
   req->paramLen = paramLen;
   Data(dpy, param, paramLen);
-  if (!_XReply(dpy, (xReply *)&rep, 0, xFalse)) {
+  if (!_XReply(dpy, (xReply*)&rep, 0, xFalse)) {
     UnlockDisplay(dpy);
     SyncHandle();
     return False;
   }
   if (rep.success) {
-    desc = (char*)Xmalloc(rep.descLen+1);
+    desc = (char*)Xmalloc(rep.descLen + 1);
     if (!desc) {
-      _XEatData(dpy, (rep.descLen+1)&~1);
+      _XEatData(dpy, (rep.descLen + 1) & ~1);
       return False;
     }
     _XReadPad(dpy, desc, rep.descLen);
@@ -159,21 +161,21 @@ char* XVncExtGetParamDesc(Display* dpy, const char* param)
   return desc;
 }
 
-char** XVncExtListParams(Display* dpy, int* nParams)
-{
+char** XVncExtListParams(Display* dpy, int* nParams) {
   xVncExtListParamsReq* req;
   xVncExtListParamsReply rep;
   char** list = 0;
   char* ch;
   int rlen, paramLen, i;
 
-  if (!checkExtension(dpy)) return False;
+  if (!checkExtension(dpy))
+    return False;
 
   LockDisplay(dpy);
   GetReq(VncExtListParams, req);
   req->reqType = codes->major_opcode;
   req->vncExtReqType = X_VncExtListParams;
-  if (!_XReply(dpy, (xReply *)&rep, 0, xFalse)) {
+  if (!_XReply(dpy, (xReply*)&rep, 0, xFalse)) {
     UnlockDisplay(dpy);
     SyncHandle();
     return False;
@@ -185,8 +187,10 @@ char** XVncExtListParams(Display* dpy, int* nParams)
     rlen = rep.length << 2;
     ch = (char*)Xmalloc(rlen + 1);
     if (!list || !ch) {
-      if (list) Xfree((char*)list);
-      if (ch) Xfree(ch);
+      if (list)
+        Xfree((char*)list);
+      if (ch)
+        Xfree(ch);
       _XEatData(dpy, rlen);
       UnlockDisplay(dpy);
       SyncHandle();
@@ -207,19 +211,18 @@ char** XVncExtListParams(Display* dpy, int* nParams)
   return list;
 }
 
-void XVncExtFreeParamList(char** list)
-{
+void XVncExtFreeParamList(char** list) {
   if (list) {
-    Xfree(list[0]-1);
+    Xfree(list[0] - 1);
     Xfree((char*)list);
   }
 }
 
-Bool XVncExtSelectInput(Display* dpy, Window w, int mask)
-{
+Bool XVncExtSelectInput(Display* dpy, Window w, int mask) {
   xVncExtSelectInputReq* req;
 
-  if (!checkExtension(dpy)) return False;
+  if (!checkExtension(dpy))
+    return False;
 
   LockDisplay(dpy);
   GetReq(VncExtSelectInput, req);
@@ -232,14 +235,15 @@ Bool XVncExtSelectInput(Display* dpy, Window w, int mask)
   return True;
 }
 
-Bool XVncExtConnect(Display* dpy, const char* hostAndPort, Bool viewOnly)
-{
+Bool XVncExtConnect(Display* dpy, const char* hostAndPort, Bool viewOnly) {
   xVncExtConnectReq* req;
   xVncExtConnectReply rep;
 
   int strLen = strlen(hostAndPort);
-  if (strLen > 255) return False;
-  if (!checkExtension(dpy)) return False;
+  if (strLen > 255)
+    return False;
+  if (!checkExtension(dpy))
+    return False;
 
   LockDisplay(dpy);
   GetReq(VncExtConnect, req);
@@ -249,7 +253,7 @@ Bool XVncExtConnect(Display* dpy, const char* hostAndPort, Bool viewOnly)
   req->strLen = strLen;
   req->viewOnly = (CARD8)viewOnly;
   Data(dpy, hostAndPort, strLen);
-  if (!_XReply(dpy, (xReply *)&rep, 0, xFalse)) {
+  if (!_XReply(dpy, (xReply*)&rep, 0, xFalse)) {
     UnlockDisplay(dpy);
     SyncHandle();
     return False;
@@ -259,19 +263,18 @@ Bool XVncExtConnect(Display* dpy, const char* hostAndPort, Bool viewOnly)
   return rep.success;
 }
 
-Bool XVncExtGetQueryConnect(Display* dpy, char** addr, char** user,
-                            int* timeout, void** opaqueId)
-{
+Bool XVncExtGetQueryConnect(Display* dpy, char** addr, char** user, int* timeout, void** opaqueId) {
   xVncExtGetQueryConnectReq* req;
   xVncExtGetQueryConnectReply rep;
 
-  if (!checkExtension(dpy)) return False;
+  if (!checkExtension(dpy))
+    return False;
 
   LockDisplay(dpy);
   GetReq(VncExtGetQueryConnect, req);
   req->reqType = codes->major_opcode;
   req->vncExtReqType = X_VncExtGetQueryConnect;
-  if (!_XReply(dpy, (xReply *)&rep, 0, xFalse)) {
+  if (!_XReply(dpy, (xReply*)&rep, 0, xFalse)) {
     UnlockDisplay(dpy);
     SyncHandle();
     return False;
@@ -279,12 +282,12 @@ Bool XVncExtGetQueryConnect(Display* dpy, char** addr, char** user,
   UnlockDisplay(dpy);
   SyncHandle();
 
-  *addr = Xmalloc(rep.addrLen+1);
-  *user = Xmalloc(rep.userLen+1);
+  *addr = Xmalloc(rep.addrLen + 1);
+  *user = Xmalloc(rep.userLen + 1);
   if (!*addr || !*user) {
     Xfree(*addr);
     Xfree(*user);
-    _XEatData(dpy, ((rep.addrLen+1)&~1) + ((rep.userLen+1)&~1));
+    _XEatData(dpy, ((rep.addrLen + 1) & ~1) + ((rep.userLen + 1) & ~1));
     return False;
   }
   _XReadPad(dpy, *addr, rep.addrLen);
@@ -296,11 +299,11 @@ Bool XVncExtGetQueryConnect(Display* dpy, char** addr, char** user,
   return True;
 }
 
-Bool XVncExtApproveConnect(Display* dpy, void* opaqueId, int approve)
-{
+Bool XVncExtApproveConnect(Display* dpy, void* opaqueId, int approve) {
   xVncExtApproveConnectReq* req;
 
-  if (!checkExtension(dpy)) return False;
+  if (!checkExtension(dpy))
+    return False;
 
   LockDisplay(dpy);
   GetReq(VncExtApproveConnect, req);
@@ -313,15 +316,11 @@ Bool XVncExtApproveConnect(Display* dpy, void* opaqueId, int approve)
   return True;
 }
 
-
-static Bool XVncExtQueryConnectNotifyWireToEvent(Display* dpy, XEvent* e,
-                                                    xEvent* w)
-{
+static Bool XVncExtQueryConnectNotifyWireToEvent(Display* dpy, XEvent* e, xEvent* w) {
   XVncExtQueryConnectEvent* ev = (XVncExtQueryConnectEvent*)e;
-  xVncExtQueryConnectNotifyEvent* wire
-    = (xVncExtQueryConnectNotifyEvent*)w;
+  xVncExtQueryConnectNotifyEvent* wire = (xVncExtQueryConnectNotifyEvent*)w;
   ev->type = wire->type & 0x7f;
-  ev->serial = _XSetLastRequestRead(dpy,(xGenericReply*)wire);
+  ev->serial = _XSetLastRequestRead(dpy, (xGenericReply*)wire);
   ev->send_event = (wire->type & 0x80) != 0;
   ev->display = dpy;
   ev->window = wire->window;

@@ -4,7 +4,7 @@ index 0909cc5b4..c01873200 100644
 +++ b/configure.ac
 @@ -74,6 +74,7 @@ dnl forcing an entire recompile.x
  AC_CONFIG_HEADERS(include/version-config.h)
- 
+
  AM_PROG_AS
 +AC_PROG_CXX
  AC_PROG_LN_S
@@ -13,7 +13,7 @@ index 0909cc5b4..c01873200 100644
 @@ -1735,6 +1736,19 @@ if test "x$XVFB" = xyes; then
  	AC_SUBST([XVFB_SYS_LIBS])
  fi
- 
+
 +dnl Xvnc DDX
 +AC_SUBST([XVNC_LIBS], ["$FB_LIB $FIXES_LIB $XEXT_LIB $CONFIG_LIB $DBE_LIB $RECORD_LIB $GLX_LIBS $RANDR_LIB $RENDER_LIB $DAMAGE_LIB $DRI3_LIB $PRESENT_LIB $MIEXT_SYNC_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $XKB_LIB $XKB_STUB_LIB $COMPOSITE_LIB"])
 +AC_SUBST([XVNC_SYS_LIBS], ["$GLX_SYS_LIBS"])
@@ -27,13 +27,13 @@ index 0909cc5b4..c01873200 100644
 +if test "x$XCVT" = xyes; then
 +	AC_DEFINE(HAVE_LIBXCVT, 1, [Have libxcvt support])
 +fi
- 
+
  dnl Xnest DDX
- 
+
 @@ -2058,7 +2067,6 @@ if test "x$GLAMOR" = xyes; then
  			 [AC_DEFINE(GLAMOR_HAS_EGL_QUERY_DRIVER, 1, [Have GLAMOR_HAS_EGL_QUERY_DRIVER])],
  			 [])
- 
+
 -	PKG_CHECK_MODULES(GBM, "$LIBGBM", [GBM=yes], [GBM=no])
  	if test "x$GBM" = xyes; then
  		AC_DEFINE(GLAMOR_HAS_GBM, 1,
@@ -67,13 +67,13 @@ index ba32facd7..191252969 100644
 @@ -20,10 +20,6 @@
   * OF THIS SOFTWARE.
   */
- 
+
 -#ifdef HAVE_XORG_CONFIG_H
 -#include <xorg-config.h>
 -#endif
 -
  #include "dri3_priv.h"
- 
+
  #include <drm_fourcc.h>
 diff --git a/dri3/dri3_priv.h b/dri3/dri3_priv.h
 index b087a9529..f319d1770 100644
@@ -82,7 +82,7 @@ index b087a9529..f319d1770 100644
 @@ -23,6 +23,7 @@
  #ifndef _DRI3PRIV_H_
  #define _DRI3PRIV_H_
- 
+
 +#include "dix-config.h"
  #include <X11/X.h>
  #include "scrnintstr.h"
@@ -94,7 +94,7 @@ index 958877efa..687168930 100644
 @@ -20,10 +20,6 @@
   * OF THIS SOFTWARE.
   */
- 
+
 -#ifdef HAVE_XORG_CONFIG_H
 -#include <xorg-config.h>
 -#endif
@@ -109,7 +109,7 @@ index b98259753..3c7e5bf60 100644
 @@ -20,10 +20,6 @@
   * OF THIS SOFTWARE.
   */
- 
+
 -#ifdef HAVE_XORG_CONFIG_H
 -#include <xorg-config.h>
 -#endif
@@ -122,7 +122,7 @@ index 19895dc77..3ecfa8b7a 100644
 --- a/hw/Makefile.am
 +++ b/hw/Makefile.am
 @@ -44,3 +44,5 @@ DIST_SUBDIRS = dmx xfree86 vfb xnest xwin xquartz kdrive xwayland
- 
+
  relink:
  	$(AM_V_at)for i in $(SUBDIRS) ; do $(MAKE) -C $$i relink || exit 1 ; done
 +
@@ -144,10 +144,9 @@ index f8fc67067..d53c4e72f 100644
 @@ -83,6 +83,9 @@
  /* Define to 1 if you have the <fcntl.h> header file. */
  #undef HAVE_FCNTL_H
- 
+
 +/* Have GBM support */
 +#undef HAVE_GBM
 +
  /* Define to 1 if you have the `getdtablesize' function. */
  #undef HAVE_GETDTABLESIZE
- 

@@ -2,7 +2,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   message(FATAL_ERROR "cmake must be invoked with the top level directory")
 endif()
 
-add_executable(w0vncserver
+add_executable(
+  w0vncserver
   portals/portalConstants.h
   portals/PortalProxy.cxx
   portals/RemoteDesktop.cxx
@@ -12,8 +13,7 @@ add_executable(w0vncserver
   PipeWireSource.cxx
   PipeWireStream.cxx
   PortalDesktop.cxx
-  RFBTimerSource.cxx
-)
+  RFBTimerSource.cxx)
 
 target_include_directories(w0vncserver SYSTEM PUBLIC ${GLIB_INCLUDE_DIRS})
 target_include_directories(w0vncserver SYSTEM PUBLIC ${GIO_INCLUDE_DIRS})
@@ -31,4 +31,7 @@ target_link_libraries(w0vncserver ${PIPEWIRE_LIBRARIES})
 target_link_libraries(w0vncserver ${UUID_LIBRARIES})
 
 install(TARGETS w0vncserver DESTINATION ${CMAKE_INSTALL_FULL_BINDIR})
-install(FILES w0vncserver.man DESTINATION ${CMAKE_INSTALL_FULL_MANDIR}/man1 RENAME w0vncserver.1)
+install(
+  FILES w0vncserver.man
+  DESTINATION ${CMAKE_INSTALL_FULL_MANDIR}/man1
+  RENAME w0vncserver.1)

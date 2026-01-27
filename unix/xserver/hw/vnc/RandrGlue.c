@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011-2015 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -24,8 +24,8 @@
 #include <assert.h>
 #include <string.h>
 
-#include "scrnintstr.h"
 #include "randrstr.h"
+#include "scrnintstr.h"
 
 #include "RandrGlue.h"
 #include "XorgGlue.h"
@@ -34,23 +34,19 @@ static int scrIdx;
 
 void vncSetGlueContext(int screenIndex);
 
-void vncSetGlueContext(int screenIndex)
-{
+void vncSetGlueContext(int screenIndex) {
   scrIdx = screenIndex;
 }
 
-int vncGetScreenWidth(void)
-{
+int vncGetScreenWidth(void) {
   return screenInfo.screens[scrIdx]->width;
 }
 
-int vncGetScreenHeight(void)
-{
+int vncGetScreenHeight(void) {
   return screenInfo.screens[scrIdx]->height;
 }
 
-int vncRandRIsValidScreenSize(int width, int height)
-{
+int vncRandRIsValidScreenSize(int width, int height) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
 
   if (width < rp->minWidth || rp->maxWidth < width)
@@ -61,8 +57,7 @@ int vncRandRIsValidScreenSize(int width, int height)
   return 1;
 }
 
-int vncRandRResizeScreen(int width, int height)
-{
+int vncRandRResizeScreen(int width, int height) {
   ScreenPtr pScreen = screenInfo.screens[scrIdx];
   int dpi, mwidth, mheight;
 
@@ -74,34 +69,30 @@ int vncRandRResizeScreen(int width, int height)
   return RRScreenSizeSet(pScreen, width, height, mwidth, mheight);
 }
 
-void vncRandRUpdateSetTime(void)
-{
+void vncRandRUpdateSetTime(void) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
   rp->lastSetTime = currentTime;
 }
 
-int vncRandRHasOutputClones(void)
-{
+int vncRandRHasOutputClones(void) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
-  for (int i = 0;i < rp->numCrtcs;i++) {
+  for (int i = 0; i < rp->numCrtcs; i++) {
     if (rp->crtcs[i]->numOutputs > 1)
       return 1;
   }
   return 0;
 }
 
-int vncRandRGetOutputCount(void)
-{
+int vncRandRGetOutputCount(void) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
   return rp->numOutputs;
 }
 
-int vncRandRGetAvailableOutputs(void)
-{
+int vncRandRGetAvailableOutputs(void) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
 
   int availableOutputs;
-  RRCrtcPtr *usedCrtcs;
+  RRCrtcPtr* usedCrtcs;
   int numUsed;
 
   int i, j, k;
@@ -117,7 +108,7 @@ int vncRandRGetAvailableOutputs(void)
    */
   availableOutputs = 0;
   numUsed = 0;
-  for (i = 0;i < rp->numOutputs;i++) {
+  for (i = 0; i < rp->numOutputs; i++) {
     RROutputPtr output;
 
     output = rp->outputs[i];
@@ -125,11 +116,11 @@ int vncRandRGetAvailableOutputs(void)
     if (output->crtc != NULL)
       availableOutputs++;
     else {
-      for (j = 0;j < output->numCrtcs;j++) {
+      for (j = 0; j < output->numCrtcs; j++) {
         if (output->crtcs[j]->numOutputs != 0)
           continue;
 
-        for (k = 0;k < numUsed;k++) {
+        for (k = 0; k < numUsed; k++) {
           if (usedCrtcs[k] == output->crtcs[j])
             break;
         }
@@ -151,14 +142,12 @@ int vncRandRGetAvailableOutputs(void)
   return availableOutputs;
 }
 
-char *vncRandRGetOutputName(int outputIdx)
-{
+char* vncRandRGetOutputName(int outputIdx) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
   return strdup(rp->outputs[outputIdx]->name);
 }
 
-int vncRandRIsOutputEnabled(int outputIdx)
-{
+int vncRandRIsOutputEnabled(int outputIdx) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
 
   if (rp->outputs[outputIdx]->crtc == NULL)
@@ -169,8 +158,7 @@ int vncRandRIsOutputEnabled(int outputIdx)
   return 1;
 }
 
-int vncRandRIsOutputUsable(int outputIdx)
-{
+int vncRandRIsOutputUsable(int outputIdx) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
 
   RROutputPtr output;
@@ -181,7 +169,7 @@ int vncRandRIsOutputUsable(int outputIdx)
     return 1;
 
   /* Any unused CRTCs? */
-  for (i = 0;i < output->numCrtcs;i++) {
+  for (i = 0; i < output->numCrtcs; i++) {
     if (output->crtcs[i]->numOutputs == 0)
       return 1;
   }
@@ -189,8 +177,7 @@ int vncRandRIsOutputUsable(int outputIdx)
   return 0;
 }
 
-int vncRandRIsOutputConnected(int outputIdx)
-{
+int vncRandRIsOutputConnected(int outputIdx) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
 
   RROutputPtr output;
@@ -199,8 +186,7 @@ int vncRandRIsOutputConnected(int outputIdx)
   return (output->connection == RR_Connected);
 }
 
-static RRModePtr vncRandRGetMatchingMode(int outputIdx, int width, int height)
-{
+static RRModePtr vncRandRGetMatchingMode(int outputIdx, int width, int height) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
 
   RROutputPtr output;
@@ -220,16 +206,14 @@ static RRModePtr vncRandRGetMatchingMode(int outputIdx, int width, int height)
   }
 
   for (int i = 0; i < output->numModes; i++) {
-    if ((output->modes[i]->mode.width == width) &&
-        (output->modes[i]->mode.height == height))
+    if ((output->modes[i]->mode.width == width) && (output->modes[i]->mode.height == height))
       return output->modes[i];
   }
 
   return NULL;
 }
 
-int vncRandRCheckOutputMode(int outputIdx, int width, int height)
-{
+int vncRandRCheckOutputMode(int outputIdx, int width, int height) {
   if (vncRandRGetMatchingMode(outputIdx, width, height) != NULL)
     return 1;
   if (vncRandRCanCreateModes())
@@ -237,12 +221,11 @@ int vncRandRCheckOutputMode(int outputIdx, int width, int height)
   return 0;
 }
 
-int vncRandRDisableOutput(int outputIdx)
-{
+int vncRandRDisableOutput(int outputIdx) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
   RRCrtcPtr crtc;
   int i;
-  RROutputPtr *outputs;
+  RROutputPtr* outputs;
   int numOutputs = 0;
   RRModePtr mode;
   int ret;
@@ -274,15 +257,12 @@ int vncRandRDisableOutput(int outputIdx)
   return ret;
 }
 
-unsigned int vncRandRGetOutputId(int outputIdx)
-{
+unsigned int vncRandRGetOutputId(int outputIdx) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
   return rp->outputs[outputIdx]->id;
 }
 
-int vncRandRGetOutputDimensions(int outputIdx,
-                            int *x, int *y, int *width, int *height)
-{
+int vncRandRGetOutputDimensions(int outputIdx, int* x, int* y, int* width, int* height) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
   RRCrtcPtr crtc;
   int swap;
@@ -308,9 +288,7 @@ int vncRandRGetOutputDimensions(int outputIdx,
   return 0;
 }
 
-int vncRandRReconfigureOutput(int outputIdx, int x, int y,
-                              int width, int height)
-{
+int vncRandRReconfigureOutput(int outputIdx, int x, int y, int width, int height) {
   rrScrPrivPtr rp = rrGetScrPriv(screenInfo.screens[scrIdx]);
 
   RROutputPtr output;
@@ -324,7 +302,7 @@ int vncRandRReconfigureOutput(int outputIdx, int x, int y,
 
   /* Need a CRTC? */
   if (crtc == NULL) {
-    for (i = 0;i < output->numCrtcs;i++) {
+    for (i = 0; i < output->numCrtcs; i++) {
       if (output->crtcs[i]->numOutputs != 0)
         continue;
 
@@ -352,12 +330,10 @@ int vncRandRReconfigureOutput(int outputIdx, int x, int y,
   return RRCrtcSet(crtc, mode, x, y, crtc->rotation, 1, &output);
 }
 
-int vncRandRCanCreateOutputs(int extraOutputs)
-{
+int vncRandRCanCreateOutputs(int extraOutputs) {
   return vncRandRCanCreateScreenOutputs(scrIdx, extraOutputs);
 }
 
-int vncRandRCreateOutputs(int extraOutputs)
-{
+int vncRandRCreateOutputs(int extraOutputs) {
   return vncRandRCreateScreenOutputs(scrIdx, extraOutputs);
 }

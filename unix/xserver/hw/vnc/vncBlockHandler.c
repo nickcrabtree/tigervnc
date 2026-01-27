@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011-2014 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -25,20 +25,20 @@
 
 #include <X11/Xpoll.h>
 
-#include "os.h"
 #include "dix.h"
+#include "os.h"
 #include "scrnintstr.h"
 
-#include "vncExtInit.h"
 #include "vncBlockHandler.h"
+#include "vncExtInit.h"
 #include "xorg-version.h"
 
 #if XORG_AT_LEAST(1, 19, 0)
 static void vncBlockHandler(void* data, void* timeout);
-static void vncSocketNotify(int fd, int xevents, void *data);
+static void vncSocketNotify(int fd, int xevents, void* data);
 #else
-static void vncBlockHandler(void * data, OSTimePtr t, void * readmask);
-static void vncWakeupHandler(void * data, int nfds, void * readmask);
+static void vncBlockHandler(void* data, OSTimePtr t, void* readmask);
+static void vncWakeupHandler(void* data, int nfds, void* readmask);
 
 struct vncFdEntry {
   int fd;
@@ -50,8 +50,7 @@ struct vncFdEntry {
 static struct vncFdEntry* fdsHead = NULL;
 #endif
 
-void vncRegisterBlockHandlers(void)
-{
+void vncRegisterBlockHandlers(void) {
   if (!RegisterBlockAndWakeupHandlers(vncBlockHandler,
 #if XORG_AT_LEAST(1, 19, 0)
                                       (ServerWakeupHandlerProcPtr)NoopDDA,
@@ -62,8 +61,7 @@ void vncRegisterBlockHandlers(void)
     FatalError("RegisterBlockAndWakeupHandlers() failed\n");
 }
 
-void vncSetNotifyFd(int fd, int scrIdx, int read, int write)
-{
+void vncSetNotifyFd(int fd, int scrIdx, int read, int write) {
 #if XORG_AT_LEAST(1, 19, 0)
   int mask = (read ? X_NOTIFY_READ : 0) | (write ? X_NOTIFY_WRITE : 0);
   SetNotifyFd(fd, vncSocketNotify, mask, (void*)(intptr_t)scrIdx);
@@ -94,8 +92,7 @@ void vncSetNotifyFd(int fd, int scrIdx, int read, int write)
 #endif
 }
 
-void vncRemoveNotifyFd(int fd)
-{
+void vncRemoveNotifyFd(int fd) {
 #if XORG_AT_LEAST(1, 19, 0)
   RemoveNotifyFd(fd);
 #else
@@ -118,22 +115,19 @@ void vncRemoveNotifyFd(int fd)
 }
 
 #if XORG_AT_LEAST(1, 19, 0)
-static void vncSocketNotify(int fd, int xevents, void *data)
-{
+static void vncSocketNotify(int fd, int xevents, void* data) {
   int scrIdx;
 
   scrIdx = (intptr_t)data;
-  vncHandleSocketEvent(fd, scrIdx,
-                       xevents & X_NOTIFY_READ,
-                       xevents & X_NOTIFY_WRITE);
+  vncHandleSocketEvent(fd, scrIdx, xevents & X_NOTIFY_READ, xevents & X_NOTIFY_WRITE);
 }
 #endif
 
 #if XORG_OLDER_THAN(1, 19, 0)
 static void vncWriteBlockHandlerFallback(OSTimePtr timeout);
 static void vncWriteWakeupHandlerFallback(void);
-void vncWriteBlockHandler(fd_set *fds);
-void vncWriteWakeupHandler(int nfds, fd_set *fds);
+void vncWriteBlockHandler(fd_set* fds);
+void vncWriteWakeupHandler(int nfds, fd_set* fds);
 #endif
 
 //
@@ -146,7 +140,7 @@ void vncWriteWakeupHandler(int nfds, fd_set *fds);
 #if XORG_AT_LEAST(1, 19, 0)
 static void vncBlockHandler(void* data, void* timeout)
 #else
-static void vncBlockHandler(void * data, OSTimePtr t, void * readmask)
+static void vncBlockHandler(void* data, OSTimePtr t, void* readmask)
 #endif
 {
 #if XORG_OLDER_THAN(1, 19, 0)
@@ -167,7 +161,7 @@ static void vncBlockHandler(void * data, OSTimePtr t, void * readmask)
 
 #if XORG_OLDER_THAN(1, 19, 0)
   if (_timeout != -1) {
-    tv.tv_sec= _timeout / 1000;
+    tv.tv_sec = _timeout / 1000;
     tv.tv_usec = (_timeout % 1000) * 1000;
     *t = &tv;
   }
@@ -185,8 +179,7 @@ static void vncBlockHandler(void * data, OSTimePtr t, void * readmask)
 }
 
 #if XORG_OLDER_THAN(1, 19, 0)
-static void vncWakeupHandler(void * data, int nfds, void * readmask)
-{
+static void vncWakeupHandler(void* data, int nfds, void* readmask) {
   fd_set* fds = (fd_set*)readmask;
 
   static struct vncFdEntry* entry;
@@ -216,8 +209,7 @@ static Bool needFallback = TRUE;
 static fd_set fallbackFds;
 static struct timeval tw;
 
-void vncWriteBlockHandler(fd_set *fds)
-{
+void vncWriteBlockHandler(fd_set* fds) {
   static struct vncFdEntry* entry;
 
   needFallback = FALSE;
@@ -230,8 +222,7 @@ void vncWriteBlockHandler(fd_set *fds)
   }
 }
 
-void vncWriteWakeupHandler(int nfds, fd_set *fds)
-{
+void vncWriteWakeupHandler(int nfds, fd_set* fds) {
   static struct vncFdEntry* entry;
 
   if (nfds <= 0)
@@ -245,8 +236,7 @@ void vncWriteWakeupHandler(int nfds, fd_set *fds)
   }
 }
 
-static void vncWriteBlockHandlerFallback(OSTimePtr timeout)
-{
+static void vncWriteBlockHandlerFallback(OSTimePtr timeout) {
   if (!needFallback)
     return;
 
@@ -259,16 +249,14 @@ static void vncWriteBlockHandlerFallback(OSTimePtr timeout)
   if (!XFD_ANYSET(&fallbackFds))
     return;
 
-  if ((*timeout == NULL) ||
-      ((*timeout)->tv_sec > 0) || ((*timeout)->tv_usec > 10000)) {
+  if ((*timeout == NULL) || ((*timeout)->tv_sec > 0) || ((*timeout)->tv_usec > 10000)) {
     tw.tv_sec = 0;
     tw.tv_usec = 10000;
     *timeout = &tw;
   }
 }
 
-static void vncWriteWakeupHandlerFallback(void)
-{
+static void vncWriteWakeupHandlerFallback(void) {
   int ret;
   struct timeval timeout;
 
@@ -283,8 +271,7 @@ static void vncWriteWakeupHandlerFallback(void)
 
   ret = select(XFD_SETSIZE, NULL, &fallbackFds, NULL, &timeout);
   if (ret < 0) {
-    ErrorF("vncWriteWakeupHandlerFallback(): select: %s\n",
-           strerror(errno));
+    ErrorF("vncWriteWakeupHandlerFallback(): select: %s\n", strerror(errno));
     return;
   }
 

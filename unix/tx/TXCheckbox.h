@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -42,72 +42,78 @@
 class TXCheckbox;
 class TXCheckboxCallback {
 public:
-  virtual void checkboxSelect(TXCheckbox* checkbox)=0;
+  virtual void checkboxSelect(TXCheckbox* checkbox) = 0;
 };
-
 
 class TXCheckbox : public TXWindow, public TXEventHandler {
 public:
-  TXCheckbox(Display* dpy_, const char* text_, TXCheckboxCallback* cb_,
-             bool radio_=false, TXWindow* parent_=nullptr,
-             int w=1, int h=1)
-    : TXWindow(dpy_, w, h, parent_), cb(cb_), text(nullptr),
-      boxSize(radio_ ? 12 : 13), boxPad(4),
-      checked_(false), disabled_(false), radio(radio_)
-  {
+  TXCheckbox(Display* dpy_, const char* text_, TXCheckboxCallback* cb_, bool radio_ = false,
+             TXWindow* parent_ = nullptr, int w = 1, int h = 1)
+      : TXWindow(dpy_, w, h, parent_), cb(cb_), text(nullptr), boxSize(radio_ ? 12 : 13), boxPad(4), checked_(false),
+        disabled_(false), radio(radio_) {
     setEventHandler(this);
     setText(text_);
     gc = XCreateGC(dpy, win(), 0, nullptr);
     XSetFont(dpy, gc, defaultFont);
-    addEventMask(ExposureMask| ButtonPressMask | ButtonReleaseMask);
+    addEventMask(ExposureMask | ButtonPressMask | ButtonReleaseMask);
   }
 
   virtual ~TXCheckbox() {
     XFreeGC(dpy, gc);
-    if (text) free(text);
+    if (text)
+      free(text);
   }
 
   // setText() changes the text in the checkbox.
   void setText(const char* text_) {
-    if (text) free(text);
+    if (text)
+      free(text);
     text = strdup((char*)text_);
     int textWidth = XTextWidth(defaultFS, text, strlen(text));
     int textHeight = (defaultFS->ascent + defaultFS->descent);
-    int newWidth = std::max(width(), textWidth + xPad*2 + boxPad*2 + boxSize);
-    int newHeight = std::max(height(), textHeight + yPad*2);
+    int newWidth = std::max(width(), textWidth + xPad * 2 + boxPad * 2 + boxSize);
+    int newHeight = std::max(height(), textHeight + yPad * 2);
     if (width() < newWidth || height() < newHeight) {
       resize(newWidth, newHeight);
     }
   }
 
   // checked() sets or queries the state of the checkbox
-  void checked(bool b) { checked_ = b; paint(); }
-  bool checked() { return checked_; }
+  void checked(bool b) {
+    checked_ = b;
+    paint();
+  }
+  bool checked() {
+    return checked_;
+  }
 
   // disabled() sets or queries the disabled state of the checkbox.  A disabled
   // checkbox cannot be changed via the user interface.
-  void disabled(bool b) { disabled_ = b; paint(); }
-  bool disabled() { return disabled_; }
+  void disabled(bool b) {
+    disabled_ = b;
+    paint();
+  }
+  bool disabled() {
+    return disabled_;
+  }
 
 private:
   void paint() {
     if (disabled_)
-      drawBevel(gc, xPad + boxPad, (height() - boxSize) / 2, boxSize, boxSize,
-                bevel, disabledBg, darkBg, lightBg, radio);
+      drawBevel(gc, xPad + boxPad, (height() - boxSize) / 2, boxSize, boxSize, bevel, disabledBg, darkBg, lightBg,
+                radio);
     else
-      drawBevel(gc, xPad + boxPad, (height() - boxSize) / 2, boxSize, boxSize,
-                bevel, enabledBg, darkBg, lightBg, radio);
+      drawBevel(gc, xPad + boxPad, (height() - boxSize) / 2, boxSize, boxSize, bevel, enabledBg, darkBg, lightBg,
+                radio);
     XSetBackground(dpy, gc, disabled_ ? disabledBg : enabledBg);
     XSetForeground(dpy, gc, disabled_ ? disabledFg : defaultFg);
     if (checked_) {
       Pixmap icon = radio ? dot : tick;
       int iconSize = radio ? dotSize : tickSize;
-      XCopyPlane(dpy, icon, win(), gc, 0, 0, iconSize, iconSize,
-                 xPad + boxPad + (boxSize - iconSize) / 2,
+      XCopyPlane(dpy, icon, win(), gc, 0, 0, iconSize, iconSize, xPad + boxPad + (boxSize - iconSize) / 2,
                  (height() - iconSize) / 2, 1);
     }
-    XDrawString(dpy, win(), gc, xPad + boxSize + boxPad*2,
-                (height() + defaultFS->ascent - defaultFS->descent) / 2,
+    XDrawString(dpy, win(), gc, xPad + boxSize + boxPad * 2, (height() + defaultFS->ascent - defaultFS->descent) / 2,
                 text, strlen(text));
   }
 
@@ -119,11 +125,11 @@ private:
     case ButtonPress:
       break;
     case ButtonRelease:
-      if (ev->xbutton.x >= 0 && ev->xbutton.x < width() &&
-          ev->xbutton.y >= 0 && ev->xbutton.y < height()) {
+      if (ev->xbutton.x >= 0 && ev->xbutton.x < width() && ev->xbutton.y >= 0 && ev->xbutton.y < height()) {
         if (!disabled_) {
           checked_ = !checked_;
-          if (cb) cb->checkboxSelect(this);
+          if (cb)
+            cb->checkboxSelect(this);
           paint();
         }
       }

@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2024 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -23,22 +23,22 @@
 
 #include <stdio.h>
 
-#include "vncHooks.h"
 #include "vncExtInit.h"
+#include "vncHooks.h"
 
 #include "xorg-version.h"
 
-#include "scrnintstr.h"
-#include "windowstr.h"
-#include "cursorstr.h"
-#include "gcstruct.h"
-#include "regionstr.h"
-#include "dixfontstr.h"
 #include "colormapst.h"
+#include "cursorstr.h"
+#include "dixfontstr.h"
+#include "gcstruct.h"
 #include "mipointer.h"
 #include "mipointrst.h"
 #include "picturestr.h"
 #include "randrstr.h"
+#include "regionstr.h"
+#include "scrnintstr.h"
+#include "windowstr.h"
 
 #define DBGPRINT(x) //(fprintf x)
 
@@ -55,217 +55,158 @@
 // wrapped as a unit.
 
 typedef struct _vncHooksScreenRec {
-  int                          ignoreHooks;
+  int ignoreHooks;
 
-  CloseScreenProcPtr           CloseScreen;
-  CreateGCProcPtr              CreateGC;
-  CopyWindowProcPtr            CopyWindow;
-  ClearToBackgroundProcPtr     ClearToBackground;
+  CloseScreenProcPtr CloseScreen;
+  CreateGCProcPtr CreateGC;
+  CopyWindowProcPtr CopyWindow;
+  ClearToBackgroundProcPtr ClearToBackground;
 #if XORG_AT_LEAST(1, 19, 0)
-  CursorWarpedToProcPtr        CursorWarpedTo;
+  CursorWarpedToProcPtr CursorWarpedTo;
 #endif
-  ScreenBlockHandlerProcPtr    BlockHandler;
+  ScreenBlockHandlerProcPtr BlockHandler;
 
-  CompositeProcPtr             Composite;
-  GlyphsProcPtr                Glyphs;
-  CompositeRectsProcPtr        CompositeRects;
-  TrapezoidsProcPtr            Trapezoids;
-  TrianglesProcPtr             Triangles;
-  TriStripProcPtr              TriStrip;
-  TriFanProcPtr                TriFan;
+  CompositeProcPtr Composite;
+  GlyphsProcPtr Glyphs;
+  CompositeRectsProcPtr CompositeRects;
+  TrapezoidsProcPtr Trapezoids;
+  TrianglesProcPtr Triangles;
+  TriStripProcPtr TriStrip;
+  TriFanProcPtr TriFan;
 
-  RRSetConfigProcPtr           rrSetConfig;
-  RRScreenSetSizeProcPtr       rrScreenSetSize;
-  RRCrtcSetProcPtr             rrCrtcSet;
+  RRSetConfigProcPtr rrSetConfig;
+  RRScreenSetSizeProcPtr rrScreenSetSize;
+  RRCrtcSetProcPtr rrCrtcSet;
 
-  miPointerSpriteFuncPtr       spriteFuncs;
+  miPointerSpriteFuncPtr spriteFuncs;
 } vncHooksScreenRec, *vncHooksScreenPtr;
 
 typedef struct _vncHooksGCRec {
-    const GCFuncs *funcs;
-    const GCOps *ops;
+  const GCFuncs* funcs;
+  const GCOps* ops;
 } vncHooksGCRec, *vncHooksGCPtr;
 
-#define wrap(priv, real, mem, func) {\
-    priv->mem = real->mem; \
-    real->mem = func; \
-}
+#define wrap(priv, real, mem, func)                                                                                    \
+  {                                                                                                                    \
+    priv->mem = real->mem;                                                                                             \
+    real->mem = func;                                                                                                  \
+  }
 
-#define unwrap(priv, real, mem) {\
-    real->mem = priv->mem; \
-}
+#define unwrap(priv, real, mem)                                                                                        \
+  { real->mem = priv->mem; }
 
 static DevPrivateKeyRec vncHooksScreenKeyRec;
 static DevPrivateKeyRec vncHooksGCKeyRec;
 #define vncHooksScreenPrivateKey (&vncHooksScreenKeyRec)
 #define vncHooksGCPrivateKey (&vncHooksGCKeyRec)
 
-#define vncHooksScreenPrivate(pScreen) \
-        (vncHooksScreenPtr) dixLookupPrivate(&(pScreen)->devPrivates, \
-                                             vncHooksScreenPrivateKey)
-#define vncHooksGCPrivate(pGC) \
-        (vncHooksGCPtr) dixLookupPrivate(&(pGC)->devPrivates, \
-                                         vncHooksGCPrivateKey)
+#define vncHooksScreenPrivate(pScreen)                                                                                 \
+  (vncHooksScreenPtr) dixLookupPrivate(&(pScreen)->devPrivates, vncHooksScreenPrivateKey)
+#define vncHooksGCPrivate(pGC) (vncHooksGCPtr) dixLookupPrivate(&(pGC)->devPrivates, vncHooksGCPrivateKey)
 
 // screen functions
 
 static Bool vncHooksCloseScreen(ScreenPtr pScreen);
 static Bool vncHooksCreateGC(GCPtr pGC);
-static void vncHooksCopyWindow(WindowPtr pWin, DDXPointRec ptOldOrg,
-                               RegionPtr pOldRegion);
-static void vncHooksClearToBackground(WindowPtr pWin, int x, int y, int w,
-                                      int h, Bool generateExposures);
+static void vncHooksCopyWindow(WindowPtr pWin, DDXPointRec ptOldOrg, RegionPtr pOldRegion);
+static void vncHooksClearToBackground(WindowPtr pWin, int x, int y, int w, int h, Bool generateExposures);
 #if XORG_AT_LEAST(1, 19, 0)
-static void vncHooksCursorWarpedTo(DeviceIntPtr pDev,
-                                   ScreenPtr pScreen_, ClientPtr pClient,
-                                   WindowPtr pWindow, SpritePtr pSprite,
-                                   int x, int y);
+static void vncHooksCursorWarpedTo(DeviceIntPtr pDev, ScreenPtr pScreen_, ClientPtr pClient, WindowPtr pWindow,
+                                   SpritePtr pSprite, int x, int y);
 #endif
 #if XORG_AT_LEAST(1, 19, 0)
-static void vncHooksBlockHandler(ScreenPtr pScreen, void * pTimeout);
+static void vncHooksBlockHandler(ScreenPtr pScreen, void* pTimeout);
 #else
-static void vncHooksBlockHandler(ScreenPtr pScreen, void * pTimeout,
-                                 void * pReadmask);
+static void vncHooksBlockHandler(ScreenPtr pScreen, void* pTimeout, void* pReadmask);
 #endif
-static void vncHooksComposite(CARD8 op, PicturePtr pSrc, PicturePtr pMask, 
-			      PicturePtr pDst, INT16 xSrc, INT16 ySrc, INT16 xMask, 
-			      INT16 yMask, INT16 xDst, INT16 yDst, CARD16 width, CARD16 height);
-static void vncHooksGlyphs(CARD8 op, PicturePtr pSrc, PicturePtr pDst, 
-			      PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc, int nlists, 
-			      GlyphListPtr lists, GlyphPtr * glyphs);
-static void vncHooksCompositeRects(CARD8 op, PicturePtr pDst,
-            xRenderColor * color, int nRect, xRectangle *rects);
-static void vncHooksTrapezoids(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int ntrap, xTrapezoid * traps);
-static void vncHooksTriangles(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int ntri, xTriangle * tris);
-static void vncHooksTriStrip(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int npoint, xPointFixed * points);
-static void vncHooksTriFan(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int npoint, xPointFixed * points);
-static Bool vncHooksRandRSetConfig(ScreenPtr pScreen, Rotation rotation,
-                                   int rate, RRScreenSizePtr pSize);
-static Bool vncHooksRandRScreenSetSize(ScreenPtr pScreen,
-                                       CARD16 width, CARD16 height,
-                                       CARD32 mmWidth, CARD32 mmHeight);
-static Bool vncHooksRandRCrtcSet(ScreenPtr pScreen, RRCrtcPtr crtc,
-                                 RRModePtr mode, int x, int y,
-                                 Rotation rotation, int numOutputs,
-                                 RROutputPtr *outputs);
+static void vncHooksComposite(CARD8 op, PicturePtr pSrc, PicturePtr pMask, PicturePtr pDst, INT16 xSrc, INT16 ySrc,
+                              INT16 xMask, INT16 yMask, INT16 xDst, INT16 yDst, CARD16 width, CARD16 height);
+static void vncHooksGlyphs(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
+                           int nlists, GlyphListPtr lists, GlyphPtr* glyphs);
+static void vncHooksCompositeRects(CARD8 op, PicturePtr pDst, xRenderColor* color, int nRect, xRectangle* rects);
+static void vncHooksTrapezoids(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc,
+                               INT16 ySrc, int ntrap, xTrapezoid* traps);
+static void vncHooksTriangles(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc,
+                              INT16 ySrc, int ntri, xTriangle* tris);
+static void vncHooksTriStrip(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc,
+                             INT16 ySrc, int npoint, xPointFixed* points);
+static void vncHooksTriFan(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
+                           int npoint, xPointFixed* points);
+static Bool vncHooksRandRSetConfig(ScreenPtr pScreen, Rotation rotation, int rate, RRScreenSizePtr pSize);
+static Bool vncHooksRandRScreenSetSize(ScreenPtr pScreen, CARD16 width, CARD16 height, CARD32 mmWidth, CARD32 mmHeight);
+static Bool vncHooksRandRCrtcSet(ScreenPtr pScreen, RRCrtcPtr crtc, RRModePtr mode, int x, int y, Rotation rotation,
+                                 int numOutputs, RROutputPtr* outputs);
 
 // Sprite functions
 
-static Bool vncHooksRealizeCursor(DeviceIntPtr dev, ScreenPtr screen,
-                                  CursorPtr cursor);
-static Bool vncHooksUnrealizeCursor(DeviceIntPtr dev, ScreenPtr screen,
-                                    CursorPtr cursor);
-static void vncHooksSetCursor(DeviceIntPtr dev, ScreenPtr screen,
-                              CursorPtr cursor, int x, int y);
-static void vncHooksMoveCursor(DeviceIntPtr dev, ScreenPtr screen,
-                               int x, int y);
-static Bool vncHooksDeviceCursorInitialize(DeviceIntPtr dev,
-                                           ScreenPtr screen);
-static void vncHooksDeviceCursorCleanup(DeviceIntPtr dev,
-                                        ScreenPtr screen);
+static Bool vncHooksRealizeCursor(DeviceIntPtr dev, ScreenPtr screen, CursorPtr cursor);
+static Bool vncHooksUnrealizeCursor(DeviceIntPtr dev, ScreenPtr screen, CursorPtr cursor);
+static void vncHooksSetCursor(DeviceIntPtr dev, ScreenPtr screen, CursorPtr cursor, int x, int y);
+static void vncHooksMoveCursor(DeviceIntPtr dev, ScreenPtr screen, int x, int y);
+static Bool vncHooksDeviceCursorInitialize(DeviceIntPtr dev, ScreenPtr screen);
+static void vncHooksDeviceCursorCleanup(DeviceIntPtr dev, ScreenPtr screen);
 
 static miPointerSpriteFuncRec vncHooksSpriteFuncs = {
-    vncHooksRealizeCursor,
-    vncHooksUnrealizeCursor,
-    vncHooksSetCursor,
-    vncHooksMoveCursor,
-    vncHooksDeviceCursorInitialize,
-    vncHooksDeviceCursorCleanup
-};
+    vncHooksRealizeCursor, vncHooksUnrealizeCursor,        vncHooksSetCursor,
+    vncHooksMoveCursor,    vncHooksDeviceCursorInitialize, vncHooksDeviceCursorCleanup};
 
 // GC "funcs"
 
-static void vncHooksValidateGC(GCPtr pGC, unsigned long changes,
-                               DrawablePtr pDrawable);
+static void vncHooksValidateGC(GCPtr pGC, unsigned long changes, DrawablePtr pDrawable);
 static void vncHooksChangeGC(GCPtr pGC, unsigned long mask);
 static void vncHooksCopyGC(GCPtr src, unsigned long mask, GCPtr dst);
 static void vncHooksDestroyGC(GCPtr pGC);
-static void vncHooksChangeClip(GCPtr pGC, int type, void * pValue,int nrects);
+static void vncHooksChangeClip(GCPtr pGC, int type, void* pValue, int nrects);
 static void vncHooksDestroyClip(GCPtr pGC);
 static void vncHooksCopyClip(GCPtr dst, GCPtr src);
 
 static GCFuncs vncHooksGCFuncs = {
-  vncHooksValidateGC, vncHooksChangeGC, vncHooksCopyGC, vncHooksDestroyGC,
-  vncHooksChangeClip, vncHooksDestroyClip, vncHooksCopyClip,
+    vncHooksValidateGC, vncHooksChangeGC,    vncHooksCopyGC,   vncHooksDestroyGC,
+    vncHooksChangeClip, vncHooksDestroyClip, vncHooksCopyClip,
 };
 
 // GC "ops"
 
-static void vncHooksFillSpans(DrawablePtr pDrawable, GCPtr pGC, int nInit,
-                              DDXPointPtr pptInit, int *pwidthInit,
+static void vncHooksFillSpans(DrawablePtr pDrawable, GCPtr pGC, int nInit, DDXPointPtr pptInit, int* pwidthInit,
                               int fSorted);
-static void vncHooksSetSpans(DrawablePtr pDrawable, GCPtr pGC, char *psrc,
-                             DDXPointPtr ppt, int *pwidth, int nspans,
+static void vncHooksSetSpans(DrawablePtr pDrawable, GCPtr pGC, char* psrc, DDXPointPtr ppt, int* pwidth, int nspans,
                              int fSorted);
-static void vncHooksPutImage(DrawablePtr pDrawable, GCPtr pGC, int depth,
-                             int x, int y, int w, int h, int leftPad,
-                             int format, char *pBits);
-static RegionPtr vncHooksCopyArea(DrawablePtr pSrc, DrawablePtr pDst,
-                                  GCPtr pGC, int srcx, int srcy, int w, int h,
+static void vncHooksPutImage(DrawablePtr pDrawable, GCPtr pGC, int depth, int x, int y, int w, int h, int leftPad,
+                             int format, char* pBits);
+static RegionPtr vncHooksCopyArea(DrawablePtr pSrc, DrawablePtr pDst, GCPtr pGC, int srcx, int srcy, int w, int h,
                                   int dstx, int dsty);
-static RegionPtr vncHooksCopyPlane(DrawablePtr pSrc, DrawablePtr pDst,
-                                   GCPtr pGC, int srcx, int srcy, int w, int h,
+static RegionPtr vncHooksCopyPlane(DrawablePtr pSrc, DrawablePtr pDst, GCPtr pGC, int srcx, int srcy, int w, int h,
                                    int dstx, int dsty, unsigned long plane);
-static void vncHooksPolyPoint(DrawablePtr pDrawable, GCPtr pGC, int mode,
-                              int npt, xPoint *pts);
-static void vncHooksPolylines(DrawablePtr pDrawable, GCPtr pGC, int mode,
-                              int npt, DDXPointPtr ppts);
-static void vncHooksPolySegment(DrawablePtr pDrawable, GCPtr pGC, int nseg,
-                                xSegment *segs);
-static void vncHooksPolyRectangle(DrawablePtr pDrawable, GCPtr pGC, int nrects,
-                                  xRectangle *rects);
-static void vncHooksPolyArc(DrawablePtr pDrawable, GCPtr pGC, int narcs,
-                            xArc *arcs);
-static void vncHooksFillPolygon(DrawablePtr pDrawable, GCPtr pGC, int shape,
-                                int mode, int count, DDXPointPtr pts);
-static void vncHooksPolyFillRect(DrawablePtr pDrawable, GCPtr pGC, int nrects,
-                                 xRectangle *rects);
-static void vncHooksPolyFillArc(DrawablePtr pDrawable, GCPtr pGC, int narcs,
-                                xArc *arcs);
-static int vncHooksPolyText8(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
-                             int count, char *chars);
-static int vncHooksPolyText16(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
-                              int count, unsigned short *chars);
-static void vncHooksImageText8(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
-                               int count, char *chars);
-static void vncHooksImageText16(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
-                                int count, unsigned short *chars);
-static void vncHooksImageGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x,
-                                  int y, unsigned int nglyph,
-                                  CharInfoPtr *ppci, void * pglyphBase);
-static void vncHooksPolyGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x,
-                                 int y, unsigned int nglyph,
-                                 CharInfoPtr *ppci, void * pglyphBase);
-static void vncHooksPushPixels(GCPtr pGC, PixmapPtr pBitMap,
-                               DrawablePtr pDrawable, int w, int h, int x,
-                               int y);
+static void vncHooksPolyPoint(DrawablePtr pDrawable, GCPtr pGC, int mode, int npt, xPoint* pts);
+static void vncHooksPolylines(DrawablePtr pDrawable, GCPtr pGC, int mode, int npt, DDXPointPtr ppts);
+static void vncHooksPolySegment(DrawablePtr pDrawable, GCPtr pGC, int nseg, xSegment* segs);
+static void vncHooksPolyRectangle(DrawablePtr pDrawable, GCPtr pGC, int nrects, xRectangle* rects);
+static void vncHooksPolyArc(DrawablePtr pDrawable, GCPtr pGC, int narcs, xArc* arcs);
+static void vncHooksFillPolygon(DrawablePtr pDrawable, GCPtr pGC, int shape, int mode, int count, DDXPointPtr pts);
+static void vncHooksPolyFillRect(DrawablePtr pDrawable, GCPtr pGC, int nrects, xRectangle* rects);
+static void vncHooksPolyFillArc(DrawablePtr pDrawable, GCPtr pGC, int narcs, xArc* arcs);
+static int vncHooksPolyText8(DrawablePtr pDrawable, GCPtr pGC, int x, int y, int count, char* chars);
+static int vncHooksPolyText16(DrawablePtr pDrawable, GCPtr pGC, int x, int y, int count, unsigned short* chars);
+static void vncHooksImageText8(DrawablePtr pDrawable, GCPtr pGC, int x, int y, int count, char* chars);
+static void vncHooksImageText16(DrawablePtr pDrawable, GCPtr pGC, int x, int y, int count, unsigned short* chars);
+static void vncHooksImageGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x, int y, unsigned int nglyph,
+                                  CharInfoPtr* ppci, void* pglyphBase);
+static void vncHooksPolyGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x, int y, unsigned int nglyph, CharInfoPtr* ppci,
+                                 void* pglyphBase);
+static void vncHooksPushPixels(GCPtr pGC, PixmapPtr pBitMap, DrawablePtr pDrawable, int w, int h, int x, int y);
 
-static GCOps vncHooksGCOps = {
-  vncHooksFillSpans, vncHooksSetSpans, vncHooksPutImage, vncHooksCopyArea,
-  vncHooksCopyPlane, vncHooksPolyPoint, vncHooksPolylines, vncHooksPolySegment,
-  vncHooksPolyRectangle, vncHooksPolyArc, vncHooksFillPolygon,
-  vncHooksPolyFillRect, vncHooksPolyFillArc, vncHooksPolyText8,
-  vncHooksPolyText16, vncHooksImageText8, vncHooksImageText16,
-  vncHooksImageGlyphBlt, vncHooksPolyGlyphBlt, vncHooksPushPixels
-};
-
-
+static GCOps vncHooksGCOps = {vncHooksFillSpans,     vncHooksSetSpans,      vncHooksPutImage,     vncHooksCopyArea,
+                              vncHooksCopyPlane,     vncHooksPolyPoint,     vncHooksPolylines,    vncHooksPolySegment,
+                              vncHooksPolyRectangle, vncHooksPolyArc,       vncHooksFillPolygon,  vncHooksPolyFillRect,
+                              vncHooksPolyFillArc,   vncHooksPolyText8,     vncHooksPolyText16,   vncHooksImageText8,
+                              vncHooksImageText16,   vncHooksImageGlyphBlt, vncHooksPolyGlyphBlt, vncHooksPushPixels};
 
 /////////////////////////////////////////////////////////////////////////////
 // vncHooksInit() is called at initialisation time and every time the server
 // resets.  It is called once for each screen, but the indexes are only
 // allocated once for each server generation.
 
-int vncHooksInit(int scrIdx)
-{
+int vncHooksInit(int scrIdx) {
   ScreenPtr pScreen;
   vncHooksScreenPtr vncHooksScreen;
 
@@ -280,13 +221,11 @@ int vncHooksInit(int scrIdx)
     return FALSE;
   }
 
-  if (!dixRegisterPrivateKey(&vncHooksScreenKeyRec, PRIVATE_SCREEN,
-      sizeof(vncHooksScreenRec))) {
+  if (!dixRegisterPrivateKey(&vncHooksScreenKeyRec, PRIVATE_SCREEN, sizeof(vncHooksScreenRec))) {
     ErrorF("vncHooksInit: Allocation of vncHooksScreen failed\n");
     return FALSE;
   }
-  if (!dixRegisterPrivateKey(&vncHooksGCKeyRec, PRIVATE_GC,
-      sizeof(vncHooksGCRec))) {
+  if (!dixRegisterPrivateKey(&vncHooksGCKeyRec, PRIVATE_GC, sizeof(vncHooksGCRec))) {
     ErrorF("vncHooksInit: Allocation of vncHooksGCRec failed\n");
     return FALSE;
   }
@@ -339,9 +278,7 @@ int vncHooksInit(int scrIdx)
 // provided buffer. It lives here rather than in XorgGlue.c because it
 // temporarily pauses the hooks.
 
-void vncGetScreenImage(int scrIdx, int x, int y, int width, int height,
-                       char *buffer, int strideBytes)
-{
+void vncGetScreenImage(int scrIdx, int x, int y, int width, int height, char* buffer, int strideBytes) {
   ScreenPtr pScreen = screenInfo.screens[scrIdx];
   vncHooksScreenPtr vncHooksScreen = vncHooksScreenPrivate(pScreen);
 
@@ -352,10 +289,9 @@ void vncGetScreenImage(int scrIdx, int x, int y, int width, int height,
   // We do one line at a time since GetImage() cannot handle stride
   for (i = y; i < y + height; i++) {
     DrawablePtr pDrawable;
-    pDrawable = (DrawablePtr) pScreen->root;
+    pDrawable = (DrawablePtr)pScreen->root;
 
-    (*pScreen->GetImage) (pDrawable, x, i, width, 1,
-                          ZPixmap, (unsigned long)~0L, buffer);
+    (*pScreen->GetImage)(pDrawable, x, i, width, 1, ZPixmap, (unsigned long)~0L, buffer);
 
     buffer += strideBytes;
   }
@@ -368,33 +304,25 @@ void vncGetScreenImage(int scrIdx, int x, int y, int width, int height,
 // Helper functions
 //
 
-static inline void add_changed(ScreenPtr pScreen, RegionPtr reg)
-{
+static inline void add_changed(ScreenPtr pScreen, RegionPtr reg) {
   vncHooksScreenPtr vncHooksScreen = vncHooksScreenPrivate(pScreen);
   if (vncHooksScreen->ignoreHooks)
     return;
   if (RegionNil(reg))
     return;
-  vncAddChanged(pScreen->myNum,
-                RegionNumRects(reg),
-                (const struct UpdateRect*)RegionRects(reg));
+  vncAddChanged(pScreen->myNum, RegionNumRects(reg), (const struct UpdateRect*)RegionRects(reg));
 }
 
-static inline void add_copied(ScreenPtr pScreen, RegionPtr dst,
-                              int dx, int dy)
-{
+static inline void add_copied(ScreenPtr pScreen, RegionPtr dst, int dx, int dy) {
   vncHooksScreenPtr vncHooksScreen = vncHooksScreenPrivate(pScreen);
   if (vncHooksScreen->ignoreHooks)
     return;
   if (RegionNil(dst))
     return;
-  vncAddCopied(pScreen->myNum,
-               RegionNumRects(dst),
-               (const struct UpdateRect*)RegionRects(dst), dx, dy);
+  vncAddCopied(pScreen->myNum, RegionNumRects(dst), (const struct UpdateRect*)RegionRects(dst), dx, dy);
 }
 
-static inline Bool is_visible(DrawablePtr drawable)
-{
+static inline Bool is_visible(DrawablePtr drawable) {
   PixmapPtr scrPixmap;
 
   scrPixmap = drawable->pScreen->GetScreenPixmap(drawable->pScreen);
@@ -428,21 +356,18 @@ static inline Bool is_visible(DrawablePtr drawable)
 
 // Unwrap and rewrap helpers
 
-#define SCREEN_PROLOGUE(scrn,field)                                       \
-  ScreenPtr pScreen = scrn;                                               \
-  vncHooksScreenPtr vncHooksScreen = vncHooksScreenPrivate(pScreen);      \
-  unwrap(vncHooksScreen, pScreen, field);                                 \
-  DBGPRINT((stderr,"vncHooks" #field " called\n"));
+#define SCREEN_PROLOGUE(scrn, field)                                                                                   \
+  ScreenPtr pScreen = scrn;                                                                                            \
+  vncHooksScreenPtr vncHooksScreen = vncHooksScreenPrivate(pScreen);                                                   \
+  unwrap(vncHooksScreen, pScreen, field);                                                                              \
+  DBGPRINT((stderr, "vncHooks" #field " called\n"));
 
-#define SCREEN_EPILOGUE(field)                                            \
-  wrap(vncHooksScreen, pScreen, field, vncHooks##field);                  \
-
+#define SCREEN_EPILOGUE(field) wrap(vncHooksScreen, pScreen, field, vncHooks##field);
 
 // CloseScreen - unwrap the screen functions and call the original CloseScreen
 // function
 
-static Bool vncHooksCloseScreen(ScreenPtr pScreen_)
-{
+static Bool vncHooksCloseScreen(ScreenPtr pScreen_) {
   PictureScreenPtr ps;
   rrScrPrivPtr rp;
   miPointerScreenPtr miPointerPriv;
@@ -477,21 +402,20 @@ static Bool vncHooksCloseScreen(ScreenPtr pScreen_)
     unwrap(vncHooksScreen, miPointerPriv, spriteFuncs);
   }
 
-  DBGPRINT((stderr,"vncHooksCloseScreen: Unwrapped screen functions\n"));
+  DBGPRINT((stderr, "vncHooksCloseScreen: Unwrapped screen functions\n"));
 
   return (*pScreen->CloseScreen)(pScreen);
 }
 
 // CreateGC - wrap the "GC funcs"
 
-static Bool vncHooksCreateGC(GCPtr pGC)
-{
+static Bool vncHooksCreateGC(GCPtr pGC) {
   vncHooksGCPtr vncHooksGC = vncHooksGCPrivate(pGC);
   Bool ret;
 
   SCREEN_PROLOGUE(pGC->pScreen, CreateGC);
 
-  ret = (*pScreen->CreateGC) (pGC);
+  ret = (*pScreen->CreateGC)(pGC);
 
   vncHooksGC->ops = NULL;
   vncHooksGC->funcs = pGC->funcs;
@@ -506,9 +430,7 @@ static Bool vncHooksCreateGC(GCPtr pGC)
 // borderClip, translated by the delta.  This call only does the copy - it
 // doesn't affect any other bits.
 
-static void vncHooksCopyWindow(WindowPtr pWin, DDXPointRec ptOldOrg,
-                               RegionPtr pOldRegion)
-{
+static void vncHooksCopyWindow(WindowPtr pWin, DDXPointRec ptOldOrg, RegionPtr pOldRegion) {
   int dx, dy;
   RegionRec copied;
 
@@ -546,7 +468,7 @@ static void vncHooksCopyWindow(WindowPtr pWin, DDXPointRec ptOldOrg,
     dx = dy = 0;
   }
 
-  (*pScreen->CopyWindow) (pWin, ptOldOrg, pOldRegion);
+  (*pScreen->CopyWindow)(pWin, ptOldOrg, pOldRegion);
 
   add_copied(pScreen, &copied, dx, dy);
 
@@ -558,9 +480,7 @@ static void vncHooksCopyWindow(WindowPtr pWin, DDXPointRec ptOldOrg,
 // ClearToBackground - changed region is the given rectangle, clipped by
 // clipList, but only if generateExposures is false.
 
-static void vncHooksClearToBackground(WindowPtr pWin, int x, int y, int w,
-                                      int h, Bool generateExposures)
-{
+static void vncHooksClearToBackground(WindowPtr pWin, int x, int y, int w, int h, Bool generateExposures) {
   RegionRec reg;
 
   SCREEN_PROLOGUE(pWin->drawable.pScreen, ClearToBackground);
@@ -579,7 +499,7 @@ static void vncHooksClearToBackground(WindowPtr pWin, int x, int y, int w,
     RegionNull(&reg);
   }
 
-  (*pScreen->ClearToBackground) (pWin, x, y, w, h, generateExposures);
+  (*pScreen->ClearToBackground)(pWin, x, y, w, h, generateExposures);
 
   if (!generateExposures) {
     add_changed(pScreen, &reg);
@@ -593,15 +513,12 @@ static void vncHooksClearToBackground(WindowPtr pWin, int x, int y, int w,
 // CursorWarpedTo - notify that the cursor was warped
 
 #if XORG_AT_LEAST(1, 19, 0)
-static void vncHooksCursorWarpedTo(DeviceIntPtr pDev,
-                                   ScreenPtr pScreen_, ClientPtr pClient,
-                                   WindowPtr pWindow, SpritePtr pSprite,
-                                   int x, int y)
-{
+static void vncHooksCursorWarpedTo(DeviceIntPtr pDev, ScreenPtr pScreen_, ClientPtr pClient, WindowPtr pWindow,
+                                   SpritePtr pSprite, int x, int y) {
   SCREEN_PROLOGUE(pScreen_, CursorWarpedTo);
 
   if (pScreen->CursorWarpedTo)
-    (*pScreen->CursorWarpedTo) (pDev, pScreen_, pClient, pWindow, pSprite, x, y);
+    (*pScreen->CursorWarpedTo)(pDev, pScreen_, pClient, pWindow, pSprite, x, y);
 
   vncSetCursorPos(pScreen->myNum, x, y);
 
@@ -613,10 +530,9 @@ static void vncHooksCursorWarpedTo(DeviceIntPtr pDev,
 // these are just drawing the cursor.
 
 #if XORG_AT_LEAST(1, 19, 0)
-static void vncHooksBlockHandler(ScreenPtr pScreen_, void * pTimeout)
+static void vncHooksBlockHandler(ScreenPtr pScreen_, void* pTimeout)
 #else
-static void vncHooksBlockHandler(ScreenPtr pScreen_, void * pTimeout,
-                                 void * pReadmask)
+static void vncHooksBlockHandler(ScreenPtr pScreen_, void* pTimeout, void* pReadmask)
 #endif
 {
   SCREEN_PROLOGUE(pScreen_, BlockHandler);
@@ -624,9 +540,9 @@ static void vncHooksBlockHandler(ScreenPtr pScreen_, void * pTimeout,
   vncHooksScreen->ignoreHooks++;
 
 #if XORG_AT_LEAST(1, 19, 0)
-  (*pScreen->BlockHandler) (pScreen, pTimeout);
+  (*pScreen->BlockHandler)(pScreen, pTimeout);
 #else
-  (*pScreen->BlockHandler) (pScreen, pTimeout, pReadmask);
+  (*pScreen->BlockHandler)(pScreen, pTimeout, pReadmask);
 #endif
 
   vncHooksScreen->ignoreHooks--;
@@ -636,22 +552,19 @@ static void vncHooksBlockHandler(ScreenPtr pScreen_, void * pTimeout,
 
 // Unwrap and rewrap helpers
 
-#define RENDER_PROLOGUE(scrn,field)                                       \
-  ScreenPtr pScreen = scrn;                                               \
-  PictureScreenPtr ps = GetPictureScreen(pScreen);                        \
-  vncHooksScreenPtr vncHooksScreen = vncHooksScreenPrivate(pScreen);      \
-  unwrap(vncHooksScreen, ps, field);                                      \
-  DBGPRINT((stderr,"vncHooks" #field " called\n"));
+#define RENDER_PROLOGUE(scrn, field)                                                                                   \
+  ScreenPtr pScreen = scrn;                                                                                            \
+  PictureScreenPtr ps = GetPictureScreen(pScreen);                                                                     \
+  vncHooksScreenPtr vncHooksScreen = vncHooksScreenPrivate(pScreen);                                                   \
+  unwrap(vncHooksScreen, ps, field);                                                                                   \
+  DBGPRINT((stderr, "vncHooks" #field " called\n"));
 
-#define RENDER_EPILOGUE(field)                                            \
-  wrap(vncHooksScreen, ps, field, vncHooks##field);                       \
+#define RENDER_EPILOGUE(field) wrap(vncHooksScreen, ps, field, vncHooks##field);
 
 // Composite - The core of XRENDER
 
-static void vncHooksComposite(CARD8 op, PicturePtr pSrc, PicturePtr pMask,
-		       PicturePtr pDst, INT16 xSrc, INT16 ySrc, INT16 xMask, 
-		       INT16 yMask, INT16 xDst, INT16 yDst, CARD16 width, CARD16 height)
-{
+static void vncHooksComposite(CARD8 op, PicturePtr pSrc, PicturePtr pMask, PicturePtr pDst, INT16 xSrc, INT16 ySrc,
+                              INT16 xMask, INT16 yMask, INT16 xDst, INT16 yDst, CARD16 width, CARD16 height) {
   RegionRec changed;
 
   RENDER_PROLOGUE(pDst->pDrawable->pScreen, Composite);
@@ -679,9 +592,7 @@ static void vncHooksComposite(CARD8 op, PicturePtr pSrc, PicturePtr pMask,
     RegionNull(&changed);
   }
 
-
-  (*ps->Composite)(op, pSrc, pMask, pDst, xSrc, ySrc,
-		   xMask, yMask, xDst, yDst, width, height);
+  (*ps->Composite)(op, pSrc, pMask, pDst, xSrc, ySrc, xMask, yMask, xDst, yDst, width, height);
 
   add_changed(pScreen, &changed);
 
@@ -690,9 +601,7 @@ static void vncHooksComposite(CARD8 op, PicturePtr pSrc, PicturePtr pMask,
   RENDER_EPILOGUE(Composite);
 }
 
-static RegionPtr
-GlyphsToRegion(ScreenPtr pScreen, int nlist, GlyphListPtr list, GlyphPtr *glyphs)
-{
+static RegionPtr GlyphsToRegion(ScreenPtr pScreen, int nlist, GlyphListPtr list, GlyphPtr* glyphs) {
   int n;
   GlyphPtr glyph;
   int x, y;
@@ -754,10 +663,8 @@ GlyphsToRegion(ScreenPtr pScreen, int nlist, GlyphListPtr list, GlyphPtr *glyphs
 
 // Glyphs - Glyph specific version of Composite (caches and whatnot)
 
-static void vncHooksGlyphs(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-           PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc, int nlists, 
-           GlyphListPtr lists, GlyphPtr * glyphs)
-{
+static void vncHooksGlyphs(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
+                           int nlists, GlyphListPtr lists, GlyphPtr* glyphs) {
   RegionPtr changed;
 
   RENDER_PROLOGUE(pDst->pDrawable->pScreen, Glyphs);
@@ -767,8 +674,7 @@ static void vncHooksGlyphs(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
     RegionRec fbreg;
 
     changed = GlyphsToRegion(pScreen, nlists, lists, glyphs);
-    RegionTranslate(changed,
-                     pDst->pDrawable->x, pDst->pDrawable->y);
+    RegionTranslate(changed, pDst->pDrawable->x, pDst->pDrawable->y);
 
     fbbox.x1 = 0;
     fbbox.y1 = 0;
@@ -792,9 +698,7 @@ static void vncHooksGlyphs(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
   RENDER_EPILOGUE(Glyphs);
 }
 
-static void vncHooksCompositeRects(CARD8 op, PicturePtr pDst,
-            xRenderColor * color, int nRect, xRectangle *rects)
-{
+static void vncHooksCompositeRects(CARD8 op, PicturePtr pDst, xRenderColor* color, int nRect, xRectangle* rects) {
   RegionPtr changed;
 
   RENDER_PROLOGUE(pDst->pDrawable->pScreen, CompositeRects);
@@ -814,15 +718,12 @@ static void vncHooksCompositeRects(CARD8 op, PicturePtr pDst,
   RENDER_EPILOGUE(CompositeRects);
 }
 
-static inline short FixedToShort(xFixed fixed)
-{
+static inline short FixedToShort(xFixed fixed) {
   return (fixed + 0x8000) >> 16;
 }
 
-static void vncHooksTrapezoids(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int ntrap, xTrapezoid * traps)
-{
+static void vncHooksTrapezoids(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc,
+                               INT16 ySrc, int ntrap, xTrapezoid* traps) {
   RegionRec changed;
 
   RENDER_PROLOGUE(pDst->pDrawable->pScreen, Trapezoids);
@@ -838,7 +739,7 @@ static void vncHooksTrapezoids(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
     box.y1 = SHRT_MAX;
     box.x2 = 0;
     box.y2 = 0;
-    for (int i = 0;i < ntrap;i++) {
+    for (int i = 0; i < ntrap; i++) {
       if (FixedToShort(traps[i].left.p1.x) < box.x1)
         box.x1 = FixedToShort(traps[i].left.p1.x);
       if (FixedToShort(traps[i].left.p2.x) < box.x1)
@@ -881,10 +782,8 @@ static void vncHooksTrapezoids(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
   RENDER_EPILOGUE(Trapezoids);
 }
 
-static void vncHooksTriangles(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int ntri, xTriangle * tris)
-{
+static void vncHooksTriangles(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc,
+                              INT16 ySrc, int ntri, xTriangle* tris) {
   RegionRec changed;
 
   RENDER_PROLOGUE(pDst->pDrawable->pScreen, Triangles);
@@ -900,7 +799,7 @@ static void vncHooksTriangles(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
     box.y1 = SHRT_MAX;
     box.x2 = 0;
     box.y2 = 0;
-    for (int i = 0;i < ntri;i++) {
+    for (int i = 0; i < ntri; i++) {
       xFixed left, right, top, bottom;
 
       left = min(min(tris[i].p1.x, tris[i].p2.x), tris[i].p3.x);
@@ -946,10 +845,8 @@ static void vncHooksTriangles(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
   RENDER_EPILOGUE(Triangles);
 }
 
-static void vncHooksTriStrip(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int npoint, xPointFixed * points)
-{
+static void vncHooksTriStrip(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc,
+                             INT16 ySrc, int npoint, xPointFixed* points) {
   RegionRec changed;
 
   RENDER_PROLOGUE(pDst->pDrawable->pScreen, TriStrip);
@@ -965,7 +862,7 @@ static void vncHooksTriStrip(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
     box.y1 = SHRT_MAX;
     box.x2 = 0;
     box.y2 = 0;
-    for (int i = 0;i < npoint;i++) {
+    for (int i = 0; i < npoint; i++) {
       if (FixedToShort(points[i].x) < box.x1)
         box.x1 = FixedToShort(points[i].x);
       if (FixedToShort(points[i].y) < box.y1)
@@ -1004,10 +901,8 @@ static void vncHooksTriStrip(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
   RENDER_EPILOGUE(TriStrip);
 }
 
-static void vncHooksTriFan(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
-            PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
-            int npoint, xPointFixed * points)
-{
+static void vncHooksTriFan(CARD8 op, PicturePtr pSrc, PicturePtr pDst, PictFormatPtr maskFormat, INT16 xSrc, INT16 ySrc,
+                           int npoint, xPointFixed* points) {
   RegionRec changed;
 
   RENDER_PROLOGUE(pDst->pDrawable->pScreen, TriFan);
@@ -1023,7 +918,7 @@ static void vncHooksTriFan(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
     box.y1 = SHRT_MAX;
     box.x2 = 0;
     box.y2 = 0;
-    for (int i = 0;i < npoint;i++) {
+    for (int i = 0; i < npoint; i++) {
       if (FixedToShort(points[i].x) < box.x1)
         box.x1 = FixedToShort(points[i].x);
       if (FixedToShort(points[i].y) < box.y1)
@@ -1064,20 +959,17 @@ static void vncHooksTriFan(CARD8 op, PicturePtr pSrc, PicturePtr pDst,
 
 // Unwrap and rewrap helpers
 
-#define RANDR_PROLOGUE(field)                                             \
-  rrScrPrivPtr rp = rrGetScrPriv(pScreen);                                \
-  vncHooksScreenPtr vncHooksScreen = vncHooksScreenPrivate(pScreen);      \
-  unwrap(vncHooksScreen, rp, rr##field);                                  \
-  DBGPRINT((stderr,"vncHooksRandR" #field " called\n"));
+#define RANDR_PROLOGUE(field)                                                                                          \
+  rrScrPrivPtr rp = rrGetScrPriv(pScreen);                                                                             \
+  vncHooksScreenPtr vncHooksScreen = vncHooksScreenPrivate(pScreen);                                                   \
+  unwrap(vncHooksScreen, rp, rr##field);                                                                               \
+  DBGPRINT((stderr, "vncHooksRandR" #field " called\n"));
 
-#define RANDR_EPILOGUE(field)                                             \
-  wrap(vncHooksScreen, rp, rr##field, vncHooksRandR##field);              \
+#define RANDR_EPILOGUE(field) wrap(vncHooksScreen, rp, rr##field, vncHooksRandR##field);
 
 // RandRSetConfig - follow any framebuffer changes
 
-static Bool vncHooksRandRSetConfig(ScreenPtr pScreen, Rotation rotation,
-                                   int rate, RRScreenSizePtr pSize)
-{
+static Bool vncHooksRandRSetConfig(ScreenPtr pScreen, Rotation rotation, int rate, RRScreenSizePtr pSize) {
   Bool ret;
 
   RANDR_PROLOGUE(SetConfig);
@@ -1094,10 +986,8 @@ static Bool vncHooksRandRSetConfig(ScreenPtr pScreen, Rotation rotation,
   return TRUE;
 }
 
-static Bool vncHooksRandRScreenSetSize(ScreenPtr pScreen,
-                                       CARD16 width, CARD16 height,
-                                       CARD32 mmWidth, CARD32 mmHeight)
-{
+static Bool vncHooksRandRScreenSetSize(ScreenPtr pScreen, CARD16 width, CARD16 height, CARD32 mmWidth,
+                                       CARD32 mmHeight) {
   Bool ret;
 
   RANDR_PROLOGUE(ScreenSetSize);
@@ -1114,17 +1004,13 @@ static Bool vncHooksRandRScreenSetSize(ScreenPtr pScreen,
   return TRUE;
 }
 
-static Bool vncHooksRandRCrtcSet(ScreenPtr pScreen, RRCrtcPtr crtc,
-                                 RRModePtr mode, int x, int y,
-                                 Rotation rotation, int num_outputs,
-                                 RROutputPtr *outputs)
-{
+static Bool vncHooksRandRCrtcSet(ScreenPtr pScreen, RRCrtcPtr crtc, RRModePtr mode, int x, int y, Rotation rotation,
+                                 int num_outputs, RROutputPtr* outputs) {
   Bool ret;
 
   RANDR_PROLOGUE(CrtcSet);
 
-  ret = (*rp->rrCrtcSet)(pScreen, crtc, mode, x, y, rotation,
-                         num_outputs, outputs);
+  ret = (*rp->rrCrtcSet)(pScreen, crtc, mode, x, y, rotation, num_outputs, outputs);
 
   RANDR_EPILOGUE(CrtcSet);
 
@@ -1143,19 +1029,15 @@ static Bool vncHooksRandRCrtcSet(ScreenPtr pScreen, RRCrtcPtr crtc,
 
 // Unwrap and rewrap helpers
 
-#define SPRITE_PROLOGUE(field)                                            \
-  miPointerScreenPtr miPointerPriv =                                      \
-    dixLookupPrivate(&screen->devPrivates, miPointerScreenKey);           \
-  vncHooksScreenPtr vncHooksScreen = vncHooksScreenPrivate(screen);       \
-  unwrap(vncHooksScreen, miPointerPriv, spriteFuncs);                     \
-  DBGPRINT((stderr,"vncHooks" #field " called\n"));
+#define SPRITE_PROLOGUE(field)                                                                                         \
+  miPointerScreenPtr miPointerPriv = dixLookupPrivate(&screen->devPrivates, miPointerScreenKey);                       \
+  vncHooksScreenPtr vncHooksScreen = vncHooksScreenPrivate(screen);                                                    \
+  unwrap(vncHooksScreen, miPointerPriv, spriteFuncs);                                                                  \
+  DBGPRINT((stderr, "vncHooks" #field " called\n"));
 
-#define SPRITE_EPILOGUE(field)                                            \
-  wrap(vncHooksScreen, miPointerPriv, spriteFuncs, &vncHooksSpriteFuncs); \
+#define SPRITE_EPILOGUE(field) wrap(vncHooksScreen, miPointerPriv, spriteFuncs, &vncHooksSpriteFuncs);
 
-static Bool vncHooksRealizeCursor(DeviceIntPtr dev, ScreenPtr screen,
-                                  CursorPtr cursor)
-{
+static Bool vncHooksRealizeCursor(DeviceIntPtr dev, ScreenPtr screen, CursorPtr cursor) {
   Bool ret;
   SPRITE_PROLOGUE(RealizeCursor);
   ret = (*miPointerPriv->spriteFuncs->RealizeCursor)(dev, screen, cursor);
@@ -1163,9 +1045,7 @@ static Bool vncHooksRealizeCursor(DeviceIntPtr dev, ScreenPtr screen,
   return ret;
 }
 
-static Bool vncHooksUnrealizeCursor(DeviceIntPtr dev, ScreenPtr screen,
-                                    CursorPtr cursor)
-{
+static Bool vncHooksUnrealizeCursor(DeviceIntPtr dev, ScreenPtr screen, CursorPtr cursor) {
   Bool ret;
   SPRITE_PROLOGUE(UnrealizeCursor);
   ret = (*miPointerPriv->spriteFuncs->UnrealizeCursor)(dev, screen, cursor);
@@ -1173,9 +1053,7 @@ static Bool vncHooksUnrealizeCursor(DeviceIntPtr dev, ScreenPtr screen,
   return ret;
 }
 
-static void vncHooksSetCursor(DeviceIntPtr dev, ScreenPtr screen,
-                              CursorPtr cursor, int x, int y)
-{
+static void vncHooksSetCursor(DeviceIntPtr dev, ScreenPtr screen, CursorPtr cursor, int x, int y) {
   SPRITE_PROLOGUE(SetCursor);
 
   (*miPointerPriv->spriteFuncs->SetCursor)(dev, screen, cursor, x, y);
@@ -1186,7 +1064,7 @@ static void vncHooksSetCursor(DeviceIntPtr dev, ScreenPtr screen,
     int width, height;
     int hotX, hotY;
 
-    unsigned char *rgbaData;
+    unsigned char* rgbaData;
 
     width = cursor->bits->width;
     height = cursor->bits->height;
@@ -1199,22 +1077,22 @@ static void vncHooksSetCursor(DeviceIntPtr dev, ScreenPtr screen,
       goto out;
 
     if (cursor->bits->argb) {
-      unsigned char *out;
-      CARD32 *in;
+      unsigned char* out;
+      CARD32* in;
       int i;
 
       in = cursor->bits->argb;
       out = rgbaData;
-      for (i = 0; i < width*height; i++) {
+      for (i = 0; i < width * height; i++) {
         out[0] = (*in >> 16) & 0xff;
-        out[1] = (*in >>  8) & 0xff;
-        out[2] = (*in >>  0) & 0xff;
+        out[1] = (*in >> 8) & 0xff;
+        out[2] = (*in >> 0) & 0xff;
         out[3] = (*in >> 24) & 0xff;
         out += 4;
         in++;
       }
     } else {
-      unsigned char *out;
+      unsigned char* out;
       int xMaskBytesPerRow;
 
       xMaskBytesPerRow = BitmapBytePad(width);
@@ -1258,17 +1136,13 @@ out:
   SPRITE_EPILOGUE();
 }
 
-static void vncHooksMoveCursor(DeviceIntPtr dev, ScreenPtr screen,
-                               int x, int y)
-{
+static void vncHooksMoveCursor(DeviceIntPtr dev, ScreenPtr screen, int x, int y) {
   SPRITE_PROLOGUE(MoveCursor);
   (*miPointerPriv->spriteFuncs->MoveCursor)(dev, screen, x, y);
   SPRITE_EPILOGUE();
 }
 
-static Bool vncHooksDeviceCursorInitialize(DeviceIntPtr dev,
-                                           ScreenPtr screen)
-{
+static Bool vncHooksDeviceCursorInitialize(DeviceIntPtr dev, ScreenPtr screen) {
   Bool ret;
   SPRITE_PROLOGUE(DeviceCursorInitialize);
   ret = (*miPointerPriv->spriteFuncs->DeviceCursorInitialize)(dev, screen);
@@ -1276,9 +1150,7 @@ static Bool vncHooksDeviceCursorInitialize(DeviceIntPtr dev,
   return ret;
 }
 
-static void vncHooksDeviceCursorCleanup(DeviceIntPtr dev,
-                                        ScreenPtr screen)
-{
+static void vncHooksDeviceCursorCleanup(DeviceIntPtr dev, ScreenPtr screen) {
   SPRITE_PROLOGUE(DeviceCursorCleanup);
   (*miPointerPriv->spriteFuncs->DeviceCursorCleanup)(dev, screen);
   SPRITE_EPILOGUE();
@@ -1291,26 +1163,25 @@ static void vncHooksDeviceCursorCleanup(DeviceIntPtr dev,
 
 // Unwrap and rewrap helpers
 
-#define GC_FUNC_PROLOGUE(pGC, name)\
-    vncHooksGCPtr pGCPriv = vncHooksGCPrivate(pGC);\
-    unwrap(pGCPriv, pGC, funcs);\
-    if (pGCPriv->ops) unwrap(pGCPriv, pGC, ops)\
-    DBGPRINT((stderr,"vncHooks" #name " called\n"))
+#define GC_FUNC_PROLOGUE(pGC, name)                                                                                    \
+  vncHooksGCPtr pGCPriv = vncHooksGCPrivate(pGC);                                                                      \
+  unwrap(pGCPriv, pGC, funcs);                                                                                         \
+  if (pGCPriv->ops)                                                                                                    \
+  unwrap(pGCPriv, pGC, ops) DBGPRINT((stderr, "vncHooks" #name " called\n"))
 
-#define GC_FUNC_EPILOGUE(pGC)\
-    wrap(pGCPriv, pGC, funcs, &vncHooksGCFuncs);\
-    if (pGCPriv->ops) wrap(pGCPriv, pGC, ops, &vncHooksGCOps)
+#define GC_FUNC_EPILOGUE(pGC)                                                                                          \
+  wrap(pGCPriv, pGC, funcs, &vncHooksGCFuncs);                                                                         \
+  if (pGCPriv->ops)                                                                                                    \
+  wrap(pGCPriv, pGC, ops, &vncHooksGCOps)
 
 // ValidateGC - wrap the "ops" if the drawable is on screen
 
-static void vncHooksValidateGC(GCPtr pGC, unsigned long changes,
-                               DrawablePtr pDrawable)
-{
+static void vncHooksValidateGC(GCPtr pGC, unsigned long changes, DrawablePtr pDrawable) {
   GC_FUNC_PROLOGUE(pGC, ValidateGC);
-  (*pGC->funcs->ValidateGC) (pGC, changes, pDrawable);
+  (*pGC->funcs->ValidateGC)(pGC, changes, pDrawable);
   if (is_visible(pDrawable)) {
     pGCPriv->ops = pGC->ops;
-    DBGPRINT((stderr,"vncHooksValidateGC: Wrapped GC ops\n"));
+    DBGPRINT((stderr, "vncHooksValidateGC: Wrapped GC ops\n"));
   } else {
     pGCPriv->ops = NULL;
   }
@@ -1321,36 +1192,34 @@ static void vncHooksValidateGC(GCPtr pGC, unsigned long changes,
 
 static void vncHooksChangeGC(GCPtr pGC, unsigned long mask) {
   GC_FUNC_PROLOGUE(pGC, ChangeGC);
-  (*pGC->funcs->ChangeGC) (pGC, mask);
+  (*pGC->funcs->ChangeGC)(pGC, mask);
   GC_FUNC_EPILOGUE(pGC);
 }
 static void vncHooksCopyGC(GCPtr src, unsigned long mask, GCPtr dst) {
   GC_FUNC_PROLOGUE(dst, CopyGC);
-  (*dst->funcs->CopyGC) (src, mask, dst);
+  (*dst->funcs->CopyGC)(src, mask, dst);
   GC_FUNC_EPILOGUE(dst);
 }
 static void vncHooksDestroyGC(GCPtr pGC) {
   GC_FUNC_PROLOGUE(pGC, DestroyGC);
-  (*pGC->funcs->DestroyGC) (pGC);
+  (*pGC->funcs->DestroyGC)(pGC);
   GC_FUNC_EPILOGUE(pGC);
 }
-static void vncHooksChangeClip(GCPtr pGC, int type, void * pValue, int nrects)
-{
+static void vncHooksChangeClip(GCPtr pGC, int type, void* pValue, int nrects) {
   GC_FUNC_PROLOGUE(pGC, ChangeClip);
-  (*pGC->funcs->ChangeClip) (pGC, type, pValue, nrects);
+  (*pGC->funcs->ChangeClip)(pGC, type, pValue, nrects);
   GC_FUNC_EPILOGUE(pGC);
 }
 static void vncHooksDestroyClip(GCPtr pGC) {
   GC_FUNC_PROLOGUE(pGC, DestroyClip);
-  (*pGC->funcs->DestroyClip) (pGC);
+  (*pGC->funcs->DestroyClip)(pGC);
   GC_FUNC_EPILOGUE(pGC);
 }
 static void vncHooksCopyClip(GCPtr dst, GCPtr src) {
   GC_FUNC_PROLOGUE(dst, CopyClip);
-  (*dst->funcs->CopyClip) (dst, src);
+  (*dst->funcs->CopyClip)(dst, src);
   GC_FUNC_EPILOGUE(dst);
 }
-
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -1359,24 +1228,22 @@ static void vncHooksCopyClip(GCPtr dst, GCPtr src) {
 
 // Unwrap and rewrap helpers
 
-#define GC_OP_PROLOGUE(pGC, name)\
-    vncHooksGCPtr pGCPriv = vncHooksGCPrivate(pGC);\
-    const GCFuncs *oldFuncs = pGC->funcs;\
-    unwrap(pGCPriv, pGC, funcs);\
-    unwrap(pGCPriv, pGC, ops);\
-    DBGPRINT((stderr,"vncHooks" #name " called\n"))
+#define GC_OP_PROLOGUE(pGC, name)                                                                                      \
+  vncHooksGCPtr pGCPriv = vncHooksGCPrivate(pGC);                                                                      \
+  const GCFuncs* oldFuncs = pGC->funcs;                                                                                \
+  unwrap(pGCPriv, pGC, funcs);                                                                                         \
+  unwrap(pGCPriv, pGC, ops);                                                                                           \
+  DBGPRINT((stderr, "vncHooks" #name " called\n"))
 
-#define GC_OP_EPILOGUE(pGC)\
-    wrap(pGCPriv, pGC, funcs, oldFuncs); \
-    wrap(pGCPriv, pGC, ops, &vncHooksGCOps)
+#define GC_OP_EPILOGUE(pGC)                                                                                            \
+  wrap(pGCPriv, pGC, funcs, oldFuncs);                                                                                 \
+  wrap(pGCPriv, pGC, ops, &vncHooksGCOps)
 
 // FillSpans - assume the entire clip region is damaged. This is pessimistic,
 // but I believe this function is rarely used so it doesn't matter.
 
-static void vncHooksFillSpans(DrawablePtr pDrawable, GCPtr pGC, int nInit,
-                              DDXPointPtr pptInit, int *pwidthInit,
-                              int fSorted)
-{
+static void vncHooksFillSpans(DrawablePtr pDrawable, GCPtr pGC, int nInit, DDXPointPtr pptInit, int* pwidthInit,
+                              int fSorted) {
   RegionRec reg;
 
   GC_OP_PROLOGUE(pGC, FillSpans);
@@ -1387,7 +1254,7 @@ static void vncHooksFillSpans(DrawablePtr pDrawable, GCPtr pGC, int nInit,
   if (pDrawable->type == DRAWABLE_WINDOW)
     RegionIntersect(&reg, &reg, &((WindowPtr)pDrawable)->borderClip);
 
-  (*pGC->ops->FillSpans) (pDrawable, pGC, nInit, pptInit, pwidthInit, fSorted);
+  (*pGC->ops->FillSpans)(pDrawable, pGC, nInit, pptInit, pwidthInit, fSorted);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -1399,10 +1266,8 @@ static void vncHooksFillSpans(DrawablePtr pDrawable, GCPtr pGC, int nInit,
 // SetSpans - assume the entire clip region is damaged.  This is pessimistic,
 // but I believe this function is rarely used so it doesn't matter.
 
-static void vncHooksSetSpans(DrawablePtr pDrawable, GCPtr pGC, char *psrc,
-                             DDXPointPtr ppt, int *pwidth, int nspans,
-                             int fSorted)
-{
+static void vncHooksSetSpans(DrawablePtr pDrawable, GCPtr pGC, char* psrc, DDXPointPtr ppt, int* pwidth, int nspans,
+                             int fSorted) {
   RegionRec reg;
 
   GC_OP_PROLOGUE(pGC, SetSpans);
@@ -1413,7 +1278,7 @@ static void vncHooksSetSpans(DrawablePtr pDrawable, GCPtr pGC, char *psrc,
   if (pDrawable->type == DRAWABLE_WINDOW)
     RegionIntersect(&reg, &reg, &((WindowPtr)pDrawable)->borderClip);
 
-  (*pGC->ops->SetSpans) (pDrawable, pGC, psrc, ppt, pwidth, nspans, fSorted);
+  (*pGC->ops->SetSpans)(pDrawable, pGC, psrc, ppt, pwidth, nspans, fSorted);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -1424,10 +1289,8 @@ static void vncHooksSetSpans(DrawablePtr pDrawable, GCPtr pGC, char *psrc,
 
 // PutImage - changed region is the given rectangle, clipped by pCompositeClip
 
-static void vncHooksPutImage(DrawablePtr pDrawable, GCPtr pGC, int depth,
-                             int x, int y, int w, int h, int leftPad,
-                             int format, char *pBits)
-{
+static void vncHooksPutImage(DrawablePtr pDrawable, GCPtr pGC, int depth, int x, int y, int w, int h, int leftPad,
+                             int format, char* pBits) {
   BoxRec box;
   RegionRec reg;
 
@@ -1441,8 +1304,7 @@ static void vncHooksPutImage(DrawablePtr pDrawable, GCPtr pGC, int depth,
   RegionInitBoxes(&reg, &box, 1);
   RegionIntersect(&reg, &reg, pGC->pCompositeClip);
 
-  (*pGC->ops->PutImage) (pDrawable, pGC, depth, x, y, w, h, leftPad, format,
-                         pBits);
+  (*pGC->ops->PutImage)(pDrawable, pGC, depth, x, y, w, h, leftPad, format, pBits);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -1455,10 +1317,8 @@ static void vncHooksPutImage(DrawablePtr pDrawable, GCPtr pGC, int depth,
 // pCompositeClip.  Any parts of the destination which cannot be copied from
 // the source (could be all of it) go into the changed region.
 
-static RegionPtr vncHooksCopyArea(DrawablePtr pSrc, DrawablePtr pDst,
-                                  GCPtr pGC, int srcx, int srcy, int w, int h,
-                                  int dstx, int dsty)
-{
+static RegionPtr vncHooksCopyArea(DrawablePtr pSrc, DrawablePtr pDst, GCPtr pGC, int srcx, int srcy, int w, int h,
+                                  int dstx, int dsty) {
   RegionRec dst, src, changed;
 
   RegionPtr ret;
@@ -1492,14 +1352,11 @@ static RegionPtr vncHooksCopyArea(DrawablePtr pSrc, DrawablePtr pDst,
 
     RegionInitBoxes(&src, &box, 1);
 
-    if ((pSrc->type == DRAWABLE_WINDOW) &&
-        RegionNotEmpty(&((WindowPtr)pSrc)->clipList)) {
+    if ((pSrc->type == DRAWABLE_WINDOW) && RegionNotEmpty(&((WindowPtr)pSrc)->clipList)) {
       RegionIntersect(&src, &src, &((WindowPtr)pSrc)->clipList);
     }
 
-    RegionTranslate(&src,
-                     dstx + pDst->x - srcx - pSrc->x,
-                     dsty + pDst->y - srcy - pSrc->y);
+    RegionTranslate(&src, dstx + pDst->x - srcx - pSrc->x, dsty + pDst->y - srcy - pSrc->y);
   } else {
     RegionNull(&src);
   }
@@ -1509,11 +1366,9 @@ static RegionPtr vncHooksCopyArea(DrawablePtr pSrc, DrawablePtr pDst,
   RegionSubtract(&changed, &dst, &src);
   RegionIntersect(&dst, &dst, &src);
 
-  ret = (*pGC->ops->CopyArea) (pSrc, pDst, pGC, srcx, srcy, w, h, dstx, dsty);
+  ret = (*pGC->ops->CopyArea)(pSrc, pDst, pGC, srcx, srcy, w, h, dstx, dsty);
 
-  add_copied(pGC->pScreen, &dst,
-             dstx + pDst->x - srcx - pSrc->x,
-             dsty + pDst->y - srcy - pSrc->y);
+  add_copied(pGC->pScreen, &dst, dstx + pDst->x - srcx - pSrc->x, dsty + pDst->y - srcy - pSrc->y);
 
   add_changed(pGC->pScreen, &changed);
 
@@ -1526,14 +1381,11 @@ static RegionPtr vncHooksCopyArea(DrawablePtr pSrc, DrawablePtr pDst,
   return ret;
 }
 
-
 // CopyPlane - changed region is the destination rectangle, clipped by
 // pCompositeClip
 
-static RegionPtr vncHooksCopyPlane(DrawablePtr pSrc, DrawablePtr pDst,
-                                   GCPtr pGC, int srcx, int srcy, int w, int h,
-                                   int dstx, int dsty, unsigned long plane)
-{
+static RegionPtr vncHooksCopyPlane(DrawablePtr pSrc, DrawablePtr pDst, GCPtr pGC, int srcx, int srcy, int w, int h,
+                                   int dstx, int dsty, unsigned long plane) {
   BoxRec box;
   RegionRec reg;
 
@@ -1549,8 +1401,7 @@ static RegionPtr vncHooksCopyPlane(DrawablePtr pSrc, DrawablePtr pDst,
   RegionInitBoxes(&reg, &box, 1);
   RegionIntersect(&reg, &reg, pGC->pCompositeClip);
 
-  ret = (*pGC->ops->CopyPlane) (pSrc, pDst, pGC, srcx, srcy, w, h,
-                                dstx, dsty, plane);
+  ret = (*pGC->ops->CopyPlane)(pSrc, pDst, pGC, srcx, srcy, w, h, dstx, dsty, plane);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -1563,9 +1414,7 @@ static RegionPtr vncHooksCopyPlane(DrawablePtr pSrc, DrawablePtr pDst,
 
 // PolyPoint - changed region is the bounding rect, clipped by pCompositeClip
 
-static void vncHooksPolyPoint(DrawablePtr pDrawable, GCPtr pGC, int mode,
-                              int npt, xPoint *pts)
-{
+static void vncHooksPolyPoint(DrawablePtr pDrawable, GCPtr pGC, int mode, int npt, xPoint* pts) {
   int minX, minY, maxX, maxY;
   int i;
 
@@ -1575,7 +1424,7 @@ static void vncHooksPolyPoint(DrawablePtr pDrawable, GCPtr pGC, int mode,
   GC_OP_PROLOGUE(pGC, PolyPoint);
 
   if (npt == 0) {
-    (*pGC->ops->PolyPoint) (pDrawable, pGC, mode, npt, pts);
+    (*pGC->ops->PolyPoint)(pDrawable, pGC, mode, npt, pts);
     goto out;
   }
 
@@ -1591,17 +1440,25 @@ static void vncHooksPolyPoint(DrawablePtr pDrawable, GCPtr pGC, int mode,
     for (i = 1; i < npt; i++) {
       x += pts[i].x;
       y += pts[i].y;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
+      if (x < minX)
+        minX = x;
+      if (x > maxX)
+        maxX = x;
+      if (y < minY)
+        minY = y;
+      if (y > maxY)
+        maxY = y;
     }
   } else {
     for (i = 1; i < npt; i++) {
-      if (pts[i].x < minX) minX = pts[i].x;
-      if (pts[i].x > maxX) maxX = pts[i].x;
-      if (pts[i].y < minY) minY = pts[i].y;
-      if (pts[i].y > maxY) maxY = pts[i].y;
+      if (pts[i].x < minX)
+        minX = pts[i].x;
+      if (pts[i].x > maxX)
+        maxX = pts[i].x;
+      if (pts[i].y < minY)
+        minY = pts[i].y;
+      if (pts[i].y > maxY)
+        maxY = pts[i].y;
     }
   }
 
@@ -1613,7 +1470,7 @@ static void vncHooksPolyPoint(DrawablePtr pDrawable, GCPtr pGC, int mode,
   RegionInitBoxes(&reg, &box, 1);
   RegionIntersect(&reg, &reg, pGC->pCompositeClip);
 
-  (*pGC->ops->PolyPoint) (pDrawable, pGC, mode, npt, pts);
+  (*pGC->ops->PolyPoint)(pDrawable, pGC, mode, npt, pts);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -1627,9 +1484,7 @@ out:
 // clipped by pCompositeClip.  If there are more than MAX_RECTS_PER_OP lines,
 // just use the bounding rect of all the lines.
 
-static void vncHooksPolylines(DrawablePtr pDrawable, GCPtr pGC, int mode,
-                              int npt, DDXPointPtr ppts)
-{
+static void vncHooksPolylines(DrawablePtr pDrawable, GCPtr pGC, int mode, int npt, DDXPointPtr ppts) {
   int nRegRects;
   xRectangle regRects[MAX_RECTS_PER_OP];
 
@@ -1640,7 +1495,7 @@ static void vncHooksPolylines(DrawablePtr pDrawable, GCPtr pGC, int mode,
   GC_OP_PROLOGUE(pGC, Polylines);
 
   if (npt == 0) {
-    (*pGC->ops->Polylines) (pDrawable, pGC, mode, npt, ppts);
+    (*pGC->ops->Polylines)(pDrawable, pGC, mode, npt, ppts);
     goto out;
   }
 
@@ -1650,17 +1505,14 @@ static void vncHooksPolylines(DrawablePtr pDrawable, GCPtr pGC, int mode,
   if (lw == 0)
     lw = 1;
 
-  if (npt == 1)
-  {
+  if (npt == 1) {
     // a single point
     nRegRects = 1;
     regRects[0].x = pDrawable->x + ppts[0].x - lw;
     regRects[0].y = pDrawable->y + ppts[0].y - lw;
-    regRects[0].width = 2*lw;
-    regRects[0].height = 2*lw;
-  }
-  else
-  {
+    regRects[0].width = 2 * lw;
+    regRects[0].height = 2 * lw;
+  } else {
     /*
      * mitered joins can project quite a way from
      * the line end; the 11 degree miter limit limits
@@ -1688,11 +1540,11 @@ static void vncHooksPolylines(DrawablePtr pDrawable, GCPtr pGC, int mode,
 
     for (i = 0; i < nRegRects; i++) {
       if (mode == CoordModeOrigin) {
-        curX = pDrawable->x + ppts[i+1].x;
-        curY = pDrawable->y + ppts[i+1].y;
+        curX = pDrawable->x + ppts[i + 1].x;
+        curY = pDrawable->y + ppts[i + 1].y;
       } else {
-        curX = prevX + ppts[i+1].x;
-        curY = prevY + ppts[i+1].y;
+        curX = prevX + ppts[i + 1].x;
+        curY = prevY + ppts[i + 1].y;
       }
 
       if (prevX > curX) {
@@ -1717,10 +1569,14 @@ static void vncHooksPolylines(DrawablePtr pDrawable, GCPtr pGC, int mode,
         regRects[i].width = rectX2 - rectX1;
         regRects[i].height = rectY2 - rectY1;
       } else {
-        if (rectX1 < minX) minX = rectX1;
-        if (rectY1 < minY) minY = rectY1;
-        if (rectX2 > maxX) maxX = rectX2;
-        if (rectY2 > maxY) maxY = rectY2;
+        if (rectX1 < minX)
+          minX = rectX1;
+        if (rectY1 < minY)
+          minY = rectY1;
+        if (rectX2 > maxX)
+          maxX = rectX2;
+        if (rectY2 > maxY)
+          maxY = rectY2;
       }
 
       prevX = curX;
@@ -1739,7 +1595,7 @@ static void vncHooksPolylines(DrawablePtr pDrawable, GCPtr pGC, int mode,
   reg = RECTS_TO_REGION(pGC->pScreen, nRegRects, regRects, CT_NONE);
   RegionIntersect(reg, reg, pGC->pCompositeClip);
 
-  (*pGC->ops->Polylines) (pDrawable, pGC, mode, npt, ppts);
+  (*pGC->ops->Polylines)(pDrawable, pGC, mode, npt, ppts);
 
   add_changed(pGC->pScreen, reg);
 
@@ -1753,9 +1609,7 @@ out:
 // segment, clipped by pCompositeClip.  If there are more than MAX_RECTS_PER_OP
 // segments, just use the bounding rect of all the segments.
 
-static void vncHooksPolySegment(DrawablePtr pDrawable, GCPtr pGC, int nseg,
-                                xSegment *segs)
-{
+static void vncHooksPolySegment(DrawablePtr pDrawable, GCPtr pGC, int nseg, xSegment* segs) {
   xRectangle regRects[MAX_RECTS_PER_OP];
   int nRegRects;
 
@@ -1771,7 +1625,7 @@ static void vncHooksPolySegment(DrawablePtr pDrawable, GCPtr pGC, int nseg,
   GC_OP_PROLOGUE(pGC, PolySegment);
 
   if (nseg == 0) {
-    (*pGC->ops->PolySegment) (pDrawable, pGC, nseg, segs);
+    (*pGC->ops->PolySegment)(pDrawable, pGC, nseg, segs);
     goto out;
   }
 
@@ -1806,10 +1660,14 @@ static void vncHooksPolySegment(DrawablePtr pDrawable, GCPtr pGC, int nseg,
       regRects[i].width = rectX2 - rectX1;
       regRects[i].height = rectY2 - rectY1;
     } else {
-      if (rectX1 < minX) minX = rectX1;
-      if (rectY1 < minY) minY = rectY1;
-      if (rectX2 > maxX) maxX = rectX2;
-      if (rectY2 > maxY) maxY = rectY2;
+      if (rectX1 < minX)
+        minX = rectX1;
+      if (rectY1 < minY)
+        minY = rectY1;
+      if (rectX2 > maxX)
+        maxX = rectX2;
+      if (rectY2 > maxY)
+        maxY = rectY2;
     }
   }
 
@@ -1824,7 +1682,7 @@ static void vncHooksPolySegment(DrawablePtr pDrawable, GCPtr pGC, int nseg,
   reg = RECTS_TO_REGION(pGC->pScreen, nRegRects, regRects, CT_NONE);
   RegionIntersect(reg, reg, pGC->pCompositeClip);
 
-  (*pGC->ops->PolySegment) (pDrawable, pGC, nseg, segs);
+  (*pGC->ops->PolySegment)(pDrawable, pGC, nseg, segs);
 
   add_changed(pGC->pScreen, reg);
 
@@ -1839,10 +1697,8 @@ out:
 // are more than MAX_RECTS_PER_OP rectangles, just use the bounding rect of all
 // the rectangles.
 
-static void vncHooksPolyRectangle(DrawablePtr pDrawable, GCPtr pGC, int nrects,
-                                  xRectangle *rects)
-{
-  xRectangle regRects[MAX_RECTS_PER_OP*4];
+static void vncHooksPolyRectangle(DrawablePtr pDrawable, GCPtr pGC, int nrects, xRectangle* rects) {
+  xRectangle regRects[MAX_RECTS_PER_OP * 4];
   int nRegRects;
 
   int lw, extra;
@@ -1857,7 +1713,7 @@ static void vncHooksPolyRectangle(DrawablePtr pDrawable, GCPtr pGC, int nrects,
   GC_OP_PROLOGUE(pGC, PolyRectangle);
 
   if (nrects == 0) {
-    (*pGC->ops->PolyRectangle) (pDrawable, pGC, nrects, rects);
+    (*pGC->ops->PolyRectangle)(pDrawable, pGC, nrects, rects);
     goto out;
   }
 
@@ -1871,34 +1727,38 @@ static void vncHooksPolyRectangle(DrawablePtr pDrawable, GCPtr pGC, int nrects,
 
   for (i = 0; i < nrects; i++) {
     if (nrects <= MAX_RECTS_PER_OP) {
-      regRects[i*4].x = rects[i].x - extra + pDrawable->x;
-      regRects[i*4].y = rects[i].y - extra + pDrawable->y;
-      regRects[i*4].width = rects[i].width + 1 + 2 * extra;
-      regRects[i*4].height = 1 + 2 * extra;
+      regRects[i * 4].x = rects[i].x - extra + pDrawable->x;
+      regRects[i * 4].y = rects[i].y - extra + pDrawable->y;
+      regRects[i * 4].width = rects[i].width + 1 + 2 * extra;
+      regRects[i * 4].height = 1 + 2 * extra;
 
-      regRects[i*4+1].x = rects[i].x - extra + pDrawable->x;
-      regRects[i*4+1].y = rects[i].y - extra + pDrawable->y;
-      regRects[i*4+1].width = 1 + 2 * extra;
-      regRects[i*4+1].height = rects[i].height + 1 + 2 * extra;
+      regRects[i * 4 + 1].x = rects[i].x - extra + pDrawable->x;
+      regRects[i * 4 + 1].y = rects[i].y - extra + pDrawable->y;
+      regRects[i * 4 + 1].width = 1 + 2 * extra;
+      regRects[i * 4 + 1].height = rects[i].height + 1 + 2 * extra;
 
-      regRects[i*4+2].x = rects[i].x + rects[i].width - extra + pDrawable->x;
-      regRects[i*4+2].y = rects[i].y - extra + pDrawable->y;
-      regRects[i*4+2].width = 1 + 2 * extra;
-      regRects[i*4+2].height = rects[i].height + 1 + 2 * extra;
+      regRects[i * 4 + 2].x = rects[i].x + rects[i].width - extra + pDrawable->x;
+      regRects[i * 4 + 2].y = rects[i].y - extra + pDrawable->y;
+      regRects[i * 4 + 2].width = 1 + 2 * extra;
+      regRects[i * 4 + 2].height = rects[i].height + 1 + 2 * extra;
 
-      regRects[i*4+3].x = rects[i].x - extra + pDrawable->x;
-      regRects[i*4+3].y = rects[i].y + rects[i].height - extra + pDrawable->y;
-      regRects[i*4+3].width = rects[i].width + 1 + 2 * extra;
-      regRects[i*4+3].height = 1 + 2 * extra;
+      regRects[i * 4 + 3].x = rects[i].x - extra + pDrawable->x;
+      regRects[i * 4 + 3].y = rects[i].y + rects[i].height - extra + pDrawable->y;
+      regRects[i * 4 + 3].width = rects[i].width + 1 + 2 * extra;
+      regRects[i * 4 + 3].height = 1 + 2 * extra;
     } else {
       rectX1 = pDrawable->x + rects[i].x - extra;
       rectY1 = pDrawable->y + rects[i].y - extra;
-      rectX2 = pDrawable->x + rects[i].x + rects[i].width + extra+1;
-      rectY2 = pDrawable->y + rects[i].y + rects[i].height + extra+1;
-      if (rectX1 < minX) minX = rectX1;
-      if (rectY1 < minY) minY = rectY1;
-      if (rectX2 > maxX) maxX = rectX2;
-      if (rectY2 > maxY) maxY = rectY2;
+      rectX2 = pDrawable->x + rects[i].x + rects[i].width + extra + 1;
+      rectY2 = pDrawable->y + rects[i].y + rects[i].height + extra + 1;
+      if (rectX1 < minX)
+        minX = rectX1;
+      if (rectY1 < minY)
+        minY = rectY1;
+      if (rectX2 > maxX)
+        maxX = rectX2;
+      if (rectY2 > maxY)
+        maxY = rectY2;
     }
   }
 
@@ -1913,7 +1773,7 @@ static void vncHooksPolyRectangle(DrawablePtr pDrawable, GCPtr pGC, int nrects,
   reg = RECTS_TO_REGION(pGC->pScreen, nRegRects, regRects, CT_NONE);
   RegionIntersect(reg, reg, pGC->pCompositeClip);
 
-  (*pGC->ops->PolyRectangle) (pDrawable, pGC, nrects, rects);
+  (*pGC->ops->PolyRectangle)(pDrawable, pGC, nrects, rects);
 
   add_changed(pGC->pScreen, reg);
 
@@ -1927,9 +1787,7 @@ out:
 // clipped by pCompositeClip.  If there are more than MAX_RECTS_PER_OP
 // arcs, just use the bounding rect of all the arcs.
 
-static void vncHooksPolyArc(DrawablePtr pDrawable, GCPtr pGC, int narcs,
-                            xArc *arcs)
-{
+static void vncHooksPolyArc(DrawablePtr pDrawable, GCPtr pGC, int narcs, xArc* arcs) {
   xRectangle regRects[MAX_RECTS_PER_OP];
   int nRegRects;
 
@@ -1945,7 +1803,7 @@ static void vncHooksPolyArc(DrawablePtr pDrawable, GCPtr pGC, int narcs,
   GC_OP_PROLOGUE(pGC, PolyArc);
 
   if (narcs == 0) {
-    (*pGC->ops->PolyArc) (pDrawable, pGC, narcs, arcs);
+    (*pGC->ops->PolyArc)(pDrawable, pGC, narcs, arcs);
     goto out;
   }
 
@@ -1970,10 +1828,14 @@ static void vncHooksPolyArc(DrawablePtr pDrawable, GCPtr pGC, int narcs,
       rectY1 = pDrawable->y + arcs[i].y - extra;
       rectX2 = pDrawable->x + arcs[i].x + arcs[i].width + lw;
       rectY2 = pDrawable->y + arcs[i].y + arcs[i].height + lw;
-      if (rectX1 < minX) minX = rectX1;
-      if (rectY1 < minY) minY = rectY1;
-      if (rectX2 > maxX) maxX = rectX2;
-      if (rectY2 > maxY) maxY = rectY2;
+      if (rectX1 < minX)
+        minX = rectX1;
+      if (rectY1 < minY)
+        minY = rectY1;
+      if (rectX2 > maxX)
+        maxX = rectX2;
+      if (rectY2 > maxY)
+        maxY = rectY2;
     }
   }
 
@@ -1988,7 +1850,7 @@ static void vncHooksPolyArc(DrawablePtr pDrawable, GCPtr pGC, int narcs,
   reg = RECTS_TO_REGION(pGC->pScreen, nRegRects, regRects, CT_NONE);
   RegionIntersect(reg, reg, pGC->pCompositeClip);
 
-  (*pGC->ops->PolyArc) (pDrawable, pGC, narcs, arcs);
+  (*pGC->ops->PolyArc)(pDrawable, pGC, narcs, arcs);
 
   add_changed(pGC->pScreen, reg);
 
@@ -1998,13 +1860,10 @@ out:
   GC_OP_EPILOGUE(pGC);
 }
 
-
 // FillPolygon - changed region is the bounding rect around the polygon,
 // clipped by pCompositeClip
 
-static void vncHooksFillPolygon(DrawablePtr pDrawable, GCPtr pGC, int shape,
-                                int mode, int count, DDXPointPtr pts)
-{
+static void vncHooksFillPolygon(DrawablePtr pDrawable, GCPtr pGC, int shape, int mode, int count, DDXPointPtr pts) {
   int minX, minY, maxX, maxY;
   int i;
 
@@ -2014,7 +1873,7 @@ static void vncHooksFillPolygon(DrawablePtr pDrawable, GCPtr pGC, int shape,
   GC_OP_PROLOGUE(pGC, FillPolygon);
 
   if (count == 0) {
-    (*pGC->ops->FillPolygon) (pDrawable, pGC, shape, mode, count, pts);
+    (*pGC->ops->FillPolygon)(pDrawable, pGC, shape, mode, count, pts);
     goto out;
   }
 
@@ -2030,17 +1889,25 @@ static void vncHooksFillPolygon(DrawablePtr pDrawable, GCPtr pGC, int shape,
     for (i = 1; i < count; i++) {
       x += pts[i].x;
       y += pts[i].y;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
+      if (x < minX)
+        minX = x;
+      if (x > maxX)
+        maxX = x;
+      if (y < minY)
+        minY = y;
+      if (y > maxY)
+        maxY = y;
     }
   } else {
     for (i = 1; i < count; i++) {
-      if (pts[i].x < minX) minX = pts[i].x;
-      if (pts[i].x > maxX) maxX = pts[i].x;
-      if (pts[i].y < minY) minY = pts[i].y;
-      if (pts[i].y > maxY) maxY = pts[i].y;
+      if (pts[i].x < minX)
+        minX = pts[i].x;
+      if (pts[i].x > maxX)
+        maxX = pts[i].x;
+      if (pts[i].y < minY)
+        minY = pts[i].y;
+      if (pts[i].y > maxY)
+        maxY = pts[i].y;
     }
   }
 
@@ -2052,7 +1919,7 @@ static void vncHooksFillPolygon(DrawablePtr pDrawable, GCPtr pGC, int shape,
   RegionInitBoxes(&reg, &box, 1);
   RegionIntersect(&reg, &reg, pGC->pCompositeClip);
 
-  (*pGC->ops->FillPolygon) (pDrawable, pGC, shape, mode, count, pts);
+  (*pGC->ops->FillPolygon)(pDrawable, pGC, shape, mode, count, pts);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -2066,9 +1933,7 @@ out:
 // pCompositeClip.  If there are more than MAX_RECTS_PER_OP rectangles, just
 // use the bounding rect of all the rectangles.
 
-static void vncHooksPolyFillRect(DrawablePtr pDrawable, GCPtr pGC, int nrects,
-                                 xRectangle *rects)
-{
+static void vncHooksPolyFillRect(DrawablePtr pDrawable, GCPtr pGC, int nrects, xRectangle* rects) {
   xRectangle regRects[MAX_RECTS_PER_OP];
   int nRegRects;
   int rectX1, rectY1, rectX2, rectY2;
@@ -2080,7 +1945,7 @@ static void vncHooksPolyFillRect(DrawablePtr pDrawable, GCPtr pGC, int nrects,
   GC_OP_PROLOGUE(pGC, PolyFillRect);
 
   if (nrects == 0) {
-    (*pGC->ops->PolyFillRect) (pDrawable, pGC, nrects, rects);
+    (*pGC->ops->PolyFillRect)(pDrawable, pGC, nrects, rects);
     goto out;
   }
 
@@ -2099,10 +1964,14 @@ static void vncHooksPolyFillRect(DrawablePtr pDrawable, GCPtr pGC, int nrects,
       rectY1 = pDrawable->y + rects[i].y;
       rectX2 = pDrawable->x + rects[i].x + rects[i].width;
       rectY2 = pDrawable->y + rects[i].y + rects[i].height;
-      if (rectX1 < minX) minX = rectX1;
-      if (rectY1 < minY) minY = rectY1;
-      if (rectX2 > maxX) maxX = rectX2;
-      if (rectY2 > maxY) maxY = rectY2;
+      if (rectX1 < minX)
+        minX = rectX1;
+      if (rectY1 < minY)
+        minY = rectY1;
+      if (rectX2 > maxX)
+        maxX = rectX2;
+      if (rectY2 > maxY)
+        maxY = rectY2;
     }
   }
 
@@ -2117,7 +1986,7 @@ static void vncHooksPolyFillRect(DrawablePtr pDrawable, GCPtr pGC, int nrects,
   reg = RECTS_TO_REGION(pGC->pScreen, nRegRects, regRects, CT_NONE);
   RegionIntersect(reg, reg, pGC->pCompositeClip);
 
-  (*pGC->ops->PolyFillRect) (pDrawable, pGC, nrects, rects);
+  (*pGC->ops->PolyFillRect)(pDrawable, pGC, nrects, rects);
 
   add_changed(pGC->pScreen, reg);
 
@@ -2131,9 +2000,7 @@ out:
 // clipped by pCompositeClip.  If there are more than MAX_RECTS_PER_OP arcs,
 // just use the bounding rect of all the arcs.
 
-static void vncHooksPolyFillArc(DrawablePtr pDrawable, GCPtr pGC, int narcs,
-                                xArc *arcs)
-{
+static void vncHooksPolyFillArc(DrawablePtr pDrawable, GCPtr pGC, int narcs, xArc* arcs) {
   xRectangle regRects[MAX_RECTS_PER_OP];
   int nRegRects;
 
@@ -2149,7 +2016,7 @@ static void vncHooksPolyFillArc(DrawablePtr pDrawable, GCPtr pGC, int narcs,
   GC_OP_PROLOGUE(pGC, PolyFillArc);
 
   if (narcs == 0) {
-    (*pGC->ops->PolyFillArc) (pDrawable, pGC, narcs, arcs);
+    (*pGC->ops->PolyFillArc)(pDrawable, pGC, narcs, arcs);
     goto out;
   }
 
@@ -2174,10 +2041,14 @@ static void vncHooksPolyFillArc(DrawablePtr pDrawable, GCPtr pGC, int narcs,
       rectY1 = pDrawable->y + arcs[i].y - extra;
       rectX2 = pDrawable->x + arcs[i].x + arcs[i].width + lw;
       rectY2 = pDrawable->y + arcs[i].y + arcs[i].height + lw;
-      if (rectX1 < minX) minX = rectX1;
-      if (rectY1 < minY) minY = rectY1;
-      if (rectX2 > maxX) maxX = rectX2;
-      if (rectY2 > maxY) maxY = rectY2;
+      if (rectX1 < minX)
+        minX = rectX1;
+      if (rectY1 < minY)
+        minY = rectY1;
+      if (rectX2 > maxX)
+        maxX = rectX2;
+      if (rectY2 > maxY)
+        maxY = rectY2;
     }
   }
 
@@ -2192,7 +2063,7 @@ static void vncHooksPolyFillArc(DrawablePtr pDrawable, GCPtr pGC, int narcs,
   reg = RECTS_TO_REGION(pGC->pScreen, nRegRects, regRects, CT_NONE);
   RegionIntersect(reg, reg, pGC->pCompositeClip);
 
-  (*pGC->ops->PolyFillArc) (pDrawable, pGC, narcs, arcs);
+  (*pGC->ops->PolyFillArc)(pDrawable, pGC, narcs, arcs);
 
   add_changed(pGC->pScreen, reg);
 
@@ -2205,29 +2076,24 @@ out:
 // GetTextBoundingRect - calculate a bounding rectangle around n chars of a
 // font.  Not particularly accurate, but good enough.
 
-static void GetTextBoundingRect(DrawablePtr pDrawable, FontPtr font, int x,
-                                int y, int nchars, BoxPtr box)
-{
+static void GetTextBoundingRect(DrawablePtr pDrawable, FontPtr font, int x, int y, int nchars, BoxPtr box) {
   int ascent = max(FONTASCENT(font), FONTMAXBOUNDS(font, ascent));
   int descent = max(FONTDESCENT(font), FONTMAXBOUNDS(font, descent));
-  int charWidth = max(FONTMAXBOUNDS(font,rightSideBearing),
-                      FONTMAXBOUNDS(font,characterWidth));
+  int charWidth = max(FONTMAXBOUNDS(font, rightSideBearing), FONTMAXBOUNDS(font, characterWidth));
 
   box->x1 = pDrawable->x + x;
   box->y1 = pDrawable->y + y - ascent;
   box->x2 = box->x1 + charWidth * nchars;
   box->y2 = box->y1 + ascent + descent;
 
-  if (FONTMINBOUNDS(font,leftSideBearing) < 0)
-    box->x1 += FONTMINBOUNDS(font,leftSideBearing);
+  if (FONTMINBOUNDS(font, leftSideBearing) < 0)
+    box->x1 += FONTMINBOUNDS(font, leftSideBearing);
 }
 
 // PolyText8 - changed region is bounding rect around count chars, clipped by
 // pCompositeClip
 
-static int vncHooksPolyText8(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
-                             int count, char *chars)
-{
+static int vncHooksPolyText8(DrawablePtr pDrawable, GCPtr pGC, int x, int y, int count, char* chars) {
   int ret;
   BoxRec box;
   RegionRec reg;
@@ -2235,7 +2101,7 @@ static int vncHooksPolyText8(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
   GC_OP_PROLOGUE(pGC, PolyText8);
 
   if (count == 0) {
-    ret = (*pGC->ops->PolyText8) (pDrawable, pGC, x, y, count, chars);
+    ret = (*pGC->ops->PolyText8)(pDrawable, pGC, x, y, count, chars);
     goto out;
   }
 
@@ -2244,7 +2110,7 @@ static int vncHooksPolyText8(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
   RegionInitBoxes(&reg, &box, 1);
   RegionIntersect(&reg, &reg, pGC->pCompositeClip);
 
-  ret = (*pGC->ops->PolyText8) (pDrawable, pGC, x, y, count, chars);
+  ret = (*pGC->ops->PolyText8)(pDrawable, pGC, x, y, count, chars);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -2259,9 +2125,7 @@ out:
 // PolyText16 - changed region is bounding rect around count chars, clipped by
 // pCompositeClip
 
-static int vncHooksPolyText16(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
-                              int count, unsigned short *chars)
-{
+static int vncHooksPolyText16(DrawablePtr pDrawable, GCPtr pGC, int x, int y, int count, unsigned short* chars) {
   int ret;
   BoxRec box;
   RegionRec reg;
@@ -2269,7 +2133,7 @@ static int vncHooksPolyText16(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
   GC_OP_PROLOGUE(pGC, PolyText16);
 
   if (count == 0) {
-    ret = (*pGC->ops->PolyText16) (pDrawable, pGC, x, y, count, chars);
+    ret = (*pGC->ops->PolyText16)(pDrawable, pGC, x, y, count, chars);
     goto out;
   }
 
@@ -2278,7 +2142,7 @@ static int vncHooksPolyText16(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
   RegionInitBoxes(&reg, &box, 1);
   RegionIntersect(&reg, &reg, pGC->pCompositeClip);
 
-  ret = (*pGC->ops->PolyText16) (pDrawable, pGC, x, y, count, chars);
+  ret = (*pGC->ops->PolyText16)(pDrawable, pGC, x, y, count, chars);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -2293,16 +2157,14 @@ out:
 // ImageText8 - changed region is bounding rect around count chars, clipped by
 // pCompositeClip
 
-static void vncHooksImageText8(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
-                               int count, char *chars)
-{
+static void vncHooksImageText8(DrawablePtr pDrawable, GCPtr pGC, int x, int y, int count, char* chars) {
   BoxRec box;
   RegionRec reg;
 
   GC_OP_PROLOGUE(pGC, ImageText8);
 
   if (count == 0) {
-    (*pGC->ops->ImageText8) (pDrawable, pGC, x, y, count, chars);
+    (*pGC->ops->ImageText8)(pDrawable, pGC, x, y, count, chars);
     goto out;
   }
 
@@ -2311,7 +2173,7 @@ static void vncHooksImageText8(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
   RegionInitBoxes(&reg, &box, 1);
   RegionIntersect(&reg, &reg, pGC->pCompositeClip);
 
-  (*pGC->ops->ImageText8) (pDrawable, pGC, x, y, count, chars);
+  (*pGC->ops->ImageText8)(pDrawable, pGC, x, y, count, chars);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -2324,16 +2186,14 @@ out:
 // ImageText16 - changed region is bounding rect around count chars, clipped by
 // pCompositeClip
 
-static void vncHooksImageText16(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
-                                int count, unsigned short *chars)
-{
+static void vncHooksImageText16(DrawablePtr pDrawable, GCPtr pGC, int x, int y, int count, unsigned short* chars) {
   BoxRec box;
   RegionRec reg;
 
   GC_OP_PROLOGUE(pGC, ImageText16);
 
   if (count == 0) {
-    (*pGC->ops->ImageText16) (pDrawable, pGC, x, y, count, chars);
+    (*pGC->ops->ImageText16)(pDrawable, pGC, x, y, count, chars);
     goto out;
   }
 
@@ -2342,7 +2202,7 @@ static void vncHooksImageText16(DrawablePtr pDrawable, GCPtr pGC, int x, int y,
   RegionInitBoxes(&reg, &box, 1);
   RegionIntersect(&reg, &reg, pGC->pCompositeClip);
 
-  (*pGC->ops->ImageText16) (pDrawable, pGC, x, y, count, chars);
+  (*pGC->ops->ImageText16)(pDrawable, pGC, x, y, count, chars);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -2355,17 +2215,15 @@ out:
 // ImageGlyphBlt - changed region is bounding rect around nglyph chars, clipped
 // by pCompositeClip
 
-static void vncHooksImageGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x,
-                                  int y, unsigned int nglyph,
-                                  CharInfoPtr *ppci, void * pglyphBase)
-{
+static void vncHooksImageGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x, int y, unsigned int nglyph,
+                                  CharInfoPtr* ppci, void* pglyphBase) {
   BoxRec box;
   RegionRec reg;
 
   GC_OP_PROLOGUE(pGC, ImageGlyphBlt);
 
   if (nglyph == 0) {
-    (*pGC->ops->ImageGlyphBlt) (pDrawable, pGC, x, y, nglyph, ppci,pglyphBase);
+    (*pGC->ops->ImageGlyphBlt)(pDrawable, pGC, x, y, nglyph, ppci, pglyphBase);
     goto out;
   }
 
@@ -2374,7 +2232,7 @@ static void vncHooksImageGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x,
   RegionInitBoxes(&reg, &box, 1);
   RegionIntersect(&reg, &reg, pGC->pCompositeClip);
 
-  (*pGC->ops->ImageGlyphBlt) (pDrawable, pGC, x, y, nglyph, ppci, pglyphBase);
+  (*pGC->ops->ImageGlyphBlt)(pDrawable, pGC, x, y, nglyph, ppci, pglyphBase);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -2387,17 +2245,15 @@ out:
 // PolyGlyphBlt - changed region is bounding rect around nglyph chars, clipped
 // by pCompositeClip
 
-static void vncHooksPolyGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x,
-                                 int y, unsigned int nglyph,
-                                 CharInfoPtr *ppci, void * pglyphBase)
-{
+static void vncHooksPolyGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x, int y, unsigned int nglyph, CharInfoPtr* ppci,
+                                 void* pglyphBase) {
   BoxRec box;
   RegionRec reg;
 
   GC_OP_PROLOGUE(pGC, PolyGlyphBlt);
 
   if (nglyph == 0) {
-    (*pGC->ops->PolyGlyphBlt) (pDrawable, pGC, x, y, nglyph, ppci,pglyphBase);
+    (*pGC->ops->PolyGlyphBlt)(pDrawable, pGC, x, y, nglyph, ppci, pglyphBase);
     goto out;
   }
 
@@ -2406,7 +2262,7 @@ static void vncHooksPolyGlyphBlt(DrawablePtr pDrawable, GCPtr pGC, int x,
   RegionInitBoxes(&reg, &box, 1);
   RegionIntersect(&reg, &reg, pGC->pCompositeClip);
 
-  (*pGC->ops->PolyGlyphBlt) (pDrawable, pGC, x, y, nglyph, ppci, pglyphBase);
+  (*pGC->ops->PolyGlyphBlt)(pDrawable, pGC, x, y, nglyph, ppci, pglyphBase);
 
   add_changed(pGC->pScreen, &reg);
 
@@ -2419,10 +2275,7 @@ out:
 // PushPixels - changed region is the given rectangle, clipped by
 // pCompositeClip
 
-static void vncHooksPushPixels(GCPtr pGC, PixmapPtr pBitMap,
-                               DrawablePtr pDrawable, int w, int h, int x,
-                               int y)
-{
+static void vncHooksPushPixels(GCPtr pGC, PixmapPtr pBitMap, DrawablePtr pDrawable, int w, int h, int x, int y) {
   BoxRec box;
   RegionRec reg;
 
@@ -2436,7 +2289,7 @@ static void vncHooksPushPixels(GCPtr pGC, PixmapPtr pBitMap,
   RegionInitBoxes(&reg, &box, 1);
   RegionIntersect(&reg, &reg, pGC->pCompositeClip);
 
-  (*pGC->ops->PushPixels) (pGC, pBitMap, pDrawable, w, h, x, y);
+  (*pGC->ops->PushPixels)(pGC, pBitMap, pDrawable, w, h, x, y);
 
   add_changed(pGC->pScreen, &reg);
 

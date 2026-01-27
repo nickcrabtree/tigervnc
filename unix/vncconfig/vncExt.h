@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -47,16 +47,14 @@ char** XVncExtListParams(Display* dpy, int* nParams);
 void XVncExtFreeParamList(char** list);
 Bool XVncExtSelectInput(Display* dpy, Window w, int mask);
 Bool XVncExtConnect(Display* dpy, const char* hostAndPort, Bool viewOnly);
-Bool XVncExtGetQueryConnect(Display* dpy, char** addr,
-                            char** user, int* timeout, void** opaqueId);
+Bool XVncExtGetQueryConnect(Display* dpy, char** addr, char** user, int* timeout, void** opaqueId);
 Bool XVncExtApproveConnect(Display* dpy, void* opaqueId, int approve);
-
 
 typedef struct {
   int type;
   unsigned long serial;
   Bool send_event;
-  Display *display;
+  Display* display;
   Window window;
 } XVncExtQueryConnectEvent;
 
@@ -76,19 +74,18 @@ typedef struct {
 #define sz_xVncExtSetParamReq 8
 
 typedef struct {
- BYTE type; /* X_Reply */
- BYTE success;
- CARD16 sequenceNumber;
- CARD32 length;
- CARD32 pad0;
- CARD32 pad1;
- CARD32 pad2;
- CARD32 pad3;
- CARD32 pad4;
- CARD32 pad5;
+  BYTE type; /* X_Reply */
+  BYTE success;
+  CARD16 sequenceNumber;
+  CARD32 length;
+  CARD32 pad0;
+  CARD32 pad1;
+  CARD32 pad2;
+  CARD32 pad3;
+  CARD32 pad4;
+  CARD32 pad5;
 } xVncExtSetParamReply;
 #define sz_xVncExtSetParamReply 32
-
 
 typedef struct {
   CARD8 reqType;       /* always VncExtReqCode */
@@ -101,20 +98,19 @@ typedef struct {
 #define sz_xVncExtGetParamReq 8
 
 typedef struct {
- BYTE type; /* X_Reply */
- BYTE success;
- CARD16 sequenceNumber;
- CARD32 length;
- CARD16 valueLen;
- CARD16 pad0;
- CARD32 pad1;
- CARD32 pad2;
- CARD32 pad3;
- CARD32 pad4;
- CARD32 pad5;
+  BYTE type; /* X_Reply */
+  BYTE success;
+  CARD16 sequenceNumber;
+  CARD32 length;
+  CARD16 valueLen;
+  CARD16 pad0;
+  CARD32 pad1;
+  CARD32 pad2;
+  CARD32 pad3;
+  CARD32 pad4;
+  CARD32 pad5;
 } xVncExtGetParamReply;
 #define sz_xVncExtGetParamReply 32
-
 
 typedef struct {
   CARD8 reqType;       /* always VncExtReqCode */
@@ -127,20 +123,19 @@ typedef struct {
 #define sz_xVncExtGetParamDescReq 8
 
 typedef struct {
- BYTE type; /* X_Reply */
- BYTE success;
- CARD16 sequenceNumber;
- CARD32 length;
- CARD16 descLen;
- CARD16 pad0;
- CARD32 pad1;
- CARD32 pad2;
- CARD32 pad3;
- CARD32 pad4;
- CARD32 pad5;
+  BYTE type; /* X_Reply */
+  BYTE success;
+  CARD16 sequenceNumber;
+  CARD32 length;
+  CARD16 descLen;
+  CARD16 pad0;
+  CARD32 pad1;
+  CARD32 pad2;
+  CARD32 pad3;
+  CARD32 pad4;
+  CARD32 pad5;
 } xVncExtGetParamDescReply;
 #define sz_xVncExtGetParamDescReply 32
-
 
 typedef struct {
   CARD8 reqType;       /* always VncExtReqCode */
@@ -150,20 +145,19 @@ typedef struct {
 #define sz_xVncExtListParamsReq 4
 
 typedef struct {
- BYTE type; /* X_Reply */
- BYTE pad0;
- CARD16 sequenceNumber;
- CARD32 length;
- CARD16 nParams;
- CARD16 pad1;
- CARD32 pad2;
- CARD32 pad3;
- CARD32 pad4;
- CARD32 pad5;
- CARD32 pad6;
+  BYTE type; /* X_Reply */
+  BYTE pad0;
+  CARD16 sequenceNumber;
+  CARD32 length;
+  CARD16 nParams;
+  CARD16 pad1;
+  CARD32 pad2;
+  CARD32 pad3;
+  CARD32 pad4;
+  CARD32 pad5;
+  CARD32 pad6;
 } xVncExtListParamsReply;
 #define sz_xVncExtListParamsReply 32
-
 
 typedef struct {
   CARD8 reqType;       /* always VncExtReqCode */
@@ -173,7 +167,6 @@ typedef struct {
   CARD32 mask;
 } xVncExtSelectInputReq;
 #define sz_xVncExtSelectInputReq 12
-
 
 typedef struct {
   CARD8 reqType;       /* always VncExtReqCode */
@@ -186,19 +179,18 @@ typedef struct {
 #define sz_xVncExtConnectReq 8
 
 typedef struct {
- BYTE type; /* X_Reply */
- BYTE success;
- CARD16 sequenceNumber;
- CARD32 length;
- CARD32 pad0;
- CARD32 pad1;
- CARD32 pad2;
- CARD32 pad3;
- CARD32 pad4;
- CARD32 pad5;
+  BYTE type; /* X_Reply */
+  BYTE success;
+  CARD16 sequenceNumber;
+  CARD32 length;
+  CARD32 pad0;
+  CARD32 pad1;
+  CARD32 pad2;
+  CARD32 pad3;
+  CARD32 pad4;
+  CARD32 pad5;
 } xVncExtConnectReply;
 #define sz_xVncExtConnectReply 32
-
 
 typedef struct {
   CARD8 reqType;       /* always VncExtReqCode */
@@ -208,16 +200,16 @@ typedef struct {
 #define sz_xVncExtGetQueryConnectReq 4
 
 typedef struct {
- BYTE type; /* X_Reply */
- BYTE pad0;
- CARD16 sequenceNumber;
- CARD32 length;
- CARD32 addrLen;
- CARD32 userLen;
- CARD32 timeout;
- CARD32 opaqueId;
- CARD32 pad4;
- CARD32 pad5;
+  BYTE type; /* X_Reply */
+  BYTE pad0;
+  CARD16 sequenceNumber;
+  CARD32 length;
+  CARD32 addrLen;
+  CARD32 userLen;
+  CARD32 timeout;
+  CARD32 opaqueId;
+  CARD32 pad4;
+  CARD32 pad5;
 } xVncExtGetQueryConnectReply;
 #define sz_xVncExtGetQueryConnectReply 32
 
@@ -232,10 +224,8 @@ typedef struct {
 } xVncExtApproveConnectReq;
 #define sz_xVncExtApproveConnectReq 12
 
-
-
 typedef struct {
-  BYTE type;    /* always eventBase + VncExtQueryConnectNotify */
+  BYTE type; /* always eventBase + VncExtQueryConnectNotify */
   BYTE pad0;
   CARD16 sequenceNumber;
   CARD32 window;

@@ -25,12 +25,13 @@
 
 class PipeWirePixelBuffer;
 
-namespace rfb { class VNCServer; }
+namespace rfb {
+class VNCServer;
+}
 
 class RemoteDesktop;
 
-class PortalDesktop : public rfb::SDesktop
-{
+class PortalDesktop : public rfb::SDesktop {
 public:
   PortalDesktop();
   virtual ~PortalDesktop();
@@ -39,14 +40,11 @@ public:
   void init(rfb::VNCServer* vs) override;
   void start() override;
   void stop() override;
-  void queryConnection(network::Socket* sock,
-                       const char* userName) override;
+  void queryConnection(network::Socket* sock, const char* userName) override;
   void terminate() override;
-  unsigned int setScreenLayout(int fb_width, int fb_height,
-                               const rfb::ScreenSet& layout) override;
+  unsigned int setScreenLayout(int fb_width, int fb_height, const rfb::ScreenSet& layout) override;
   void keyEvent(uint32_t keysym, uint32_t keycode, bool down) override;
-  void pointerEvent(const core::Point& pos,
-                    uint16_t buttonMask) override;
+  void pointerEvent(const core::Point& pos, uint16_t buttonMask) override;
 
   // Check if portals implementations are available
   static bool available();

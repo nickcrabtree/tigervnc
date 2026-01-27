@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -35,19 +35,14 @@
 class TXButton;
 class TXButtonCallback {
 public:
-  virtual void buttonActivate(TXButton* button)=0;
+  virtual void buttonActivate(TXButton* button) = 0;
 };
-
 
 class TXButton : public TXWindow, public TXEventHandler {
 public:
-
-  TXButton(Display* dpy_, const char* text_,
-           TXButtonCallback* cb_=nullptr,
-           TXWindow* parent_=nullptr, int w=1, int h=1)
-    : TXWindow(dpy_, w, h, parent_), cb(cb_), down(false),
-      disabled_(false)
-  {
+  TXButton(Display* dpy_, const char* text_, TXButtonCallback* cb_ = nullptr, TXWindow* parent_ = nullptr, int w = 1,
+           int h = 1)
+      : TXWindow(dpy_, w, h, parent_), cb(cb_), down(false), disabled_(false) {
     setEventHandler(this);
     setText(text_);
     gc = XCreateGC(dpy, win(), 0, nullptr);
@@ -64,8 +59,8 @@ public:
     text = text_;
     int textWidth = XTextWidth(defaultFS, text.data(), text.size());
     int textHeight = (defaultFS->ascent + defaultFS->descent);
-    int newWidth = std::max(width(), textWidth + xPad*2 + bevel*2);
-    int newHeight = std::max(height(), textHeight + yPad*2 + bevel*2);
+    int newWidth = std::max(width(), textWidth + xPad * 2 + bevel * 2);
+    int newHeight = std::max(height(), textHeight + yPad * 2 + bevel * 2);
     if (width() < newWidth || height() < newHeight) {
       resize(newWidth, newHeight);
     }
@@ -73,20 +68,25 @@ public:
 
   // disabled() sets or queries the disabled state of the checkbox.  A disabled
   // checkbox cannot be changed via the user interface.
-  void disabled(bool b) { disabled_ = b; paint(); }
-  bool disabled() { return disabled_; }
+  void disabled(bool b) {
+    disabled_ = b;
+    paint();
+  }
+  bool disabled() {
+    return disabled_;
+  }
 
 private:
-
   void paint() {
     int tw = XTextWidth(defaultFS, text.data(), text.size());
     int startx = (width() - tw) / 2;
     int starty = (height() + defaultFS->ascent - defaultFS->descent) / 2;
     if (down || disabled_) {
-      drawBevel(gc, 0, 0, width(), height(), bevel, defaultBg, darkBg,lightBg);
-      startx++; starty++;
+      drawBevel(gc, 0, 0, width(), height(), bevel, defaultBg, darkBg, lightBg);
+      startx++;
+      starty++;
     } else {
-      drawBevel(gc, 0, 0, width(), height(), bevel, defaultBg, lightBg,darkBg);
+      drawBevel(gc, 0, 0, width(), height(), bevel, defaultBg, lightBg, darkBg);
     }
 
     XSetForeground(dpy, gc, disabled_ ? disabledFg : defaultFg);
@@ -105,12 +105,13 @@ private:
       }
       break;
     case ButtonRelease:
-      if (!down) break;
+      if (!down)
+        break;
       down = false;
       paint();
-      if (ev->xbutton.x >= 0 && ev->xbutton.x < width() &&
-          ev->xbutton.y >= 0 && ev->xbutton.y < height()) {
-        if (cb) cb->buttonActivate(this);
+      if (ev->xbutton.x >= 0 && ev->xbutton.x < width() && ev->xbutton.y >= 0 && ev->xbutton.y < height()) {
+        if (cb)
+          cb->buttonActivate(this);
       }
       break;
     }

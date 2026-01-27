@@ -1,15 +1,15 @@
 /* Copyright 2018 Peter Astrand <astrand@cendio.se> for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -29,22 +29,19 @@
 #include "RandrGlue.h"
 
 typedef struct _vncGlueContext {
-  Display *dpy;
-  XRRScreenResources *res;
+  Display* dpy;
+  XRRScreenResources* res;
 } vncGlueContext;
 
 static vncGlueContext randrGlueContext;
 
-void vncSetGlueContext(Display *dpy, void *res)
-{
+void vncSetGlueContext(Display* dpy, void* res) {
   randrGlueContext.dpy = dpy;
-  randrGlueContext.res = (XRRScreenResources *)res;
+  randrGlueContext.res = (XRRScreenResources*)res;
 }
 
-static RRMode vncRandRGetMatchingMode(XRROutputInfo *output,
-                                       unsigned int width, unsigned int height)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+static RRMode vncRandRGetMatchingMode(XRROutputInfo* output, unsigned int width, unsigned int height) {
+  vncGlueContext* ctx = &randrGlueContext;
 
   /*
    * We're not going to change which modes are preferred, but let's
@@ -52,7 +49,7 @@ static RRMode vncRandRGetMatchingMode(XRROutputInfo *output,
    */
 
   if (output->crtc) {
-    XRRCrtcInfo *crtc;
+    XRRCrtcInfo* crtc;
     unsigned int swap;
 
     crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtc);
@@ -73,8 +70,7 @@ static RRMode vncRandRGetMatchingMode(XRROutputInfo *output,
 
   for (int i = 0; i < ctx->res->nmode; i++) {
     for (int j = 0; j < output->nmode; j++) {
-      if ((output->modes[j] == ctx->res->modes[i].id) &&
-          (ctx->res->modes[i].width == width) &&
+      if ((output->modes[j] == ctx->res->modes[i].id) && (ctx->res->modes[i].width == width) &&
           (ctx->res->modes[i].height == height)) {
         return ctx->res->modes[i].id;
       }
@@ -84,26 +80,21 @@ static RRMode vncRandRGetMatchingMode(XRROutputInfo *output,
   return None;
 }
 
-int vncGetScreenWidth(void)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+int vncGetScreenWidth(void) {
+  vncGlueContext* ctx = &randrGlueContext;
   return DisplayWidth(ctx->dpy, DefaultScreen(ctx->dpy));
 }
 
-int vncGetScreenHeight(void)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+int vncGetScreenHeight(void) {
+  vncGlueContext* ctx = &randrGlueContext;
   return DisplayHeight(ctx->dpy, DefaultScreen(ctx->dpy));
 }
 
-int vncRandRIsValidScreenSize(int width, int height)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+int vncRandRIsValidScreenSize(int width, int height) {
+  vncGlueContext* ctx = &randrGlueContext;
   /* Assert size ranges */
   int minwidth, minheight, maxwidth, maxheight;
-  int ret = XRRGetScreenSizeRange(ctx->dpy, DefaultRootWindow(ctx->dpy),
-                                  &minwidth, &minheight,
-                                  &maxwidth, &maxheight);
+  int ret = XRRGetScreenSizeRange(ctx->dpy, DefaultRootWindow(ctx->dpy), &minwidth, &minheight, &maxwidth, &maxheight);
   if (!ret) {
     return 0;
   }
@@ -117,9 +108,8 @@ int vncRandRIsValidScreenSize(int width, int height)
   return 1;
 }
 
-int vncRandRResizeScreen(int width, int height)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+int vncRandRResizeScreen(int width, int height) {
+  vncGlueContext* ctx = &randrGlueContext;
 
   int mwidth, mheight;
 
@@ -128,46 +118,39 @@ int vncRandRResizeScreen(int width, int height)
   mwidth = width * 254 / 96 / 10;
   mheight = height * 254 / 96 / 10;
 
-  XRRSetScreenSize(ctx->dpy, DefaultRootWindow(ctx->dpy),
-                   width, height, mwidth, mheight);
+  XRRSetScreenSize(ctx->dpy, DefaultRootWindow(ctx->dpy), width, height, mwidth, mheight);
 
   return 1;
 }
 
-void vncRandRUpdateSetTime(void)
-{
+void vncRandRUpdateSetTime(void) {}
 
-}
-
-int vncRandRHasOutputClones(void)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+int vncRandRHasOutputClones(void) {
+  vncGlueContext* ctx = &randrGlueContext;
   for (int i = 0; i < ctx->res->ncrtc; i++) {
-    XRRCrtcInfo *crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, ctx->res->crtcs[i]);
+    XRRCrtcInfo* crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, ctx->res->crtcs[i]);
     if (!crtc) {
       return 0;
     }
     if (crtc->noutput > 1) {
-      XRRFreeCrtcInfo (crtc);
+      XRRFreeCrtcInfo(crtc);
       return 1;
     }
-    XRRFreeCrtcInfo (crtc);
+    XRRFreeCrtcInfo(crtc);
   }
   return 0;
 }
 
-int vncRandRGetOutputCount(void)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+int vncRandRGetOutputCount(void) {
+  vncGlueContext* ctx = &randrGlueContext;
   return ctx->res->noutput;
 }
 
-int vncRandRGetAvailableOutputs(void)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+int vncRandRGetAvailableOutputs(void) {
+  vncGlueContext* ctx = &randrGlueContext;
 
   int availableOutputs;
-  RRCrtc *usedCrtcs;
+  RRCrtc* usedCrtcs;
   int numUsed;
 
   int i, j, k;
@@ -183,8 +166,8 @@ int vncRandRGetAvailableOutputs(void)
    */
   availableOutputs = 0;
   numUsed = 0;
-  for (i = 0;i < ctx->res->noutput; i++) {
-    XRROutputInfo *output;
+  for (i = 0; i < ctx->res->noutput; i++) {
+    XRROutputInfo* output;
 
     output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[i]);
     if (!output) {
@@ -194,8 +177,8 @@ int vncRandRGetAvailableOutputs(void)
     if (output->crtc != None)
       availableOutputs++;
     else {
-      for (j = 0;j < output->ncrtc;j++) {
-        XRRCrtcInfo *crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtcs[j]);
+      for (j = 0; j < output->ncrtc; j++) {
+        XRRCrtcInfo* crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtcs[j]);
         if (!crtc) {
           continue;
         }
@@ -205,7 +188,7 @@ int vncRandRGetAvailableOutputs(void)
         }
         XRRFreeCrtcInfo(crtc);
 
-        for (k = 0;k < numUsed;k++) {
+        for (k = 0; k < numUsed; k++) {
           if (usedCrtcs[k] == output->crtcs[j])
             break;
         }
@@ -228,22 +211,20 @@ int vncRandRGetAvailableOutputs(void)
   return availableOutputs;
 }
 
-char *vncRandRGetOutputName(int outputIdx)
-{
-  vncGlueContext *ctx = &randrGlueContext;
-  XRROutputInfo *output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[outputIdx]);
+char* vncRandRGetOutputName(int outputIdx) {
+  vncGlueContext* ctx = &randrGlueContext;
+  XRROutputInfo* output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[outputIdx]);
   if (!output) {
     return strdup("");
   }
-  char *ret = strdup(output->name);
+  char* ret = strdup(output->name);
   XRRFreeOutputInfo(output);
   return ret;
 }
 
-int vncRandRIsOutputEnabled(int outputIdx)
-{
-  vncGlueContext *ctx = &randrGlueContext;
-  XRROutputInfo *output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[outputIdx]);
+int vncRandRIsOutputEnabled(int outputIdx) {
+  vncGlueContext* ctx = &randrGlueContext;
+  XRROutputInfo* output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[outputIdx]);
   if (!output) {
     return 0;
   }
@@ -252,7 +233,7 @@ int vncRandRIsOutputEnabled(int outputIdx)
     XRRFreeOutputInfo(output);
     return 0;
   }
-  XRRCrtcInfo *crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtc);
+  XRRCrtcInfo* crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtc);
   XRRFreeOutputInfo(output);
   if (!crtc) {
     return 0;
@@ -265,11 +246,10 @@ int vncRandRIsOutputEnabled(int outputIdx)
   return 1;
 }
 
-int vncRandRIsOutputUsable(int outputIdx)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+int vncRandRIsOutputUsable(int outputIdx) {
+  vncGlueContext* ctx = &randrGlueContext;
 
-  XRROutputInfo *output;
+  XRROutputInfo* output;
   int i;
 
   output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[outputIdx]);
@@ -283,8 +263,8 @@ int vncRandRIsOutputUsable(int outputIdx)
   }
 
   /* Any unused CRTCs? */
-  for (i = 0;i < output->ncrtc;i++) {
-    XRRCrtcInfo *crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtcs[i]);
+  for (i = 0; i < output->ncrtc; i++) {
+    XRRCrtcInfo* crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtcs[i]);
     if (crtc->noutput == 0) {
       XRRFreeOutputInfo(output);
       XRRFreeCrtcInfo(crtc);
@@ -297,10 +277,9 @@ int vncRandRIsOutputUsable(int outputIdx)
   return 0;
 }
 
-int vncRandRIsOutputConnected(int outputIdx)
-{
-  vncGlueContext *ctx = &randrGlueContext;
-  XRROutputInfo *output;
+int vncRandRIsOutputConnected(int outputIdx) {
+  vncGlueContext* ctx = &randrGlueContext;
+  XRROutputInfo* output;
 
   output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[outputIdx]);
   if (!output) {
@@ -312,10 +291,9 @@ int vncRandRIsOutputConnected(int outputIdx)
   return ret;
 }
 
-int vncRandRCheckOutputMode(int outputIdx, int width, int height)
-{
-  vncGlueContext *ctx = &randrGlueContext;
-  XRROutputInfo *output;
+int vncRandRCheckOutputMode(int outputIdx, int width, int height) {
+  vncGlueContext* ctx = &randrGlueContext;
+  XRROutputInfo* output;
   RRMode mode;
 
   output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[outputIdx]);
@@ -332,14 +310,13 @@ int vncRandRCheckOutputMode(int outputIdx, int width, int height)
   return 1;
 }
 
-int vncRandRDisableOutput(int outputIdx)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+int vncRandRDisableOutput(int outputIdx) {
+  vncGlueContext* ctx = &randrGlueContext;
   RRCrtc crtcid;
   int i;
   int move = 0;
 
-  XRROutputInfo *output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[outputIdx]);
+  XRROutputInfo* output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[outputIdx]);
   if (!output) {
     return 0;
   }
@@ -350,7 +327,7 @@ int vncRandRDisableOutput(int outputIdx)
     return 1;
   }
 
-  XRRCrtcInfo *crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtc);
+  XRRCrtcInfo* crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtc);
   XRRFreeOutputInfo(output);
   if (!crtc) {
     return 0;
@@ -363,7 +340,7 @@ int vncRandRDisableOutput(int outputIdx)
       move = 1;
     }
     if (move && i < crtc->noutput) {
-      crtc->outputs[i] = crtc->outputs[i+1];
+      crtc->outputs[i] = crtc->outputs[i + 1];
     }
   }
   if (crtc->noutput == 0) {
@@ -371,12 +348,7 @@ int vncRandRDisableOutput(int outputIdx)
     crtc->outputs = NULL;
   }
 
-  int ret = XRRSetCrtcConfig(ctx->dpy,
-                             ctx->res,
-                             crtcid,
-                             CurrentTime,
-                             crtc->x, crtc->y,
-                             crtc->mode, crtc->rotation,
+  int ret = XRRSetCrtcConfig(ctx->dpy, ctx->res, crtcid, CurrentTime, crtc->x, crtc->y, crtc->mode, crtc->rotation,
                              crtc->outputs, crtc->noutput);
 
   XRRFreeCrtcInfo(crtc);
@@ -384,20 +356,17 @@ int vncRandRDisableOutput(int outputIdx)
   return (ret == RRSetConfigSuccess);
 }
 
-unsigned int vncRandRGetOutputId(int outputIdx)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+unsigned int vncRandRGetOutputId(int outputIdx) {
+  vncGlueContext* ctx = &randrGlueContext;
   return ctx->res->outputs[outputIdx];
 }
 
-int vncRandRGetOutputDimensions(int outputIdx,
-                                 int *x, int *y, int *width, int *height)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+int vncRandRGetOutputDimensions(int outputIdx, int* x, int* y, int* width, int* height) {
+  vncGlueContext* ctx = &randrGlueContext;
   int swap;
   *x = *y = *width = *height = 0;
 
-  XRROutputInfo *output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[outputIdx]);
+  XRROutputInfo* output = XRRGetOutputInfo(ctx->dpy, ctx->res, ctx->res->outputs[outputIdx]);
   if (!output) {
     return 1;
   }
@@ -407,7 +376,7 @@ int vncRandRGetOutputDimensions(int outputIdx,
     return 1;
   }
 
-  XRRCrtcInfo *crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtc);
+  XRRCrtcInfo* crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtc);
   XRRFreeOutputInfo(output);
   if (!crtc) {
     return 1;
@@ -439,15 +408,13 @@ int vncRandRGetOutputDimensions(int outputIdx,
   return 0;
 }
 
-int vncRandRReconfigureOutput(int outputIdx, int x, int y,
-                              int width, int height)
-{
-  vncGlueContext *ctx = &randrGlueContext;
+int vncRandRReconfigureOutput(int outputIdx, int x, int y, int width, int height) {
+  vncGlueContext* ctx = &randrGlueContext;
 
-  XRROutputInfo *output;
+  XRROutputInfo* output;
   RRCrtc crtcid;
   RRMode mode;
-  XRRCrtcInfo *crtc = NULL;
+  XRRCrtcInfo* crtc = NULL;
 
   int i, ret;
 
@@ -460,7 +427,7 @@ int vncRandRReconfigureOutput(int outputIdx, int x, int y,
 
   /* Need a CRTC? */
   if (crtcid == None) {
-    for (i = 0;i < output->ncrtc;i++) {
+    for (i = 0; i < output->ncrtc; i++) {
       crtc = XRRGetCrtcInfo(ctx->dpy, ctx->res, output->crtcs[i]);
       if (!crtc) {
         continue;
@@ -494,8 +461,8 @@ int vncRandRReconfigureOutput(int outputIdx, int x, int y,
   }
 
   /* Reconfigure new mode and position */
-  ret = XRRSetCrtcConfig (ctx->dpy, ctx->res, crtcid, CurrentTime, x, y,
-                    mode, crtc->rotation, ctx->res->outputs+outputIdx, 1);
+  ret = XRRSetCrtcConfig(ctx->dpy, ctx->res, crtcid, CurrentTime, x, y, mode, crtc->rotation,
+                         ctx->res->outputs + outputIdx, 1);
 
   XRRFreeCrtcInfo(crtc);
   XRRFreeOutputInfo(output);
@@ -503,14 +470,12 @@ int vncRandRReconfigureOutput(int outputIdx, int x, int y,
   return (ret == RRSetConfigSuccess);
 }
 
-int vncRandRCanCreateOutputs(int extraOutputs)
-{
+int vncRandRCanCreateOutputs(int extraOutputs) {
   (void)extraOutputs;
   return 0;
 }
 
-int vncRandRCreateOutputs(int extraOutputs)
-{
+int vncRandRCreateOutputs(int extraOutputs) {
   (void)extraOutputs;
   return 0;
 }

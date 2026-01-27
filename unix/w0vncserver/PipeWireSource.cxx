@@ -38,20 +38,18 @@ static int pwInitCount = 0;
 
 static std::map<GSource*, PipeWireSource*> sources;
 
-GSourceFuncs PipeWireSource::pipewireSourceFuncs {
-  .prepare = nullptr,
-  .check = nullptr,
-  .dispatch = [](GSource* source, GSourceFunc, void*) {
-    assert(sources.count(source) != 0);
-    return sources[source]->sourceLoopDispatch();
-  },
-  .finalize =nullptr,
-  .closure_callback = nullptr,
-  .closure_marshal = nullptr
-};
+GSourceFuncs PipeWireSource::pipewireSourceFuncs{.prepare = nullptr,
+                                                 .check = nullptr,
+                                                 .dispatch =
+                                                     [](GSource* source, GSourceFunc, void*) {
+                                                       assert(sources.count(source) != 0);
+                                                       return sources[source]->sourceLoopDispatch();
+                                                     },
+                                                 .finalize = nullptr,
+                                                 .closure_callback = nullptr,
+                                                 .closure_marshal = nullptr};
 
-PipeWireSource::PipeWireSource()
-{
+PipeWireSource::PipeWireSource() {
   // pw_init() and pw_deinit() may only be called once prior to version
   // 0.3.49.
   if (pwInitCount++ == 0)
@@ -60,14 +58,12 @@ PipeWireSource::PipeWireSource()
   loop = pw_loop_new(nullptr);
   pw_loop_enter(loop);
   source = g_source_new(&pipewireSourceFuncs, sizeof(GSource));
-  g_source_add_unix_fd(source, pw_loop_get_fd (loop),
-                       (GIOCondition)(G_IO_IN | G_IO_ERR));
-  g_source_attach (source, nullptr);
+  g_source_add_unix_fd(source, pw_loop_get_fd(loop), (GIOCondition)(G_IO_IN | G_IO_ERR));
+  g_source_attach(source, nullptr);
   sources[source] = this;
 }
 
-PipeWireSource::~PipeWireSource()
-{
+PipeWireSource::~PipeWireSource() {
   sources.erase(source);
   g_source_unref(source);
   g_source_destroy(source);
@@ -80,13 +76,12 @@ PipeWireSource::~PipeWireSource()
     pw_deinit();
 }
 
-int PipeWireSource::sourceLoopDispatch()
-{
+int PipeWireSource::sourceLoopDispatch() {
   int result;
 
-  result = pw_loop_iterate (loop, 0);
+  result = pw_loop_iterate(loop, 0);
   if (result < 0)
-    vlog.error("pipewire_loop_iterate failed: %s", g_strerror (result));
+    vlog.error("pipewire_loop_iterate failed: %s", g_strerror(result));
 
   return G_SOURCE_CONTINUE;
 }

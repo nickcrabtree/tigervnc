@@ -16,7 +16,7 @@ TigerVNC::Config - Configuration reader
   # Parse the system /etc/tigervnc/vncserver-config-defaults and the user
   # ~/.vnc/tigervnc.conf configuration file as well as processes the command line.
   &getConfig($options);
- 
+
 =head1 DESCRIPTION
 
 This package reads the configuration for the B<Xnjcvnc> and B<X0tigervnc> servers.

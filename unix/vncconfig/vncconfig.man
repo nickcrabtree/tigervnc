@@ -3,32 +3,32 @@
 vncconfig \- configure and control a VNC server
 .SH SYNOPSIS
 .B vncconfig
-.RI [ parameters ] 
+.RI [ parameters ]
 .br
 .B vncconfig
-.RI [ parameters ] 
+.RI [ parameters ]
 .B \-connect \fP[\fB-view-only\fP]
 .IR host [: port ]
 .br
 .B vncconfig
-.RI [ parameters ] 
+.RI [ parameters ]
 .B \-disconnect
 .br
 .B vncconfig
-.RI [ parameters ] 
-.RB [ -set ] 
+.RI [ parameters ]
+.RB [ -set ]
 .IR Xvnc-param = value " ..."
 .br
 .B vncconfig
-.RI [ parameters ] 
+.RI [ parameters ]
 .B \-list
 .br
 .B vncconfig
-.RI [ parameters ] 
+.RI [ parameters ]
 \fB\-get\fP \fIXvnc-param\fP
 .br
 .B vncconfig
-.RI [ parameters ] 
+.RI [ parameters ]
 \fB\-desc\fP \fIXvnc-param\fP
 .SH DESCRIPTION
 .B vncconfig

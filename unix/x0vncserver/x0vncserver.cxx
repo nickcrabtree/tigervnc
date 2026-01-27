@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2004-2008 Constantin Kaplinsky.  All Rights Reserved.
- *    
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -24,16 +24,16 @@
 #include <config.h>
 #endif
 
-#include <strings.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <errno.h>
 #include <pwd.h>
+#include <strings.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <core/Configuration.h>
-#include <core/Logger_stdio.h>
 #include <core/LogWriter.h>
+#include <core/Logger_stdio.h>
 #include <core/Timer.h>
 
 #include <rdr/FdInStream.h>
@@ -46,18 +46,18 @@
 #include <network/UnixSocket.h>
 
 #ifdef HAVE_LIBSYSTEMD
-#  include <systemd/sd-daemon.h>
+#include <systemd/sd-daemon.h>
 #endif
 
-#include <signal.h>
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <signal.h>
 
-#include <x0vncserver/XDesktop.h>
 #include <x0vncserver/Geometry.h>
 #include <x0vncserver/Image.h>
 #include <x0vncserver/PollingScheduler.h>
+#include <x0vncserver/XDesktop.h>
 
 extern char buildtime[];
 
@@ -65,39 +65,22 @@ static core::LogWriter vlog("Main");
 
 static const char* defaultDesktopName();
 
-core::IntParameter
-  pollingCycle("PollingCycle",
-               "Milliseconds per one polling cycle; actual interval "
-               "may be dynamically adjusted to satisfy "
-               "MaxProcessorUsage setting", 30, 0, INT_MAX);
-core::IntParameter
-  maxProcessorUsage("MaxProcessorUsage",
-                    "Maximum percentage of CPU time to be consumed",
-                    35, 0, 100);
-core::StringParameter
-  desktopName("desktop", "Name of VNC desktop", defaultDesktopName());
-core::StringParameter
-  displayname("display", "The X display", "");
-core::IntParameter
-  rfbport("rfbport",
-          "TCP port to listen for RFB protocol", 5900, -1, 65535);
-core::StringParameter
-  rfbunixpath("rfbunixpath",
-              "Unix socket to listen for RFB protocol", "");
-core::IntParameter
-  rfbunixmode("rfbunixmode",
-              "Unix socket access mode", 0600, 0000, 0777);
-core::StringParameter
-  hostsFile("HostsFile", "File with IP access control rules", "");
-core::BoolParameter
-  localhostOnly("localhost",
-                "Only allow connections from localhost", false);
-core::StringParameter
-  interface("interface",
-            "Listen on the specified network address", "all");
+core::IntParameter pollingCycle("PollingCycle",
+                                "Milliseconds per one polling cycle; actual interval "
+                                "may be dynamically adjusted to satisfy "
+                                "MaxProcessorUsage setting",
+                                30, 0, INT_MAX);
+core::IntParameter maxProcessorUsage("MaxProcessorUsage", "Maximum percentage of CPU time to be consumed", 35, 0, 100);
+core::StringParameter desktopName("desktop", "Name of VNC desktop", defaultDesktopName());
+core::StringParameter displayname("display", "The X display", "");
+core::IntParameter rfbport("rfbport", "TCP port to listen for RFB protocol", 5900, -1, 65535);
+core::StringParameter rfbunixpath("rfbunixpath", "Unix socket to listen for RFB protocol", "");
+core::IntParameter rfbunixmode("rfbunixmode", "Unix socket access mode", 0600, 0000, 0777);
+core::StringParameter hostsFile("HostsFile", "File with IP access control rules", "");
+core::BoolParameter localhostOnly("localhost", "Only allow connections from localhost", false);
+core::StringParameter interface("interface", "Listen on the specified network address", "all");
 
-static const char* defaultDesktopName()
-{
+static const char* defaultDesktopName() {
   long host_max = sysconf(_SC_HOST_NAME_MAX);
   if (host_max < 0)
     return "";
@@ -121,20 +104,17 @@ static const char* defaultDesktopName()
   return name;
 }
 
-
 //
 // Allow the main loop terminate itself gracefully on receiving a signal.
 //
 
 static bool caughtSignal = false;
 
-static void CleanupSignalHandler(int /*sig*/)
-{
+static void CleanupSignalHandler(int /*sig*/) {
   caughtSignal = true;
 }
 
-static bool hasSystemdListeners()
-{
+static bool hasSystemdListeners() {
 #ifdef HAVE_LIBSYSTEMD
   // This also returns true on errors, because we then assume we were
   // meant to use systemd but failed somewhere
@@ -144,18 +124,16 @@ static bool hasSystemdListeners()
 #endif
 }
 
-static int createSystemdListeners(std::list<network::SocketListener*> *listeners)
-{
+static int createSystemdListeners(std::list<network::SocketListener*>* listeners) {
 #ifdef HAVE_LIBSYSTEMD
   int count = sd_listen_fds(0);
   if (count < 0) {
-    vlog.error("Error getting listening sockets from systemd: %s",
-               strerror(-count));
+    vlog.error("Error getting listening sockets from systemd: %s", strerror(-count));
     return count;
   }
 
   for (int i = 0; i < count; ++i)
-      listeners->push_back(new network::TcpListener(SD_LISTEN_FDS_START + i));
+    listeners->push_back(new network::TcpListener(SD_LISTEN_FDS_START + i));
 
   return count;
 #else
@@ -164,27 +142,20 @@ static int createSystemdListeners(std::list<network::SocketListener*> *listeners
 #endif
 }
 
-
-class FileTcpFilter : public network::TcpFilter
-{
+class FileTcpFilter : public network::TcpFilter {
 
 public:
-
-  FileTcpFilter(const char *fname)
-    : TcpFilter("-"), fileName(nullptr), lastModTime(0)
-  {
+  FileTcpFilter(const char* fname) : TcpFilter("-"), fileName(nullptr), lastModTime(0) {
     if (fname != nullptr)
-      fileName = strdup((char *)fname);
+      fileName = strdup((char*)fname);
   }
 
-  virtual ~FileTcpFilter()
-  {
+  virtual ~FileTcpFilter() {
     if (fileName != nullptr)
       free(fileName);
   }
 
-  bool verifyConnection(network::Socket* s) override
-  {
+  bool verifyConnection(network::Socket* s) override {
     if (!reloadRules()) {
       vlog.error("Could not read IP filtering rules, rejecting all clients");
       filter.clear();
@@ -196,9 +167,7 @@ public:
   }
 
 protected:
-
-  bool reloadRules()
-  {
+  bool reloadRules() {
     if (fileName == nullptr)
       return true;
 
@@ -208,7 +177,7 @@ protected:
 
     if (st.st_mtime != lastModTime) {
       // Actually reload only if the file was modified
-      FILE *fp = fopen(fileName, "r");
+      FILE* fp = fopen(fileName, "r");
       if (fp == nullptr)
         return false;
 
@@ -230,66 +199,58 @@ protected:
   }
 
 protected:
-
-  char *fileName;
+  char* fileName;
   time_t lastModTime;
 
 private:
-
   //
   // NOTE: we silently truncate long lines in this function.
   //
 
-  bool readLine(char *buf, int bufSize, FILE *fp)
-  {
+  bool readLine(char* buf, int bufSize, FILE* fp) {
     if (fp == nullptr || buf == nullptr || bufSize == 0)
       return false;
 
     if (fgets(buf, bufSize, fp) == nullptr)
       return false;
 
-    char *ptr = strchr(buf, '\n');
+    char* ptr = strchr(buf, '\n');
     if (ptr != nullptr) {
-      *ptr = '\0';              // remove newline at the end
+      *ptr = '\0'; // remove newline at the end
     } else {
       if (!feof(fp)) {
         int c;
-        do {                    // skip the rest of a long line
+        do { // skip the rest of a long line
           c = getc(fp);
         } while (c != '\n' && c != EOF);
       }
     }
     return true;
   }
-
 };
 
 char* programName;
 
-static void printVersion(FILE *fp)
-{
-  fprintf(fp, "TigerVNC server version %s, built %s\n",
-          PACKAGE_VERSION, buildtime);
+static void printVersion(FILE* fp) {
+  fprintf(fp, "TigerVNC server version %s, built %s\n", PACKAGE_VERSION, buildtime);
 }
 
-static void usage()
-{
+static void usage() {
   printVersion(stderr);
   fprintf(stderr, "\nUsage: %s [<parameters>]\n", programName);
   fprintf(stderr, "       %s --version\n", programName);
-  fprintf(stderr,"\n"
-          "Parameters can be turned on with -<param> or off with -<param>=0\n"
-          "Parameters which take a value can be specified as "
-          "-<param> <value>\n"
-          "Other valid forms are <param>=<value> -<param>=<value> "
-          "--<param>=<value>\n"
-          "Parameter names are case-insensitive.  The parameters are:\n\n");
+  fprintf(stderr, "\n"
+                  "Parameters can be turned on with -<param> or off with -<param>=0\n"
+                  "Parameters which take a value can be specified as "
+                  "-<param> <value>\n"
+                  "Other valid forms are <param>=<value> -<param>=<value> "
+                  "--<param>=<value>\n"
+                  "Parameter names are case-insensitive.  The parameters are:\n\n");
   core::Configuration::listParams(79, 14);
   exit(1);
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
   core::initStdIOLoggers();
   core::LogWriter::setLogParams("*:stderr:30");
 
@@ -309,38 +270,30 @@ int main(int argc, char** argv)
       continue;
     }
 
-    if (strcmp(argv[i], "-h") == 0 ||
-        strcmp(argv[i], "-help") == 0 ||
-        strcmp(argv[i], "--help") == 0) {
+    if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-help") == 0 || strcmp(argv[i], "--help") == 0) {
       usage();
     }
 
-    if (strcmp(argv[i], "-v") == 0 ||
-        strcmp(argv[i], "-version") == 0 ||
-        strcmp(argv[i], "--version") == 0) {
+    if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "-version") == 0 || strcmp(argv[i], "--version") == 0) {
       printVersion(stdout);
       return 0;
     }
 
     if (argv[i][0] == '-') {
-      fprintf(stderr, "%s: Unrecognized option '%s'\n",
-              programName, argv[i]);
-      fprintf(stderr, "See '%s --help' for more information.\n",
-              programName);
+      fprintf(stderr, "%s: Unrecognized option '%s'\n", programName, argv[i]);
+      fprintf(stderr, "See '%s --help' for more information.\n", programName);
       exit(1);
     }
 
     fprintf(stderr, "%s: Extra argument '%s'\n", programName, argv[i]);
-    fprintf(stderr, "See '%s --help' for more information.\n",
-            programName);
+    fprintf(stderr, "See '%s --help' for more information.\n", programName);
     exit(1);
   }
 
-  const char *displayName = XDisplayName(displayname);
+  const char* displayName = XDisplayName(displayname);
   if (!(dpy = XOpenDisplay(displayname))) {
     // FIXME: Why not vlog.error(...)?
-    fprintf(stderr,"%s: Unable to open display \"%s\"\r\n",
-            programName, displayName);
+    fprintf(stderr, "%s: Unable to open display \"%s\"\r\n", programName, displayName);
     exit(1);
   }
   rfb::UnixPasswordValidator::setDisplayName(displayName);
@@ -352,9 +305,8 @@ int main(int argc, char** argv)
   std::list<network::SocketListener*> listeners;
 
   try {
-    TXWindow::init(dpy,"x0vncserver");
-    Geometry geo(DisplayWidth(dpy, DefaultScreen(dpy)),
-                 DisplayHeight(dpy, DefaultScreen(dpy)));
+    TXWindow::init(dpy, "x0vncserver");
+    Geometry geo(DisplayWidth(dpy, DefaultScreen(dpy)), DisplayHeight(dpy, DefaultScreen(dpy)));
     if (geo.getRect().is_empty()) {
       vlog.error("Exiting with error");
       return 1;
@@ -377,7 +329,7 @@ int main(int argc, char** argv)
 
     if ((int)rfbport != -1) {
       std::list<network::SocketListener*> tcp_listeners;
-      const char *addr = interface;
+      const char* addr = interface;
 
       if (strcasecmp(addr, "all") == 0)
         addr = nullptr;
@@ -387,10 +339,9 @@ int main(int argc, char** argv)
         createTcpListeners(&tcp_listeners, addr, (int)rfbport);
 
       if (!tcp_listeners.empty()) {
-        listeners.splice (listeners.end(), tcp_listeners);
+        listeners.splice(listeners.end(), tcp_listeners);
         vlog.info("Listening for VNC connections on %s interface(s), port %d",
-                  localhostOnly ? "local" : (const char*)interface,
-                  (int)rfbport);
+                  localhostOnly ? "local" : (const char*)interface, (int)rfbport);
       }
 
       if (strlen(hostsFile) != 0)
@@ -453,8 +404,7 @@ int main(int argc, char** argv)
 
       // Do the wait...
       sched.sleepStarted();
-      int n = select(FD_SETSIZE, &rfds, &wfds, nullptr,
-                     wait_ms >= 0 ? &tv : nullptr);
+      int n = select(FD_SETSIZE, &rfds, &wfds, nullptr, wait_ms >= 0 ? &tv : nullptr);
       sched.sleepFinished();
 
       if (n < 0) {

@@ -1,15 +1,15 @@
 /* Copyright (C) 2004-2008 Constantin Kaplinsky.  All Rights Reserved.
- *    
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -33,19 +33,15 @@
 #include <core/Configuration.h>
 #include <core/LogWriter.h>
 
-#include <rfb/VNCServer.h>
 #include <rfb/ServerCore.h>
+#include <rfb/VNCServer.h>
 
 #include <x0vncserver/PollingManager.h>
 
 static core::LogWriter vlog("PollingMgr");
 
-const int PollingManager::m_pollingOrder[32] = {
-   0, 16,  8, 24,  4, 20, 12, 28,
-  10, 26, 18,  2, 22,  6, 30, 14,
-   1, 17,  9, 25,  7, 23, 15, 31,
-  19,  3, 27, 11, 29, 13,  5, 21
-};
+const int PollingManager::m_pollingOrder[32] = {0, 16, 8, 24, 4, 20, 12, 28, 10, 26, 18, 2,  22, 6,  30, 14,
+                                                1, 17, 9, 25, 7, 23, 15, 31, 19, 3,  27, 11, 29, 13, 5,  21};
 
 //
 // Constructor.
@@ -54,42 +50,28 @@ const int PollingManager::m_pollingOrder[32] = {
 // lifetime, while factory is used only in the constructor itself.
 //
 
-PollingManager::PollingManager(Display *dpy, const Image *image,
-                               ImageFactory &factory,
-                               int offsetLeft, int offsetTop)
-  : m_dpy(dpy),
-    m_image(image),
-    m_bytesPerPixel(image->xim->bits_per_pixel / 8),
-    m_offsetLeft(offsetLeft),
-    m_offsetTop(offsetTop),
-    m_width(image->xim->width),
-    m_height(image->xim->height),
-    m_widthTiles((image->xim->width + 31) / 32),
-    m_heightTiles((image->xim->height + 31) / 32),
-    m_numTiles(((image->xim->width + 31) / 32) *
-               ((image->xim->height + 31) / 32)),
-    m_pollingStep(0)
-{
+PollingManager::PollingManager(Display* dpy, const Image* image, ImageFactory& factory, int offsetLeft, int offsetTop)
+    : m_dpy(dpy), m_image(image), m_bytesPerPixel(image->xim->bits_per_pixel / 8), m_offsetLeft(offsetLeft),
+      m_offsetTop(offsetTop), m_width(image->xim->width), m_height(image->xim->height),
+      m_widthTiles((image->xim->width + 31) / 32), m_heightTiles((image->xim->height + 31) / 32),
+      m_numTiles(((image->xim->width + 31) / 32) * ((image->xim->height + 31) / 32)), m_pollingStep(0) {
   // Create additional images used in polling algorithm, warn if
   // underlying class names are different from the class name of the
   // primary image.
   m_rowImage = factory.newImage(m_dpy, m_width, 1);
   m_columnImage = factory.newImage(m_dpy, 1, m_height);
-  const char *primaryImgClass = m_image->className();
-  const char *rowImgClass = m_rowImage->className();
-  const char *columnImgClass = m_columnImage->className();
-  if (strcmp(rowImgClass, primaryImgClass) != 0 ||
-      strcmp(columnImgClass, primaryImgClass) != 0) {
-    vlog.error("Image types do not match (%s, %s, %s)",
-               primaryImgClass, rowImgClass, columnImgClass);
+  const char* primaryImgClass = m_image->className();
+  const char* rowImgClass = m_rowImage->className();
+  const char* columnImgClass = m_columnImage->className();
+  if (strcmp(rowImgClass, primaryImgClass) != 0 || strcmp(columnImgClass, primaryImgClass) != 0) {
+    vlog.error("Image types do not match (%s, %s, %s)", primaryImgClass, rowImgClass, columnImgClass);
   }
 
   m_changeFlags = new bool[m_numTiles];
   memset(m_changeFlags, 0, m_numTiles * sizeof(bool));
 }
 
-PollingManager::~PollingManager()
-{
+PollingManager::~PollingManager() {
   delete[] m_changeFlags;
 
   delete m_rowImage;
@@ -102,16 +84,14 @@ PollingManager::~PollingManager()
 //
 
 #ifdef DEBUG
-void PollingManager::debugBeforePoll()
-{
+void PollingManager::debugBeforePoll() {
   TimeMillis timeNow;
   int diff = timeNow.diffFrom(m_timeSaved);
   fprintf(stderr, "[wait%4dms]\t[step %2d]\t", diff, m_pollingStep % 32);
   m_timeSaved = timeNow;
 }
 
-void PollingManager::debugAfterPoll()
-{
+void PollingManager::debugAfterPoll() {
   TimeMillis timeNow;
   int diff = timeNow.diffFrom(m_timeSaved);
   fprintf(stderr, "[poll%4dms]\n", diff);
@@ -124,8 +104,7 @@ void PollingManager::debugAfterPoll()
 // Search for changed rectangles on the screen.
 //
 
-void PollingManager::poll(rfb::VNCServer* server)
-{
+void PollingManager::poll(rfb::VNCServer* server) {
 #ifdef DEBUG
   debugBeforePoll();
 #endif
@@ -138,13 +117,12 @@ void PollingManager::poll(rfb::VNCServer* server)
 }
 
 #ifdef DEBUG_REPORT_CHANGED_TILES
-#define DBG_REPORT_CHANGES(title)  printChanges((title))
+#define DBG_REPORT_CHANGES(title) printChanges((title))
 #else
 #define DBG_REPORT_CHANGES(title)
 #endif
 
-bool PollingManager::pollScreen(rfb::VNCServer* server)
-{
+bool PollingManager::pollScreen(rfb::VNCServer* server) {
   if (!server)
     return false;
 
@@ -189,8 +167,7 @@ bool PollingManager::pollScreen(rfb::VNCServer* server)
   return (nTilesChanged != 0);
 }
 
-int PollingManager::checkRow(int x, int y, int w)
-{
+int PollingManager::checkRow(int x, int y, int w) {
   // If necessary, expand the row to the left, to the tile border.
   // In other words, x must be a multiple of 32.
   if (x % 32 != 0) {
@@ -203,11 +180,11 @@ int PollingManager::checkRow(int x, int y, int w)
   getRow(x, y, w);
 
   // Compute a pointer to the initial element of m_changeFlags.
-  bool *pChangeFlags = &m_changeFlags[getTileIndex(x, y)];
+  bool* pChangeFlags = &m_changeFlags[getTileIndex(x, y)];
 
   // Compute pointers to image data to be compared.
-  char *ptr_old = m_image->locatePixel(x, y);
-  char *ptr_new = m_rowImage->xim->data;
+  char* ptr_old = m_image->locatePixel(x, y);
+  char* ptr_new = m_rowImage->xim->data;
 
   // Compare pixels, raise corresponding elements of m_changeFlags[].
   // First, handle full-size (32 pixels wide) tiles.
@@ -235,8 +212,7 @@ int PollingManager::checkRow(int x, int y, int w)
   return nTilesChanged;
 }
 
-int PollingManager::checkColumn(int x, int y, int h, bool *pChangeFlags)
-{
+int PollingManager::checkColumn(int x, int y, int h, bool* pChangeFlags) {
   getColumn(x, y, h);
 
   int nTilesChanged = 0;
@@ -245,8 +221,8 @@ int PollingManager::checkColumn(int x, int y, int h, bool *pChangeFlags)
       int tile_h = (h - nTile * 32 >= 32) ? 32 : h - nTile * 32;
       for (int i = 0; i < tile_h; i++) {
         // FIXME: Do not compute these pointers in the inner cycle.
-        char *ptr_old = m_image->locatePixel(x, y + nTile * 32 + i);
-        char *ptr_new = m_columnImage->locatePixel(0, nTile * 32 + i);
+        char* ptr_old = m_image->locatePixel(x, y + nTile * 32 + i);
+        char* ptr_new = m_columnImage->locatePixel(0, nTile * 32 + i);
         if (memcmp(ptr_old, ptr_new, m_bytesPerPixel)) {
           *pChangeFlags = true;
           nTilesChanged++;
@@ -260,9 +236,8 @@ int PollingManager::checkColumn(int x, int y, int h, bool *pChangeFlags)
   return nTilesChanged;
 }
 
-int PollingManager::sendChanges(rfb::VNCServer* server) const
-{
-  const bool *pChangeFlags = m_changeFlags;
+int PollingManager::sendChanges(rfb::VNCServer* server) const {
+  const bool* pChangeFlags = m_changeFlags;
   int nTilesChanged = 0;
 
   core::Rect rect;
@@ -291,9 +266,7 @@ int PollingManager::sendChanges(rfb::VNCServer* server) const
   return nTilesChanged;
 }
 
-void
-PollingManager::checkNeighbors()
-{
+void PollingManager::checkNeighbors() {
   int x, y;
 
   // Check neighboring pixels above and below changed tiles.
@@ -303,15 +276,12 @@ PollingManager::checkNeighbors()
     bool doneAbove = false;
     bool doneBelow = false;
     for (x = 0; x < m_widthTiles; x++) {
-      if (!doneAbove && y > 0 &&
-          m_changeFlags[y * m_widthTiles + x] &&
-          !m_changeFlags[(y - 1) * m_widthTiles + x]) {
+      if (!doneAbove && y > 0 && m_changeFlags[y * m_widthTiles + x] && !m_changeFlags[(y - 1) * m_widthTiles + x]) {
         // FIXME: Check m_changeFlags[] to decrease height of the row.
         checkRow(x * 32, y * 32 - 1, m_width - x * 32);
         doneAbove = true;
       }
-      if (!doneBelow && y < m_heightTiles - 1 &&
-          m_changeFlags[y * m_widthTiles + x] &&
+      if (!doneBelow && y < m_heightTiles - 1 && m_changeFlags[y * m_widthTiles + x] &&
           !m_changeFlags[(y + 1) * m_widthTiles + x]) {
         // FIXME: Check m_changeFlags[] to decrease height of the row.
         checkRow(x * 32, (y + 1) * 32, m_width - x * 32);
@@ -325,11 +295,9 @@ PollingManager::checkNeighbors()
   // Check neighboring pixels at the right side of changed tiles.
   for (x = 0; x < m_widthTiles - 1; x++) {
     for (y = 0; y < m_heightTiles; y++) {
-      if (m_changeFlags[y * m_widthTiles + x] &&
-          !m_changeFlags[y * m_widthTiles + x + 1]) {
+      if (m_changeFlags[y * m_widthTiles + x] && !m_changeFlags[y * m_widthTiles + x + 1]) {
         // FIXME: Check m_changeFlags[] to decrease height of the column.
-        checkColumn((x + 1) * 32, y * 32, m_height - y * 32,
-                    &m_changeFlags[y * m_widthTiles + x + 1]);
+        checkColumn((x + 1) * 32, y * 32, m_height - y * 32, &m_changeFlags[y * m_widthTiles + x + 1]);
         break;
       }
     }
@@ -338,23 +306,19 @@ PollingManager::checkNeighbors()
   // Check neighboring pixels at the left side of changed tiles.
   for (x = m_widthTiles - 1; x > 0; x--) {
     for (y = 0; y < m_heightTiles; y++) {
-      if (m_changeFlags[y * m_widthTiles + x] &&
-          !m_changeFlags[y * m_widthTiles + x - 1]) {
+      if (m_changeFlags[y * m_widthTiles + x] && !m_changeFlags[y * m_widthTiles + x - 1]) {
         // FIXME: Check m_changeFlags[] to decrease height of the column.
-        checkColumn(x * 32 - 1, y * 32, m_height - y * 32,
-                    &m_changeFlags[y * m_widthTiles + x - 1]);
+        checkColumn(x * 32 - 1, y * 32, m_height - y * 32, &m_changeFlags[y * m_widthTiles + x - 1]);
         break;
       }
     }
   }
 }
 
-void
-PollingManager::printChanges(const char *header) const
-{
+void PollingManager::printChanges(const char* header) const {
   fprintf(stderr, "%s:", header);
 
-  const bool *pChangeFlags = m_changeFlags;
+  const bool* pChangeFlags = m_changeFlags;
 
   for (int y = 0; y < m_heightTiles; y++) {
     for (int x = 0; x < m_widthTiles; x++) {
@@ -374,4 +338,3 @@ PollingManager::printChanges(const char *header) const
 
   fprintf(stderr, "\n");
 }
-

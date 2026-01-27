@@ -22,15 +22,13 @@
 #include <string>
 #include <tx/TXWindow.h>
 
-class XSelectionHandler
-{
+class XSelectionHandler {
 public:
   virtual void handleXSelectionAnnounce(bool available) = 0;
   virtual void handleXSelectionData(const char* data) = 0;
 };
 
-class XSelection : TXWindow
-{
+class XSelection : TXWindow {
 public:
   XSelection(Display* dpy_, XSelectionHandler* handler_);
 
@@ -49,10 +47,8 @@ private:
   Time getXServerTime();
   void announceSelection(Atom selection);
 
-  bool selectionRequest(Window requestor, Atom selection, Atom target,
-                        Atom property) override;
-  void selectionNotify(XSelectionEvent* ev, Atom type, int format, int nitems,
-                       void* data) override;
+  bool selectionRequest(Window requestor, Atom selection, Atom target, Atom property) override;
+  void selectionNotify(XSelectionEvent* ev, Atom type, int format, int nitems, void* data) override;
 };
 
 #endif

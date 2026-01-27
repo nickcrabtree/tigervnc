@@ -24,15 +24,18 @@
 
 #include <glib.h>
 
-namespace rfb { class VNCServer; }
-namespace network { class SocketListener; }
+namespace rfb {
+class VNCServer;
+}
+namespace network {
+class SocketListener;
+}
 struct SocketState;
 struct ListenerReadyEvent;
 
 class GSocketSource {
 public:
-  GSocketSource(rfb::VNCServer* server,
-                 std::list<network::SocketListener*> *listeners);
+  GSocketSource(rfb::VNCServer* server, std::list<network::SocketListener*>* listeners);
   ~GSocketSource();
 
   void attach(GMainContext* context);

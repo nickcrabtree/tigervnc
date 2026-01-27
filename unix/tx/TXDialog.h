@@ -1,15 +1,15 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -35,10 +35,8 @@
 
 class TXDialog : public TXWindow, public TXDeleteWindowCallback {
 public:
-  TXDialog(Display* dpy_, int width, int height, const char* name,
-           bool modal_=false)
-    : TXWindow(dpy_, width, height), done(false), ok(false), modal(modal_)
-  {
+  TXDialog(Display* dpy_, int width, int height, const char* name, bool modal_ = false)
+      : TXWindow(dpy_, width, height), done(false), ok(false), modal(modal_) {
     toplevel(name, this);
     resize(width, height);
   }
@@ -65,7 +63,8 @@ public:
         FD_ZERO(&rfds);
         FD_SET(ConnectionNumber(dpy), &rfds);
         int n = select(FD_SETSIZE, &rfds, nullptr, nullptr, nullptr);
-        if (n < 0) throw core::socket_error("select", errno);
+        if (n < 0)
+          throw core::socket_error("select", errno);
       }
     }
     return true;
@@ -77,11 +76,11 @@ public:
 
   // resize() is overridden here to re-center the dialog
   void resize(int w, int h) {
-    TXWindow::resize(w,h);
+    TXWindow::resize(w, h);
     int dpyWidth = WidthOfScreen(DefaultScreenOfDisplay(dpy));
     int dpyHeight = HeightOfScreen(DefaultScreenOfDisplay(dpy));
     setUSPosition((dpyWidth - width() - 10) / 2, (dpyHeight - height() - 30) / 2);
-  }    
+  }
 
 protected:
   void deleteWindow(TXWindow* /*w*/) override {

@@ -26,13 +26,13 @@
 
 #include <glib.h>
 
-#include <network/TcpSocket.h>
 #include <core/LogWriter.h>
-#include <rfb/VNCServerST.h>
+#include <network/TcpSocket.h>
 #include <rdr/FdOutStream.h>
+#include <rfb/VNCServerST.h>
 
-#include "w0vncserver.h"
 #include "GSocketSource.h"
+#include "w0vncserver.h"
 
 static core::LogWriter vlog("GSocketMonitor");
 
@@ -49,33 +49,30 @@ struct ListenerReadyEvent {
   GIOCondition condition;
 };
 
-GSourceFuncs GSocketSource::sourceFuncs {
-  .prepare = [](GSource* source, int* timeout) {
-    assert(sources.count(source) != 0);
-    return sources[source]->prepare(timeout);
-  },
-  .check = nullptr,
-  .dispatch = [](GSource* source, GSourceFunc, void*) {
-    assert(sources.count(source) != 0);
-    return sources[source]->dispatch();
-  },
-  .finalize = nullptr,
-  .closure_callback = nullptr,
-  .closure_marshal = nullptr
-};
+GSourceFuncs GSocketSource::sourceFuncs{.prepare =
+                                            [](GSource* source, int* timeout) {
+                                              assert(sources.count(source) != 0);
+                                              return sources[source]->prepare(timeout);
+                                            },
+                                        .check = nullptr,
+                                        .dispatch =
+                                            [](GSource* source, GSourceFunc, void*) {
+                                              assert(sources.count(source) != 0);
+                                              return sources[source]->dispatch();
+                                            },
+                                        .finalize = nullptr,
+                                        .closure_callback = nullptr,
+                                        .closure_marshal = nullptr};
 
-GSocketSource::GSocketSource(rfb::VNCServer* server_,
-                             std::list<network::SocketListener*> *listeners_)
-  : source(nullptr), server(server_), listeners(listeners_)
-{
+GSocketSource::GSocketSource(rfb::VNCServer* server_, std::list<network::SocketListener*>* listeners_)
+    : source(nullptr), server(server_), listeners(listeners_) {
   source = g_source_new(&sourceFuncs, sizeof(GSource));
   previousCondition = G_IO_IN;
 
   sources[source] = this;
 }
 
-GSocketSource::~GSocketSource()
-{
+GSocketSource::~GSocketSource() {
   std::list<network::Socket*> sockets;
 
   for (GIOChannel* channel : channels)
@@ -96,15 +93,13 @@ GSocketSource::~GSocketSource()
   g_source_destroy(source);
 }
 
-void GSocketSource::attach(GMainContext* context)
-{
+void GSocketSource::attach(GMainContext* context) {
   assert(source);
 
   g_source_attach((GSource*)source, context);
 }
 
-void GSocketSource::listen()
-{
+void GSocketSource::listen() {
   assert(listeners->size());
 
   for (network::SocketListener* listener : *listeners) {
@@ -124,21 +119,19 @@ void GSocketSource::listen()
     listenerEvents.push_back(event);
 
     g_io_add_watch(
-      channel,
-      static_cast<GIOCondition>((G_IO_IN | G_IO_ERR | G_IO_HUP)),
-      [](GIOChannel*, GIOCondition condition, void* data) {
-        ListenerReadyEvent* event_;
+        channel, static_cast<GIOCondition>((G_IO_IN | G_IO_ERR | G_IO_HUP)),
+        [](GIOChannel*, GIOCondition condition, void* data) {
+          ListenerReadyEvent* event_;
 
-        event_ = static_cast<ListenerReadyEvent*>(data);
-        event_->condition = condition;
-        return event_->instance->handleListenerReady(event_);
-      },
-      event);
+          event_ = static_cast<ListenerReadyEvent*>(data);
+          event_->condition = condition;
+          return event_->instance->handleListenerReady(event_);
+        },
+        event);
   }
 }
 
-int GSocketSource::prepare(int* timeout)
-{
+int GSocketSource::prepare(int* timeout) {
   std::list<network::Socket*> sockets;
 
   server->getSockets(&sockets);
@@ -180,8 +173,7 @@ int GSocketSource::prepare(int* timeout)
   return FALSE;
 }
 
-int GSocketSource::dispatch()
-{
+int GSocketSource::dispatch() {
   std::list<network::Socket*> sockets;
 
   server->getSockets(&sockets);
@@ -215,8 +207,7 @@ int GSocketSource::dispatch()
   return G_SOURCE_CONTINUE;
 }
 
-int GSocketSource::handleListenerReady(ListenerReadyEvent* event)
-{
+int GSocketSource::handleListenerReady(ListenerReadyEvent* event) {
   network::Socket* sock;
   network::SocketListener* listener;
   GIOCondition condition;
@@ -240,8 +231,7 @@ int GSocketSource::handleListenerReady(ListenerReadyEvent* event)
 
   server->addSocket(sock);
   fd = sock->getFd();
-  tag = g_source_add_unix_fd(source, fd,
-                             static_cast<GIOCondition>((G_IO_IN | G_IO_HUP | G_IO_ERR)));
+  tag = g_source_add_unix_fd(source, fd, static_cast<GIOCondition>((G_IO_IN | G_IO_HUP | G_IO_ERR)));
   state.tag = tag;
   state.prevHadBufferedData = false;
 

@@ -9,14 +9,16 @@ add_subdirectory(vncpasswd)
 add_subdirectory(vncserver)
 add_subdirectory(x0vncserver)
 
-if (ENABLE_WAYLAND)
+if(ENABLE_WAYLAND)
   add_subdirectory(w0vncserver)
 endif()
 
 # Create symlink Xnjcvnc -> Xvnc for vncserver wrapper compatibility
-add_custom_target(xnjcvnc_symlink ALL
-  COMMAND ${CMAKE_COMMAND} -E create_symlink
+add_custom_target(
+  xnjcvnc_symlink ALL
+  COMMAND
+    ${CMAKE_COMMAND} -E create_symlink
     ${CMAKE_CURRENT_BINARY_DIR}/xserver/hw/vnc/Xnjcvnc
     ${CMAKE_CURRENT_BINARY_DIR}/vncserver/Xnjcvnc
-  COMMENT "Creating Xnjcvnc symlink in vncserver directory for wrapper compatibility"
-)
+  COMMENT
+    "Creating Xnjcvnc symlink in vncserver directory for wrapper compatibility")

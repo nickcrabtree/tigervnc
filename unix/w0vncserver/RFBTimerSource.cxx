@@ -28,51 +28,48 @@
 
 #include <core/Timer.h>
 
-#include "w0vncserver.h"
 #include "RFBTimerSource.h"
+#include "w0vncserver.h"
 
 static std::map<GSource*, RFBTimerSource*> sources;
 
-GSourceFuncs RFBTimerSource::sourceFuncs {
-  .prepare = [](GSource* source, int* timeout) {
-    assert(sources.count(source) != 0);
-    return sources[source]->prepare(timeout);
-  },
-  .check = [](GSource* source) {
-    assert(sources.count(source) != 0);
-    return sources[source]->check();
-  },
-  .dispatch = [](GSource* source, GSourceFunc, void*) {
-    assert(sources.count(source) != 0);
-    return sources[source]->dispatch();
-  },
-  .finalize = nullptr,
-  .closure_callback = nullptr,
-  .closure_marshal = nullptr
-};
+GSourceFuncs RFBTimerSource::sourceFuncs{.prepare =
+                                             [](GSource* source, int* timeout) {
+                                               assert(sources.count(source) != 0);
+                                               return sources[source]->prepare(timeout);
+                                             },
+                                         .check =
+                                             [](GSource* source) {
+                                               assert(sources.count(source) != 0);
+                                               return sources[source]->check();
+                                             },
+                                         .dispatch =
+                                             [](GSource* source, GSourceFunc, void*) {
+                                               assert(sources.count(source) != 0);
+                                               return sources[source]->dispatch();
+                                             },
+                                         .finalize = nullptr,
+                                         .closure_callback = nullptr,
+                                         .closure_marshal = nullptr};
 
-RFBTimerSource::RFBTimerSource()
-{
+RFBTimerSource::RFBTimerSource() {
   source = g_source_new(&sourceFuncs, sizeof(GSource));
   sources[source] = this;
 }
 
-RFBTimerSource::~RFBTimerSource()
-{
+RFBTimerSource::~RFBTimerSource() {
   sources.erase(source);
   g_source_unref(source);
   g_source_destroy(source);
 }
 
-void RFBTimerSource::attach(GMainContext* context)
-{
+void RFBTimerSource::attach(GMainContext* context) {
   assert(source);
 
   g_source_attach(source, context);
 }
 
-int RFBTimerSource::prepare(int* timeout)
-{
+int RFBTimerSource::prepare(int* timeout) {
   int nextTimeout;
 
   *timeout = -1;
@@ -85,8 +82,7 @@ int RFBTimerSource::prepare(int* timeout)
   return FALSE;
 }
 
-int RFBTimerSource::check()
-{
+int RFBTimerSource::check() {
   int nextTimeout;
 
   nextTimeout = core::Timer::getNextTimeout();
@@ -97,8 +93,7 @@ int RFBTimerSource::check()
   return TRUE;
 }
 
-int RFBTimerSource::dispatch()
-{
+int RFBTimerSource::dispatch() {
   core::Timer::checkTimeouts();
 
   return G_SOURCE_CONTINUE;

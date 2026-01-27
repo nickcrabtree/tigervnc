@@ -1,15 +1,15 @@
 /* Copyright (C) 2006 Constantin Kaplinsky.  All Rights Reserved.
- *    
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -24,8 +24,8 @@
 #include <config.h>
 #endif
 
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef DEBUG
 #include <stdio.h>
@@ -33,14 +33,12 @@
 
 #include <x0vncserver/PollingScheduler.h>
 
-PollingScheduler::PollingScheduler(int interval, int maxload)
-{
+PollingScheduler::PollingScheduler(int interval, int maxload) {
   setParameters(interval, maxload);
   reset();
 }
 
-void PollingScheduler::setParameters(int interval, int maxload)
-{
+void PollingScheduler::setParameters(int interval, int maxload) {
   m_interval = interval;
   m_maxload = maxload;
 
@@ -54,18 +52,15 @@ void PollingScheduler::setParameters(int interval, int maxload)
   }
 }
 
-void PollingScheduler::reset()
-{
+void PollingScheduler::reset() {
   m_initialState = true;
 }
 
-bool PollingScheduler::isRunning()
-{
+bool PollingScheduler::isRunning() {
   return !m_initialState;
 }
 
-void PollingScheduler::newPass()
-{
+void PollingScheduler::newPass() {
   TimeMillis timeNow;
 
   if (m_initialState) {
@@ -123,25 +118,20 @@ void PollingScheduler::newPass()
 
     if (m_count > 4) {
       // Estimation 1 (use previous pass statistics).
-      optimalLoadDuration1 =
-        ((duration - m_sleptThisPass) * 100 + m_maxload/2) / m_maxload;
+      optimalLoadDuration1 = ((duration - m_sleptThisPass) * 100 + m_maxload / 2) / m_maxload;
 
       if (m_count > 16) {
         // Estimation 2 (use history of 8 previous passes).
-        optimalLoadDuration8 =
-          ((m_durationSum - m_sleptSum) * 900 + m_maxload*4) / (m_maxload*8)
-          - m_durationSum;
+        optimalLoadDuration8 = ((m_durationSum - m_sleptSum) * 900 + m_maxload * 4) / (m_maxload * 8) - m_durationSum;
         // Mix the above two giving more priority to the first.
-        optimalLoadDuration =
-          (2 * optimalLoadDuration1 + optimalLoadDuration8) / 3;
+        optimalLoadDuration = (2 * optimalLoadDuration1 + optimalLoadDuration8) / 3;
       } else {
         optimalLoadDuration = optimalLoadDuration1;
       }
     }
 
 #ifdef DEBUG
-    fprintf(stderr, "<est %3d,%3d,%d>\t",
-            m_ratedDuration, optimalLoadDuration1, optimalLoadDuration8);
+    fprintf(stderr, "<est %3d,%3d,%d>\t", m_ratedDuration, optimalLoadDuration1, optimalLoadDuration8);
 #endif
 
     // Choose final estimation.
@@ -165,15 +155,13 @@ void PollingScheduler::newPass()
 
     // Update pass counter.
     m_count++;
-
   }
 
   m_passStarted = timeNow;
   m_sleptThisPass = 0;
 }
 
-void PollingScheduler::sleepStarted()
-{
+void PollingScheduler::sleepStarted() {
   if (m_initialState || m_sleeping)
     return;
 
@@ -182,8 +170,7 @@ void PollingScheduler::sleepStarted()
   m_sleeping = true;
 }
 
-void PollingScheduler::sleepFinished()
-{
+void PollingScheduler::sleepFinished() {
   if (m_initialState || !m_sleeping)
     return;
 
@@ -193,8 +180,7 @@ void PollingScheduler::sleepFinished()
   m_sleeping = false;
 }
 
-int PollingScheduler::millisRemaining() const
-{
+int PollingScheduler::millisRemaining() const {
   if (m_initialState)
     return 0;
 
@@ -207,8 +193,7 @@ int PollingScheduler::millisRemaining() const
   return (m_ratedDuration - elapsed);
 }
 
-bool PollingScheduler::goodTimeToPoll() const
-{
+bool PollingScheduler::goodTimeToPoll() const {
   if (m_initialState)
     return true;
 

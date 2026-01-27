@@ -2,17 +2,17 @@
  * Copyright 2009-2017 Pierre Ossman for Cendio AB
  * Copyright 2018 Peter Astrand <astrand@cendio.se> for Cendio AB
  * Copyright 2014 Brian P. Hinz
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -29,26 +29,24 @@
 
 #include <core/LogWriter.h>
 
-#include <rfb/screenTypes.h>
 #include <rfb/ScreenSet.h>
+#include <rfb/screenTypes.h>
 
 #include <RandrGlue.h>
 
 static core::LogWriter vlog("RandR");
 
-static int ResizeScreen(bool dryrun, int fb_width, int fb_height,
-                        std::set<unsigned int>* disabledOutputs)
-{
+static int ResizeScreen(bool dryrun, int fb_width, int fb_height, std::set<unsigned int>* disabledOutputs) {
   vlog.debug("Resizing screen framebuffer to %dx%d", fb_width, fb_height);
 
   /*
    * Disable outputs which are larger than the target size
    */
-  for (int i = 0;i < vncRandRGetOutputCount();i++) {
+  for (int i = 0; i < vncRandRGetOutputCount(); i++) {
     int x, y, width, height;
     if (vncRandRGetOutputDimensions(i, &x, &y, &width, &height) == 0) {
       if (x + width > fb_width || y + height > fb_height) {
-        char *name = vncRandRGetOutputName(i);
+        char* name = vncRandRGetOutputName(i);
         vlog.debug("Temporarily disabling output '%s'", name);
         free(name);
         if (!dryrun) {
@@ -70,17 +68,14 @@ static int ResizeScreen(bool dryrun, int fb_width, int fb_height,
   return vncRandRResizeScreen(fb_width, fb_height);
 }
 
-
 /* Return output index of preferred output, -1 on failure */
-int getPreferredScreenOutput(OutputIdMap *outputIdMap,
-                             const std::set<unsigned int>& disabledOutputs)
-{
+int getPreferredScreenOutput(OutputIdMap* outputIdMap, const std::set<unsigned int>& disabledOutputs) {
   int firstDisabled = -1;
   int firstEnabled = -1;
   int firstConnected = -1;
   int firstUsable = -1;
 
-  for (int i = 0;i < vncRandRGetOutputCount();i++) {
+  for (int i = 0; i < vncRandRGetOutputCount(); i++) {
     unsigned int output = vncRandRGetOutputId(i);
 
     /* In use? */
@@ -95,20 +90,24 @@ int getPreferredScreenOutput(OutputIdMap *outputIdMap,
 
     /* Temporarily disabled? */
     if (disabledOutputs.count(output)) {
-      if (firstDisabled == -1) firstDisabled = i;
+      if (firstDisabled == -1)
+        firstDisabled = i;
     }
 
     /* Enabled? */
     if (vncRandRIsOutputEnabled(i)) {
-      if (firstEnabled == -1) firstEnabled = i;
+      if (firstEnabled == -1)
+        firstEnabled = i;
     }
 
     /* Connected? */
     if (vncRandRIsOutputConnected(i)) {
-      if (firstConnected == -1) firstConnected = i;
+      if (firstConnected == -1)
+        firstConnected = i;
     }
 
-    if (firstUsable == -1) firstUsable = i;
+    if (firstUsable == -1)
+      firstUsable = i;
   }
 
   if (firstEnabled != -1) {
@@ -122,13 +121,11 @@ int getPreferredScreenOutput(OutputIdMap *outputIdMap,
   }
 }
 
-
-rfb::ScreenSet computeScreenLayout(OutputIdMap *outputIdMap)
-{
+rfb::ScreenSet computeScreenLayout(OutputIdMap* outputIdMap) {
   rfb::ScreenSet layout;
   OutputIdMap newIdMap;
 
-  for (int i = 0;i < vncRandRGetOutputCount();i++) {
+  for (int i = 0; i < vncRandRGetOutputCount(); i++) {
     unsigned int outputId;
     int x, y, width, height;
 
@@ -147,7 +144,7 @@ rfb::ScreenSet computeScreenLayout(OutputIdMap *outputIdMap)
 
       while (true) {
         id = rand();
-        for (iter = outputIdMap->begin();iter != outputIdMap->end();++iter) {
+        for (iter = outputIdMap->begin(); iter != outputIdMap->end(); ++iter) {
           if (iter->second == id)
             break;
         }
@@ -171,16 +168,13 @@ rfb::ScreenSet computeScreenLayout(OutputIdMap *outputIdMap)
    * that we have no active outputs...
    */
   if (layout.num_screens() == 0)
-    layout.add_screen(rfb::Screen(0, 0, 0, vncGetScreenWidth(),
-                                  vncGetScreenHeight(), 0));
+    layout.add_screen(rfb::Screen(0, 0, 0, vncGetScreenWidth(), vncGetScreenHeight(), 0));
 
   return layout;
 }
 
-static unsigned int _setScreenLayout(bool dryrun,
-                                     int fb_width, int fb_height, const rfb::ScreenSet& layout,
-                                     OutputIdMap *outputIdMap)
-{
+static unsigned int _setScreenLayout(bool dryrun, int fb_width, int fb_height, const rfb::ScreenSet& layout,
+                                     OutputIdMap* outputIdMap) {
   int ret;
   int availableOutputs;
   std::set<unsigned int> disabledOutputs;
@@ -207,8 +201,7 @@ static unsigned int _setScreenLayout(bool dryrun,
 
   /* Try to create more outputs if needed... (only works on Xvnc) */
   if (layout.num_screens() > availableOutputs) {
-    vlog.debug("Insufficient screens. Need to create %d more.",
-               layout.num_screens() - availableOutputs);
+    vlog.debug("Insufficient screens. Need to create %d more.", layout.num_screens() - availableOutputs);
 
     if (!vncRandRCanCreateOutputs(layout.num_screens() - availableOutputs)) {
       if (logErrors)
@@ -227,8 +220,7 @@ static unsigned int _setScreenLayout(bool dryrun,
   }
 
   /* First we might need to resize the screen */
-  if ((fb_width != vncGetScreenWidth()) ||
-      (fb_height != vncGetScreenHeight())) {
+  if ((fb_width != vncGetScreenWidth()) || (fb_height != vncGetScreenHeight())) {
     ret = ResizeScreen(dryrun, fb_width, fb_height, &disabledOutputs);
     if (!ret) {
       if (logErrors) {
@@ -239,9 +231,9 @@ static unsigned int _setScreenLayout(bool dryrun,
   }
 
   /* Next, reconfigure all known outputs */
-  for (int i = 0;i < vncRandRGetOutputCount();i++) {
+  for (int i = 0; i < vncRandRGetOutputCount(); i++) {
     unsigned int output;
-    char *name_;
+    char* name_;
     std::string name;
 
     rfb::ScreenSet::const_iterator iter;
@@ -255,7 +247,7 @@ static unsigned int _setScreenLayout(bool dryrun,
       continue;
 
     /* Find the corresponding screen... */
-    for (iter = layout.begin();iter != layout.end();++iter) {
+    for (iter = layout.begin(); iter != layout.end(); ++iter) {
       if (iter->id == (*outputIdMap)[output])
         break;
     }
@@ -274,49 +266,41 @@ static unsigned int _setScreenLayout(bool dryrun,
     }
 
     /* Possible mode? */
-    if (!vncRandRCheckOutputMode(i, iter->dimensions.width(),
-                                 iter->dimensions.height())) {
+    if (!vncRandRCheckOutputMode(i, iter->dimensions.width(), iter->dimensions.height())) {
       if (logErrors)
-        vlog.error("Output '%s' does not support required mode %dx%d",
-                   name.c_str(),
-                   iter->dimensions.width(), iter->dimensions.height());
+        vlog.error("Output '%s' does not support required mode %dx%d", name.c_str(), iter->dimensions.width(),
+                   iter->dimensions.height());
       return rfb::resultInvalid;
     }
 
-    vlog.debug("Reconfiguring output '%s' to %dx%d+%d+%d", name.c_str(),
-               iter->dimensions.width(), iter->dimensions.height(),
-               iter->dimensions.tl.x, iter->dimensions.tl.y);
+    vlog.debug("Reconfiguring output '%s' to %dx%d+%d+%d", name.c_str(), iter->dimensions.width(),
+               iter->dimensions.height(), iter->dimensions.tl.x, iter->dimensions.tl.y);
 
     if (dryrun)
       continue;
 
     /* Reconfigure new mode and position */
-    ret = vncRandRReconfigureOutput(i,
-                                    iter->dimensions.tl.x,
-                                    iter->dimensions.tl.y,
-                                    iter->dimensions.width(),
+    ret = vncRandRReconfigureOutput(i, iter->dimensions.tl.x, iter->dimensions.tl.y, iter->dimensions.width(),
                                     iter->dimensions.height());
     if (!ret) {
       if (logErrors)
-        vlog.error("Failed to reconfigure output '%s' to %dx%d+%d+%d",
-                   name.c_str(),
-                   iter->dimensions.width(), iter->dimensions.height(),
-                   iter->dimensions.tl.x, iter->dimensions.tl.y);
+        vlog.error("Failed to reconfigure output '%s' to %dx%d+%d+%d", name.c_str(), iter->dimensions.width(),
+                   iter->dimensions.height(), iter->dimensions.tl.x, iter->dimensions.tl.y);
       return rfb::resultInvalid;
     }
   }
 
   /* Allocate new outputs for new screens */
   rfb::ScreenSet::const_iterator iter;
-  for (iter = layout.begin();iter != layout.end();++iter) {
+  for (iter = layout.begin(); iter != layout.end(); ++iter) {
     OutputIdMap::const_iterator oi;
     unsigned int output;
-    char *name_;
+    char* name_;
     std::string name;
     int i;
 
     /* Does this screen have an output already? */
-    for (oi = outputIdMap->begin();oi != outputIdMap->end();++oi) {
+    for (oi = outputIdMap->begin(); oi != outputIdMap->end(); ++oi) {
       if (oi->second == iter->id)
         break;
     }
@@ -352,40 +336,32 @@ static unsigned int _setScreenLayout(bool dryrun,
     }
 
     /* Possible mode? */
-    if (!vncRandRCheckOutputMode(i, iter->dimensions.width(),
-                                 iter->dimensions.height())) {
+    if (!vncRandRCheckOutputMode(i, iter->dimensions.width(), iter->dimensions.height())) {
       if (logErrors)
-        vlog.error("New output '%s' does not support required mode %dx%d",
-                   name.c_str(),
-                   iter->dimensions.width(), iter->dimensions.height());
+        vlog.error("New output '%s' does not support required mode %dx%d", name.c_str(), iter->dimensions.width(),
+                   iter->dimensions.height());
       return rfb::resultInvalid;
     }
 
-    vlog.debug("Reconfiguring new output '%s' to %dx%d+%d+%d", name.c_str(),
-               iter->dimensions.width(), iter->dimensions.height(),
-               iter->dimensions.tl.x, iter->dimensions.tl.y);
+    vlog.debug("Reconfiguring new output '%s' to %dx%d+%d+%d", name.c_str(), iter->dimensions.width(),
+               iter->dimensions.height(), iter->dimensions.tl.x, iter->dimensions.tl.y);
 
     if (dryrun)
       continue;
 
     /* Reconfigure new mode and position */
-    ret = vncRandRReconfigureOutput(i,
-                                    iter->dimensions.tl.x,
-                                    iter->dimensions.tl.y,
-                                    iter->dimensions.width(),
+    ret = vncRandRReconfigureOutput(i, iter->dimensions.tl.x, iter->dimensions.tl.y, iter->dimensions.width(),
                                     iter->dimensions.height());
     if (!ret) {
       if (logErrors)
-        vlog.error("Failed to reconfigure new output '%s' to %dx%d+%d+%d",
-                   name.c_str(),
-                   iter->dimensions.width(), iter->dimensions.height(),
-                   iter->dimensions.tl.x, iter->dimensions.tl.y);
+        vlog.error("Failed to reconfigure new output '%s' to %dx%d+%d+%d", name.c_str(), iter->dimensions.width(),
+                   iter->dimensions.height(), iter->dimensions.tl.x, iter->dimensions.tl.y);
       return rfb::resultInvalid;
     }
   }
 
   /* Turn off unused outputs */
-  for (int i = 0;i < vncRandRGetOutputCount();i++) {
+  for (int i = 0; i < vncRandRGetOutputCount(); i++) {
     unsigned int output = vncRandRGetOutputId(i);
 
     /* Known? */
@@ -398,7 +374,7 @@ static unsigned int _setScreenLayout(bool dryrun,
 
     /* Disable and move on... */
     ret = vncRandRDisableOutput(i);
-    char *name = vncRandRGetOutputName(i);
+    char* name = vncRandRGetOutputName(i);
     if (ret) {
       vlog.debug("Disabled unused output '%s'", name);
     } else {
@@ -421,17 +397,11 @@ static unsigned int _setScreenLayout(bool dryrun,
   return rfb::resultSuccess;
 }
 
-
-unsigned int setScreenLayout(int fb_width, int fb_height, const rfb::ScreenSet& layout,
-                             OutputIdMap *outputIdMap)
-{
-    return _setScreenLayout(false, fb_width, fb_height, layout, outputIdMap);
+unsigned int setScreenLayout(int fb_width, int fb_height, const rfb::ScreenSet& layout, OutputIdMap* outputIdMap) {
+  return _setScreenLayout(false, fb_width, fb_height, layout, outputIdMap);
 }
 
-
-unsigned int tryScreenLayout(int fb_width, int fb_height, const rfb::ScreenSet& layout,
-                             OutputIdMap *outputIdMap)
-{
-    OutputIdMap dryrunIdMap = *outputIdMap;
-    return _setScreenLayout(true, fb_width, fb_height, layout, &dryrunIdMap);
+unsigned int tryScreenLayout(int fb_width, int fb_height, const rfb::ScreenSet& layout, OutputIdMap* outputIdMap) {
+  OutputIdMap dryrunIdMap = *outputIdMap;
+  return _setScreenLayout(true, fb_width, fb_height, layout, &dryrunIdMap);
 }

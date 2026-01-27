@@ -23,7 +23,7 @@
 
 #include <dix.h>
 
-extern const char *renderNode;
+extern const char* renderNode;
 
 Bool vncDRI3Init(ScreenPtr screen);
 

@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011-2015 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -30,18 +30,15 @@
 
 #include "XorgGlue.h"
 
-const char *vncGetDisplay(void)
-{
+const char* vncGetDisplay(void) {
   return display;
 }
 
-unsigned long vncGetServerGeneration(void)
-{
+unsigned long vncGetServerGeneration(void) {
   return serverGeneration;
 }
 
-void vncFatalError(const char *format, ...)
-{
+void vncFatalError(const char* format, ...) {
   va_list args;
   char buffer[4096];
 
@@ -52,15 +49,12 @@ void vncFatalError(const char *format, ...)
   FatalError("%s", buffer);
 }
 
-int vncGetScreenCount(void)
-{
+int vncGetScreenCount(void) {
   return screenInfo.numScreens;
 }
 
-void vncGetScreenFormat(int scrIdx, int *depth, int *bpp,
-                        int *trueColour, int *bigEndian,
-                        int *redMask, int *greenMask, int *blueMask)
-{
+void vncGetScreenFormat(int scrIdx, int* depth, int* bpp, int* trueColour, int* bigEndian, int* redMask, int* greenMask,
+                        int* blueMask) {
   int i;
   VisualPtr vis = NULL;
 
@@ -87,8 +81,7 @@ void vncGetScreenFormat(int scrIdx, int *depth, int *bpp,
   *bigEndian = (screenInfo.imageByteOrder == MSBFirst);
 
   for (i = 0; i < screenInfo.screens[scrIdx]->numVisuals; i++) {
-    if (screenInfo.screens[scrIdx]->visuals[i].vid == 
-        screenInfo.screens[scrIdx]->rootVisual) {
+    if (screenInfo.screens[scrIdx]->visuals[i].vid == screenInfo.screens[scrIdx]->rootVisual) {
       vis = &screenInfo.screens[scrIdx]->visuals[i];
       break;
     }
@@ -104,13 +97,10 @@ void vncGetScreenFormat(int scrIdx, int *depth, int *bpp,
   *blueMask = vis->blueMask;
 }
 
-int vncGetScreenX(int scrIdx)
-{
+int vncGetScreenX(int scrIdx) {
   return screenInfo.screens[scrIdx]->x;
 }
 
-int vncGetScreenY(int scrIdx)
-{
+int vncGetScreenY(int scrIdx) {
   return screenInfo.screens[scrIdx]->y;
 }
-

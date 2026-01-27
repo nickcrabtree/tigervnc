@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2024 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -33,27 +33,26 @@
 
 #include <core/Timer.h>
 
-#include <rfb/SDesktop.h>
 #include <rfb/PixelBuffer.h>
+#include <rfb/SDesktop.h>
 
 #include <unixcommon.h>
 
 #include "vncInput.h"
 
 namespace rfb {
-  class VNCServerST;
+class VNCServerST;
 }
 
-namespace network { class SocketListener; class Socket; }
+namespace network {
+class SocketListener;
+class Socket;
+} // namespace network
 
-class XserverDesktop : public rfb::SDesktop, public rfb::FullFramePixelBuffer,
-                       public core::Timer::Callback {
+class XserverDesktop : public rfb::SDesktop, public rfb::FullFramePixelBuffer, public core::Timer::Callback {
 public:
-
-  XserverDesktop(int screenIndex,
-                 std::list<network::SocketListener*> listeners_,
-                 const char* name, const rfb::PixelFormat &pf,
-                 int width, int height, void* fbptr, int stride);
+  XserverDesktop(int screenIndex, std::list<network::SocketListener*> listeners_, const char* name,
+                 const rfb::PixelFormat& pf, int width, int height, void* fbptr, int stride);
   virtual ~XserverDesktop();
 
   // methods called from X server code
@@ -70,8 +69,7 @@ public:
   void bell();
   void setLEDState(unsigned int state);
   void setDesktopName(const char* name);
-  void setCursor(int width, int height, int hotX, int hotY,
-                 const unsigned char *rgbaData);
+  void setCursor(int width, int height, int hotX, int hotY, const unsigned char* rgbaData);
   void setCursorPos(int x, int y, bool warped);
   void add_changed(const core::Region& region);
   void add_copied(const core::Region& dest, const core::Point& delta);
@@ -84,24 +82,19 @@ public:
   // getQueryConnect()
   //   Returns information about the currently waiting query
   //   (or an id of 0 if there is none waiting)
-  void getQueryConnect(uint32_t* opaqueId, const char** address,
-                       const char** username, int *timeout);
+  void getQueryConnect(uint32_t* opaqueId, const char** address, const char** username, int* timeout);
 
   // approveConnection()
   //   Used by X server code to supply the result of a query.
-  void approveConnection(uint32_t opaqueId, bool accept,
-                         const char* rejectMsg=0);
+  void approveConnection(uint32_t opaqueId, bool accept, const char* rejectMsg = 0);
 
   // rfb::SDesktop callbacks
   void init(rfb::VNCServer* vs) override;
   void terminate() override;
-  void queryConnection(network::Socket* sock,
-                       const char* userName) override;
-  void pointerEvent(const core::Point& pos,
-                    uint16_t buttonMask) override;
+  void queryConnection(network::Socket* sock, const char* userName) override;
+  void pointerEvent(const core::Point& pos, uint16_t buttonMask) override;
   void keyEvent(uint32_t keysym, uint32_t keycode, bool down) override;
-  unsigned int setScreenLayout(int fb_width, int fb_height,
-                               const rfb::ScreenSet& layout) override;
+  unsigned int setScreenLayout(int fb_width, int fb_height, const rfb::ScreenSet& layout) override;
   void frameTick(uint64_t msc) override;
   void handleClipboardRequest() override;
   void handleClipboardAnnounce(bool available) override;
@@ -111,17 +104,12 @@ public:
   void grabRegion(const core::Region& r) override;
 
 protected:
-  bool handleListenerEvent(int fd,
-                           std::list<network::SocketListener*>* sockets,
-                           rfb::VNCServer* sockserv);
-  bool handleSocketEvent(int fd,
-                         rfb::VNCServer* sockserv,
-                         bool read, bool write);
+  bool handleListenerEvent(int fd, std::list<network::SocketListener*>* sockets, rfb::VNCServer* sockserv);
+  bool handleSocketEvent(int fd, rfb::VNCServer* sockserv, bool read, bool write);
 
   void handleTimeout(core::Timer* t) override;
 
 private:
-
   int screenIndex;
   rfb::VNCServer* server;
   std::list<network::SocketListener*> listeners;

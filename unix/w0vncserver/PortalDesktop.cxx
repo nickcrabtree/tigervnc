@@ -26,35 +26,29 @@
 
 #include <gio/gio.h>
 
+#include <core/LogWriter.h>
 #include <rfb/ScreenSet.h>
 #include <rfb/VNCServerST.h>
-#include <core/LogWriter.h>
 
-#include "w0vncserver.h"
-#include "portals/RemoteDesktop.h"
-#include "portals/PortalProxy.h"
 #include "PipeWirePixelBuffer.h"
 #include "PortalDesktop.h"
+#include "portals/PortalProxy.h"
+#include "portals/RemoteDesktop.h"
+#include "w0vncserver.h"
 
 static core::LogWriter vlog("PortalDesktop");
 
-PortalDesktop::PortalDesktop()
-  : server(nullptr), remoteDesktop(nullptr), pb(nullptr)
-{
-}
+PortalDesktop::PortalDesktop() : server(nullptr), remoteDesktop(nullptr), pb(nullptr) {}
 
-PortalDesktop::~PortalDesktop()
-{
+PortalDesktop::~PortalDesktop() {
   delete remoteDesktop;
 }
 
-void PortalDesktop::init(rfb::VNCServer* vs)
-{
+void PortalDesktop::init(rfb::VNCServer* vs) {
   server = vs;
 }
 
-void PortalDesktop::start()
-{
+void PortalDesktop::start() {
   assert(!remoteDesktop);
 
   std::function<void(int, uint32_t)> startPipewire = [this](int fd, uint32_t id) {
@@ -68,16 +62,13 @@ void PortalDesktop::start()
   // FIXME: If the session startup is canceled (e.g. the local user
   // denies the connection), we need to close the connections to all
   // clients. This is not the cleanest solution, but it will do for now.
-  std::function<void(const char*)> cancelStart = [this](const char* reason) {
-    server->closeClients(reason);
-  };
+  std::function<void(const char*)> cancelStart = [this](const char* reason) { server->closeClients(reason); };
 
   remoteDesktop = new RemoteDesktop(startPipewire, cancelStart);
   remoteDesktop->createSession();
 }
 
-void PortalDesktop::stop()
-{
+void PortalDesktop::stop() {
   server->setPixelBuffer(nullptr);
 
   delete pb;
@@ -87,42 +78,32 @@ void PortalDesktop::stop()
   remoteDesktop = nullptr;
 }
 
-void PortalDesktop::queryConnection(network::Socket* sock,
-                                    const char* /* userName */)
-{
+void PortalDesktop::queryConnection(network::Socket* sock, const char* /* userName */) {
   // FIXME: Implement this.
-  server->approveConnection(sock, false,
-                            "Unable to query the local user to accept the connection.");
+  server->approveConnection(sock, false, "Unable to query the local user to accept the connection.");
 }
 
-void PortalDesktop::terminate()
-{
+void PortalDesktop::terminate() {
   kill(getpid(), SIGTERM);
 }
 
-unsigned int PortalDesktop::setScreenLayout(int /* fb_width */,
-                                            int /* fb_height */,
-                                            const rfb::ScreenSet& /*  layout */)
-{
+unsigned int PortalDesktop::setScreenLayout(int /* fb_width */, int /* fb_height */,
+                                            const rfb::ScreenSet& /*  layout */) {
   return rfb::resultProhibited;
 }
 
-void PortalDesktop::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
-{
+void PortalDesktop::keyEvent(uint32_t keysym, uint32_t keycode, bool down) {
   remoteDesktop->keyEvent(keysym, keycode, down);
 }
 
-void PortalDesktop::pointerEvent(const core::Point& pos,
-                            uint16_t buttonMask)
-{
+void PortalDesktop::pointerEvent(const core::Point& pos, uint16_t buttonMask) {
   remoteDesktop->pointerEvent(pos.x, pos.y, buttonMask);
 }
 
-bool PortalDesktop::available()
-{
+bool PortalDesktop::available() {
   std::vector<std::string> interfaces = {
-    "org.freedesktop.portal.RemoteDesktop",
-    "org.freedesktop.portal.ScreenCast",
+      "org.freedesktop.portal.RemoteDesktop",
+      "org.freedesktop.portal.ScreenCast",
   };
 
   return PortalProxy::interfacesAvailable(interfaces);

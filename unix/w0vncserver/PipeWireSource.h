@@ -22,19 +22,18 @@
 #include <glib.h>
 #include <pipewire/stream.h>
 
-
 class PipeWireSource {
 public:
   PipeWireSource();
   ~PipeWireSource();
 
-  pw_loop* getLoop() const { return loop; }
+  pw_loop* getLoop() const {
+    return loop;
+  }
 
 private:
-  int  sourceLoopDispatch();
-  void handleStreamStateChanged(enum pw_stream_state old,
-                                enum pw_stream_state state,
-                                const char* error);
+  int sourceLoopDispatch();
+  void handleStreamStateChanged(enum pw_stream_state old, enum pw_stream_state state, const char* error);
   void handleStreamParamChanged(uint32_t id, const spa_pod* param);
   void handleProcess();
 

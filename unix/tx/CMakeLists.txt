@@ -1,5 +1,4 @@
-add_library(tx STATIC
-  TXWindow.cxx)
+add_library(tx STATIC TXWindow.cxx)
 
 target_include_directories(tx SYSTEM PUBLIC ${X11_INCLUDE_DIR})
 

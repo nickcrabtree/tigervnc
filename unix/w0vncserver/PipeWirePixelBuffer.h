@@ -19,21 +19,22 @@
 #ifndef __PIPEWIRE_PIXEL_BUFFER_H__
 #define __PIPEWIRE_PIXEL_BUFFER_H__
 
-#include <rfb/PixelBuffer.h>
 #include <core/Region.h>
+#include <rfb/PixelBuffer.h>
 #include <spa/buffer/buffer.h>
 
 #include "PipeWireStream.h"
 
-namespace rfb { class VNCServer; class PixelFormat;}
+namespace rfb {
+class VNCServer;
+class PixelFormat;
+} // namespace rfb
 
 struct PipeWireCursor;
 
-class PipeWirePixelBuffer : public rfb::ManagedPixelBuffer,
-                            public PipeWireStream {
+class PipeWirePixelBuffer : public rfb::ManagedPixelBuffer, public PipeWireStream {
 public:
-  PipeWirePixelBuffer(int32_t pipewireFd, uint32_t pipewireId,
-                      rfb::VNCServer* server);
+  PipeWirePixelBuffer(int32_t pipewireFd, uint32_t pipewireId, rfb::VNCServer* server);
   ~PipeWirePixelBuffer();
 
 private:
@@ -47,8 +48,7 @@ protected:
 
   bool hasCursorData(spa_buffer* buffer);
 
-  void setCursor(int width, int height, int hotX, int hotY,
-                 const unsigned char* rgbaData);
+  void setCursor(int width, int height, int hotX, int hotY, const unsigned char* rgbaData);
   bool supportedCursorPixelformat(int format_);
 
 private:

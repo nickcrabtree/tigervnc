@@ -23,7 +23,9 @@
 
 #include <pipewire/stream.h>
 
-namespace rfb { class PixelFormat; }
+namespace rfb {
+class PixelFormat;
+}
 
 class PipeWireSource;
 
@@ -35,9 +37,7 @@ public:
 private:
   void start(int nodeId);
 
-  void handleStreamStateChanged(enum pw_stream_state old,
-                                enum pw_stream_state state,
-                                const char* error);
+  void handleStreamStateChanged(enum pw_stream_state old, enum pw_stream_state state, const char* error);
   void handleStreamParamChanged(uint32_t id, const spa_pod* param);
   void handleProcess();
 
