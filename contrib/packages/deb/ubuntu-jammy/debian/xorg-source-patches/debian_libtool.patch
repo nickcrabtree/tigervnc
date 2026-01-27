@@ -31,7 +31,7 @@ Index: a/ltmain.sh
 +	  done
  	  continue
  	fi # $pass = conv
- 
+
 ## Do not link against deplibs.  This is not needed for shared libs
 ## on atleast ELF systems since those already know which libs they
 ## need themself.  This seems to break a few things and will be fixed
@@ -75,7 +75,7 @@ Index: a/m4/libtool.m4
 -    _LT_TAGVAR(link_all_deplibs, $1)=no
 -    ;;
    esac
- 
+
    _LT_TAGVAR(ld_shlibs, $1)=yes
 @@ -5773,7 +5779,6 @@
  	if test yes = "$lt_cv_irix_exported_symbol"; then
