@@ -69,7 +69,7 @@ Build requirements (Windows)
    You also need the Inno Setup Preprocessor, which is available in the
    Inno Setup QuickStart Pack.
 
-   Add the directory containing iscc.exe (for instance, 
+   Add the directory containing iscc.exe (for instance,
    C:\Program Files\Inno Setup 5) to the system or user PATH environment
    variable prior to building TigerVNC.
 
@@ -248,8 +248,8 @@ command line, an alternate certificate may be used for signing.
   -DJAVA_TSA_URL=${url_of_timestamping_authority}
 
 The values of the JAVA_STOREPASS and JAVA_KEYPASS arguments may optionally be
-read from file or environment variables by prefixing the value with ":env " 
-or ":file " (see the jarsigner documentation for more info): 
+read from file or environment variables by prefixing the value with ":env "
+or ":file " (see the jarsigner documentation for more info):
 
   export StorePass=tigervnc
   export KeyPass=tigervnc
@@ -264,7 +264,7 @@ Building TLS support
 ======================================
 
 TLS requires GnuTLS, which is supplied with most Linux distributions and
-with MinGW for Windows and can be built from source on OS X and other 
+with MinGW for Windows and can be built from source on OS X and other
 Unix variants. However, GnuTLS versions > 2.12.x && < 3.3.x should be
 avoided because of potential incompatibilities during initial handshaking.
 
