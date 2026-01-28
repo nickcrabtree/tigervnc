@@ -129,7 +129,7 @@ fi
 echo ""
 echo "[5/5] Cleaning up..."
 kill $XTERM_PID 2>/dev/null || true
-kill $WM_PID 2>/dev/null || true  
+kill $WM_PID 2>/dev/null || true
 kill $SERVER_PID 2>/dev/null || true
 sleep 1
 

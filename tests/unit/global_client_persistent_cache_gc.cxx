@@ -1,15 +1,15 @@
 /* Copyright (C) 2025 TigerVNC Team
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -24,16 +24,15 @@
 
 #include <rfb/GlobalClientPersistentCache.h>
 
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <cstdio>
 #include <cstring>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace {
 
-static void writeFileWithSize(const char* path, size_t size)
-{
+static void writeFileWithSize(const char* path, size_t size) {
   int fd = ::open(path, O_CREAT | O_TRUNC | O_WRONLY, 0644);
   ASSERT_GE(fd, 0);
   // Ensure the file has the desired size; contents don't matter for the test.
@@ -41,8 +40,7 @@ static void writeFileWithSize(const char* path, size_t size)
   ::close(fd);
 }
 
-static void writeEmptyV5Index(const std::string& dir)
-{
+static void writeEmptyV5Index(const std::string& dir) {
   std::string indexPath = dir + "/index.dat";
   FILE* f = fopen(indexPath.c_str(), "wb");
   ASSERT_NE(f, nullptr);
@@ -67,16 +65,14 @@ static void writeEmptyV5Index(const std::string& dir)
   fclose(f);
 }
 
-static bool fileExists(const std::string& path)
-{
+static bool fileExists(const std::string& path) {
   struct stat st;
   return stat(path.c_str(), &st) == 0;
 }
 
 } // namespace
 
-TEST(GlobalClientPersistentCache, LoadIndexDeletesOrphanShards)
-{
+TEST(GlobalClientPersistentCache, LoadIndexDeletesOrphanShards) {
   char tmpl[] = "/tmp/tigervnc_pcache_test_XXXXXX";
   char* dir = mkdtemp(tmpl);
   ASSERT_NE(dir, nullptr);
@@ -95,9 +91,9 @@ TEST(GlobalClientPersistentCache, LoadIndexDeletesOrphanShards)
   ASSERT_TRUE(fileExists(cacheDir + "/shard_0001.dat"));
 
   rfb::GlobalClientPersistentCache cache(/*maxMemorySizeMB*/ 1,
-                                        /*maxDiskSizeMB*/ 1,
-                                        /*shardSizeMB*/ 1,
-                                        /*cacheDirOverride*/ cacheDir);
+                                         /*maxDiskSizeMB*/ 1,
+                                         /*shardSizeMB*/ 1,
+                                         /*cacheDirOverride*/ cacheDir);
 
   cache.loadIndexFromDisk();
 

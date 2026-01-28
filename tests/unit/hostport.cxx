@@ -29,51 +29,43 @@ struct result {
   int port;
 };
 
-static bool operator==(const result& a, const result& b)
-{
+static bool operator==(const result& a, const result& b) {
   return a.host == b.host && a.port == b.port;
 }
 
-static std::ostream& operator<<(std::ostream& os, const result& r)
-{
+static std::ostream& operator<<(std::ostream& os, const result& r) {
   return os << r.host << ":" << r.port;
 }
 
-static result getHostAndPort(const char* hostAndPort)
-{
+static result getHostAndPort(const char* hostAndPort) {
   std::string host;
   int port;
   network::getHostAndPort(hostAndPort, &host, &port);
   return {host, port};
 }
 
-TEST(HostPost, localDisplay)
-{
+TEST(HostPost, localDisplay) {
   EXPECT_EQ(getHostAndPort(":5"), result({"localhost", 5905}));
 }
 
-TEST(HostPost, noDisplay)
-{
+TEST(HostPost, noDisplay) {
   EXPECT_EQ(getHostAndPort("1.2.3.4"), result({"1.2.3.4", 5900}));
 }
 
-TEST(HostPost, display)
-{
+TEST(HostPost, display) {
   EXPECT_EQ(getHostAndPort("1.2.3.4:5"), result({"1.2.3.4", 5905}));
   EXPECT_EQ(getHostAndPort("1.2.3.4:99"), result({"1.2.3.4", 5999}));
   EXPECT_EQ(getHostAndPort("1.2.3.4:100"), result({"1.2.3.4", 100}));
   EXPECT_EQ(getHostAndPort("1.2.3.4:5901"), result({"1.2.3.4", 5901}));
 }
 
-TEST(HostPost, port)
-{
+TEST(HostPost, port) {
   EXPECT_EQ(getHostAndPort("1.2.3.4::5"), result({"1.2.3.4", 5}));
   EXPECT_EQ(getHostAndPort("1.2.3.4::99"), result({"1.2.3.4", 99}));
   EXPECT_EQ(getHostAndPort("1.2.3.4::5901"), result({"1.2.3.4", 5901}));
 }
 
-TEST(HostPost, bracketedIpv4)
-{
+TEST(HostPost, bracketedIpv4) {
   EXPECT_EQ(getHostAndPort("[1.2.3.4]"), result({"1.2.3.4", 5900}));
   EXPECT_EQ(getHostAndPort("[1.2.3.4]:5"), result({"1.2.3.4", 5905}));
   EXPECT_EQ(getHostAndPort("[1.2.3.4]:100"), result({"1.2.3.4", 100}));
@@ -81,33 +73,28 @@ TEST(HostPost, bracketedIpv4)
   EXPECT_EQ(getHostAndPort("[1.2.3.4]::100"), result({"1.2.3.4", 100}));
 }
 
-TEST(HostPost, portOne)
-{
+TEST(HostPost, portOne) {
   // Ambigiuous. For now we'll keep the old behaviour...
   EXPECT_EQ(getHostAndPort("::1"), result({"localhost", 1}));
 }
 
-TEST(HostPost, bareIpv6)
-{
+TEST(HostPost, bareIpv6) {
   EXPECT_EQ(getHostAndPort("2001:1234::20:1"), result({"2001:1234::20:1", 5900}));
 }
 
-TEST(HostPost, bracketedIpv6)
-{
+TEST(HostPost, bracketedIpv6) {
   EXPECT_EQ(getHostAndPort("[::1]"), result({"::1", 5900}));
   EXPECT_EQ(getHostAndPort("[2001:1234::20:1]"), result({"2001:1234::20:1", 5900}));
 }
 
-TEST(HostPost, ipv6WithDisplay)
-{
+TEST(HostPost, ipv6WithDisplay) {
   EXPECT_EQ(getHostAndPort("[2001:1234::20:1]:5"), result({"2001:1234::20:1", 5905}));
   EXPECT_EQ(getHostAndPort("[2001:1234::20:1]:99"), result({"2001:1234::20:1", 5999}));
   EXPECT_EQ(getHostAndPort("[2001:1234::20:1]:100"), result({"2001:1234::20:1", 100}));
   EXPECT_EQ(getHostAndPort("[2001:1234::20:1]:5901"), result({"2001:1234::20:1", 5901}));
 }
 
-TEST(HostPort, padding)
-{
+TEST(HostPort, padding) {
   EXPECT_EQ(getHostAndPort("    1.2.3.4    "), result({"1.2.3.4", 5900}));
   EXPECT_EQ(getHostAndPort("    1.2.3.4:5901    "), result({"1.2.3.4", 5901}));
   EXPECT_EQ(getHostAndPort("    1.2.3.4    :5901    "), result({"1.2.3.4", 5901}));
@@ -120,8 +107,7 @@ TEST(HostPort, padding)
   EXPECT_EQ(getHostAndPort("    [2001:1234::20:1]:5905    "), result({"2001:1234::20:1", 5905}));
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

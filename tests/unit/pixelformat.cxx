@@ -40,19 +40,14 @@ struct Params {
   int bs;
 };
 
-static std::ostream& operator<<(std::ostream& os, const Params& p)
-{
-  return os << p.b << ", " << p.d << ", " <<
-         (p.e ? "true" : "false") << " " <<
-         (p.t ? "true" : "false") << ", " <<
-         p.rm << ", " << p.gm << ", " << p.bm << ", "
-         << p.rs << ", " << p.gs << ", " << p.bs;
+static std::ostream& operator<<(std::ostream& os, const Params& p) {
+  return os << p.b << ", " << p.d << ", " << (p.e ? "true" : "false") << " " << (p.t ? "true" : "false") << ", " << p.rm
+            << ", " << p.gm << ", " << p.bm << ", " << p.rs << ", " << p.gs << ", " << p.bs;
 }
 
 typedef testing::TestWithParam<Params> PixelFormatValid;
 
-TEST_P(PixelFormatValid, constructor)
-{
+TEST_P(PixelFormatValid, constructor) {
   Params params;
   rfb::PixelFormat* pf;
 
@@ -60,9 +55,8 @@ TEST_P(PixelFormatValid, constructor)
   pf = nullptr;
 
   EXPECT_NO_THROW({
-    pf = new rfb::PixelFormat(params.b, params.d, params.e, params.t,
-                              params.rm, params.gm, params.bm,
-                              params.rs, params.gs, params.bs);
+    pf = new rfb::PixelFormat(params.b, params.d, params.e, params.t, params.rm, params.gm, params.bm, params.rs,
+                              params.gs, params.bs);
   });
 
   delete pf;
@@ -70,34 +64,32 @@ TEST_P(PixelFormatValid, constructor)
 
 typedef testing::TestWithParam<Params> PixelFormatInvalid;
 
-TEST_P(PixelFormatInvalid, constructor)
-{
+TEST_P(PixelFormatInvalid, constructor) {
   Params params;
   rfb::PixelFormat* pf;
 
   params = GetParam();
   pf = nullptr;
 
-  EXPECT_THROW({
-    pf = new rfb::PixelFormat(params.b, params.d, params.e, params.t,
-                              params.rm, params.gm, params.bm,
-                              params.rs, params.gs, params.bs);
-  }, std::invalid_argument);
+  EXPECT_THROW(
+      {
+        pf = new rfb::PixelFormat(params.b, params.d, params.e, params.t, params.rm, params.gm, params.bm, params.rs,
+                                  params.gs, params.bs);
+      },
+      std::invalid_argument);
 
   delete pf;
 }
 
 typedef testing::TestWithParam<Params> PixelFormatIs888;
 
-TEST_P(PixelFormatIs888, constructor)
-{
+TEST_P(PixelFormatIs888, constructor) {
   Params params;
   rfb::PixelFormat* pf;
 
   params = GetParam();
-  pf = new rfb::PixelFormat(params.b, params.d, params.e, params.t,
-                            params.rm, params.gm, params.bm,
-                            params.rs, params.gs, params.bs);
+  pf = new rfb::PixelFormat(params.b, params.d, params.e, params.t, params.rm, params.gm, params.bm, params.rs,
+                            params.gs, params.bs);
   EXPECT_TRUE(pf->is888());
 
   delete pf;
@@ -105,22 +97,19 @@ TEST_P(PixelFormatIs888, constructor)
 
 typedef testing::TestWithParam<Params> PixelFormatNot888;
 
-TEST_P(PixelFormatNot888, constructor)
-{
+TEST_P(PixelFormatNot888, constructor) {
   Params params;
   rfb::PixelFormat* pf;
 
   params = GetParam();
-  pf = new rfb::PixelFormat(params.b, params.d, params.e, params.t,
-                            params.rm, params.gm, params.bm,
-                            params.rs, params.gs, params.bs);
+  pf = new rfb::PixelFormat(params.b, params.d, params.e, params.t, params.rm, params.gm, params.bm, params.rs,
+                            params.gs, params.bs);
   EXPECT_FALSE(pf->is888());
 
   delete pf;
 }
 
-static std::list<Params> validFormats()
-{
+static std::list<Params> validFormats() {
   std::list<Params> params;
 
   /* Normal true color formats */
@@ -151,8 +140,7 @@ static std::list<Params> validFormats()
 
 INSTANTIATE_TEST_SUITE_P(, PixelFormatValid, testing::ValuesIn(validFormats()));
 
-static std::list<Params> invalidFormats()
-{
+static std::list<Params> invalidFormats() {
   std::list<Params> params;
 
   params.push_back(Params{64, 24, false, true, 255, 255, 255, 0, 8, 16});
@@ -201,8 +189,7 @@ static std::list<Params> invalidFormats()
 
 INSTANTIATE_TEST_SUITE_P(, PixelFormatInvalid, testing::ValuesIn(invalidFormats()));
 
-static std::list<Params> is888Formats()
-{
+static std::list<Params> is888Formats() {
   std::list<Params> params;
 
   /* Positive cases */
@@ -216,8 +203,7 @@ static std::list<Params> is888Formats()
 
 INSTANTIATE_TEST_SUITE_P(, PixelFormatIs888, testing::ValuesIn(is888Formats()));
 
-static std::list<Params> not888Formats()
-{
+static std::list<Params> not888Formats() {
   std::list<Params> params;
 
   /* Low depth */
@@ -245,8 +231,7 @@ static std::list<Params> not888Formats()
 
 INSTANTIATE_TEST_SUITE_P(, PixelFormatNot888, testing::ValuesIn(not888Formats()));
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

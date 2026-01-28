@@ -1,8 +1,8 @@
 #ifdef __APPLE__
-#include <gtest/gtest.h>
 #include <FL/Fl.H>
 #include <FL/Fl_Window.H>
 #include <FL/fl_draw.H>
+#include <gtest/gtest.h>
 
 #include "../../vncviewer/Surface.h"
 
@@ -15,10 +15,10 @@ protected:
       for (int x = 0; x < w; ++x) {
         unsigned char* p = reinterpret_cast<unsigned char*>(s.data) + (y * w + x) * 4;
         bool top = y < h / 2;
-        p[2] = top ? 255 : 0;  // R
-        p[1] = 0;              // G
-        p[0] = top ? 0 : 255;  // B
-        p[3] = 255;            // A
+        p[2] = top ? 255 : 0; // R
+        p[1] = 0;             // G
+        p[0] = top ? 0 : 255; // B
+        p[3] = 255;           // A
       }
     }
     return s;
@@ -30,7 +30,7 @@ protected:
 class OrientationWindow : public Fl_Window {
 public:
   OrientationWindow(int w, int h, Surface* src, bool* drew_flag)
-    : Fl_Window(w, h, "orientation-test"), src_(src), drew_(drew_flag) {
+      : Fl_Window(w, h, "orientation-test"), src_(src), drew_(drew_flag) {
     end();
   }
 
@@ -38,7 +38,8 @@ public:
     Fl_Window::draw();
     // Blit entire source to window at (0,0)
     src_->draw(0, 0, 0, 0, w(), h());
-    if (drew_) *drew_ = true;
+    if (drew_)
+      *drew_ = true;
   }
 
 private:
@@ -67,7 +68,7 @@ TEST_F(SurfaceOSXWindowOrientation, RendersUprightInWindow) {
 
   auto pixel = [&](int x, int y) {
     size_t idx = (y * W + x) * 3;
-    return std::tuple<int,int,int>(buf[idx], buf[idx+1], buf[idx+2]); // R,G,B
+    return std::tuple<int, int, int>(buf[idx], buf[idx + 1], buf[idx + 2]); // R,G,B
   };
 
   auto top = pixel(0, 0);

@@ -28,22 +28,19 @@
 
 #include "../../vncviewer/GestureHandler.h"
 
-class TestClass : public GestureHandler
-{
-  protected:
-    void handleGestureEvent(const GestureEvent& event) override;
+class TestClass : public GestureHandler {
+protected:
+  void handleGestureEvent(const GestureEvent& event) override;
 
-  public:
-    std::vector<GestureEvent> events;
+public:
+  std::vector<GestureEvent> events;
 };
 
-void TestClass::handleGestureEvent(const GestureEvent& event)
-{
+void TestClass::handleGestureEvent(const GestureEvent& event) {
   events.push_back(event);
 }
 
-TEST(GestureHandler, oneTapNormal)
-{
+TEST(GestureHandler, oneTapNormal) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -65,8 +62,7 @@ TEST(GestureHandler, oneTapNormal)
   EXPECT_EQ(test.events[1].eventY, 30.0);
 }
 
-TEST(GestureHandler, twoTapNormal)
-{
+TEST(GestureHandler, twoTapNormal) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -93,8 +89,7 @@ TEST(GestureHandler, twoTapNormal)
   EXPECT_EQ(test.events[1].eventY, 40.0);
 }
 
-TEST(GestureHandler, twoTapSlowBegin)
-{
+TEST(GestureHandler, twoTapSlowBegin) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -109,8 +104,7 @@ TEST(GestureHandler, twoTapSlowBegin)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, twoTapSlowEnd)
-{
+TEST(GestureHandler, twoTapSlowEnd) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -125,8 +119,7 @@ TEST(GestureHandler, twoTapSlowEnd)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, twoTapTimeout)
-{
+TEST(GestureHandler, twoTapTimeout) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -141,8 +134,7 @@ TEST(GestureHandler, twoTapTimeout)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, threeTapNormal)
-{
+TEST(GestureHandler, threeTapNormal) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -174,8 +166,7 @@ TEST(GestureHandler, threeTapNormal)
   EXPECT_EQ(test.events[1].eventY, 40.0);
 }
 
-TEST(GestureHandler, threeTapSlowBegin)
-{
+TEST(GestureHandler, threeTapSlowBegin) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -192,8 +183,7 @@ TEST(GestureHandler, threeTapSlowBegin)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, threeTapSlowEnd)
-{
+TEST(GestureHandler, threeTapSlowEnd) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -210,8 +200,7 @@ TEST(GestureHandler, threeTapSlowEnd)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, threeTapDrag)
-{
+TEST(GestureHandler, threeTapDrag) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -229,8 +218,7 @@ TEST(GestureHandler, threeTapDrag)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, threeTapTimeout)
-{
+TEST(GestureHandler, threeTapTimeout) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -247,8 +235,7 @@ TEST(GestureHandler, threeTapTimeout)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, dragHoriz)
-{
+TEST(GestureHandler, dragHoriz) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -285,8 +272,7 @@ TEST(GestureHandler, dragHoriz)
   EXPECT_EQ(test.events[0].eventY, 30.0);
 }
 
-TEST(GestureHandler, dragVert)
-{
+TEST(GestureHandler, dragVert) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -323,8 +309,7 @@ TEST(GestureHandler, dragVert)
   EXPECT_EQ(test.events[0].eventY, 90.0);
 }
 
-TEST(GestureHandler, dragDiag)
-{
+TEST(GestureHandler, dragDiag) {
   TestClass test;
 
   test.handleTouchBegin(1, 120.0, 130.0);
@@ -361,8 +346,7 @@ TEST(GestureHandler, dragDiag)
   EXPECT_EQ(test.events[0].eventY, 70.0);
 }
 
-TEST(GestureHandler, longPressNormal)
-{
+TEST(GestureHandler, longPressNormal) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -391,8 +375,7 @@ TEST(GestureHandler, longPressNormal)
   EXPECT_EQ(test.events[0].eventY, 30.0);
 }
 
-TEST(GestureHandler, longPressDrag)
-{
+TEST(GestureHandler, longPressDrag) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -432,8 +415,7 @@ TEST(GestureHandler, longPressDrag)
   EXPECT_EQ(test.events[0].eventY, 50.0);
 }
 
-TEST(GestureHandler, twoDragFastDistinctHoriz)
-{
+TEST(GestureHandler, twoDragFastDistinctHoriz) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -482,8 +464,7 @@ TEST(GestureHandler, twoDragFastDistinctHoriz)
   EXPECT_EQ(test.events[0].magnitudeY, 0.0);
 }
 
-TEST(GestureHandler, twoDragFastDistinctVert)
-{
+TEST(GestureHandler, twoDragFastDistinctVert) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -531,8 +512,7 @@ TEST(GestureHandler, twoDragFastDistinctVert)
   EXPECT_EQ(test.events[0].magnitudeY, 65.0);
 }
 
-TEST(GestureHandler, twoDragFastDistinctDiag)
-{
+TEST(GestureHandler, twoDragFastDistinctDiag) {
   TestClass test;
 
   test.handleTouchBegin(1, 120.0, 130.0);
@@ -580,8 +560,7 @@ TEST(GestureHandler, twoDragFastDistinctDiag)
   EXPECT_EQ(test.events[0].magnitudeY, -50.0);
 }
 
-TEST(GestureHandler, twoDragFastAlmost)
-{
+TEST(GestureHandler, twoDragFastAlmost) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -599,8 +578,7 @@ TEST(GestureHandler, twoDragFastAlmost)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, twoDragSlowHoriz)
-{
+TEST(GestureHandler, twoDragSlowHoriz) {
   TestClass test;
 
   test.handleTouchBegin(1, 50.0, 40.0);
@@ -630,8 +608,7 @@ TEST(GestureHandler, twoDragSlowHoriz)
   EXPECT_EQ(test.events[1].magnitudeY, 0.0);
 }
 
-TEST(GestureHandler, twoDragSlowVert)
-{
+TEST(GestureHandler, twoDragSlowVert) {
   TestClass test;
 
   test.handleTouchBegin(1, 40.0, 40.0);
@@ -661,8 +638,7 @@ TEST(GestureHandler, twoDragSlowVert)
   EXPECT_EQ(test.events[1].magnitudeY, 40.0);
 }
 
-TEST(GestureHandler, twoDragSlowDiag)
-{
+TEST(GestureHandler, twoDragSlowDiag) {
   TestClass test;
 
   test.handleTouchBegin(1, 50.0, 40.0);
@@ -692,8 +668,7 @@ TEST(GestureHandler, twoDragSlowDiag)
   EXPECT_EQ(test.events[1].magnitudeY, 35.0);
 }
 
-TEST(GestureHandler, twoDragTooSlow)
-{
+TEST(GestureHandler, twoDragTooSlow) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -708,8 +683,7 @@ TEST(GestureHandler, twoDragTooSlow)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, pinchFastDistinctIn)
-{
+TEST(GestureHandler, pinchFastDistinctIn) {
   TestClass test;
 
   test.handleTouchBegin(1, 0.0, 0.0);
@@ -754,8 +728,7 @@ TEST(GestureHandler, pinchFastDistinctIn)
   EXPECT_EQ(test.events[0].magnitudeY, 30.0);
 }
 
-TEST(GestureHandler, pinchFastDistinctOut)
-{
+TEST(GestureHandler, pinchFastDistinctOut) {
   TestClass test;
 
   test.handleTouchBegin(1, 100.0, 100.0);
@@ -800,8 +773,7 @@ TEST(GestureHandler, pinchFastDistinctOut)
   EXPECT_EQ(test.events[0].magnitudeY, 180.0);
 }
 
-TEST(GestureHandler, pinchFastAlmost)
-{
+TEST(GestureHandler, pinchFastAlmost) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -818,8 +790,7 @@ TEST(GestureHandler, pinchFastAlmost)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, pinchSlowIn)
-{
+TEST(GestureHandler, pinchSlowIn) {
   TestClass test;
 
   test.handleTouchBegin(1, 0.0, 0.0);
@@ -852,8 +823,7 @@ TEST(GestureHandler, pinchSlowIn)
   EXPECT_EQ(test.events[1].magnitudeY, 90.0);
 }
 
-TEST(GestureHandler, pinchSlowOut)
-{
+TEST(GestureHandler, pinchSlowOut) {
   TestClass test;
 
   test.handleTouchBegin(1, 100.0, 130.0);
@@ -885,8 +855,7 @@ TEST(GestureHandler, pinchSlowOut)
   EXPECT_EQ(test.events[1].magnitudeY, 0.0);
 }
 
-TEST(GestureHandler, pinchTooSlow)
-{
+TEST(GestureHandler, pinchTooSlow) {
   TestClass test;
 
   test.handleTouchBegin(1, 0.0, 0.0);
@@ -901,8 +870,7 @@ TEST(GestureHandler, pinchTooSlow)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, extraIgnore)
-{
+TEST(GestureHandler, extraIgnore) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -944,8 +912,7 @@ TEST(GestureHandler, extraIgnore)
   EXPECT_EQ(test.events[0].eventY, 50.0);
 }
 
-TEST(GestureHandler, ignoreWhenAwaitingGestureEnd)
-{
+TEST(GestureHandler, ignoreWhenAwaitingGestureEnd) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -979,8 +946,7 @@ TEST(GestureHandler, ignoreWhenAwaitingGestureEnd)
   ASSERT_EQ(test.events.size(), 0);
 }
 
-TEST(GestureHandler, ignoreAfterGesture)
-{
+TEST(GestureHandler, ignoreAfterGesture) {
   TestClass test;
 
   test.handleTouchBegin(1, 20.0, 30.0);
@@ -1039,8 +1005,7 @@ TEST(GestureHandler, ignoreAfterGesture)
   EXPECT_EQ(test.events[1].gesture, GestureOneTap);
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

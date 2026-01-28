@@ -27,42 +27,42 @@
 
 #include <gtest/gtest.h>
 
-#include <core/Rect.h>
 #include <core/Configuration.h>
+#include <core/Rect.h>
 
 #include "EmulateMB.h"
 
 // The button masks for the mouse buttons
-static const int empty          = 0x00;
-static const int left           = 0x01;
-static const int middle         = 0x02;
-static const int middleAndLeft  = 0x03;
-static const int right          = 0x04;
-static const int both           = 0x05;
+static const int empty = 0x00;
+static const int left = 0x01;
+static const int middle = 0x02;
+static const int middleAndLeft = 0x03;
+static const int right = 0x04;
+static const int both = 0x05;
 static const int middleAndRight = 0x06;
 
 core::BoolParameter emulateMiddleButton("dummy_name", "dummy_desc", true);
 
-class TestClass : public EmulateMB
-{
+class TestClass : public EmulateMB {
 public:
   void sendPointerEvent(const core::Point& pos, uint16_t buttonMask) override;
 
-  struct PointerEventParams {core::Point pos; uint16_t mask; };
+  struct PointerEventParams {
+    core::Point pos;
+    uint16_t mask;
+  };
 
   std::vector<PointerEventParams> results;
 };
 
-void TestClass::sendPointerEvent(const core::Point& pos, uint16_t buttonMask)
-{
+void TestClass::sendPointerEvent(const core::Point& pos, uint16_t buttonMask) {
   PointerEventParams params;
   params.pos = pos;
   params.mask = buttonMask;
   results.push_back(params);
 }
 
-TEST(EmulateMB, disabledOption)
-{
+TEST(EmulateMB, disabledOption) {
   TestClass test;
 
   emulateMiddleButton.setParam(false);
@@ -75,8 +75,7 @@ TEST(EmulateMB, disabledOption)
   EXPECT_EQ(test.results[0].mask, left);
 }
 
-TEST(EmulateMB, leftClick)
-{
+TEST(EmulateMB, leftClick) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -98,8 +97,7 @@ TEST(EmulateMB, leftClick)
   EXPECT_EQ(test.results[2].mask, empty);
 }
 
-TEST(EmulateMB, normalLeftPress)
-{
+TEST(EmulateMB, normalLeftPress) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -118,8 +116,7 @@ TEST(EmulateMB, normalLeftPress)
   EXPECT_EQ(test.results[1].mask, left);
 }
 
-TEST(EmulateMB, normalMiddlePress)
-{
+TEST(EmulateMB, normalMiddlePress) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -132,8 +129,7 @@ TEST(EmulateMB, normalMiddlePress)
   EXPECT_EQ(test.results[0].mask, middle);
 }
 
-TEST(EmulateMB, normalRightPress)
-{
+TEST(EmulateMB, normalRightPress) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -152,8 +148,7 @@ TEST(EmulateMB, normalRightPress)
   EXPECT_EQ(test.results[1].mask, right);
 }
 
-TEST(EmulateMB, emulateMiddleMouseButton)
-{
+TEST(EmulateMB, emulateMiddleMouseButton) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -171,8 +166,7 @@ TEST(EmulateMB, emulateMiddleMouseButton)
   EXPECT_EQ(test.results[1].mask, middle);
 }
 
-TEST(EmulateMB, leftReleaseAfterEmulate)
-{
+TEST(EmulateMB, leftReleaseAfterEmulate) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -195,8 +189,7 @@ TEST(EmulateMB, leftReleaseAfterEmulate)
   EXPECT_EQ(test.results[2].mask, middle);
 }
 
-TEST(EmulateMB, rightReleaseAfterEmulate)
-{
+TEST(EmulateMB, rightReleaseAfterEmulate) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -219,8 +212,7 @@ TEST(EmulateMB, rightReleaseAfterEmulate)
   EXPECT_EQ(test.results[2].mask, middle);
 }
 
-TEST(EmulateMB, leftRepressAfterEmulate)
-{
+TEST(EmulateMB, leftRepressAfterEmulate) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -248,8 +240,7 @@ TEST(EmulateMB, leftRepressAfterEmulate)
   EXPECT_EQ(test.results[3].mask, middleAndLeft);
 }
 
-TEST(EmulateMB, rightRepressAfterEmulate)
-{
+TEST(EmulateMB, rightRepressAfterEmulate) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -277,8 +268,7 @@ TEST(EmulateMB, rightRepressAfterEmulate)
   EXPECT_EQ(test.results[3].mask, middleAndRight);
 }
 
-TEST(EmulateMB, bothPressAfterLeftTimeout)
-{
+TEST(EmulateMB, bothPressAfterLeftTimeout) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -302,8 +292,7 @@ TEST(EmulateMB, bothPressAfterLeftTimeout)
   EXPECT_EQ(test.results[2].mask, both);
 }
 
-TEST(EmulateMB, bothPressAfterRightTimeout)
-{
+TEST(EmulateMB, bothPressAfterRightTimeout) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -327,13 +316,12 @@ TEST(EmulateMB, bothPressAfterRightTimeout)
   EXPECT_EQ(test.results[2].mask, both);
 }
 
-TEST(EmulateMB, timeoutAndDrag)
-{
+TEST(EmulateMB, timeoutAndDrag) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
   test.filterPointerEvent({0, 0}, left);
-  usleep(100000); //0.1s
+  usleep(100000); // 0.1s
   core::Timer::checkTimeouts();
   test.filterPointerEvent({10, 10}, left);
 
@@ -352,14 +340,13 @@ TEST(EmulateMB, timeoutAndDrag)
   EXPECT_EQ(test.results[2].mask, left);
 }
 
-TEST(EmulateMB, dragAndTimeout)
-{
+TEST(EmulateMB, dragAndTimeout) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
   test.filterPointerEvent({10, 10}, left);
   test.filterPointerEvent({30, 30}, left);
-  usleep(100000); //0.1s
+  usleep(100000); // 0.1s
   core::Timer::checkTimeouts();
 
   ASSERT_EQ(test.results.size(), 3);
@@ -377,8 +364,7 @@ TEST(EmulateMB, dragAndTimeout)
   EXPECT_EQ(test.results[2].mask, left);
 }
 
-TEST(EmulateMB, dragAndRelease)
-{
+TEST(EmulateMB, dragAndRelease) {
   TestClass test;
 
   emulateMiddleButton.setParam(true);
@@ -400,8 +386,7 @@ TEST(EmulateMB, dragAndRelease)
   EXPECT_EQ(test.results[2].mask, empty);
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

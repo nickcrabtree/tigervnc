@@ -1,15 +1,15 @@
 /* Copyright 2015 Pierre Ossman <ossman@cendio.se> for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -28,9 +28,9 @@
 #include <config.h>
 #endif
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <sys/time.h>
 
 #include <rdr/FileInStream.h>
@@ -63,7 +63,7 @@ private:
 
 class CConn : public rfb::CConnection {
 public:
-  CConn(const char *filename);
+  CConn(const char* filename);
   ~CConn();
 
   void initDone() override;
@@ -72,46 +72,40 @@ public:
   void setColourMapEntries(int, int, uint16_t*) override;
   void bell() override;
   void serverCutText(const char*) override;
-  virtual void getUserPasswd(bool secure, std::string *user, std::string *password) override;
-  virtual bool showMsgBox(rfb::MsgBoxFlags flags, const char *title, const char *text) override;
+  virtual void getUserPasswd(bool secure, std::string* user, std::string* password) override;
+  virtual bool showMsgBox(rfb::MsgBoxFlags flags, const char* title, const char* text) override;
 
 public:
   double cpuTime;
 
 protected:
-  rdr::FileInStream *in;
-  DummyOutStream *out;
-
+  rdr::FileInStream* in;
+  DummyOutStream* out;
 };
 
-DummyOutStream::DummyOutStream()
-{
+DummyOutStream::DummyOutStream() {
   offset = 0;
   ptr = buf;
   end = buf + sizeof(buf);
 }
 
-size_t DummyOutStream::length()
-{
+size_t DummyOutStream::length() {
   flush();
   return offset;
 }
 
-void DummyOutStream::flush()
-{
+void DummyOutStream::flush() {
   offset += ptr - buf;
   ptr = buf;
 }
 
-void DummyOutStream::overrun(size_t needed)
-{
+void DummyOutStream::overrun(size_t needed) {
   flush();
   if (avail() < needed)
     throw std::out_of_range("Insufficient dummy output buffer");
 }
 
-CConn::CConn(const char *filename)
-{
+CConn::CConn(const char* filename) {
   cpuTime = 0.0;
 
   in = new rdr::FileInStream(filename);
@@ -125,28 +119,22 @@ CConn::CConn(const char *filename)
   setWriter(new rfb::CMsgWriter(&server, out));
 }
 
-CConn::~CConn()
-{
+CConn::~CConn() {
   delete in;
   delete out;
 }
 
-void CConn::initDone()
-{
-  setFramebuffer(new rfb::ManagedPixelBuffer(filePF,
-                                             server.width(),
-                                             server.height()));
+void CConn::initDone() {
+  setFramebuffer(new rfb::ManagedPixelBuffer(filePF, server.width(), server.height()));
 }
 
-void CConn::framebufferUpdateStart()
-{
+void CConn::framebufferUpdateStart() {
   CConnection::framebufferUpdateStart();
 
   startCpuCounter();
 }
 
-void CConn::framebufferUpdateEnd()
-{
+void CConn::framebufferUpdateEnd() {
   CConnection::framebufferUpdateEnd();
 
   endCpuCounter();
@@ -154,36 +142,25 @@ void CConn::framebufferUpdateEnd()
   cpuTime += getCpuCounter();
 }
 
-void CConn::setColourMapEntries(int, int, uint16_t*)
-{
+void CConn::setColourMapEntries(int, int, uint16_t*) {}
+
+void CConn::bell() {}
+
+void CConn::serverCutText(const char*) {}
+
+void CConn::getUserPasswd(bool, std::string*, std::string*) {}
+
+bool CConn::showMsgBox(rfb::MsgBoxFlags, const char*, const char*) {
+  return true;
 }
 
-void CConn::bell()
-{
-}
-
-void CConn::serverCutText(const char*)
-{
-}
-
-void CConn::getUserPasswd(bool, std::string *, std::string *)
-{
-}
-
-bool CConn::showMsgBox(rfb::MsgBoxFlags, const char *, const char *)
-{
-    return true;
-}
-
-struct stats
-{
+struct stats {
   double decodeTime;
   double realTime;
 };
 
-static struct stats runTest(const char *fn)
-{
-  CConn *cc;
+static struct stats runTest(const char* fn) {
+  CConn* cc;
   struct timeval start, stop;
   struct stats s;
 
@@ -209,25 +186,24 @@ static struct stats runTest(const char *fn)
 
   s.decodeTime = cc->cpuTime;
   s.realTime = (double)stop.tv_sec - start.tv_sec;
-  s.realTime += ((double)stop.tv_usec - start.tv_usec)/1000000.0;
+  s.realTime += ((double)stop.tv_usec - start.tv_usec) / 1000000.0;
 
   delete cc;
 
   return s;
 }
 
-static void sort(double *array, int count)
-{
+static void sort(double* array, int count) {
   bool sorted;
   int i;
   do {
     sorted = true;
-    for (i = 1;i < count;i++) {
-      if (array[i-1] > array[i]) {
+    for (i = 1; i < count; i++) {
+      if (array[i - 1] > array[i]) {
         double d;
         d = array[i];
-        array[i] = array[i-1];
-        array[i-1] = d;
+        array[i] = array[i - 1];
+        array[i - 1] = d;
         sorted = false;
       }
     }
@@ -236,8 +212,7 @@ static void sort(double *array, int count)
 
 static const int runCount = 9;
 
-int main(int argc, char **argv)
-{
+int main(int argc, char** argv) {
   int i;
   struct stats runs[runCount];
   double values[runCount], dev[runCount];
@@ -252,36 +227,36 @@ int main(int argc, char **argv)
   runTest(argv[1]);
 
   // Multiple runs to get a good average
-  for (i = 0;i < runCount;i++)
+  for (i = 0; i < runCount; i++)
     runs[i] = runTest(argv[1]);
 
   // Calculate median and median deviation for CPU usage
-  for (i = 0;i < runCount;i++)
+  for (i = 0; i < runCount; i++)
     values[i] = runs[i].decodeTime;
 
   sort(values, runCount);
-  median = values[runCount/2];
+  median = values[runCount / 2];
 
-  for (i = 0;i < runCount;i++)
+  for (i = 0; i < runCount; i++)
     dev[i] = fabs((values[i] - median) / median) * 100;
 
   sort(dev, runCount);
-  meddev = dev[runCount/2];
+  meddev = dev[runCount / 2];
 
   printf("CPU time: %g s (+/- %g %%)\n", median, meddev);
 
   // And for CPU core usage
-  for (i = 0;i < runCount;i++)
+  for (i = 0; i < runCount; i++)
     values[i] = runs[i].decodeTime / runs[i].realTime;
 
   sort(values, runCount);
-  median = values[runCount/2];
+  median = values[runCount / 2];
 
-  for (i = 0;i < runCount;i++)
+  for (i = 0; i < runCount; i++)
     dev[i] = fabs((values[i] - median) / median) * 100;
 
   sort(dev, runCount);
-  meddev = dev[runCount/2];
+  meddev = dev[runCount / 2];
 
   printf("Core usage: %g (+/- %g %%)\n", median, meddev);
 

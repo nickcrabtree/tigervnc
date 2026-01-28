@@ -1,6 +1,6 @@
 #ifdef __APPLE__
-#include <gtest/gtest.h>
 #include "../../vncviewer/Surface.h"
+#include <gtest/gtest.h>
 
 // Black-box orientation test: draw a two-color source surface and blit to a
 // destination Surface. Verify the top row keeps the source's top color.
@@ -13,8 +13,16 @@ TEST(SurfaceOSXOrientation, BlitPreservesTopRow) {
   for (int y = 0; y < h; ++y) {
     for (int x = 0; x < w; ++x) {
       unsigned char* p = src.data + (y * w + x) * 4;
-      if (y < h / 2) { p[2] = 255; p[1] = 0; p[0] = 0; } // RGB in BGRA order
-      else           { p[2] = 0;   p[1] = 0; p[0] = 255; }
+      if (y < h / 2) {
+        p[2] = 255;
+        p[1] = 0;
+        p[0] = 0;
+      } // RGB in BGRA order
+      else {
+        p[2] = 0;
+        p[1] = 0;
+        p[0] = 255;
+      }
       p[3] = 255;
     }
   }
@@ -25,7 +33,7 @@ TEST(SurfaceOSXOrientation, BlitPreservesTopRow) {
   // Read dst top-left pixel (y=0) and bottom-left pixel (y=h-1)
   auto pixel = [&](int y) {
     unsigned char* p = dst.data + (y * w) * 4;
-    return std::tuple<int,int,int>(p[2], p[1], p[0]); // R,G,B
+    return std::tuple<int, int, int>(p[2], p[1], p[0]); // R,G,B
   };
 
   auto top = pixel(0);

@@ -9,21 +9,20 @@
  * 6. Viewer looks up by CANONICAL hash and should HIT (finds lossy entry)
  */
 
-#include <rfb/ContentHash.h>
-#include <rfb/PixelBuffer.h>
-#include <rfb/PixelFormat.h>
 #include <rfb/CacheKey.h>
+#include <rfb/ContentHash.h>
 #include <rfb/JpegCompressor.h>
 #include <rfb/JpegDecompressor.h>
+#include <rfb/PixelBuffer.h>
+#include <rfb/PixelFormat.h>
 
 #include <stdio.h>
 #include <string.h>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 using namespace rfb;
-static CacheKey makeKeyFromU64(uint64_t id)
-{
+static CacheKey makeKeyFromU64(uint64_t id) {
   CacheKey key;
   key.bytes.fill(0);
   memcpy(key.bytes.data(), &id, sizeof(id));
@@ -36,8 +35,7 @@ struct SimulatedServer {
 
   void receiveHashReport(uint64_t canonical, uint64_t actual) {
     bool isLossless = (canonical == actual);
-    printf("   [Server] Received hash report: canonical=0x%016llx, actual=0x%016llx\n",
-           (unsigned long long)canonical,
+    printf("   [Server] Received hash report: canonical=0x%016llx, actual=0x%016llx\n", (unsigned long long)canonical,
            (unsigned long long)actual);
     printf("           Quality: %s\n", isLossless ? "LOSSLESS" : "LOSSY");
     knownCanonical[canonical] = actual;
@@ -49,7 +47,8 @@ struct SimulatedServer {
 
   bool isLossless(uint64_t canonical) {
     auto it = knownCanonical.find(canonical);
-    if (it == knownCanonical.end()) return false;
+    if (it == knownCanonical.end())
+      return false;
     return it->first == it->second;
   }
 };
@@ -62,24 +61,20 @@ struct CacheEntry {
   uint16_t height;
   std::vector<uint8_t> pixels;
 
-  CacheEntry(uint16_t w, uint16_t h, uint64_t canonical, uint64_t actual,
-             const uint8_t* data, size_t size)
-    : canonicalHash(canonical), actualHash(actual), width(w), height(h),
-      pixels(data, data + size) {}
+  CacheEntry(uint16_t w, uint16_t h, uint64_t canonical, uint64_t actual, const uint8_t* data, size_t size)
+      : canonicalHash(canonical), actualHash(actual), width(w), height(h), pixels(data, data + size) {}
 };
 
 // Simulated viewer cache (NEW: dual-hash storage and lookup)
 struct SimulatedCache {
   std::unordered_map<CacheKey, CacheEntry, CacheKeyHash> cache;
 
-  void store(uint16_t width, uint16_t height, uint64_t canonical, uint64_t actual,
-             const uint8_t* pixels, size_t size) {
+  void store(uint16_t width, uint16_t height, uint64_t canonical, uint64_t actual, const uint8_t* pixels, size_t size) {
     // Index by actual hash (fast direct lookup)
     CacheKey key = makeKeyFromU64(actual);
-    printf("   [Viewer] Storing entry: canonical=0x%016llx, actual=0x%016llx\n",
-           (unsigned long long)canonical, (unsigned long long)actual);
-    printf("           Indexed by: CacheKey(id=0x%016llx) w=%u h=%u\n",
-           (unsigned long long)actual, width, height);
+    printf("   [Viewer] Storing entry: canonical=0x%016llx, actual=0x%016llx\n", (unsigned long long)canonical,
+           (unsigned long long)actual);
+    printf("           Indexed by: CacheKey(id=0x%016llx) w=%u h=%u\n", (unsigned long long)actual, width, height);
     cache.emplace(key, CacheEntry(width, height, canonical, actual, pixels, size));
   }
 
@@ -129,7 +124,8 @@ uint64_t computeHash(const uint8_t* buffer, int width, int height, int stride, c
   pb.imageRect(pf, pb.getRect(), buffer, stride);
 
   std::vector<uint8_t> hash = ContentHash::computeRect(&pb, pb.getRect());
-  if (hash.empty()) return 0;
+  if (hash.empty())
+    return 0;
 
   uint64_t hashId = 0;
   size_t n = std::min(hash.size(), sizeof(uint64_t));
@@ -172,8 +168,8 @@ int main() {
   printf("\n3. [Viewer] Decoding received JPEG data...\n");
   std::vector<uint8_t> decodedPixels(height * stride * 4);
   JpegDecompressor decompressor;
-  decompressor.decompress(jpegData.data(), compressedSize, decodedPixels.data(),
-                          stride, core::Rect(0, 0, width, height), pf);
+  decompressor.decompress(jpegData.data(), compressedSize, decodedPixels.data(), stride,
+                          core::Rect(0, 0, width, height), pf);
 
   // Step 4: Viewer computes lossy hash
   uint64_t lossyHash = computeHash(decodedPixels.data(), width, height, stride, pf);
@@ -224,8 +220,7 @@ int main() {
     printf("\n   ✗✗✗ CACHE MISS! This is the bug! ✗✗✗\n");
     printf("\n   The viewer stored entry with canonical=0x%016llx, actual=0x%016llx\n",
            (unsigned long long)canonicalHash, (unsigned long long)lossyHash);
-    printf("   The server sent reference with canonical hash 0x%016llx\n",
-           (unsigned long long)canonicalHash2);
+    printf("   The server sent reference with canonical hash 0x%016llx\n", (unsigned long long)canonicalHash2);
     printf("   Viewer should find entry by canonical hash but failed!\n");
     printf("\n   Possible causes:\n");
     printf("   - Canonical hash not stored with entry\n");

@@ -24,8 +24,7 @@
 
 #include <core/string.h>
 
-TEST(ConvertLF, convertLF)
-{
+TEST(ConvertLF, convertLF) {
   EXPECT_EQ(core::convertLF(""), "");
   EXPECT_EQ(core::convertLF("no EOL"), "no EOL");
 
@@ -46,8 +45,7 @@ TEST(ConvertLF, convertLF)
   EXPECT_EQ(core::convertLF("old\rmac\rformat"), "old\nmac\nformat");
 }
 
-TEST(ConvertLF, convertCRLF)
-{
+TEST(ConvertLF, convertCRLF) {
   EXPECT_EQ(core::convertCRLF(""), "");
   EXPECT_EQ(core::convertCRLF("no EOL"), "no EOL");
 
@@ -68,8 +66,7 @@ TEST(ConvertLF, convertCRLF)
   EXPECT_EQ(core::convertCRLF("old\rmac\rformat"), "old\r\nmac\r\nformat");
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

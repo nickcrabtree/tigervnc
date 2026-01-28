@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Manual validation script to demonstrate ContentCache/PersistentCache hits
-# 
+#
 # This script starts a test server and opens a viewer, then you can manually
 # interact to see cache hits in the logs.
 #
@@ -120,7 +120,7 @@ cleanup() {
     kill $VIEWER_PID 2>/dev/null || true
     kill $WM_PID 2>/dev/null || true
     kill $SERVER_PID 2>/dev/null || true
-    
+
     # Print cache statistics from logs
     echo ""
     echo "==================================================================="
@@ -129,7 +129,7 @@ cleanup() {
     echo ""
     echo "Server cache activity:"
     grep -i "persistentcache hit\|persistentcache miss" "$SERVER_LOG" 2>/dev/null | head -20 || echo "  (none found)"
-    
+
     echo ""
     echo "Logs saved to:"
     echo "  Server: $SERVER_LOG"

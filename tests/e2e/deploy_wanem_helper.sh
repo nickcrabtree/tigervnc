@@ -123,7 +123,7 @@ echo "  export TIGERVNC_WAN_HELPER=\"sudo -n ${WRAPPER}\""
 echo
 echo "and add an appropriate sudoers rule (for example):"
 echo
-echo "  youruser ALL=(root) NOPASSWD: ${WRAPPER} *" 
+echo "  youruser ALL=(root) NOPASSWD: ${WRAPPER} *"
 
 echo
 echo "Review the security implications of this configuration before enabling it on a shared system."

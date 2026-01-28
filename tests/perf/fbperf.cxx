@@ -35,7 +35,7 @@
 
 #include "util.h"
 
-class TestWindow: public Fl_Window {
+class TestWindow : public Fl_Window {
 public:
   TestWindow();
   ~TestWindow();
@@ -61,12 +61,12 @@ protected:
   PlatformPixelBuffer* fb;
 };
 
-class PartialTestWindow: public TestWindow {
+class PartialTestWindow : public TestWindow {
 protected:
   void changefb() override;
 };
 
-class OverlayTestWindow: public PartialTestWindow {
+class OverlayTestWindow : public PartialTestWindow {
 public:
   OverlayTestWindow();
 
@@ -80,19 +80,13 @@ protected:
   Surface* offscreen;
 };
 
-TestWindow::TestWindow() :
-  Fl_Window(0, 0, "Framebuffer Performance Test"),
-  fb(nullptr)
-{
-}
+TestWindow::TestWindow() : Fl_Window(0, 0, "Framebuffer Performance Test"), fb(nullptr) {}
 
-TestWindow::~TestWindow()
-{
+TestWindow::~TestWindow() {
   stop();
 }
 
-void TestWindow::start(int width, int height)
-{
+void TestWindow::start(int width, int height) {
   uint32_t pixel;
 
   stop();
@@ -111,8 +105,7 @@ void TestWindow::start(int width, int height)
   show();
 }
 
-void TestWindow::stop()
-{
+void TestWindow::stop() {
   hide();
 
   delete fb;
@@ -121,8 +114,7 @@ void TestWindow::stop()
   Fl::remove_idle(timer, this);
 }
 
-void TestWindow::draw()
-{
+void TestWindow::draw() {
   int X, Y, W, H;
 
   // We cannot update the damage region from inside the draw function,
@@ -136,12 +128,11 @@ void TestWindow::draw()
 
   fb->draw(X, Y, X, Y, W, H);
 
-  pixels += W*H;
+  pixels += W * H;
   frames++;
 }
 
-void TestWindow::flush()
-{
+void TestWindow::flush() {
   startTimeCounter();
   Fl_Window::flush();
 #if !defined(WIN32) && !defined(__APPLE__)
@@ -153,8 +144,7 @@ void TestWindow::flush()
   time += getTimeCounter();
 }
 
-void TestWindow::update()
-{
+void TestWindow::update() {
   core::Rect r;
 
   startTimeCounter();
@@ -174,16 +164,14 @@ void TestWindow::update()
   time += getTimeCounter();
 }
 
-void TestWindow::changefb()
-{
+void TestWindow::changefb() {
   uint32_t pixel;
 
   pixel = rand();
   fb->fillRect(fb->getRect(), &pixel);
 }
 
-void TestWindow::timer(void* data)
-{
+void TestWindow::timer(void* data) {
   TestWindow* self;
 
   Fl::remove_idle(timer, data);
@@ -192,8 +180,7 @@ void TestWindow::timer(void* data)
   self->update();
 }
 
-void PartialTestWindow::changefb()
-{
+void PartialTestWindow::changefb() {
   core::Rect r;
   uint32_t pixel;
 
@@ -207,13 +194,9 @@ void PartialTestWindow::changefb()
   fb->fillRect(r, &pixel);
 }
 
-OverlayTestWindow::OverlayTestWindow() :
-  overlay(nullptr), offscreen(nullptr)
-{
-}
+OverlayTestWindow::OverlayTestWindow() : overlay(nullptr), offscreen(nullptr) {}
 
-void OverlayTestWindow::start(int width, int height)
-{
+void OverlayTestWindow::start(int width, int height) {
   PartialTestWindow::start(width, height);
 
   overlay = new Surface(400, 200);
@@ -228,8 +211,7 @@ void OverlayTestWindow::start(int width, int height)
 #endif
 }
 
-void OverlayTestWindow::stop()
-{
+void OverlayTestWindow::stop() {
   PartialTestWindow::stop();
 
   delete offscreen;
@@ -238,8 +220,7 @@ void OverlayTestWindow::stop()
   overlay = nullptr;
 }
 
-void OverlayTestWindow::draw()
-{
+void OverlayTestWindow::draw() {
   int ox, oy, ow, oh;
   int X, Y, W, H;
 
@@ -266,7 +247,7 @@ void OverlayTestWindow::draw()
   else
     fb->draw(X, Y, X, Y, W, H);
 
-  pixels += W*H;
+  pixels += W * H;
   frames++;
 
   ox = (w() - overlay->width()) / 2;
@@ -290,11 +271,8 @@ void OverlayTestWindow::draw()
   }
 }
 
-static void dosubtest(TestWindow* win, int width, int height,
-                      unsigned long long* pixels,
-		      unsigned long long* frames,
-		      double* time)
-{
+static void dosubtest(TestWindow* win, int width, int height, unsigned long long* pixels, unsigned long long* frames,
+                      double* time) {
   struct timeval start;
 
   win->start(width, height);
@@ -310,13 +288,11 @@ static void dosubtest(TestWindow* win, int width, int height,
   *time = win->time;
 }
 
-static bool is_constant(double a, double b)
-{
-    return (fabs(a - b) / a) < 0.1;
+static bool is_constant(double a, double b) {
+  return (fabs(a - b) / a) < 0.1;
 }
 
-static void dotest(TestWindow* win)
-{
+static void dotest(TestWindow* win) {
   unsigned long long pixels[3];
   unsigned long long frames[3];
   double time[3];
@@ -331,21 +307,23 @@ static void dotest(TestWindow* win)
   // ...in order to compute how much of the rendering time is static,
   // and how much depends on the number of pixels
   // (i.e. solve: time = delay * frames + rate * pixels)
-  delay = (((time[0] - (double)pixels[0] / pixels[1] * time[1]) /
-            (frames[0] - (double)pixels[0] / pixels[1] * frames[1])) +
-           ((time[1] - (double)pixels[1] / pixels[2] * time[2]) /
-            (frames[1] - (double)pixels[1] / pixels[2] * frames[2]))) / 2.0;
-  rate = (((time[0] - (double)frames[0] / frames[1] * time[1]) /
-           (pixels[0] - (double)frames[0] / frames[1] * pixels[1])) +
-          ((time[1] - (double)frames[1] / frames[2] * time[2]) /
-           (pixels[1] - (double)frames[1] / frames[2] * pixels[2]))) / 2.0;
+  delay =
+      (((time[0] - (double)pixels[0] / pixels[1] * time[1]) / (frames[0] - (double)pixels[0] / pixels[1] * frames[1])) +
+       ((time[1] - (double)pixels[1] / pixels[2] * time[2]) /
+        (frames[1] - (double)pixels[1] / pixels[2] * frames[2]))) /
+      2.0;
+  rate =
+      (((time[0] - (double)frames[0] / frames[1] * time[1]) / (pixels[0] - (double)frames[0] / frames[1] * pixels[1])) +
+       ((time[1] - (double)frames[1] / frames[2] * time[2]) /
+        (pixels[1] - (double)frames[1] / frames[2] * pixels[2]))) /
+      2.0;
 
   // However, we have some corner cases:
 
   // We are restricted by some delay, e.g. refresh rate
-  if (is_constant(frames[0]/time[0], frames[2]/time[2])) {
+  if (is_constant(frames[0] / time[0], frames[2] / time[2])) {
     fprintf(stderr, "Warning: Fixed delay dominating updates.\n\n");
-    delay = time[2]/frames[2];
+    delay = time[2] / frames[2];
     rate = 0.0;
   }
 
@@ -353,7 +331,7 @@ static void dotest(TestWindow* win)
   // throughput
   if (fabs(delay) < 0.001) {
     delay = 0.0;
-    rate = time[2]/pixels[2];
+    rate = time[2] / pixels[2];
   }
 
   // We can hit cache limits that causes performance to drop
@@ -369,14 +347,11 @@ static void dotest(TestWindow* win)
 
   fprintf(stderr, "Rendering delay: %g ms/frame\n", delay * 1000.0);
   fprintf(stderr, "Rendering rate: %s\n",
-          (rate == 0.0) ? "N/A pixels/s" :
-                          core::siPrefix(1.0 / rate, "pixels/s").c_str());
-  fprintf(stderr, "Maximum FPS: %g fps @ 1920x1080\n",
-          1.0 / (delay + rate * 1920 * 1080));
+          (rate == 0.0) ? "N/A pixels/s" : core::siPrefix(1.0 / rate, "pixels/s").c_str());
+  fprintf(stderr, "Maximum FPS: %g fps @ 1920x1080\n", 1.0 / (delay + rate * 1920 * 1080));
 }
 
-int main(int /*argc*/, char** /*argv*/)
-{
+int main(int /*argc*/, char** /*argv*/) {
   TestWindow* win;
 
   fprintf(stderr, "Full window update:\n\n");

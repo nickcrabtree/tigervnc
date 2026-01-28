@@ -6,21 +6,20 @@
  * 3. The lossy hash mapping mechanism works correctly
  */
 
-#include <rfb/ContentHash.h>
-#include <rfb/PixelBuffer.h>
-#include <rfb/PixelFormat.h>
 #include <rfb/CacheKey.h>
+#include <rfb/ContentHash.h>
 #include <rfb/JpegCompressor.h>
 #include <rfb/JpegDecompressor.h>
+#include <rfb/PixelBuffer.h>
+#include <rfb/PixelFormat.h>
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <vector>
-#include <assert.h>
 
 using namespace rfb;
-static CacheKey makeKeyFromU64(uint64_t id)
-{
+static CacheKey makeKeyFromU64(uint64_t id) {
   CacheKey key;
   key.bytes.fill(0);
   memcpy(key.bytes.data(), &id, sizeof(id));
@@ -34,10 +33,10 @@ void fillTestPattern(uint8_t* buffer, int width, int height, int stride) {
     for (int x = 0; x < width; x++) {
       uint8_t* pixel = row + x * 4;
       // Simple gradient pattern
-      pixel[0] = (x * 255) / width;   // R
-      pixel[1] = (y * 255) / height;  // G
-      pixel[2] = 128;                  // B
-      pixel[3] = 255;                  // A
+      pixel[0] = (x * 255) / width;  // R
+      pixel[1] = (y * 255) / height; // G
+      pixel[2] = 128;                // B
+      pixel[3] = 255;                // A
     }
   }
 }
@@ -48,7 +47,8 @@ uint64_t computeHash(const uint8_t* buffer, int width, int height, int stride, c
   pb.imageRect(pf, pb.getRect(), buffer, stride);
 
   std::vector<uint8_t> hash = ContentHash::computeRect(&pb, pb.getRect());
-  if (hash.empty()) return 0;
+  if (hash.empty())
+    return 0;
 
   uint64_t hashId = 0;
   size_t n = std::min(hash.size(), sizeof(uint64_t));
@@ -95,14 +95,14 @@ int main() {
   size_t compressedSize = compressor.length();
   std::vector<uint8_t> compressed(compressedSize);
   memcpy(compressed.data(), compressor.data(), compressedSize);
-  printf("   Compressed to %zu bytes (%.1f%% of original)\n",
-         compressedSize, (compressedSize * 100.0) / (width * height * 4));
+  printf("   Compressed to %zu bytes (%.1f%% of original)\n", compressedSize,
+         (compressedSize * 100.0) / (width * height * 4));
 
   // Decompress
   std::vector<uint8_t> decompressed(height * stride * 4);
   JpegDecompressor decompressor;
-  decompressor.decompress(compressed.data(), compressedSize, decompressed.data(),
-                          stride, core::Rect(0, 0, width, height), pf);
+  decompressor.decompress(compressed.data(), compressedSize, decompressed.data(), stride,
+                          core::Rect(0, 0, width, height), pf);
 
   uint64_t lossyHash1 = computeHash(decompressed.data(), width, height, stride, pf);
   printf("   First lossy hash: 0x%016llx\n", (unsigned long long)lossyHash1);
@@ -118,8 +118,8 @@ int main() {
   printf("\n4. Testing JPEG decompression determinism...\n");
 
   std::vector<uint8_t> decompressed2(height * stride * 4);
-  decompressor.decompress(compressed.data(), compressedSize, decompressed2.data(),
-                          stride, core::Rect(0, 0, width, height), pf);
+  decompressor.decompress(compressed.data(), compressedSize, decompressed2.data(), stride,
+                          core::Rect(0, 0, width, height), pf);
 
   uint64_t lossyHash2 = computeHash(decompressed2.data(), width, height, stride, pf);
   printf("   Second lossy hash: 0x%016llx\n", (unsigned long long)lossyHash2);
@@ -129,10 +129,8 @@ int main() {
   } else {
     printf("   ✗ WARNING: JPEG decompression is NON-DETERMINISTIC!\n");
     printf("   This means each decode produces different pixels, breaking cache hits.\n");
-    printf("   Hash difference: 0x%016llx XOR 0x%016llx = 0x%016llx\n",
-           (unsigned long long)lossyHash1,
-           (unsigned long long)lossyHash2,
-           (unsigned long long)(lossyHash1 ^ lossyHash2));
+    printf("   Hash difference: 0x%016llx XOR 0x%016llx = 0x%016llx\n", (unsigned long long)lossyHash1,
+           (unsigned long long)lossyHash2, (unsigned long long)(lossyHash1 ^ lossyHash2));
   }
 
   // Test 4: CacheKey behavior
@@ -141,12 +139,9 @@ int main() {
   CacheKey lossyKey1 = makeKeyFromU64(lossyHash1);
   CacheKey lossyKey2 = makeKeyFromU64(lossyHash2);
 
-  printf("   Canonical key: (id=0x%016llx)\n",
-         (unsigned long long)canonicalHash);
-  printf("   Lossy key 1:    (id=0x%016llx)\n",
-         (unsigned long long)lossyHash1);
-  printf("   Lossy key 2:    (id=0x%016llx)\n",
-         (unsigned long long)lossyHash2);
+  printf("   Canonical key: (id=0x%016llx)\n", (unsigned long long)canonicalHash);
+  printf("   Lossy key 1:    (id=0x%016llx)\n", (unsigned long long)lossyHash1);
+  printf("   Lossy key 2:    (id=0x%016llx)\n", (unsigned long long)lossyHash2);
 
   if (canonicalKey == lossyKey1) {
     printf("   ✗ FAIL: Canonical key matches lossy key (should differ!)\n");

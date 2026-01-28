@@ -28,8 +28,7 @@
 
 #include "ShortcutHandler.h"
 
-TEST(ShortcutHandler, noModifiers)
-{
+TEST(ShortcutHandler, noModifiers) {
   ShortcutHandler handler;
 
   handler.setModifiers(0);
@@ -46,8 +45,7 @@ TEST(ShortcutHandler, noModifiers)
   EXPECT_EQ(handler.handleKeyRelease(5), ShortcutHandler::KeyNormal);
 }
 
-TEST(ShortcutHandler, singleArmed)
-{
+TEST(ShortcutHandler, singleArmed) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -56,8 +54,7 @@ TEST(ShortcutHandler, singleArmed)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyUnarm);
 }
 
-TEST(ShortcutHandler, singleDualArmed)
-{
+TEST(ShortcutHandler, singleDualArmed) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -68,8 +65,7 @@ TEST(ShortcutHandler, singleDualArmed)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyUnarm);
 }
 
-TEST(ShortcutHandler, singleShortcut)
-{
+TEST(ShortcutHandler, singleShortcut) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -80,8 +76,7 @@ TEST(ShortcutHandler, singleShortcut)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, singleRightShortcut)
-{
+TEST(ShortcutHandler, singleRightShortcut) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -92,8 +87,7 @@ TEST(ShortcutHandler, singleRightShortcut)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, singleDualShortcut)
-{
+TEST(ShortcutHandler, singleDualShortcut) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -106,8 +100,7 @@ TEST(ShortcutHandler, singleDualShortcut)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, singleShortcutReordered)
-{
+TEST(ShortcutHandler, singleShortcutReordered) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -118,8 +111,7 @@ TEST(ShortcutHandler, singleShortcutReordered)
   EXPECT_EQ(handler.handleKeyRelease(2), ShortcutHandler::KeyShortcut);
 }
 
-TEST(ShortcutHandler, singleDualShortcutReordered)
-{
+TEST(ShortcutHandler, singleDualShortcutReordered) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -132,8 +124,7 @@ TEST(ShortcutHandler, singleDualShortcutReordered)
   EXPECT_EQ(handler.handleKeyRelease(2), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, singleShortcutRepeated)
-{
+TEST(ShortcutHandler, singleShortcutRepeated) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -149,8 +140,7 @@ TEST(ShortcutHandler, singleShortcutRepeated)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, singleShortcutMultipleKeys)
-{
+TEST(ShortcutHandler, singleShortcutMultipleKeys) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -165,8 +155,7 @@ TEST(ShortcutHandler, singleShortcutMultipleKeys)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, singleWedgeNormal)
-{
+TEST(ShortcutHandler, singleWedgeNormal) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -179,8 +168,7 @@ TEST(ShortcutHandler, singleWedgeNormal)
   EXPECT_EQ(handler.handleKeyRelease(2), ShortcutHandler::KeyNormal);
 }
 
-TEST(ShortcutHandler, singleWedgeModifier)
-{
+TEST(ShortcutHandler, singleWedgeModifier) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -193,8 +181,7 @@ TEST(ShortcutHandler, singleWedgeModifier)
   EXPECT_EQ(handler.handleKeyRelease(2), ShortcutHandler::KeyNormal);
 }
 
-TEST(ShortcutHandler, singleWedgeModifierArmed)
-{
+TEST(ShortcutHandler, singleWedgeModifierArmed) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -207,8 +194,7 @@ TEST(ShortcutHandler, singleWedgeModifierArmed)
   EXPECT_EQ(handler.handleKeyRelease(2), ShortcutHandler::KeyNormal);
 }
 
-TEST(ShortcutHandler, singleWedgeModifierFiring)
-{
+TEST(ShortcutHandler, singleWedgeModifierFiring) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -221,8 +207,7 @@ TEST(ShortcutHandler, singleWedgeModifierFiring)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, singleUnwedge)
-{
+TEST(ShortcutHandler, singleUnwedge) {
   ShortcutHandler handler;
 
   handler.setModifiers(ShortcutHandler::Control);
@@ -238,13 +223,10 @@ TEST(ShortcutHandler, singleUnwedge)
   EXPECT_EQ(handler.handleKeyRelease(2), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, multiArmed)
-{
+TEST(ShortcutHandler, multiArmed) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -254,13 +236,10 @@ TEST(ShortcutHandler, multiArmed)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyUnarm);
 }
 
-TEST(ShortcutHandler, multiRearmed)
-{
+TEST(ShortcutHandler, multiRearmed) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -276,13 +255,10 @@ TEST(ShortcutHandler, multiRearmed)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyUnarm);
 }
 
-TEST(ShortcutHandler, multiFailedArm)
-{
+TEST(ShortcutHandler, multiFailedArm) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -290,13 +266,10 @@ TEST(ShortcutHandler, multiFailedArm)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyNormal);
 }
 
-TEST(ShortcutHandler, multiDualArmed)
-{
+TEST(ShortcutHandler, multiDualArmed) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -308,13 +281,10 @@ TEST(ShortcutHandler, multiDualArmed)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyUnarm);
 }
 
-TEST(ShortcutHandler, multiShortcut)
-{
+TEST(ShortcutHandler, multiShortcut) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -326,13 +296,10 @@ TEST(ShortcutHandler, multiShortcut)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, multiRightShortcut)
-{
+TEST(ShortcutHandler, multiRightShortcut) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_R), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_R), ShortcutHandler::KeyNormal);
@@ -344,13 +311,10 @@ TEST(ShortcutHandler, multiRightShortcut)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, multiDualShortcut)
-{
+TEST(ShortcutHandler, multiDualShortcut) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Control_R), ShortcutHandler::KeyNormal);
@@ -368,13 +332,10 @@ TEST(ShortcutHandler, multiDualShortcut)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, multiShortcutReordered)
-{
+TEST(ShortcutHandler, multiShortcutReordered) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -386,13 +347,10 @@ TEST(ShortcutHandler, multiShortcutReordered)
   EXPECT_EQ(handler.handleKeyRelease(4), ShortcutHandler::KeyShortcut);
 }
 
-TEST(ShortcutHandler, multiDualShortcutReordered)
-{
+TEST(ShortcutHandler, multiDualShortcutReordered) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(3, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -410,13 +368,10 @@ TEST(ShortcutHandler, multiDualShortcutReordered)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, multiShortcutRepeated)
-{
+TEST(ShortcutHandler, multiShortcutRepeated) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -437,13 +392,10 @@ TEST(ShortcutHandler, multiShortcutRepeated)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, multiShortcutMultipleKeys)
-{
+TEST(ShortcutHandler, multiShortcutMultipleKeys) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -459,13 +411,10 @@ TEST(ShortcutHandler, multiShortcutMultipleKeys)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, multiWedgeNormal)
-{
+TEST(ShortcutHandler, multiWedgeNormal) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_b), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Control_L), ShortcutHandler::KeyNormal);
@@ -479,13 +428,10 @@ TEST(ShortcutHandler, multiWedgeNormal)
   EXPECT_EQ(handler.handleKeyRelease(2), ShortcutHandler::KeyNormal);
 }
 
-TEST(ShortcutHandler, multiWedgeModifier)
-{
+TEST(ShortcutHandler, multiWedgeModifier) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Super_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Control_L), ShortcutHandler::KeyNormal);
@@ -499,13 +445,10 @@ TEST(ShortcutHandler, multiWedgeModifier)
   EXPECT_EQ(handler.handleKeyRelease(2), ShortcutHandler::KeyNormal);
 }
 
-TEST(ShortcutHandler, multiWedgeArming)
-{
+TEST(ShortcutHandler, multiWedgeArming) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(2, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(3, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -519,13 +462,10 @@ TEST(ShortcutHandler, multiWedgeArming)
   EXPECT_EQ(handler.handleKeyRelease(2), ShortcutHandler::KeyNormal);
 }
 
-TEST(ShortcutHandler, multiWedgeModifierArming)
-{
+TEST(ShortcutHandler, multiWedgeModifierArming) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -535,13 +475,10 @@ TEST(ShortcutHandler, multiWedgeModifierArming)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyNormal);
 }
 
-TEST(ShortcutHandler, multiWedgeModifierArmed)
-{
+TEST(ShortcutHandler, multiWedgeModifierArmed) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -553,13 +490,10 @@ TEST(ShortcutHandler, multiWedgeModifierArmed)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyNormal);
 }
 
-TEST(ShortcutHandler, multiWedgeModifierFiring)
-{
+TEST(ShortcutHandler, multiWedgeModifierFiring) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   EXPECT_EQ(handler.handleKeyPress(1, XK_Control_L), ShortcutHandler::KeyNormal);
   EXPECT_EQ(handler.handleKeyPress(2, XK_Alt_L), ShortcutHandler::KeyNormal);
@@ -573,13 +507,10 @@ TEST(ShortcutHandler, multiWedgeModifierFiring)
   EXPECT_EQ(handler.handleKeyRelease(1), ShortcutHandler::KeyIgnore);
 }
 
-TEST(ShortcutHandler, multiUnwedge)
-{
+TEST(ShortcutHandler, multiUnwedge) {
   ShortcutHandler handler;
 
-  handler.setModifiers(ShortcutHandler::Control |
-                       ShortcutHandler::Shift |
-                       ShortcutHandler::Alt);
+  handler.setModifiers(ShortcutHandler::Control | ShortcutHandler::Shift | ShortcutHandler::Alt);
 
   handler.handleKeyPress(1, XK_Super_L);
   handler.handleKeyPress(2, XK_Control_L);
@@ -600,8 +531,7 @@ TEST(ShortcutHandler, multiUnwedge)
   EXPECT_EQ(handler.handleKeyRelease(2), ShortcutHandler::KeyIgnore);
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

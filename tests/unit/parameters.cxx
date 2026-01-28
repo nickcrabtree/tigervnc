@@ -1,15 +1,15 @@
 /* Copyright 2025 Pierre Ossman <ossman@cendio.se> for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -30,28 +30,23 @@ namespace core {
 
 // Generic comparison for our list parameters types that preserves
 // the type (doesn't use any common base class)
-template<typename IterL, typename IterR,
-         std::enable_if_t<std::is_member_function_pointer<decltype(&IterL::begin)>::value, bool> = true>
-static bool operator==(const IterL& lhs, const IterR& rhs)
-{
-  if (std::distance(lhs.begin(), lhs.end()) !=
-      std::distance(rhs.begin(), rhs.end()))
+template <typename IterL, typename IterR,
+          std::enable_if_t<std::is_member_function_pointer<decltype(&IterL::begin)>::value, bool> = true>
+static bool operator==(const IterL& lhs, const IterR& rhs) {
+  if (std::distance(lhs.begin(), lhs.end()) != std::distance(rhs.begin(), rhs.end()))
     return false;
   if (!std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end()))
     return false;
   return true;
 }
 
-static std::ostream& operator<<(std::ostream& os,
-                                const core::EnumListEntry& e)
-{
+static std::ostream& operator<<(std::ostream& os, const core::EnumListEntry& e) {
   return os << '"' << e.getValueStr() << '"';
 }
 
-}
+} // namespace core
 
-TEST(BoolParameter, values)
-{
+TEST(BoolParameter, values) {
   core::BoolParameter bools("boolparam", "", false);
 
   bools.setParam(true);
@@ -61,8 +56,7 @@ TEST(BoolParameter, values)
   EXPECT_FALSE(bools);
 }
 
-TEST(BoolParameter, strings)
-{
+TEST(BoolParameter, strings) {
   core::BoolParameter strings("boolparam", "", false);
 
   strings.setParam("on");
@@ -90,8 +84,7 @@ TEST(BoolParameter, strings)
   EXPECT_FALSE(strings);
 }
 
-TEST(BoolParameter, validation)
-{
+TEST(BoolParameter, validation) {
   core::BoolParameter valid("boolparam", "", false);
 
   EXPECT_TRUE(valid.setParam("yes"));
@@ -101,8 +94,7 @@ TEST(BoolParameter, validation)
   EXPECT_TRUE(valid);
 }
 
-TEST(BoolParameter, encoding)
-{
+TEST(BoolParameter, encoding) {
   core::BoolParameter encoding("boolparam", "", false);
 
   encoding.setParam(true);
@@ -112,8 +104,7 @@ TEST(BoolParameter, encoding)
   EXPECT_EQ(encoding.getValueStr(), "off");
 }
 
-TEST(BoolParameter, default)
-{
+TEST(BoolParameter, default) {
   core::BoolParameter def("boolparam", "", false);
 
   EXPECT_TRUE(def.isDefault());
@@ -125,8 +116,7 @@ TEST(BoolParameter, default)
   EXPECT_TRUE(def.isDefault());
 }
 
-TEST(BoolParameter, immutable)
-{
+TEST(BoolParameter, immutable) {
   core::BoolParameter immutable("boolparam", "", false);
 
   immutable.setImmutable();
@@ -135,8 +125,7 @@ TEST(BoolParameter, immutable)
   EXPECT_FALSE(immutable);
 }
 
-TEST(IntParameter, values)
-{
+TEST(IntParameter, values) {
   core::IntParameter ints("intparam", "", 0);
 
   ints.setParam(123);
@@ -146,8 +135,7 @@ TEST(IntParameter, values)
   EXPECT_EQ(ints, -456);
 }
 
-TEST(IntParameter, strings)
-{
+TEST(IntParameter, strings) {
   core::IntParameter strings("intparam", "", 0);
 
   strings.setParam("123");
@@ -157,8 +145,7 @@ TEST(IntParameter, strings)
   EXPECT_EQ(strings, -456);
 }
 
-TEST(IntParameter, minmax)
-{
+TEST(IntParameter, minmax) {
   core::IntParameter bounds("intparam", "", 30, 20, 100);
 
   EXPECT_TRUE(bounds.setParam(57));
@@ -177,15 +164,11 @@ TEST(IntParameter, minmax)
   EXPECT_EQ(bounds, 57);
 }
 
-TEST(IntParameter, minmaxdefault)
-{
-  EXPECT_THROW({
-    core::IntParameter defbounds("intparam", "", 10, 20, 100);
-  }, std::invalid_argument);
+TEST(IntParameter, minmaxdefault) {
+  EXPECT_THROW({ core::IntParameter defbounds("intparam", "", 10, 20, 100); }, std::invalid_argument);
 }
 
-TEST(IntParameter, validation)
-{
+TEST(IntParameter, validation) {
   core::IntParameter valid("intparam", "", 0);
 
   EXPECT_TRUE(valid.setParam("123"));
@@ -195,8 +178,7 @@ TEST(IntParameter, validation)
   EXPECT_EQ(valid, 123);
 }
 
-TEST(IntParameter, encoding)
-{
+TEST(IntParameter, encoding) {
   core::IntParameter encoding("intparam", "", 0);
 
   encoding.setParam(123);
@@ -206,8 +188,7 @@ TEST(IntParameter, encoding)
   EXPECT_EQ(encoding.getValueStr(), "-456");
 }
 
-TEST(IntParameter, default)
-{
+TEST(IntParameter, default) {
   core::IntParameter def("intparam", "", 30);
 
   EXPECT_TRUE(def.isDefault());
@@ -219,8 +200,7 @@ TEST(IntParameter, default)
   EXPECT_TRUE(def.isDefault());
 }
 
-TEST(IntParameter, immutable)
-{
+TEST(IntParameter, immutable) {
   core::IntParameter immutable("intparam", "", 0);
 
   immutable.setImmutable();
@@ -229,8 +209,7 @@ TEST(IntParameter, immutable)
   EXPECT_EQ(immutable, 0);
 }
 
-TEST(StringParameter, values)
-{
+TEST(StringParameter, values) {
   core::StringParameter strings("stringparam", "", "");
 
   strings.setParam("foo");
@@ -240,22 +219,16 @@ TEST(StringParameter, values)
   EXPECT_STREQ(strings, "bar");
 }
 
-TEST(StringParameter, null)
-{
+TEST(StringParameter, null) {
   // NULL value
   core::StringParameter null("stringparam", "", "");
-  EXPECT_THROW({
-    null.setParam(nullptr);
-  }, std::invalid_argument);
+  EXPECT_THROW({ null.setParam(nullptr); }, std::invalid_argument);
 
   // NULL default value
-  EXPECT_THROW({
-    core::StringParameter defnull("stringparam", "", nullptr);
-  }, std::invalid_argument);
+  EXPECT_THROW({ core::StringParameter defnull("stringparam", "", nullptr); }, std::invalid_argument);
 }
 
-TEST(StringParameter, encoding)
-{
+TEST(StringParameter, encoding) {
   core::StringParameter encoding("stringparam", "", "");
 
   encoding.setParam("foo");
@@ -265,8 +238,7 @@ TEST(StringParameter, encoding)
   EXPECT_EQ(encoding.getValueStr(), "bar");
 }
 
-TEST(StringParameter, default)
-{
+TEST(StringParameter, default) {
   core::StringParameter def("stringparam", "", "test");
 
   EXPECT_TRUE(def.isDefault());
@@ -278,8 +250,7 @@ TEST(StringParameter, default)
   EXPECT_TRUE(def.isDefault());
 }
 
-TEST(StringParameter, immutable)
-{
+TEST(StringParameter, immutable) {
   core::StringParameter immutable("stringparam", "", "");
 
   immutable.setImmutable();
@@ -288,8 +259,7 @@ TEST(StringParameter, immutable)
   EXPECT_STREQ(immutable, "");
 }
 
-TEST(EnumParameter, values)
-{
+TEST(EnumParameter, values) {
   core::EnumParameter enums("enumparam", "", {"a", "b", "c"}, "a");
 
   enums.setParam("b");
@@ -309,8 +279,7 @@ TEST(EnumParameter, values)
   EXPECT_FALSE(enums != "c");
 }
 
-TEST(EnumParameter, caseinsensitive)
-{
+TEST(EnumParameter, caseinsensitive) {
   core::EnumParameter casecmp("enumparam", "", {"a", "b", "c"}, "a");
 
   casecmp.setParam("B");
@@ -322,8 +291,7 @@ TEST(EnumParameter, caseinsensitive)
   EXPECT_TRUE(casecmp != "c");
 }
 
-TEST(EnumParameter, validation)
-{
+TEST(EnumParameter, validation) {
   core::EnumParameter valid("enumparam", "", {"a", "b", "c"}, "a");
 
   EXPECT_TRUE(valid.setParam("b"));
@@ -332,32 +300,22 @@ TEST(EnumParameter, validation)
   EXPECT_EQ(valid.getValueStr(), "b");
 
   // Valid default value
-  EXPECT_THROW({
-    core::EnumParameter defvalid("enumparam", "", {"a", "b", "c"}, "d");
-  }, std::invalid_argument);
+  EXPECT_THROW({ core::EnumParameter defvalid("enumparam", "", {"a", "b", "c"}, "d"); }, std::invalid_argument);
 }
 
-TEST(EnumParameter, null)
-{
+TEST(EnumParameter, null) {
   // NULL value
   core::EnumParameter null("enumparam", "", {"a", "b", "c"}, "a");
-  EXPECT_THROW({
-    null.setParam(nullptr);
-  }, std::invalid_argument);
+  EXPECT_THROW({ null.setParam(nullptr); }, std::invalid_argument);
 
   // NULL default value
-  EXPECT_THROW({
-    core::EnumParameter defnull("enumparam", "", {""}, nullptr);
-  }, std::invalid_argument);
+  EXPECT_THROW({ core::EnumParameter defnull("enumparam", "", {""}, nullptr); }, std::invalid_argument);
 
   // NULL enum value
-  EXPECT_THROW({
-    core::EnumParameter nullenum("enumparam", "", {"a", nullptr, "b"}, "a");
-  }, std::invalid_argument);
+  EXPECT_THROW({ core::EnumParameter nullenum("enumparam", "", {"a", nullptr, "b"}, "a"); }, std::invalid_argument);
 }
 
-TEST(EnumParameter, encoding)
-{
+TEST(EnumParameter, encoding) {
   core::EnumParameter encoding("enumparam", "", {"a", "b", "c"}, "a");
 
   encoding.setParam("b");
@@ -367,8 +325,7 @@ TEST(EnumParameter, encoding)
   EXPECT_EQ(encoding.getValueStr(), "c");
 }
 
-TEST(EnumParameter, default)
-{
+TEST(EnumParameter, default) {
   core::EnumParameter def("enumparam", "", {"a", "b", "c"}, "a");
 
   EXPECT_TRUE(def.isDefault());
@@ -380,8 +337,7 @@ TEST(EnumParameter, default)
   EXPECT_TRUE(def.isDefault());
 }
 
-TEST(EnumParameter, immutable)
-{
+TEST(EnumParameter, immutable) {
   core::EnumParameter immutable("enumparam", "", {"a", "b", "c"}, "a");
 
   immutable.setImmutable();
@@ -390,8 +346,7 @@ TEST(EnumParameter, immutable)
   EXPECT_EQ(immutable.getValueStr(), "a");
 }
 
-TEST(BinaryParameter, values)
-{
+TEST(BinaryParameter, values) {
   std::vector<uint8_t> data;
 
   core::BinaryParameter binary("binaryparam", "", nullptr, 0);
@@ -404,8 +359,7 @@ TEST(BinaryParameter, values)
   EXPECT_EQ(binary.getData()[2], 3);
 }
 
-TEST(BinaryParameter, copy)
-{
+TEST(BinaryParameter, copy) {
   std::vector<uint8_t> data;
 
   core::BinaryParameter copy("binaryparam", "", nullptr, 0);
@@ -421,8 +375,7 @@ TEST(BinaryParameter, copy)
   EXPECT_EQ(copy.getData()[0], 1);
 }
 
-TEST(BinaryParameter, strings)
-{
+TEST(BinaryParameter, strings) {
   core::BinaryParameter strings("binaryparam", "", nullptr, 0);
 
   strings.setParam("010203");
@@ -439,8 +392,7 @@ TEST(BinaryParameter, strings)
   EXPECT_EQ(strings.getData()[3], 0xef);
 }
 
-TEST(BinaryParameter, validation)
-{
+TEST(BinaryParameter, validation) {
   core::BinaryParameter valid("binaryparam", "", nullptr, 0);
 
   EXPECT_TRUE(valid.setParam("010203"));
@@ -456,8 +408,7 @@ TEST(BinaryParameter, validation)
   EXPECT_EQ(valid.getData()[2], 3);
 }
 
-TEST(BinaryParameter, encoding)
-{
+TEST(BinaryParameter, encoding) {
   std::vector<uint8_t> data;
 
   core::BinaryParameter encoding("binaryparam", "", nullptr, 0);
@@ -471,8 +422,7 @@ TEST(BinaryParameter, encoding)
   EXPECT_EQ(encoding.getValueStr(), "deadbeef");
 }
 
-TEST(BinaryParameter, default)
-{
+TEST(BinaryParameter, default) {
   std::vector<uint8_t> data;
 
   data = {1, 2, 3};
@@ -489,8 +439,7 @@ TEST(BinaryParameter, default)
   EXPECT_TRUE(def.isDefault());
 }
 
-TEST(BinaryParameter, immutable)
-{
+TEST(BinaryParameter, immutable) {
   std::vector<uint8_t> data;
 
   core::BinaryParameter immutable("binaryparam", "", nullptr, 0);
@@ -502,8 +451,7 @@ TEST(BinaryParameter, immutable)
   EXPECT_EQ(immutable.getData().size(), 0);
 }
 
-TEST(IntListParameter, values)
-{
+TEST(IntListParameter, values) {
   std::list<int> data;
 
   core::IntListParameter list("listparam", "", {});
@@ -513,8 +461,7 @@ TEST(IntListParameter, values)
   EXPECT_EQ(list, data);
 }
 
-TEST(IntListParameter, strings)
-{
+TEST(IntListParameter, strings) {
   std::list<int> data;
 
   core::IntListParameter strings("listparam", "", {});
@@ -540,8 +487,7 @@ TEST(IntListParameter, strings)
   EXPECT_EQ(strings, data);
 }
 
-TEST(IntListParameter, minmax)
-{
+TEST(IntListParameter, minmax) {
   std::list<int> data;
 
   core::IntListParameter bounds("listparam", "", {}, 20, 100);
@@ -567,15 +513,11 @@ TEST(IntListParameter, minmax)
   EXPECT_EQ(bounds, data);
 }
 
-TEST(IntListParameter, minmaxdefault)
-{
-  EXPECT_THROW({
-    core::IntListParameter defbounds("listparam", "", {10}, 20, 100);
-  }, std::invalid_argument);
+TEST(IntListParameter, minmaxdefault) {
+  EXPECT_THROW({ core::IntListParameter defbounds("listparam", "", {10}, 20, 100); }, std::invalid_argument);
 }
 
-TEST(IntListParameter, validation)
-{
+TEST(IntListParameter, validation) {
   std::list<int> data;
 
   core::IntListParameter valid("listparam", "", {});
@@ -593,8 +535,7 @@ TEST(IntListParameter, validation)
   EXPECT_EQ(valid, data);
 }
 
-TEST(IntListParameter, encoding)
-{
+TEST(IntListParameter, encoding) {
   std::list<int> data;
 
   core::IntListParameter encoding("listparam", "", {});
@@ -603,8 +544,7 @@ TEST(IntListParameter, encoding)
   EXPECT_EQ(encoding.getValueStr(), "1,2,3,4");
 }
 
-TEST(IntListParameter, default)
-{
+TEST(IntListParameter, default) {
   std::list<int> data;
 
   core::IntListParameter def("listparam", "", {1, 2, 3});
@@ -618,8 +558,7 @@ TEST(IntListParameter, default)
   EXPECT_TRUE(def.isDefault());
 }
 
-TEST(IntListParameter, immutable)
-{
+TEST(IntListParameter, immutable) {
   std::list<int> data;
 
   core::IntListParameter immutable("listparam", "", {});
@@ -630,8 +569,7 @@ TEST(IntListParameter, immutable)
   EXPECT_TRUE(immutable.begin() == immutable.end());
 }
 
-TEST(StringListParameter, values)
-{
+TEST(StringListParameter, values) {
   std::list<std::string> data;
 
   core::StringListParameter list("listparam", "", {});
@@ -641,8 +579,7 @@ TEST(StringListParameter, values)
   EXPECT_EQ(list, data);
 }
 
-TEST(StringListParameter, strings)
-{
+TEST(StringListParameter, strings) {
   std::list<std::string> data;
 
   core::StringListParameter strings("listparam", "", {});
@@ -672,24 +609,19 @@ TEST(StringListParameter, strings)
   EXPECT_EQ(strings, data);
 }
 
-TEST(StringListParameter, null)
-{
+TEST(StringListParameter, null) {
   // NULL default value
-  EXPECT_THROW({
-    core::StringListParameter defnull("enumparam", "", {nullptr});
-  }, std::invalid_argument);
+  EXPECT_THROW({ core::StringListParameter defnull("enumparam", "", {nullptr}); }, std::invalid_argument);
 }
 
-TEST(StringListParameter, encoding)
-{
+TEST(StringListParameter, encoding) {
   core::StringListParameter encoding("listparam", "", {});
 
   encoding.setParam({"1", "2", "3", "4"});
   EXPECT_EQ(encoding.getValueStr(), "1,2,3,4");
 }
 
-TEST(StringListParameter, default)
-{
+TEST(StringListParameter, default) {
   core::StringListParameter def("listparam", "", {"1", "2", "3"});
 
   EXPECT_TRUE(def.isDefault());
@@ -701,8 +633,7 @@ TEST(StringListParameter, default)
   EXPECT_TRUE(def.isDefault());
 }
 
-TEST(StringListParameter, immutable)
-{
+TEST(StringListParameter, immutable) {
   std::list<std::string> data;
 
   core::StringListParameter immutable("listparam", "", {"a", "b"});
@@ -714,8 +645,7 @@ TEST(StringListParameter, immutable)
   EXPECT_EQ(immutable, data);
 }
 
-TEST(EnumListParameter, values)
-{
+TEST(EnumListParameter, values) {
   std::list<std::string> data;
 
   core::EnumListParameter list("listparam", "", {"a", "b", "c"}, {"a"});
@@ -725,8 +655,7 @@ TEST(EnumListParameter, values)
   EXPECT_EQ(list, data);
 }
 
-TEST(EnumListParameter, caseinsensitive)
-{
+TEST(EnumListParameter, caseinsensitive) {
   std::list<std::string> data;
 
   core::EnumListParameter casecmp("listparam", "", {"a", "b", "c"}, {"a"});
@@ -736,8 +665,7 @@ TEST(EnumListParameter, caseinsensitive)
   EXPECT_EQ(casecmp, data);
 }
 
-TEST(EnumListParameter, strings)
-{
+TEST(EnumListParameter, strings) {
   std::list<std::string> data;
 
   core::EnumListParameter strings("listparam", "", {"a", "b", "c"}, {"a"});
@@ -763,8 +691,7 @@ TEST(EnumListParameter, strings)
   EXPECT_EQ(strings, data);
 }
 
-TEST(EnumListParameter, validation)
-{
+TEST(EnumListParameter, validation) {
   std::list<std::string> data;
 
   core::EnumListParameter valid("enumparam", "", {"a", "b", "c"}, {"a"});
@@ -778,36 +705,30 @@ TEST(EnumListParameter, validation)
   EXPECT_EQ(valid, data);
 }
 
-TEST(EnumListParameter, validdefault)
-{
-  EXPECT_THROW({
-    core::EnumListParameter defvalid("enumparam", "", {"a", "b", "c"}, {"d"});
-  }, std::invalid_argument);
+TEST(EnumListParameter, validdefault) {
+  EXPECT_THROW({ core::EnumListParameter defvalid("enumparam", "", {"a", "b", "c"}, {"d"}); }, std::invalid_argument);
 }
 
-TEST(EnumListParameter, null)
-{
+TEST(EnumListParameter, null) {
   // NULL default value
-  EXPECT_THROW({
-    core::EnumListParameter defnull("enumparam", "", {""}, {nullptr});
-  }, std::invalid_argument);
+  EXPECT_THROW({ core::EnumListParameter defnull("enumparam", "", {""}, {nullptr}); }, std::invalid_argument);
 
   // NULL enum value
-  EXPECT_THROW({
-    core::EnumListParameter nullenum("enumparam", "", {"a", nullptr, "b"}, {"a"});
-  }, std::invalid_argument);
+  EXPECT_THROW(
+      {
+        core::EnumListParameter nullenum("enumparam", "", {"a", nullptr, "b"}, {"a"});
+      },
+      std::invalid_argument);
 }
 
-TEST(EnumListParameter, encoding)
-{
+TEST(EnumListParameter, encoding) {
   core::EnumListParameter encoding("listparam", "", {"a", "b", "c"}, {"a"});
 
   encoding.setParam({"a", "b", "C"});
   EXPECT_EQ(encoding.getValueStr(), "a,b,c");
 }
 
-TEST(EnumListParameter, default)
-{
+TEST(EnumListParameter, default) {
   core::EnumListParameter def("listparam", "", {"a", "b", "c"}, {"a"});
 
   EXPECT_TRUE(def.isDefault());
@@ -819,8 +740,7 @@ TEST(EnumListParameter, default)
   EXPECT_TRUE(def.isDefault());
 }
 
-TEST(EnumListParameter, immutable)
-{
+TEST(EnumListParameter, immutable) {
   std::list<std::string> data;
 
   core::EnumListParameter immutable("listparam", "", {"a", "b", "c"}, {"a"});
@@ -832,8 +752,7 @@ TEST(EnumListParameter, immutable)
   EXPECT_EQ(immutable, data);
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
