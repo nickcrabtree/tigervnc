@@ -91,8 +91,8 @@ struct HashVectorHasher {
 // File Format v3 (sharded):
 //   Directory structure:
 //     index.dat      - Master index with entry metadata
-//     shard_NNNN.dat - Payload shard files (~64MB each)
-//   Disk cache can be larger than memory cache (default 2x) to keep
+//     shard_NNNN.dat - Payload shard files (~8MB each by default)
+//   Disk cache size is configured independently of memory cache to keep
 //   evicted entries available for re-hydration.
 class GlobalClientPersistentCache {
 public:
@@ -132,8 +132,8 @@ public:
   };
 
   GlobalClientPersistentCache(size_t maxMemorySizeMB = 2048,
-                              size_t maxDiskSizeMB = 0, // 0 = auto (2x memory)
-                              size_t shardSizeMB = 64, const std::string& cacheDirOverride = std::string());
+                              size_t maxDiskSizeMB = 0, // 0 = auto (default cap)
+                              size_t shardSizeMB = 8, const std::string& cacheDirOverride = std::string());
   ~GlobalClientPersistentCache();
 
   // Lifecycle - lazy-load from disk
