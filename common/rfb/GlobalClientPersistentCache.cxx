@@ -258,7 +258,7 @@ static size_t mbDoubleClamped(size_t mb) {
 GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxMemorySizeMB, size_t maxDiskSizeMB,
                                                          size_t shardSizeMB, const std::string& cacheDirOverride)
     : maxMemorySize_(mbToBytesClamped(maxMemorySizeMB)),
-      maxDiskSize_(mbToBytesClamped(maxDiskSizeMB == 0 ? mbDoubleClamped(maxMemorySizeMB) : maxDiskSizeMB)),
+      maxDiskSize_(mbToBytesClamped(maxDiskSizeMB == 0 ? 4096 : maxDiskSizeMB)),
       shardSize_(mbToBytesClamped(shardSizeMB)), hydrationState_(HydrationState::Uninitialized), indexDirty_(false),
       currentShardId_(0), currentShardHandle_(nullptr), currentShardSize_(0) {
   PersistentCacheDebugLogger::getInstance().log(
@@ -792,9 +792,9 @@ void GlobalClientPersistentCache::closeCurrentShard() {
   }
 }
 
- // Enforce on-disk quota before writing. We must prevent unbounded shard growth,
-    // especially when eviction/GC cannot reclaim fragmented shards.
-    const size_t needBytes = entry.pixels.size();
+// Enforce on-disk quota before writing. We must prevent unbounded shard growth,
+// especially when eviction/GC cannot reclaim fragmented shards.
+const size_t needBytes = entry.pixels.size();
 size_t diskUsage = getDiskUsage();
 if (needBytes > 0 && diskUsage + needBytes > maxDiskSize_) {
   vlog.info("PersistentCache: disk usage %zuMB + write %zuKB exceeds limit %zuMB; attempting GC",
