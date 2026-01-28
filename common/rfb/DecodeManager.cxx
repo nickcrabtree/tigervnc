@@ -245,7 +245,7 @@ DecodeManager::DecodeManager(CConnection* conn_)
     if (const auto* ip = dynamic_cast<const core::IntParameter*>(v))
       pcDiskSizeMB = static_cast<size_t>(*ip);
   }
-  size_t pcShardSizeMB = 64;
+  size_t pcShardSizeMB = 8;
   if (auto* v = core::Configuration::getParam("PersistentCacheShardSize")) {
     if (const auto* ip = dynamic_cast<const core::IntParameter*>(v))
       pcShardSizeMB = static_cast<size_t>(*ip);
@@ -266,11 +266,12 @@ DecodeManager::DecodeManager(CConnection* conn_)
     pcPathOverride.clear();
   }
   persistentCacheDiskEnabled_ = enablePersistentCache && (pcDiskSizeMB != std::numeric_limits<size_t>::max());
-  persistentCache = new GlobalClientPersistentCache(pcMemSizeMB, pcDiskSizeMB, pcShardSizeMB, pcPathOverride);
+  const size_t pcAutoDiskSizeMB = 4096;
+  const size_t effectiveDiskMB = (pcDiskSizeMB == 0) ? pcAutoDiskSizeMB : pcDiskSizeMB;
+  persistentCache = new GlobalClientPersistentCache(pcMemSizeMB, effectiveDiskMB, pcShardSizeMB, pcPathOverride);
   if (enablePersistentCache) {
-    const size_t effectiveDiskMB = (pcDiskSizeMB == 0) ? pcMemSizeMB * 2 : pcDiskSizeMB;
-    vlog.info("Client PersistentCache v3: mem=%zuMB, disk=%zuMB, shard=%zuMB%s", pcMemSizeMB, effectiveDiskMB,
-              pcShardSizeMB, pcPathOverride.empty() ? "" : " (custom path)");
+    vlog.info("Client PersistentCache v3: mem=%zuMB, disk=%zuMB%s, shard=%zuMB%s", pcMemSizeMB, effectiveDiskMB,
+              (pcDiskSizeMB == 0) ? " (auto)" : "", pcShardSizeMB, pcPathOverride.empty() ? "" : " (custom path)");
 #if !defined(WIN32)
     const std::string& cacheDir = persistentCache->getCacheDirectory();
     uint64_t freeBytes = 0;
