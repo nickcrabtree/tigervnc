@@ -19,8 +19,8 @@
 #ifndef __SHORTCUTHANDLER__
 #define __SHORTCUTHANDLER__
 
-#include <set>
 #include <map>
+#include <set>
 
 #include <stdint.h>
 
@@ -44,17 +44,16 @@ public:
 
 public:
   enum Modifier {
-    Control = (1<<0),
-    Shift =   (1<<1),
-    Alt =     (1<<2),
-    Super =   (1<<3),
+    Control = (1 << 0),
+    Shift = (1 << 1),
+    Alt = (1 << 2),
+    Super = (1 << 3),
   };
 
   static unsigned parseModifier(const char* key);
   static const char* modifierString(unsigned key);
 
-  static const char* modifierPrefix(unsigned mask,
-                                    bool justPrefix=false);
+  static const char* modifierPrefix(unsigned mask, bool justPrefix = false);
 
 private:
   unsigned keySymToModifier(uint32_t keySym);

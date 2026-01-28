@@ -4,10 +4,10 @@ import os
 import re
 
 origin = os.path.realpath(os.path.dirname(__file__))
-fn = os.path.join(origin, '..', 'common', 'rfb', 'keysymdef.h')
+fn = os.path.join(origin, "..", "common", "rfb", "keysymdef.h")
 
 keys = {}
-prog = re.compile('#define\s+XK_([^\s]+)\s*0x([0-9A-Fa-f]+)\s*/[*].\s*U[+]([0-9A-Fa-f]+)\s+([^*]+)\s*.[*]/')
+prog = re.compile("#define\s+XK_([^\s]+)\s*0x([0-9A-Fa-f]+)\s*/[*].\s*U[+]([0-9A-Fa-f]+)\s+([^*]+)\s*.[*]/")
 with open(fn) as f:
     for line in f:
         m = prog.search(line)
@@ -18,18 +18,17 @@ with open(fn) as f:
         ks = int(ks, 16)
         ucs = int(ucs, 16)
 
-        if (ks == ucs) and \
-           (((ks >= 0x20) and (ks <= 0x7f)) or \
-            ((ks >= 0xa0) and (ks <= 0xff))):
+        if (ks == ucs) and (((ks >= 0x20) and (ks <= 0x7F)) or ((ks >= 0xA0) and (ks <= 0xFF))):
             continue
-        if (ks & 0xff000000) == 0x01000000:
+        if (ks & 0xFF000000) == 0x01000000:
             assert ks == ucs | 0x01000000
             continue
 
         assert ks not in keys
-        keys[ks] = { 'name': ksname, 'ucs': ucs, 'ucsname': ucsname }
+        keys[ks] = {"name": ksname, "ucs": ucs, "ucsname": ucsname}
 
-print("""/*
+print(
+    """/*
  * This file is auto-generated from keysymdef.h
  */
 
@@ -38,16 +37,16 @@ struct codepair {
   unsigned short ucs;
 };
 
-static const struct codepair keysymtab[] = {""")
+static const struct codepair keysymtab[] = {"""
+)
 
-maxlen = max([ len(keys[ks]['name']) for ks in keys ])
+maxlen = max([len(keys[ks]["name"]) for ks in keys])
 for ks in sorted(keys):
     key = keys[ks]
-    if (key['ucs'] < 0x20) or key['ucs'] == 0x7f:
-        ch = ' '
+    if (key["ucs"] < 0x20) or key["ucs"] == 0x7F:
+        ch = " "
     else:
-        ch = chr(key['ucs'])
-    print("  { 0x%04x, 0x%04x }, /* %0*s %s %s */" %
-          (ks, key['ucs'], maxlen, key['name'], ch, key['ucsname']))
+        ch = chr(key["ucs"])
+    print("  { 0x%04x, 0x%04x }, /* %0*s %s %s */" % (ks, key["ucs"], maxlen, key["name"], ch, key["ucsname"]))
 
 print("};")

@@ -7,10 +7,10 @@
  * distribute, sublicense, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -28,15 +28,15 @@
 
 class Fl_Scroll;
 
-class Fl_Navigation: private Fl_Group {
+class Fl_Navigation : private Fl_Group {
 public:
   Fl_Navigation(int x, int y, int w, int h);
   ~Fl_Navigation();
 
-  Fl_Widget *value();
+  Fl_Widget* value();
   int value(Fl_Widget*);
 
-  void client_area(int &rx, int &ry, int &rw, int &rh, int lw);
+  void client_area(int& rx, int& ry, int& rw, int& rh, int lw);
 
   void draw() override;
 
@@ -47,12 +47,12 @@ public:
 private:
   void update_labels();
 
-  static void label_pressed(Fl_Widget *widget, void *user_data);
+  static void label_pressed(Fl_Widget* widget, void* user_data);
 
 private:
-  Fl_Scroll *scroll;
-  Fl_Group *labels;
-  Fl_Group *pages;
+  Fl_Scroll* scroll;
+  Fl_Group* labels;
+  Fl_Group* pages;
 };
 
 #endif

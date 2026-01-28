@@ -29,14 +29,12 @@ public:
   void filterPointerEvent(const core::Point& pos, uint16_t buttonMask);
 
 protected:
-  virtual void sendPointerEvent(const core::Point& pos,
-                                uint16_t buttonMask)=0;
+  virtual void sendPointerEvent(const core::Point& pos, uint16_t buttonMask) = 0;
 
   void handleTimeout(core::Timer* t) override;
 
 private:
-  void sendAction(const core::Point& pos, uint16_t buttonMask,
-                  int action);
+  void sendAction(const core::Point& pos, uint16_t buttonMask, int action);
 
   int createButtonMask(uint16_t buttonMask);
 

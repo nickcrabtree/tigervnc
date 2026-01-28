@@ -1,25 +1,25 @@
 /* Copyright 2019 Aaron Sowry for Cendio AB
  * Copyright 2020 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
 
- #ifdef HAVE_CONFIG_H
- #include <config.h>
- #endif
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include <assert.h>
 #include <math.h>
@@ -32,13 +32,13 @@
 static core::LogWriter vlog("GestureHandler");
 
 static const unsigned char GH_NOGESTURE = 0;
-static const unsigned char GH_ONETAP    = 1;
-static const unsigned char GH_TWOTAP    = 2;
-static const unsigned char GH_THREETAP  = 4;
-static const unsigned char GH_DRAG      = 8;
+static const unsigned char GH_ONETAP = 1;
+static const unsigned char GH_TWOTAP = 2;
+static const unsigned char GH_THREETAP = 4;
+static const unsigned char GH_DRAG = 8;
 static const unsigned char GH_LONGPRESS = 16;
-static const unsigned char GH_TWODRAG   = 32;
-static const unsigned char GH_PINCH     = 64;
+static const unsigned char GH_TWODRAG = 32;
+static const unsigned char GH_PINCH = 64;
 
 static const unsigned char GH_INITSTATE = 127;
 
@@ -57,18 +57,12 @@ const unsigned GH_LONGPRESS_TIMEOUT = 1000;
 // Timeout when waiting to decide between PINCH and TWODRAG (ms)
 const unsigned GH_TWOTOUCH_TIMEOUT = 50;
 
-GestureHandler::GestureHandler() :
-  state(GH_INITSTATE), waitingRelease(false),
-  longpressTimer(this), twoTouchTimer(this)
-{
-}
+GestureHandler::GestureHandler()
+    : state(GH_INITSTATE), waitingRelease(false), longpressTimer(this), twoTouchTimer(this) {}
 
-GestureHandler::~GestureHandler()
-{
-}
+GestureHandler::~GestureHandler() {}
 
-void GestureHandler::handleTouchBegin(int id, double x, double y)
-{
+void GestureHandler::handleTouchBegin(int id, double x, double y) {
   GHTouch ght;
 
   // Ignore any new touches if there is already an active gesture,
@@ -80,8 +74,7 @@ void GestureHandler::handleTouchBegin(int id, double x, double y)
 
   // Did it take too long between touches that we should no longer
   // consider this a single gesture?
-  if ((tracked.size() > 0) &&
-      (core::msSince(&tracked.begin()->second.started) > GH_MULTITOUCH_TIMEOUT)) {
+  if ((tracked.size() > 0) && (core::msSince(&tracked.begin()->second.started) > GH_MULTITOUCH_TIMEOUT)) {
     state = GH_NOGESTURE;
     ignored.insert(id);
     return;
@@ -104,26 +97,25 @@ void GestureHandler::handleTouchBegin(int id, double x, double y)
   tracked[id] = ght;
 
   switch (tracked.size()) {
-    case 1:
-      longpressTimer.start(GH_LONGPRESS_TIMEOUT);
-      break;
+  case 1:
+    longpressTimer.start(GH_LONGPRESS_TIMEOUT);
+    break;
 
-    case 2:
-      state &= ~(GH_ONETAP | GH_DRAG | GH_LONGPRESS);
-      longpressTimer.stop();
-      break;
+  case 2:
+    state &= ~(GH_ONETAP | GH_DRAG | GH_LONGPRESS);
+    longpressTimer.stop();
+    break;
 
-    case 3:
-      state &= ~(GH_TWOTAP | GH_TWODRAG | GH_PINCH);
-      break;
+  case 3:
+    state &= ~(GH_TWOTAP | GH_TWODRAG | GH_PINCH);
+    break;
 
-    default:
-      state = GH_NOGESTURE;
+  default:
+    state = GH_NOGESTURE;
   }
 }
 
-void GestureHandler::handleTouchUpdate(int id, double x, double y)
-{
+void GestureHandler::handleTouchUpdate(int id, double x, double y) {
   GHTouch *touch, *prevTouch;
   double deltaX, deltaY, prevDeltaMove;
   unsigned deltaAngle;
@@ -142,8 +134,7 @@ void GestureHandler::handleTouchUpdate(int id, double x, double y)
   deltaY = y - touch->firstY;
 
   // Update angle when the touch has moved
-  if ((touch->firstX != touch->lastX) ||
-      (touch->firstY != touch->lastY))
+  if ((touch->firstX != touch->lastX) || (touch->firstY != touch->lastY))
     touch->angle = atan2(deltaY, deltaX) * 180 / M_PI;
 
   if (!hasDetectedGesture()) {
@@ -171,8 +162,7 @@ void GestureHandler::handleTouchUpdate(int id, double x, double y)
         prevTouch = &tracked.begin()->second;
 
       // How far the previous touch point has moved since start
-      prevDeltaMove = hypot(prevTouch->firstX - prevTouch->lastX,
-                            prevTouch->firstY - prevTouch->lastY);
+      prevDeltaMove = hypot(prevTouch->firstX - prevTouch->lastX, prevTouch->firstY - prevTouch->lastY);
 
       // We know that the current touch moved far enough,
       // but unless both touches moved further than their
@@ -208,18 +198,17 @@ void GestureHandler::handleTouchUpdate(int id, double x, double y)
   pushEvent(GestureUpdate);
 }
 
-void GestureHandler::handleTouchEnd(int id)
-{
+void GestureHandler::handleTouchEnd(int id) {
   std::map<int, GHTouch>::const_iterator iter;
 
   // Check if this is an ignored touch
   if (ignored.count(id)) {
-      ignored.erase(id);
-      if (ignored.empty() && tracked.empty()) {
-        state = GH_INITSTATE;
-        waitingRelease = false;
-      }
-      return;
+    ignored.erase(id);
+    if (ignored.empty() && tracked.empty()) {
+      state = GH_INITSTATE;
+      waitingRelease = false;
+    }
+    return;
   }
 
   // We got a TouchEnd before the timer triggered,
@@ -243,13 +232,13 @@ void GestureHandler::handleTouchEnd(int id)
 
       // Can't be a tap that requires more touches than we current have
       switch (tracked.size()) {
-        case 1:
-          state &= ~(GH_TWOTAP | GH_THREETAP);
-          break;
+      case 1:
+        state &= ~(GH_TWOTAP | GH_THREETAP);
+        break;
 
-        case 2:
-          state &= ~(GH_ONETAP | GH_THREETAP);
-          break;
+      case 2:
+        state &= ~(GH_ONETAP | GH_THREETAP);
+        break;
       }
     }
   }
@@ -299,8 +288,7 @@ void GestureHandler::handleTouchEnd(int id)
   }
 }
 
-bool GestureHandler::hasDetectedGesture()
-{
+bool GestureHandler::hasDetectedGesture() {
   if (state == GH_NOGESTURE)
     return false;
   // Check to see if the bitmask value is a power of 2
@@ -323,24 +311,21 @@ bool GestureHandler::hasDetectedGesture()
   return true;
 }
 
-void GestureHandler::handleTimeout(core::Timer* t)
-{
+void GestureHandler::handleTimeout(core::Timer* t) {
   if (t == &longpressTimer)
     longpressTimeout();
   else if (t == &twoTouchTimer)
     twoTouchTimeout();
 }
 
-void GestureHandler::longpressTimeout()
-{
+void GestureHandler::longpressTimeout() {
   assert(!hasDetectedGesture());
 
   state = GH_LONGPRESS;
   pushEvent(GestureBegin);
 }
 
-void GestureHandler::twoTouchTimeout()
-{
+void GestureHandler::twoTouchTimeout() {
   double avgMoveH, avgMoveV, fdx, fdy, ldx, ldy, deltaTouchDistance;
 
   assert(!tracked.empty());
@@ -355,8 +340,7 @@ void GestureHandler::twoTouchTimeout()
   getAverageDistance(&fdx, &fdy, &ldx, &ldy);
   deltaTouchDistance = fabs(hypot(fdx, fdy) - hypot(ldx, ldy));
 
-  if ((avgMoveV < deltaTouchDistance) &&
-      (avgMoveH < deltaTouchDistance))
+  if ((avgMoveV < deltaTouchDistance) && (avgMoveH < deltaTouchDistance))
     state = GH_PINCH;
   else
     state = GH_TWODRAG;
@@ -365,8 +349,7 @@ void GestureHandler::twoTouchTimeout()
   pushEvent(GestureUpdate);
 }
 
-void GestureHandler::pushEvent(GestureEventType t)
-{
+void GestureHandler::pushEvent(GestureEventType t) {
   GestureEvent gev;
   double avgX, avgY;
 
@@ -385,10 +368,10 @@ void GestureHandler::pushEvent(GestureEventType t)
   // For these gestures, we always want the event coordinates
   // to be where the gesture began, not the current touch location.
   switch (state) {
-    case GH_TWODRAG:
-    case GH_PINCH:
-      getPosition(&avgX, &avgY, nullptr, nullptr);
-      break;
+  case GH_TWODRAG:
+  case GH_PINCH:
+    getPosition(&avgX, &avgY, nullptr, nullptr);
+    break;
   }
 
   gev.eventX = avgX;
@@ -397,11 +380,9 @@ void GestureHandler::pushEvent(GestureEventType t)
   // Some gestures also have a magnitude
   if (state == GH_PINCH) {
     if (t == GestureBegin)
-      getAverageDistance(&gev.magnitudeX, &gev.magnitudeY,
-                         nullptr, nullptr);
+      getAverageDistance(&gev.magnitudeX, &gev.magnitudeY, nullptr, nullptr);
     else
-      getAverageDistance(nullptr, nullptr,
-                         &gev.magnitudeX, &gev.magnitudeY);
+      getAverageDistance(nullptr, nullptr, &gev.magnitudeX, &gev.magnitudeY);
   } else if (state == GH_TWODRAG) {
     if (t == GestureBegin)
       gev.magnitudeX = gev.magnitudeY = 0;
@@ -412,23 +393,22 @@ void GestureHandler::pushEvent(GestureEventType t)
   handleGestureEvent(gev);
 }
 
-GestureEventGesture GestureHandler::stateToGesture(unsigned char state)
-{
+GestureEventGesture GestureHandler::stateToGesture(unsigned char state) {
   switch (state) {
-    case GH_ONETAP:
-      return GestureOneTap;
-    case GH_TWOTAP:
-      return GestureTwoTap;
-    case GH_THREETAP:
-      return GestureThreeTap;
-    case GH_DRAG:
-      return GestureDrag;
-    case GH_LONGPRESS:
-      return GestureLongPress;
-    case GH_TWODRAG:
-      return GestureTwoDrag;
-    case GH_PINCH:
-      return GesturePinch;
+  case GH_ONETAP:
+    return GestureOneTap;
+  case GH_TWOTAP:
+    return GestureTwoTap;
+  case GH_THREETAP:
+    return GestureThreeTap;
+  case GH_DRAG:
+    return GestureDrag;
+  case GH_LONGPRESS:
+    return GestureLongPress;
+  case GH_TWODRAG:
+    return GestureTwoDrag;
+  case GH_PINCH:
+    return GesturePinch;
   }
 
   assert(false);
@@ -436,9 +416,7 @@ GestureEventGesture GestureHandler::stateToGesture(unsigned char state)
   return (GestureEventGesture)0;
 }
 
-void GestureHandler::getPosition(double *firstX, double *firstY,
-                                 double *lastX, double *lastY)
-{
+void GestureHandler::getPosition(double* firstX, double* firstY, double* lastX, double* lastY) {
   size_t size;
   double fx = 0, fy = 0, lx = 0, ly = 0;
 
@@ -464,8 +442,7 @@ void GestureHandler::getPosition(double *firstX, double *firstY,
     *lastY = ly / size;
 }
 
-void GestureHandler::getAverageMovement(double *h, double *v)
-{
+void GestureHandler::getAverageMovement(double* h, double* v) {
   double totalH, totalV;
   size_t size;
 
@@ -486,9 +463,7 @@ void GestureHandler::getAverageMovement(double *h, double *v)
     *v = totalV / size;
 }
 
-void GestureHandler::getAverageDistance(double *firstX, double *firstY,
-                                        double *lastX, double *lastY)
-{
+void GestureHandler::getAverageDistance(double* firstX, double* firstY, double* lastX, double* lastY) {
   double dx, dy;
 
   assert(!tracked.empty());

@@ -26,20 +26,14 @@
 #include "ShortcutHandler.h"
 #include "i18n.h"
 
-ShortcutHandler::ShortcutHandler() :
-  modifierMask(0), state(Idle)
-{
-}
+ShortcutHandler::ShortcutHandler() : modifierMask(0), state(Idle) {}
 
-void ShortcutHandler::setModifiers(unsigned mask)
-{
+void ShortcutHandler::setModifiers(unsigned mask) {
   modifierMask = mask;
   reset();
 }
 
-ShortcutHandler::KeyAction ShortcutHandler::handleKeyPress(int keyCode,
-                                                           uint32_t keySym)
-{
+ShortcutHandler::KeyAction ShortcutHandler::handleKeyPress(int keyCode, uint32_t keySym) {
   unsigned modifier, pressedMask;
   std::map<int, uint32_t>::const_iterator iter;
 
@@ -61,7 +55,8 @@ ShortcutHandler::KeyAction ShortcutHandler::handleKeyPress(int keyCode,
     if (pressedMask == modifierMask) {
       // All triggering modifier keys are pressed
       state = Armed;
-    } if (modifier && ((modifier & modifierMask) == modifier)) {
+    }
+    if (modifier && ((modifier & modifierMask) == modifier)) {
       // The new key is part of the triggering set
       if (state == Idle)
         state = Arming;
@@ -102,8 +97,7 @@ ShortcutHandler::KeyAction ShortcutHandler::handleKeyPress(int keyCode,
   return KeyNormal;
 }
 
-ShortcutHandler::KeyAction ShortcutHandler::handleKeyRelease(int keyCode)
-{
+ShortcutHandler::KeyAction ShortcutHandler::handleKeyRelease(int keyCode) {
   bool firedKey;
   unsigned pressedMask;
   std::map<int, uint32_t>::const_iterator iter;
@@ -154,16 +148,14 @@ ShortcutHandler::KeyAction ShortcutHandler::handleKeyRelease(int keyCode)
   return action;
 }
 
-void ShortcutHandler::reset()
-{
+void ShortcutHandler::reset() {
   state = Idle;
   firedKeys.clear();
   pressedKeys.clear();
 }
 
 // Keep list of valid values in sync with shortcutModifiers
-unsigned ShortcutHandler::parseModifier(const char* key)
-{
+unsigned ShortcutHandler::parseModifier(const char* key) {
   if (strcasecmp(key, "Ctrl") == 0)
     return Control;
   else if (strcasecmp(key, "Shift") == 0)
@@ -182,8 +174,7 @@ unsigned ShortcutHandler::parseModifier(const char* key)
     return 0;
 }
 
-const char* ShortcutHandler::modifierString(unsigned key)
-{
+const char* ShortcutHandler::modifierString(unsigned key) {
   if (key == Control)
     return "Ctrl";
   if (key == Shift)
@@ -196,9 +187,7 @@ const char* ShortcutHandler::modifierString(unsigned key)
   return "";
 }
 
-const char* ShortcutHandler::modifierPrefix(unsigned mask,
-                                            bool justPrefix)
-{
+const char* ShortcutHandler::modifierPrefix(unsigned mask, bool justPrefix) {
   static char prefix[256];
 
   prefix[0] = '\0';
@@ -240,7 +229,7 @@ const char* ShortcutHandler::modifierPrefix(unsigned mask,
 
   if (justPrefix) {
 #ifndef __APPLE__
-    prefix[strlen(prefix)-1] = '\0';
+    prefix[strlen(prefix) - 1] = '\0';
 #endif
     return prefix;
   }
@@ -252,8 +241,7 @@ const char* ShortcutHandler::modifierPrefix(unsigned mask,
   return prefix;
 }
 
-unsigned ShortcutHandler::keySymToModifier(uint32_t keySym)
-{
+unsigned ShortcutHandler::keySymToModifier(uint32_t keySym) {
   switch (keySym) {
   case XK_Control_L:
   case XK_Control_R:

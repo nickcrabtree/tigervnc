@@ -1,15 +1,15 @@
 /* Copyright 2011-2016 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -39,19 +39,17 @@
 
 static core::LogWriter vlog("PlatformPixelBuffer");
 
-PlatformPixelBuffer::PlatformPixelBuffer(int width, int height) :
-  FullFramePixelBuffer(rfb::PixelFormat(32, 24, false, true,
-                                        255, 255, 255, 16, 8, 0),
-                       0, 0, nullptr, 0),
-  Surface(width, height)
+PlatformPixelBuffer::PlatformPixelBuffer(int width, int height)
+    : FullFramePixelBuffer(rfb::PixelFormat(32, 24, false, true, 255, 255, 255, 16, 8, 0), 0, 0, nullptr, 0),
+      Surface(width, height)
 #if !defined(WIN32) && !defined(__APPLE__)
-  , shminfo(nullptr), xim(nullptr)
+      ,
+      shminfo(nullptr), xim(nullptr)
 #endif
 {
 #if !defined(WIN32) && !defined(__APPLE__)
   if (!setupShm(width, height)) {
-    xim = XCreateImage(fl_display, (Visual*)CopyFromParent, 32,
-                       ZPixmap, 0, nullptr, width, height, 32, 0);
+    xim = XCreateImage(fl_display, (Visual*)CopyFromParent, 32, ZPixmap, 0, nullptr, width, height, 32, 0);
     if (!xim)
       throw std::runtime_error("XCreateImage");
 
@@ -62,8 +60,7 @@ PlatformPixelBuffer::PlatformPixelBuffer(int width, int height) :
     vlog.debug("Using standard XImage");
   }
 
-  setBuffer(width, height, (uint8_t*)xim->data,
-            xim->bytes_per_line / (getPF().bpp/8));
+  setBuffer(width, height, (uint8_t*)xim->data, xim->bytes_per_line / (getPF().bpp / 8));
 
   // On X11, the Pixmap backing this Surface is uninitialized.
   clear(0, 0, 0);
@@ -76,8 +73,7 @@ PlatformPixelBuffer::PlatformPixelBuffer(int width, int height) :
 #endif
 }
 
-PlatformPixelBuffer::~PlatformPixelBuffer()
-{
+PlatformPixelBuffer::~PlatformPixelBuffer() {
 #if !defined(WIN32) && !defined(__APPLE__)
   if (shminfo) {
     vlog.debug("Freeing shared memory XImage");
@@ -95,24 +91,20 @@ PlatformPixelBuffer::~PlatformPixelBuffer()
 #endif
 }
 
-void PlatformPixelBuffer::commitBufferRW(const core::Rect& r)
-{
+void PlatformPixelBuffer::commitBufferRW(const core::Rect& r) {
   FullFramePixelBuffer::commitBufferRW(r);
 
   mutex.lock();
   damage.assign_union(r);
 
   core::Rect accumulated = damage.get_bounding_rect();
-  vlog.debug("PlatformPixelBuffer::commitBufferRW: new rect [%d,%d-%d,%d], accumulated damage [%d,%d-%d,%d]",
-            r.tl.x, r.tl.y, r.br.x, r.br.y,
-            accumulated.tl.x, accumulated.tl.y,
-            accumulated.br.x, accumulated.br.y);
+  vlog.debug("PlatformPixelBuffer::commitBufferRW: new rect [%d,%d-%d,%d], accumulated damage [%d,%d-%d,%d]", r.tl.x,
+             r.tl.y, r.br.x, r.br.y, accumulated.tl.x, accumulated.tl.y, accumulated.br.x, accumulated.br.y);
 
   mutex.unlock();
 }
 
-core::Rect PlatformPixelBuffer::getDamage(void)
-{
+core::Rect PlatformPixelBuffer::getDamage(void) {
   core::Rect r;
 
   mutex.lock();
@@ -120,8 +112,7 @@ core::Rect PlatformPixelBuffer::getDamage(void)
   damage.clear();
 
   if (r.width() > 0 && r.height() > 0) {
-    vlog.debug("PlatformPixelBuffer::getDamage: flushing damage [%d,%d-%d,%d]",
-              r.tl.x, r.tl.y, r.br.x, r.br.y);
+    vlog.debug("PlatformPixelBuffer::getDamage: flushing damage [%d,%d-%d,%d]", r.tl.x, r.tl.y, r.br.x, r.br.y);
   }
 
   mutex.unlock();
@@ -134,15 +125,12 @@ core::Rect PlatformPixelBuffer::getDamage(void)
 
   gc = XCreateGC(fl_display, pixmap, 0, nullptr);
   if (shminfo) {
-    XShmPutImage(fl_display, pixmap, gc, xim,
-                 r.tl.x, r.tl.y, r.tl.x, r.tl.y,
-                 r.width(), r.height(), False);
+    XShmPutImage(fl_display, pixmap, gc, xim, r.tl.x, r.tl.y, r.tl.x, r.tl.y, r.width(), r.height(), False);
     // Need to make sure the X server has finished reading the
     // shared memory before we return
     XSync(fl_display, False);
   } else {
-    XPutImage(fl_display, pixmap, gc, xim,
-              r.tl.x, r.tl.y, r.tl.x, r.tl.y, r.width(), r.height());
+    XPutImage(fl_display, pixmap, gc, xim, r.tl.x, r.tl.y, r.tl.x, r.tl.y, r.width(), r.height());
     // Ensure X11 commands complete before returning
     XSync(fl_display, False);
   }
@@ -156,19 +144,16 @@ core::Rect PlatformPixelBuffer::getDamage(void)
 
 static bool caughtError;
 
-static int XShmAttachErrorHandler(Display* /*dpy*/,
-                                  XErrorEvent* /*error*/)
-{
+static int XShmAttachErrorHandler(Display* /*dpy*/, XErrorEvent* /*error*/) {
   caughtError = true;
   return 0;
 }
 
-bool PlatformPixelBuffer::setupShm(int width, int height)
-{
+bool PlatformPixelBuffer::setupShm(int width, int height) {
   int major, minor;
   Bool pixmaps;
   XErrorHandler old_handler;
-  const char *display_name = XDisplayName(nullptr);
+  const char* display_name = XDisplayName(nullptr);
 
   /* Don't use MIT-SHM on remote displays */
   if (*display_name && *display_name != ':')
@@ -179,20 +164,17 @@ bool PlatformPixelBuffer::setupShm(int width, int height)
 
   shminfo = new XShmSegmentInfo;
 
-  xim = XShmCreateImage(fl_display, (Visual*)CopyFromParent, 32,
-                        ZPixmap, nullptr, shminfo, width, height);
+  xim = XShmCreateImage(fl_display, (Visual*)CopyFromParent, 32, ZPixmap, nullptr, shminfo, width, height);
   if (!xim)
     goto free_shminfo;
 
-  shminfo->shmid = shmget(IPC_PRIVATE,
-                          xim->bytes_per_line * xim->height,
-                          IPC_CREAT|0600);
+  shminfo->shmid = shmget(IPC_PRIVATE, xim->bytes_per_line * xim->height, IPC_CREAT | 0600);
   if (shminfo->shmid == -1)
     goto free_xim;
 
   shminfo->shmaddr = xim->data = (char*)shmat(shminfo->shmid, nullptr, 0);
   shmctl(shminfo->shmid, IPC_RMID, nullptr); // to avoid memory leakage
-  if (shminfo->shmaddr == (char *)-1)
+  if (shminfo->shmaddr == (char*)-1)
     goto free_xim;
 
   shminfo->readOnly = True;

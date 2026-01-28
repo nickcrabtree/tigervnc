@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011-2025 Pierre Ossman <ossman@cendio.se> for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -26,9 +26,9 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
-#include <sys/time.h>
 
 #include <core/LogWriter.h>
 #include <core/string.h>
@@ -37,15 +37,15 @@
 #include <rfb/CMsgWriter.h>
 #include <rfb/ScreenSet.h>
 
+#include "CConn.h"
 #include "DesktopWindow.h"
 #include "OptionsDialog.h"
-#include "i18n.h"
-#include "parameters.h"
-#include "vncviewer.h"
-#include "CConn.h"
 #include "Surface.h"
 #include "Viewport.h"
+#include "i18n.h"
+#include "parameters.h"
 #include "touch.h"
+#include "vncviewer.h"
 
 #include <FL/Fl.H>
 #include <FL/Fl_Image_Surface.H>
@@ -82,18 +82,13 @@ static core::LogWriter vlog("DesktopWindow");
 
 // Global due to http://www.fltk.org/str.php?L2177 and the similar
 // issue for Fl::event_dispatch.
-static std::set<DesktopWindow *> instances;
+static std::set<DesktopWindow*> instances;
 
 DesktopWindow::DesktopWindow(int w, int h, CConn* cc_)
-  : Fl_Window(w, h), cc(cc_), offscreen(nullptr),
-    firstUpdate(true),
-    delayedFullscreen(false), sentDesktopSize(false),
-    forceFullRedraw(false),
-    pendingRemoteResize(false), lastResize({0, 0}),
-    keyboardGrabbed(false), mouseGrabbed(false), regrabOnFocus(false),
-    statsLastUpdates(0), statsLastPixels(0), statsLastPosition(0),
-    statsGraph(nullptr)
-{
+    : Fl_Window(w, h), cc(cc_), offscreen(nullptr), firstUpdate(true), delayedFullscreen(false), sentDesktopSize(false),
+      forceFullRedraw(false), pendingRemoteResize(false), lastResize({0, 0}), keyboardGrabbed(false),
+      mouseGrabbed(false), regrabOnFocus(false), statsLastUpdates(0), statsLastPixels(0), statsLastPosition(0),
+      statsGraph(nullptr) {
   Fl_Group* group;
 
   // Dummy group to prevent FLTK from moving our widgets around
@@ -215,9 +210,9 @@ DesktopWindow::DesktopWindow(int w, int h, CConn* cc_)
   if (fullscreen_active())
     handle(FL_FULLSCREEN);
 
-  // Unfortunately, current FLTK does not allow us to set the
-  // maximized property on Windows and X11 before showing the window.
-  // See STR #2083 and STR #2178
+    // Unfortunately, current FLTK does not allow us to set the
+    // maximized property on Windows and X11 before showing the window.
+    // See STR #2083 and STR #2178
 #ifndef __APPLE__
   if (::maximize) {
     maximizeWindow();
@@ -241,11 +236,10 @@ DesktopWindow::DesktopWindow(int w, int h, CConn* cc_)
     modifierMask |= ShortcutHandler::parseModifier(key.getValueStr().c_str());
 
   if (modifierMask)
-    addOverlayTip(_("Press %sM to open the context menu"),
-                  ShortcutHandler::modifierPrefix(modifierMask));
+    addOverlayTip(_("Press %sM to open the context menu"), ShortcutHandler::modifierPrefix(modifierMask));
 
-  // By default we get a slight delay when we warp the pointer, something
-  // we don't want or we'll get jerky movement
+    // By default we get a slight delay when we warp the pointer, something
+    // we don't want or we'll get jerky movement
 #ifdef __APPLE__
   CGEventSourceRef event = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
   CGEventSourceSetLocalEventsSuppressionInterval(event, 0);
@@ -253,9 +247,7 @@ DesktopWindow::DesktopWindow(int w, int h, CConn* cc_)
 #endif
 }
 
-
-DesktopWindow::~DesktopWindow()
-{
+DesktopWindow::~DesktopWindow() {
   // Don't leave any dangling grabs as they are not automatically
   // cleaned up on all platforms
   ungrabPointer();
@@ -290,18 +282,14 @@ DesktopWindow::~DesktopWindow()
   // them ourselves here
 }
 
-
-const rfb::PixelFormat &DesktopWindow::getPreferredPF()
-{
+const rfb::PixelFormat& DesktopWindow::getPreferredPF() {
   return viewport->getPreferredPF();
 }
 
-
-void DesktopWindow::updateCaption()
-{
+void DesktopWindow::updateCaption() {
   const size_t maxLen = 100;
   std::string windowName;
-  const char *labelFormat;
+  const char* labelFormat;
   size_t maxNameSize;
   std::string name;
 
@@ -322,8 +310,7 @@ void DesktopWindow::updateCaption()
     if (maxNameSize <= strlen("...")) {
       // Even an ellipsis won't fit
       name.clear();
-    }
-    else {
+    } else {
       int offset;
 
       // We need to truncate, add an ellipsis
@@ -343,12 +330,10 @@ void DesktopWindow::updateCaption()
   copy_label(windowName.c_str());
 }
 
-
 // Copy the areas of the framebuffer that have been changed (damaged)
 // to the displayed window.
 
-void DesktopWindow::updateWindow()
-{
+void DesktopWindow::updateWindow() {
   if (firstUpdate) {
     firstUpdate = false;
     remoteResize();
@@ -357,9 +342,7 @@ void DesktopWindow::updateWindow()
   viewport->updateWindow();
 }
 
-
-void DesktopWindow::resizeFramebuffer(int new_w, int new_h)
-{
+void DesktopWindow::resizeFramebuffer(int new_w, int new_h) {
   bool maximized;
 
   if ((new_w == viewport->w()) && (new_h == viewport->h()))
@@ -378,20 +361,20 @@ void DesktopWindow::resizeFramebuffer(int new_w, int new_h)
   if (cocoa_win_is_zoomed(this))
     maximized = true;
 #else
-  Atom net_wm_state = XInternAtom (fl_display, "_NET_WM_STATE", 0);
-  Atom net_wm_state_maximized_vert = XInternAtom (fl_display, "_NET_WM_STATE_MAXIMIZED_VERT", 0);
-  Atom net_wm_state_maximized_horz = XInternAtom (fl_display, "_NET_WM_STATE_MAXIMIZED_HORZ", 0);
+  Atom net_wm_state = XInternAtom(fl_display, "_NET_WM_STATE", 0);
+  Atom net_wm_state_maximized_vert = XInternAtom(fl_display, "_NET_WM_STATE_MAXIMIZED_VERT", 0);
+  Atom net_wm_state_maximized_horz = XInternAtom(fl_display, "_NET_WM_STATE_MAXIMIZED_HORZ", 0);
 
   Atom type;
   int format;
   unsigned long nitems, remain;
-  Atom *atoms;
+  Atom* atoms;
 
-  XGetWindowProperty(fl_display, fl_xid(this), net_wm_state, 0, 1024, False, XA_ATOM, &type, &format, &nitems, &remain, (unsigned char**)&atoms);
+  XGetWindowProperty(fl_display, fl_xid(this), net_wm_state, 0, 1024, False, XA_ATOM, &type, &format, &nitems, &remain,
+                     (unsigned char**)&atoms);
 
-  for (unsigned long n = 0;n < nitems;n++) {
-    if ((atoms[n] == net_wm_state_maximized_vert) ||
-        (atoms[n] == net_wm_state_maximized_horz)) {
+  for (unsigned long n = 0; n < nitems; n++) {
+    if ((atoms[n] == net_wm_state_maximized_vert) || (atoms[n] == net_wm_state_maximized_horz)) {
       maximized = true;
       break;
     }
@@ -418,9 +401,7 @@ void DesktopWindow::resizeFramebuffer(int new_w, int new_h)
   forceFullRedraw = true;
 }
 
-
-void DesktopWindow::setDesktopSizeDone(unsigned result)
-{
+void DesktopWindow::setDesktopSizeDone(unsigned result) {
   pendingRemoteResize = false;
 
   if (result != 0)
@@ -431,22 +412,17 @@ void DesktopWindow::setDesktopSizeDone(unsigned result)
   remoteResize();
 }
 
-
-void DesktopWindow::setCursor()
-{
+void DesktopWindow::setCursor() {
   viewport->setCursor();
 }
 
-
-void DesktopWindow::setCursorPos(const core::Point& pos)
-{
+void DesktopWindow::setCursorPos(const core::Point& pos) {
   if (!mouseGrabbed) {
     // Do nothing if we do not have the mouse captured.
     return;
   }
 #if defined(WIN32)
-  SetCursorPos(pos.x + x_root() + viewport->x(),
-               pos.y + y_root() + viewport->y());
+  SetCursorPos(pos.x + x_root() + viewport->x(), pos.y + y_root() + viewport->y());
 #elif defined(__APPLE__)
   CGPoint new_pos;
   new_pos.x = pos.x + x_root() + viewport->x();
@@ -454,15 +430,12 @@ void DesktopWindow::setCursorPos(const core::Point& pos)
   CGWarpMouseCursorPosition(new_pos);
 #else // Assume this is Xlib
   Window rootwindow = DefaultRootWindow(fl_display);
-  XWarpPointer(fl_display, rootwindow, rootwindow, 0, 0, 0, 0,
-               pos.x + x_root() + viewport->x(),
+  XWarpPointer(fl_display, rootwindow, rootwindow, 0, 0, 0, 0, pos.x + x_root() + viewport->x(),
                pos.y + y_root() + viewport->y());
 #endif
 }
 
-
-void DesktopWindow::show()
-{
+void DesktopWindow::show() {
   Fl_Window::show();
 
 #if !defined(WIN32) && !defined(__APPLE__)
@@ -471,7 +444,7 @@ void DesktopWindow::show()
   // Request ability to grab keyboard under Xwayland
   e.xany.type = ClientMessage;
   e.xany.window = fl_xid(this);
-  e.xclient.message_type = XInternAtom (fl_display, "_XWAYLAND_MAY_GRAB_KEYBOARD", 0);
+  e.xclient.message_type = XInternAtom(fl_display, "_XWAYLAND_MAY_GRAB_KEYBOARD", 0);
   e.xclient.format = 32;
   e.xclient.data.l[0] = 1;
   e.xclient.data.l[1] = 0;
@@ -482,9 +455,7 @@ void DesktopWindow::show()
 #endif
 }
 
-
-void DesktopWindow::draw()
-{
+void DesktopWindow::draw() {
   bool redraw;
   bool fullRedraw;
 
@@ -495,8 +466,7 @@ void DesktopWindow::draw()
 #if !defined(__APPLE__)
 
   // Adjust offscreen surface dimensions
-  if ((offscreen == nullptr) ||
-      (offscreen->width() != w()) || (offscreen->height() != h())) {
+  if ((offscreen == nullptr) || (offscreen->width() != w()) || (offscreen->height() != h())) {
     delete offscreen;
     offscreen = new Surface(w(), h());
   }
@@ -554,21 +524,14 @@ void DesktopWindow::draw()
         sampleH = sh;
       }
 
-      if (sampleX >= 0 && sampleY >= 0 &&
-          sampleW > 0 && sampleH > 0 &&
-          sampleX + sampleW <= offscreen->width() &&
+      if (sampleX >= 0 && sampleY >= 0 && sampleW > 0 && sampleH > 0 && sampleX + sampleW <= offscreen->width() &&
           sampleY + sampleH <= offscreen->height()) {
         // Sample from the offscreen compositing surface
-        offscreen->debugSampleRect(sampleX, sampleY,
-                                   sampleW, sampleH,
-                                   "after_viewport_draw");
+        offscreen->debugSampleRect(sampleX, sampleY, sampleW, sampleH, "after_viewport_draw");
 
 #if !defined(WIN32) && !defined(__APPLE__)
         // Also sample the actual window pixels that xwd/import will see.
-        XImage* img = XGetImage(fl_display, fl_xid(this),
-                                sampleX, sampleY,
-                                sampleW, sampleH,
-                                AllPlanes, ZPixmap);
+        XImage* img = XGetImage(fl_display, fl_xid(this), sampleX, sampleY, sampleW, sampleH, AllPlanes, ZPixmap);
         if (img) {
           int px = 0;
           int py = 0;
@@ -579,10 +542,9 @@ void DesktopWindow::draw()
           px = sampleW - 1;
           py = sampleH - 1;
           unsigned long br = XGetPixel(img, px, py);
-          vlog.info("windowSample[after_viewport_draw] tl (%d,%d): 0x%lx, c (%d,%d): 0x%lx, br (%d,%d): 0x%lx",
-                    sampleX, sampleY, tl,
-                    sampleX + sampleW/2, sampleY + sampleH/2, c,
-                    sampleX + sampleW-1, sampleY + sampleH-1, br);
+          vlog.info("windowSample[after_viewport_draw] tl (%d,%d): 0x%lx, c (%d,%d): 0x%lx, br (%d,%d): 0x%lx", sampleX,
+                    sampleY, tl, sampleX + sampleW / 2, sampleY + sampleH / 2, c, sampleX + sampleW - 1,
+                    sampleY + sampleH - 1, br);
           XDestroyImage(img);
         }
 #endif
@@ -667,11 +629,9 @@ void DesktopWindow::draw()
 
     if ((ow != 0) && (oh != 0)) {
       if (offscreen)
-        overlay.surface->blend(offscreen, ox - X, oy - Y,
-                               ox, oy, ow, oh, overlay.alpha);
+        overlay.surface->blend(offscreen, ox - X, oy - Y, ox, oy, ow, oh, overlay.alpha);
       else
-        overlay.surface->blend(ox - X, oy - Y,
-                               ox, oy, ow, oh, overlay.alpha);
+        overlay.surface->blend(ox - X, oy - Y, ox, oy, ow, oh, overlay.alpha);
     }
   }
 
@@ -698,34 +658,26 @@ void DesktopWindow::draw()
   }
 }
 
-
-void DesktopWindow::setLEDState(unsigned int state)
-{
+void DesktopWindow::setLEDState(unsigned int state) {
   viewport->setLEDState(state);
 }
 
-
-void DesktopWindow::handleClipboardRequest()
-{
+void DesktopWindow::handleClipboardRequest() {
   viewport->handleClipboardRequest();
 }
 
-void DesktopWindow::handleClipboardAnnounce(bool available)
-{
+void DesktopWindow::handleClipboardAnnounce(bool available) {
   viewport->handleClipboardAnnounce(available);
 }
 
-void DesktopWindow::handleClipboardData(const char* data)
-{
+void DesktopWindow::handleClipboardData(const char* data) {
   viewport->handleClipboardData(data);
 }
 
-
-void DesktopWindow::resize(int x, int y, int w, int h)
-{
+void DesktopWindow::resize(int x, int y, int w, int h) {
   bool resizing;
 
-#if ! (defined(WIN32) || defined(__APPLE__))
+#if !(defined(WIN32) || defined(__APPLE__))
   // X11 window managers will treat a resize to cover the entire
   // monitor as a request to go full screen. Make sure we avoid this.
   if (!fullscreen_active()) {
@@ -743,19 +695,17 @@ void DesktopWindow::resize(int x, int y, int w, int h)
       int wx, wy;
 
       XGetWindowAttributes(fl_display, fl_xid(this), &actual);
-      XTranslateCoordinates(fl_display, fl_xid(this), actual.root,
-                            0, 0, &wx, &wy, &cr);
+      XTranslateCoordinates(fl_display, fl_xid(this), actual.root, 0, 0, &wx, &wy, &cr);
 
       // Actual resize request?
-      if ((wx != x) || (wy != y) ||
-          (actual.width != w) || (actual.height != h))
+      if ((wx != x) || (wy != y) || (actual.width != w) || (actual.height != h))
         resize_req = true;
       else
         resize_req = false;
     }
 
     if (resize_req) {
-      for (int idx = 0;idx < Fl::screen_count();idx++) {
+      for (int idx = 0; idx < Fl::screen_count(); idx++) {
         int sx, sy, sw, sh;
 
         Fl::screen_xywh(sx, sy, sw, sh, idx);
@@ -763,10 +713,10 @@ void DesktopWindow::resize(int x, int y, int w, int h)
         // We can't trust x and y if the window isn't mapped as the
         // window manager might adjust those numbers
         if (shown() && ((sx != x) || (sy != y)))
-            continue;
+          continue;
 
         if ((sw != w) || (sh != h))
-            continue;
+          continue;
 
         vlog.info(_("Adjusting window size to avoid accidental full-screen request"));
         // Assume a panel of some form and adjust the height
@@ -795,8 +745,7 @@ void DesktopWindow::resize(int x, int y, int w, int h)
   }
 }
 
-void DesktopWindow::addOverlayTip(const char* text, ...)
-{
+void DesktopWindow::addOverlayTip(const char* text, ...) {
   va_list ap;
   char textbuf[1024];
 
@@ -804,11 +753,11 @@ void DesktopWindow::addOverlayTip(const char* text, ...)
 
   va_start(ap, text);
   vsnprintf(textbuf, sizeof(textbuf), text, ap);
-  textbuf[sizeof(textbuf)-1] = '\0';
+  textbuf[sizeof(textbuf) - 1] = '\0';
   va_end(ap);
 
   // Purge all old entries
-  for (iter = overlayTimes.begin(); iter != overlayTimes.end(); ) {
+  for (iter = overlayTimes.begin(); iter != overlayTimes.end();) {
     if ((time(nullptr) - iter->second) >= OVERLAY_REPEAT_TIMEOUT)
       overlayTimes.erase(iter++);
     else
@@ -824,25 +773,23 @@ void DesktopWindow::addOverlayTip(const char* text, ...)
   addOverlay(textbuf);
 }
 
-void DesktopWindow::addOverlayError(const char* text, ...)
-{
+void DesktopWindow::addOverlayError(const char* text, ...) {
   va_list ap;
   char textbuf[1024];
 
   va_start(ap, text);
   vsnprintf(textbuf, sizeof(textbuf), text, ap);
-  textbuf[sizeof(textbuf)-1] = '\0';
+  textbuf[sizeof(textbuf) - 1] = '\0';
   va_end(ap);
 
   addOverlay(textbuf);
 }
 
-void DesktopWindow::addOverlay(const char *text)
-{
+void DesktopWindow::addOverlay(const char* text) {
   const Fl_Fontsize fontsize = 16;
   const int margin = 10;
 
-  Fl_Image_Surface *surface;
+  Fl_Image_Surface* surface;
 
   Fl_RGB_Image* imageText;
   Fl_RGB_Image* image;
@@ -889,7 +836,7 @@ void DesktopWindow::addOverlay(const char *text)
   image = new Fl_RGB_Image(buffer, w, h, 4);
 
   a = buffer;
-  for (x = 0;x < image->w() * image->h();x++) {
+  for (x = 0; x < image->w() * image->h(); x++) {
     a[0] = a[1] = a[2] = 0x40;
     a[3] = 0xcc;
     a += 4;
@@ -897,8 +844,8 @@ void DesktopWindow::addOverlay(const char *text)
 
   a = buffer;
   b = (const unsigned char*)imageText->data()[0];
-  for (y = 0;y < h;y++) {
-    for (x = 0;x < w;x++) {
+  for (y = 0; y < h; y++) {
+    for (x = 0; x < w; x++) {
       unsigned char alpha;
       alpha = *b;
       a[0] = (unsigned)a[0] * (255 - alpha) / 255 + alpha;
@@ -920,15 +867,14 @@ void DesktopWindow::addOverlay(const char *text)
   overlays.push_back(overlay);
 
   delete image;
-  delete [] buffer;
+  delete[] buffer;
 
   if (overlays.size() == 1)
     Fl::add_timeout(0.5, updateOverlay, this);
 }
 
-void DesktopWindow::updateOverlay(void *data)
-{
-  DesktopWindow *self;
+void DesktopWindow::updateOverlay(void* data) {
+  DesktopWindow* self;
   struct Overlay* overlay;
   unsigned elapsed;
 
@@ -946,13 +892,13 @@ void DesktopWindow::updateOverlay(void *data)
 
   if (elapsed < 500) {
     overlay->alpha = (unsigned)255 * elapsed / 500;
-    Fl::add_timeout(1.0/60, updateOverlay, self);
+    Fl::add_timeout(1.0 / 60, updateOverlay, self);
   } else if (elapsed < 3500) {
     overlay->alpha = 255;
     Fl::add_timeout(3.0, updateOverlay, self);
   } else if (elapsed < 4000) {
     overlay->alpha = (unsigned)255 * (4000 - elapsed) / 500;
-    Fl::add_timeout(1.0/60, updateOverlay, self);
+    Fl::add_timeout(1.0 / 60, updateOverlay, self);
   } else {
     delete overlay->surface;
     self->overlays.pop_front();
@@ -964,9 +910,7 @@ void DesktopWindow::updateOverlay(void *data)
   self->damage(FL_DAMAGE_USER1);
 }
 
-
-int DesktopWindow::handle(int event)
-{
+int DesktopWindow::handle(int event) {
   switch (event) {
   case FL_FULLSCREEN:
     fullScreen.setParam(fullscreen_active());
@@ -983,8 +927,7 @@ int DesktopWindow::handle(int event)
         modifierMask |= ShortcutHandler::parseModifier(key.getValueStr().c_str());
 
       if (modifierMask)
-        addOverlayTip(_("Press %sEnter to leave full-screen mode"),
-                      ShortcutHandler::modifierPrefix(modifierMask));
+        addOverlayTip(_("Press %sEnter to leave full-screen mode"), ShortcutHandler::modifierPrefix(modifierMask));
     }
 
 #ifdef __APPLE__
@@ -993,7 +936,8 @@ int DesktopWindow::handle(int event)
       // FIXME: There is some race during initial full screen where we
       //        fail to give focus to the popup, but we can work around
       //        it using a timer
-      Fl::add_timeout(0, [](void*) { cocoa_is_trusted(true); }, nullptr);
+      Fl::add_timeout(
+          0, [](void*) { cocoa_is_trusted(true); }, nullptr);
     }
 #endif
 
@@ -1016,16 +960,15 @@ int DesktopWindow::handle(int event)
     break;
 
   case FL_ENTER:
-      if (keyboardGrabbed)
-          grabPointer();
-      /* fall through */
+    if (keyboardGrabbed)
+      grabPointer();
+    /* fall through */
   case FL_LEAVE:
   case FL_DRAG:
   case FL_MOVE:
     if (mouseGrabbed) {
       // We don't get FL_LEAVE with a grabbed pointer, so check manually
-      if ((Fl::event_x() < 0) || (Fl::event_x() >= w()) ||
-          (Fl::event_y() < 0) || (Fl::event_y() >= h())) {
+      if ((Fl::event_x() < 0) || (Fl::event_x() >= w()) || (Fl::event_y() < 0) || (Fl::event_y() >= h())) {
         ungrabPointer();
       }
 #if !defined(WIN32) && !defined(__APPLE__)
@@ -1034,8 +977,7 @@ int DesktopWindow::handle(int event)
       unsigned int mask;
 
       // We also don't get sensible coordinates on zaphod setups
-      if (XQueryPointer(fl_display, fl_xid(this), &root, &child,
-                        &x, &y, &wx, &wy, &mask) &&
+      if (XQueryPointer(fl_display, fl_xid(this), &root, &child, &x, &y, &wx, &wy, &mask) &&
           (root != XRootWindow(fl_display, fl_screen))) {
         ungrabPointer();
       }
@@ -1061,9 +1003,7 @@ int DesktopWindow::handle(int event)
   return Fl_Window::handle(event);
 }
 
-
-int DesktopWindow::fltkDispatch(int event, Fl_Window *win)
-{
+int DesktopWindow::fltkDispatch(int event, Fl_Window* win) {
   int ret;
 
   // FLTK keeps spamming bogus FL_MOVE events if _any_ X event is
@@ -1090,7 +1030,7 @@ int DesktopWindow::fltkDispatch(int event, Fl_Window *win)
   // to differ, and as a result we do not see all the FL_FOCUS events we
   // need. Fortunately we can grab them here...
 
-  DesktopWindow *dw = dynamic_cast<DesktopWindow*>(win);
+  DesktopWindow* dw = dynamic_cast<DesktopWindow*>(win);
 
   if (dw) {
     switch (event) {
@@ -1099,8 +1039,7 @@ int DesktopWindow::fltkDispatch(int event, Fl_Window *win)
     // another application. Make sure we update our grabs with the focus
     // changes.
     case FL_FOCUS:
-      if (dw->regrabOnFocus ||
-          (fullscreenSystemKeys && dw->fullscreen_active()))
+      if (dw->regrabOnFocus || (fullscreenSystemKeys && dw->fullscreen_active()))
         dw->grabKeyboard();
       dw->regrabOnFocus = false;
       break;
@@ -1140,8 +1079,7 @@ int DesktopWindow::fltkDispatch(int event, Fl_Window *win)
   return ret;
 }
 
-int DesktopWindow::fltkHandle(int event)
-{
+int DesktopWindow::fltkHandle(int event) {
   switch (event) {
   case FL_SCREEN_CONFIGURATION_CHANGED:
     // Screens removed or added. Recreate fullscreen window if
@@ -1157,8 +1095,7 @@ int DesktopWindow::fltkHandle(int event)
   return 0;
 }
 
-void DesktopWindow::fullscreen_on()
-{
+void DesktopWindow::fullscreen_on() {
   bool allMonitors = fullScreenMode == "all";
   bool selectedMonitors = fullScreenMode == "selected";
   int top, bottom, left, right;
@@ -1223,7 +1160,6 @@ void DesktopWindow::fullscreen_on()
         right_x = sx + sw;
       }
     }
-
   }
 
   fullscreen_screens(top, bottom, left, right);
@@ -1232,8 +1168,7 @@ void DesktopWindow::fullscreen_on()
     fullscreen();
 }
 
-bool DesktopWindow::hasFocus()
-{
+bool DesktopWindow::hasFocus() {
   Fl_Widget* focus;
 
   focus = Fl::grab();
@@ -1246,8 +1181,7 @@ bool DesktopWindow::hasFocus()
   return focus->window() == this;
 }
 
-void DesktopWindow::grabKeyboard()
-{
+void DesktopWindow::grabKeyboard() {
   unsigned modifierMask;
 
   // Grabbing the keyboard is fairly safe as FLTK reroutes events to the
@@ -1264,7 +1198,7 @@ void DesktopWindow::grabKeyboard()
 
 #if defined(WIN32)
   int ret;
-  
+
   ret = win32_enable_lowlevel_keyboard(fl_xid(this));
   if (ret != 0) {
     vlog.error(_("Failure grabbing control of the keyboard"));
@@ -1283,8 +1217,7 @@ void DesktopWindow::grabKeyboard()
 #else
   int ret;
 
-  ret = XGrabKeyboard(fl_display, fl_xid(this), True,
-                      GrabModeAsync, GrabModeAsync, CurrentTime);
+  ret = XGrabKeyboard(fl_display, fl_xid(this), True, GrabModeAsync, GrabModeAsync, CurrentTime);
   if (ret) {
     if (ret == AlreadyGrabbed) {
       // It seems like we can race with the WM in some cases, e.g. when
@@ -1294,8 +1227,7 @@ void DesktopWindow::grabKeyboard()
         usleep(100000);
         // Also throttle based on how busy the X server is
         XSync(fl_display, False);
-        ret = XGrabKeyboard(fl_display, fl_xid(this), True,
-                            GrabModeAsync, GrabModeAsync, CurrentTime);
+        ret = XGrabKeyboard(fl_display, fl_xid(this), True, GrabModeAsync, GrabModeAsync, CurrentTime);
         if (ret != AlreadyGrabbed)
           break;
       }
@@ -1325,9 +1257,7 @@ void DesktopWindow::grabKeyboard()
                   ShortcutHandler::modifierPrefix(modifierMask, true));
 }
 
-
-void DesktopWindow::ungrabKeyboard()
-{
+void DesktopWindow::ungrabKeyboard() {
   keyboardGrabbed = false;
 
   ungrabPointer();
@@ -1347,9 +1277,7 @@ void DesktopWindow::ungrabKeyboard()
 #endif
 }
 
-
-void DesktopWindow::grabPointer()
-{
+void DesktopWindow::grabPointer() {
 #if !defined(WIN32) && !defined(__APPLE__)
   // We also need to grab the pointer as some WMs like to grab buttons
   // combined with modifies (e.g. Alt+Button0 in metacity).
@@ -1363,9 +1291,7 @@ void DesktopWindow::grabPointer()
   mouseGrabbed = true;
 }
 
-
-void DesktopWindow::ungrabPointer()
-{
+void DesktopWindow::ungrabPointer() {
   mouseGrabbed = false;
 
 #if !defined(WIN32) && !defined(__APPLE__)
@@ -1373,10 +1299,8 @@ void DesktopWindow::ungrabPointer()
 #endif
 }
 
-
-#define _NET_WM_STATE_ADD           1  /* add/set property */
-void DesktopWindow::maximizeWindow()
-{
+#define _NET_WM_STATE_ADD 1 /* add/set property */
+void DesktopWindow::maximizeWindow() {
 #if defined(WIN32)
   // We cannot use ShowWindow() in full screen mode as it will
   // resize things implicitly. Fortunately modifying the style
@@ -1395,9 +1319,9 @@ void DesktopWindow::maximizeWindow()
 #else
   // X11
   fl_open_display();
-  Atom net_wm_state = XInternAtom (fl_display, "_NET_WM_STATE", 0);
-  Atom net_wm_state_maximized_vert = XInternAtom (fl_display, "_NET_WM_STATE_MAXIMIZED_VERT", 0);
-  Atom net_wm_state_maximized_horz = XInternAtom (fl_display, "_NET_WM_STATE_MAXIMIZED_HORZ", 0);
+  Atom net_wm_state = XInternAtom(fl_display, "_NET_WM_STATE", 0);
+  Atom net_wm_state_maximized_vert = XInternAtom(fl_display, "_NET_WM_STATE_MAXIMIZED_VERT", 0);
+  Atom net_wm_state_maximized_horz = XInternAtom(fl_display, "_NET_WM_STATE_MAXIMIZED_HORZ", 0);
 
   XEvent e;
   e.xany.type = ClientMessage;
@@ -1413,20 +1337,16 @@ void DesktopWindow::maximizeWindow()
 #endif
 }
 
-
-void DesktopWindow::handleResizeTimeout(void *data)
-{
-  DesktopWindow *self = (DesktopWindow *)data;
+void DesktopWindow::handleResizeTimeout(void* data) {
+  DesktopWindow* self = (DesktopWindow*)data;
 
   assert(self);
 
   self->remoteResize();
 }
 
-
-void DesktopWindow::reconfigureFullscreen(void* /*data*/)
-{
-  std::set<DesktopWindow *>::iterator iter;
+void DesktopWindow::reconfigureFullscreen(void* /*data*/) {
+  std::set<DesktopWindow*>::iterator iter;
 
   for (iter = instances.begin(); iter != instances.end(); ++iter) {
     if ((*iter)->fullscreen_active())
@@ -1434,9 +1354,7 @@ void DesktopWindow::reconfigureFullscreen(void* /*data*/)
   }
 }
 
-
-void DesktopWindow::remoteResize()
-{
+void DesktopWindow::remoteResize() {
   int width, height;
   rfb::ScreenSet layout;
   rfb::ScreenSet::const_iterator iter;
@@ -1460,8 +1378,7 @@ void DesktopWindow::remoteResize()
   // And no more than once every 100ms
   if (core::msSince(&lastResize) < 100) {
     Fl::remove_timeout(handleResizeTimeout, this);
-    Fl::add_timeout((100.0 - core::msSince(&lastResize)) / 1000.0,
-                    handleResizeTimeout, this);
+    Fl::add_timeout((100.0 - core::msSince(&lastResize)) / 1000.0, handleResizeTimeout, this);
     return;
   }
 
@@ -1515,8 +1432,7 @@ void DesktopWindow::remoteResize()
 
     // In full screen we report all screens that are fully covered.
 
-    viewport_rect.setXYWH(x() + (w() - width)/2, y() + (h() - height)/2,
-                          width, height);
+    viewport_rect.setXYWH(x() + (w() - width) / 2, y() + (h() - height) / 2, width, height);
 
     // If we can find a matching screen in the existing set, we use
     // that, otherwise we create a brand new screen.
@@ -1524,7 +1440,7 @@ void DesktopWindow::remoteResize()
     // FIXME: We should really track screens better so we can handle
     //        a resized one.
     //
-    for (int idx = 0;idx < Fl::screen_count();idx++) {
+    for (int idx = 0; idx < Fl::screen_count(); idx++) {
       Fl::screen_xywh(sx, sy, sw, sh, idx);
 
       // Check that the screen is fully inside the framebuffer
@@ -1538,13 +1454,9 @@ void DesktopWindow::remoteResize()
 
       // Look for perfectly matching existing screen that is not yet present in
       // in the screen layout...
-      for (iter = cc->server.screenLayout().begin();
-           iter != cc->server.screenLayout().end(); ++iter) {
-        if ((iter->dimensions.tl.x == sx) &&
-            (iter->dimensions.tl.y == sy) &&
-            (iter->dimensions.width() == sw) &&
-            (iter->dimensions.height() == sh) &&
-            (std::find(layout.begin(), layout.end(), *iter) == layout.end()))
+      for (iter = cc->server.screenLayout().begin(); iter != cc->server.screenLayout().end(); ++iter) {
+        if ((iter->dimensions.tl.x == sx) && (iter->dimensions.tl.y == sy) && (iter->dimensions.width() == sw) &&
+            (iter->dimensions.height() == sh) && (std::find(layout.begin(), layout.end(), *iter) == layout.end()))
           break;
       }
 
@@ -1557,8 +1469,7 @@ void DesktopWindow::remoteResize()
       // Need to add a new one, which means we need to find an unused id
       while (true) {
         id = rand();
-        for (iter = cc->server.screenLayout().begin();
-             iter != cc->server.screenLayout().end(); ++iter) {
+        for (iter = cc->server.screenLayout().begin(); iter != cc->server.screenLayout().end(); ++iter) {
           if (iter->id == id)
             break;
         }
@@ -1577,13 +1488,11 @@ void DesktopWindow::remoteResize()
   }
 
   // Do we actually change anything?
-  if ((width == cc->server.width()) &&
-      (height == cc->server.height()) &&
-      (layout == cc->server.screenLayout()))
+  if ((width == cc->server.width()) && (height == cc->server.height()) && (layout == cc->server.screenLayout()))
     return;
 
-  vlog.debug("Requesting framebuffer resize from %dx%d to %dx%d",
-             cc->server.width(), cc->server.height(), width, height);
+  vlog.debug("Requesting framebuffer resize from %dx%d to %dx%d", cc->server.width(), cc->server.height(), width,
+             height);
 
   char buffer[2048];
   layout.print(buffer, sizeof(buffer));
@@ -1600,9 +1509,7 @@ void DesktopWindow::remoteResize()
   cc->writer()->writeSetDesktopSize(width, height, layout);
 }
 
-
-void DesktopWindow::repositionWidgets()
-{
+void DesktopWindow::repositionWidgets() {
   int new_x, new_y;
 
   // Viewport position
@@ -1668,34 +1575,25 @@ void DesktopWindow::repositionWidgets()
 
   // Scrollbars positions
 
-  hscroll->resize(0, h() - Fl::scrollbar_size(),
-                  w() - (vscroll->visible() ? Fl::scrollbar_size() : 0),
+  hscroll->resize(0, h() - Fl::scrollbar_size(), w() - (vscroll->visible() ? Fl::scrollbar_size() : 0),
                   Fl::scrollbar_size());
-  vscroll->resize(w() - Fl::scrollbar_size(), 0,
-                  Fl::scrollbar_size(),
+  vscroll->resize(w() - Fl::scrollbar_size(), 0, Fl::scrollbar_size(),
                   h() - (hscroll->visible() ? Fl::scrollbar_size() : 0));
 
   // Scrollbars range
 
-  hscroll->value(-viewport->x(),
-                 w() - (vscroll->visible() ? vscroll->w() : 0),
-                 0, viewport->w());
-  vscroll->value(-viewport->y(),
-                 h() - (hscroll->visible() ? hscroll->h() : 0),
-                 0, viewport->h());
+  hscroll->value(-viewport->x(), w() - (vscroll->visible() ? vscroll->w() : 0), 0, viewport->w());
+  vscroll->value(-viewport->y(), h() - (hscroll->visible() ? hscroll->h() : 0), 0, viewport->h());
   hscroll->value(hscroll->clamp(hscroll->value()));
   vscroll->value(vscroll->clamp(vscroll->value()));
 }
 
-void DesktopWindow::handleClose(Fl_Widget* /*wnd*/, void* /*data*/)
-{
+void DesktopWindow::handleClose(Fl_Widget* /*wnd*/, void* /*data*/) {
   disconnect();
 }
 
-
-void DesktopWindow::handleOptions(void *data)
-{
-  DesktopWindow *self = (DesktopWindow*)data;
+void DesktopWindow::handleOptions(void* data) {
+  DesktopWindow* self = (DesktopWindow*)data;
 
   // Call fullscreen_on even if active since it handles
   // fullScreenMode
@@ -1705,9 +1603,8 @@ void DesktopWindow::handleOptions(void *data)
     self->fullscreen_off();
 }
 
-void DesktopWindow::handleFullscreenTimeout(void *data)
-{
-  DesktopWindow *self = (DesktopWindow *)data;
+void DesktopWindow::handleFullscreenTimeout(void* data) {
+  DesktopWindow* self = (DesktopWindow*)data;
 
   assert(self);
 
@@ -1715,8 +1612,7 @@ void DesktopWindow::handleFullscreenTimeout(void *data)
   self->remoteResize();
 }
 
-void DesktopWindow::scrollTo(int x, int y)
-{
+void DesktopWindow::scrollTo(int x, int y) {
   x = hscroll->clamp(x);
   y = vscroll->clamp(y);
 
@@ -1735,16 +1631,14 @@ void DesktopWindow::scrollTo(int x, int y)
   damage(FL_DAMAGE_SCROLL);
 }
 
-void DesktopWindow::handleScroll(Fl_Widget* /*widget*/, void *data)
-{
-  DesktopWindow *self = (DesktopWindow *)data;
+void DesktopWindow::handleScroll(Fl_Widget* /*widget*/, void* data) {
+  DesktopWindow* self = (DesktopWindow*)data;
 
   self->scrollTo(self->hscroll->value(), self->vscroll->value());
 }
 
-void DesktopWindow::handleEdgeScroll(void *data)
-{
-  DesktopWindow *self = (DesktopWindow *)data;
+void DesktopWindow::handleEdgeScroll(void* data) {
+  DesktopWindow* self = (DesktopWindow*)data;
 
   int mx, my;
   int dx, dy;
@@ -1770,19 +1664,13 @@ void DesktopWindow::handleEdgeScroll(void *data)
     my = self->h();
 
   if ((self->viewport->x() < 0) && (mx < edge_scroll_size_x))
-    dx = EDGE_SCROLL_SPEED -
-         EDGE_SCROLL_SPEED * mx / edge_scroll_size_x;
-  if ((self->viewport->x() + self->viewport->w() >= self->w()) &&
-      (mx >= self->w() - edge_scroll_size_x))
-    dx = EDGE_SCROLL_SPEED * (self->w() - mx) / edge_scroll_size_x -
-         EDGE_SCROLL_SPEED - 1;
+    dx = EDGE_SCROLL_SPEED - EDGE_SCROLL_SPEED * mx / edge_scroll_size_x;
+  if ((self->viewport->x() + self->viewport->w() >= self->w()) && (mx >= self->w() - edge_scroll_size_x))
+    dx = EDGE_SCROLL_SPEED * (self->w() - mx) / edge_scroll_size_x - EDGE_SCROLL_SPEED - 1;
   if ((self->viewport->y() < 0) && (my < edge_scroll_size_y))
-    dy = EDGE_SCROLL_SPEED -
-         EDGE_SCROLL_SPEED * my / edge_scroll_size_y;
-  if ((self->viewport->y() + self->viewport->h() >= self->h()) &&
-      (my >= self->h() - edge_scroll_size_y))
-    dy = EDGE_SCROLL_SPEED * (self->h() - my) / edge_scroll_size_y -
-         EDGE_SCROLL_SPEED - 1;
+    dy = EDGE_SCROLL_SPEED - EDGE_SCROLL_SPEED * my / edge_scroll_size_y;
+  if ((self->viewport->y() + self->viewport->h() >= self->h()) && (my >= self->h() - edge_scroll_size_y))
+    dy = EDGE_SCROLL_SPEED * (self->h() - my) / edge_scroll_size_y - EDGE_SCROLL_SPEED - 1;
 
   if ((dx == 0) && (dy == 0))
     return;
@@ -1792,11 +1680,10 @@ void DesktopWindow::handleEdgeScroll(void *data)
   Fl::repeat_timeout(EDGE_SCROLL_SECONDS_PER_FRAME, handleEdgeScroll, data);
 }
 
-void DesktopWindow::handleStatsTimeout(void *data)
-{
-  DesktopWindow *self = (DesktopWindow*)data;
+void DesktopWindow::handleStatsTimeout(void* data) {
+  DesktopWindow* self = (DesktopWindow*)data;
 
-  const size_t statsCount = sizeof(self->stats)/sizeof(self->stats[0]);
+  const size_t statsCount = sizeof(self->stats) / sizeof(self->stats[0]);
 
   unsigned updates, pixels, pos;
   unsigned elapsed;
@@ -1806,8 +1693,8 @@ void DesktopWindow::handleStatsTimeout(void *data)
   const unsigned graphWidth = statsWidth - 10;
   const unsigned graphHeight = statsHeight - 25;
 
-  Fl_Image_Surface *surface;
-  Fl_RGB_Image *image;
+  Fl_Image_Surface* surface;
+  Fl_RGB_Image* image;
 
   unsigned maxUPS, maxPPS, maxBPS;
   size_t i;
@@ -1821,11 +1708,11 @@ void DesktopWindow::handleStatsTimeout(void *data)
   if (elapsed < 1)
     elapsed = 1;
 
-  memmove(&self->stats[0], &self->stats[1], sizeof(self->stats[0])*(statsCount-1));
+  memmove(&self->stats[0], &self->stats[1], sizeof(self->stats[0]) * (statsCount - 1));
 
-  self->stats[statsCount-1].ups = (updates - self->statsLastUpdates) * 1000 / elapsed;
-  self->stats[statsCount-1].pps = (pixels - self->statsLastPixels) * 1000 / elapsed;
-  self->stats[statsCount-1].bps = (pos - self->statsLastPosition) * 1000 / elapsed;
+  self->stats[statsCount - 1].ups = (updates - self->statsLastUpdates) * 1000 / elapsed;
+  self->stats[statsCount - 1].pps = (pixels - self->statsLastPixels) * 1000 / elapsed;
+  self->stats[statsCount - 1].bps = (pos - self->statsLastPosition) * 1000 / elapsed;
 
   gettimeofday(&self->statsLastTime, nullptr);
   self->statsLastUpdates = updates;
@@ -1846,7 +1733,7 @@ void DesktopWindow::handleStatsTimeout(void *data)
   fl_rect(5, 5, graphWidth, graphHeight, FL_WHITE);
 
   maxUPS = maxPPS = maxBPS = 0;
-  for (i = 0;i < statsCount;i++) {
+  for (i = 0; i < statsCount; i++) {
     if (self->stats[i].ups > maxUPS)
       maxUPS = self->stats[i].ups;
     if (self->stats[i].pps > maxPPS)
@@ -1857,47 +1744,40 @@ void DesktopWindow::handleStatsTimeout(void *data)
 
   if (maxUPS != 0) {
     fl_color(FL_GREEN);
-    for (i = 0;i < statsCount-1;i++) {
-      fl_line(5 + i * graphWidth / statsCount,
-              5 + graphHeight - graphHeight * self->stats[i].ups / maxUPS,
-              5 + (i+1) * graphWidth / statsCount,
-              5 + graphHeight - graphHeight * self->stats[i+1].ups / maxUPS);
+    for (i = 0; i < statsCount - 1; i++) {
+      fl_line(5 + i * graphWidth / statsCount, 5 + graphHeight - graphHeight * self->stats[i].ups / maxUPS,
+              5 + (i + 1) * graphWidth / statsCount, 5 + graphHeight - graphHeight * self->stats[i + 1].ups / maxUPS);
     }
   }
 
   if (maxPPS != 0) {
     fl_color(FL_YELLOW);
-    for (i = 0;i < statsCount-1;i++) {
-      fl_line(5 + i * graphWidth / statsCount,
-              5 + graphHeight - graphHeight * self->stats[i].pps / maxPPS,
-              5 + (i+1) * graphWidth / statsCount,
-              5 + graphHeight - graphHeight * self->stats[i+1].pps / maxPPS);
+    for (i = 0; i < statsCount - 1; i++) {
+      fl_line(5 + i * graphWidth / statsCount, 5 + graphHeight - graphHeight * self->stats[i].pps / maxPPS,
+              5 + (i + 1) * graphWidth / statsCount, 5 + graphHeight - graphHeight * self->stats[i + 1].pps / maxPPS);
     }
   }
 
   if (maxBPS != 0) {
     fl_color(FL_RED);
-    for (i = 0;i < statsCount-1;i++) {
-      fl_line(5 + i * graphWidth / statsCount,
-              5 + graphHeight - graphHeight * self->stats[i].bps / maxBPS,
-              5 + (i+1) * graphWidth / statsCount,
-              5 + graphHeight - graphHeight * self->stats[i+1].bps / maxBPS);
+    for (i = 0; i < statsCount - 1; i++) {
+      fl_line(5 + i * graphWidth / statsCount, 5 + graphHeight - graphHeight * self->stats[i].bps / maxBPS,
+              5 + (i + 1) * graphWidth / statsCount, 5 + graphHeight - graphHeight * self->stats[i + 1].bps / maxBPS);
     }
   }
 
   fl_font(FL_HELVETICA, 10);
 
   fl_color(FL_GREEN);
-  snprintf(buffer, sizeof(buffer), "%u upd/s", self->stats[statsCount-1].ups);
+  snprintf(buffer, sizeof(buffer), "%u upd/s", self->stats[statsCount - 1].ups);
   fl_draw(buffer, 5, statsHeight - 5);
 
   fl_color(FL_YELLOW);
-  fl_draw(core::siPrefix(self->stats[statsCount-1].pps, "pix/s").c_str(),
-          5 + (statsWidth-10)/3, statsHeight - 5);
+  fl_draw(core::siPrefix(self->stats[statsCount - 1].pps, "pix/s").c_str(), 5 + (statsWidth - 10) / 3, statsHeight - 5);
 
   fl_color(FL_RED);
-  fl_draw(core::siPrefix(self->stats[statsCount-1].bps * 8, "bps").c_str(),
-          5 + (statsWidth-10)*2/3, statsHeight - 5);
+  fl_draw(core::siPrefix(self->stats[statsCount - 1].bps * 8, "bps").c_str(), 5 + (statsWidth - 10) * 2 / 3,
+          statsHeight - 5);
 
   image = surface->image();
   delete surface;
@@ -1908,9 +1788,7 @@ void DesktopWindow::handleStatsTimeout(void *data)
   self->statsGraph = new Surface(image);
   delete image;
 
-  self->damage(FL_DAMAGE_CHILD, self->w() - statsWidth - 30,
-               self->h() - statsHeight - 30,
-               statsWidth, statsHeight);
+  self->damage(FL_DAMAGE_CHILD, self->w() - statsWidth - 30, self->h() - statsHeight - 30, statsWidth, statsHeight);
 
   Fl::repeat_timeout(0.5, handleStatsTimeout, data);
 }

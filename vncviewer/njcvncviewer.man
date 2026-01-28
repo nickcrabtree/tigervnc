@@ -3,11 +3,11 @@
 njcvncviewer \- VNC viewer for X
 .SH SYNOPSIS
 .B njcvncviewer
-.RI [ options ] 
+.RI [ options ]
 .RI [ host ][: display# ]
 .br
 .B njcvncviewer
-.RI [ options ] 
+.RI [ options ]
 .RI [ host ][:: port ]
 .br
 .B njcvncviewer
@@ -15,7 +15,7 @@ njcvncviewer \- VNC viewer for X
 .RI [ unix\ socket ]
 .br
 .B njcvncviewer
-.RI [ options ] 
+.RI [ options ]
 .B \-listen
 .RI [ port ]
 .br
@@ -306,7 +306,7 @@ the server.  Valid values are a comma separated list of \fBNone\fP,
 \fBVncAuth\fP, \fBPlain\fP, \fBTLSNone\fP, \fBTLSVnc\fP, \fBTLSPlain\fP,
 \fBX509None\fP, \fBX509Vnc\fP, \fBX509Plain\fP, \fBRA2\fP, \fBRA2ne\fP,
 \fBRA2_256\fP and \fBRA2ne_256\fP. Default is to attempt
-every supported scheme. 
+every supported scheme.
 .
 .TP
 .B \-SendClipboard

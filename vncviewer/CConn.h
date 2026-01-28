@@ -1,16 +1,16 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2014 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -27,30 +27,31 @@
 
 #include "UserDialog.h"
 
-namespace network { class Socket; }
+namespace network {
+class Socket;
+}
 
 class DesktopWindow;
 
-class CConn : public rfb::CConnection
-{
+class CConn : public rfb::CConnection {
 public:
   CConn();
   ~CConn();
 
-  void connect(const char* vncServerName, network::Socket* sock=nullptr);
+  void connect(const char* vncServerName, network::Socket* sock = nullptr);
 
   std::string connectionInfo();
 
   unsigned getUpdateCount();
   unsigned getPixelCount();
   unsigned getPosition();
-  
+
   // Log framebuffer/decoder statistics for this connection (used by e2e tests)
   void logFramebufferStats();
-  
+
   // Debug: Request full framebuffer refresh and verify against current state
   void verifyFramebuffer();
-  
+
   // Debug: Dump comprehensive cache and framebuffer state to files for
   // post-mortem analysis of visual corruption. Call via SIGQUIT (CTRL+\).
   // Writes:
@@ -60,25 +61,20 @@ public:
   void dumpCorruptionDebugInfo();
 
 protected:
-
   // Callback when socket is ready (or broken)
-  static void socketEvent(FL_SOCKET fd, void *data);
+  static void socketEvent(FL_SOCKET fd, void* data);
 
   // Forget any saved password
   void resetPassword();
 
   // CConnection callback methods
 
-  bool showMsgBox(rfb::MsgBoxFlags flags, const char *title,
-                  const char *text) override;
-  void getUserPasswd(bool secure, std::string *user,
-                     std::string *password) override;
+  bool showMsgBox(rfb::MsgBoxFlags flags, const char* title, const char* text) override;
+  void getUserPasswd(bool secure, std::string* user, std::string* password) override;
 
   void initDone() override;
 
-  void setExtendedDesktopSize(unsigned reason, unsigned result,
-                              int w, int h,
-                              const rfb::ScreenSet& layout) override;
+  void setExtendedDesktopSize(unsigned reason, unsigned result, int w, int h, const rfb::ScreenSet& layout) override;
 
   void setName(const char* name) override;
 
@@ -86,11 +82,9 @@ protected:
 
   void framebufferUpdateStart() override;
   void framebufferUpdateEnd() override;
-  bool dataRect(const core::Rect& r, int encoding,
-              const rfb::ServerParams* serverOverride = nullptr) override;
+  bool dataRect(const core::Rect& r, int encoding, const rfb::ServerParams* serverOverride = nullptr) override;
 
-  void setCursor(int width, int height, const core::Point& hotspot,
-                 const uint8_t* data) override;
+  void setCursor(int width, int height, const core::Point& hotspot, const uint8_t* data) override;
   void setCursorPos(const core::Point& pos) override;
 
   void setLEDState(unsigned int state) override;
@@ -100,7 +94,6 @@ protected:
   void handleClipboardData(const char* data) override;
 
 private:
-
   void resizeFramebuffer() override;
 
   void updateEncoding();
@@ -108,9 +101,9 @@ private:
   void updateQualityLevel();
   void updatePixelFormat();
 
-  static void handleOptions(void *data);
+  static void handleOptions(void* data);
 
-  static void handleUpdateTimeout(void *data);
+  static void handleUpdateTimeout(void* data);
 
   void handleHourlyStats(core::Timer* t);
 
@@ -119,7 +112,7 @@ private:
   int serverPort;
   network::Socket* sock;
 
-  DesktopWindow *desktop;
+  DesktopWindow* desktop;
 
   unsigned updateCount;
   unsigned pixelCount;
@@ -127,7 +120,7 @@ private:
   rfb::PixelFormat fullColourPF;
 
   int lastServerEncoding;
- 
+
   // Per-session timing for aggregate bandwidth statistics
   struct timeval sessionStartTime;
 
@@ -139,7 +132,7 @@ private:
   unsigned long long bpsEstimate;
 
   UserDialog dlg;
-  
+
   // Verification state
   bool verificationInProgress_;
   std::vector<uint8_t> savedFramebuffer_;

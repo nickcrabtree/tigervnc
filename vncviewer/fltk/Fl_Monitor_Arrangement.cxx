@@ -1,6 +1,6 @@
 /* Copyright 2021 Hugo Lundin <huglu@cendio.se> for Cendio AB.
  * Copyright 2021 Pierre Ossman for Cendio AB
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
  * "Software"), to deal in the Software without restriction, including
@@ -8,10 +8,10 @@
  * distribute, sublicense, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -26,24 +26,24 @@
 #include <config.h>
 #endif
 
+#include <algorithm>
+#include <assert.h>
 #include <set>
-#include <vector>
+#include <sstream>
 #include <string>
 #include <utility>
-#include <sstream>
-#include <assert.h>
-#include <algorithm>
+#include <vector>
 
 #include <FL/Fl.H>
-#include <FL/fl_draw.H>
 #include <FL/Fl_Button.H>
+#include <FL/fl_draw.H>
 #include <FL/x.H>
 
 #if defined(HAVE_XRANDR) && !defined(__APPLE__)
-#include <X11/extensions/Xrandr.h>
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/extensions/Xrandr.h>
 #endif
 
 #ifdef __APPLE__
@@ -55,14 +55,11 @@
 
 #include "Fl_Monitor_Arrangement.h"
 
-static std::set<Fl_Monitor_Arrangement *> instances;
+static std::set<Fl_Monitor_Arrangement*> instances;
 static const Fl_Boxtype FL_CHECKERED_BOX = FL_FREE_BOXTYPE;
 
-Fl_Monitor_Arrangement::Fl_Monitor_Arrangement(
-   int x, int y, int w, int h)
-:  Fl_Group(x, y, w, h),
-   AVAILABLE_COLOR(fl_lighter(fl_lighter(fl_lighter(FL_BACKGROUND_COLOR))))
-{
+Fl_Monitor_Arrangement::Fl_Monitor_Arrangement(int x, int y, int w, int h)
+    : Fl_Group(x, y, w, h), AVAILABLE_COLOR(fl_lighter(fl_lighter(fl_lighter(FL_BACKGROUND_COLOR)))) {
   // Used for required monitors.
   Fl::set_boxtype(FL_CHECKERED_BOX, checkered_pattern_draw, 0, 0, 0, 0);
 
@@ -76,16 +73,14 @@ Fl_Monitor_Arrangement::Fl_Monitor_Arrangement(
   end();
 }
 
-Fl_Monitor_Arrangement::~Fl_Monitor_Arrangement()
-{
+Fl_Monitor_Arrangement::~Fl_Monitor_Arrangement() {
   instances.erase(this);
 
   if (instances.size() == 0)
     Fl::remove_handler(fltk_event_handler);
 }
 
-std::set<int> Fl_Monitor_Arrangement::value() const
-{
+std::set<int> Fl_Monitor_Arrangement::value() const {
   std::set<int> indices;
   MonitorMap::const_iterator iter;
 
@@ -97,15 +92,13 @@ std::set<int> Fl_Monitor_Arrangement::value() const
   return indices;
 }
 
-int Fl_Monitor_Arrangement::value(std::set<int> indices)
-{
+int Fl_Monitor_Arrangement::value(std::set<int> indices) {
   MonitorMap::const_iterator iter;
   bool changed;
 
   changed = false;
   for (iter = monitors.begin(); iter != monitors.end(); ++iter) {
-    bool selected = std::find(indices.begin(), indices.end(),
-                              iter->first) != indices.end();
+    bool selected = std::find(indices.begin(), indices.end(), iter->first) != indices.end();
     if (iter->second->value() != selected)
       changed = true;
     iter->second->value(selected);
@@ -114,12 +107,11 @@ int Fl_Monitor_Arrangement::value(std::set<int> indices)
   return changed;
 }
 
-void Fl_Monitor_Arrangement::draw()
-{
+void Fl_Monitor_Arrangement::draw() {
   MonitorMap::const_iterator iter;
 
   for (iter = monitors.begin(); iter != monitors.end(); ++iter) {
-    Fl_Button * monitor = iter->second;
+    Fl_Button* monitor = iter->second;
 
     if (is_required(iter->first)) {
       monitor->box(FL_CHECKERED_BOX);
@@ -134,8 +126,7 @@ void Fl_Monitor_Arrangement::draw()
   Fl_Group::draw();
 }
 
-void Fl_Monitor_Arrangement::layout()
-{
+void Fl_Monitor_Arrangement::layout() {
   int x, y, w, h;
   double scale = this->scale();
   const double MARGIN_SCALE_FACTOR = 0.99;
@@ -149,25 +140,24 @@ void Fl_Monitor_Arrangement::layout()
     // Only keep a single entry for mirrored screens
     match = false;
     for (int j = 0; j < i; j++) {
-        int x2, y2, w2, h2;
+      int x2, y2, w2, h2;
 
-        Fl::screen_xywh(x2, y2, w2, h2, j);
+      Fl::screen_xywh(x2, y2, w2, h2, j);
 
-        if ((x != x2) || (y != y2) || (w != w2) || (h != h2))
-            continue;
-
-        match = true;
-        break;
-    }
-    if (match)
+      if ((x != x2) || (y != y2) || (w != w2) || (h != h2))
         continue;
 
-    Fl_Button *monitor = new Fl_Button(
-      /* x = */ this->x() + offset.first + x*scale + (1 - MARGIN_SCALE_FACTOR)*x*scale,
-      /* y = */ this->y() + offset.second +  y*scale + (1 - MARGIN_SCALE_FACTOR)*y*scale,
-      /* w = */ w*scale*MARGIN_SCALE_FACTOR,
-      /* h = */ h*scale*MARGIN_SCALE_FACTOR
-    );
+      match = true;
+      break;
+    }
+    if (match)
+      continue;
+
+    Fl_Button* monitor = new Fl_Button(
+        /* x = */ this->x() + offset.first + x * scale + (1 - MARGIN_SCALE_FACTOR) * x * scale,
+        /* y = */ this->y() + offset.second + y * scale + (1 - MARGIN_SCALE_FACTOR) * y * scale,
+        /* w = */ w * scale * MARGIN_SCALE_FACTOR,
+        /* h = */ h * scale * MARGIN_SCALE_FACTOR);
 
     monitor->clear_visible_focus();
     monitor->callback(monitor_pressed, this);
@@ -178,8 +168,7 @@ void Fl_Monitor_Arrangement::layout()
   }
 }
 
-void Fl_Monitor_Arrangement::refresh()
-{
+void Fl_Monitor_Arrangement::refresh() {
   // The selection state is only saved persistently when "OK" is
   // pressed. We need to manually restore the current selection
   // when the widget is refreshed.
@@ -197,8 +186,7 @@ void Fl_Monitor_Arrangement::refresh()
   redraw();
 }
 
-bool Fl_Monitor_Arrangement::is_required(int m)
-{
+bool Fl_Monitor_Arrangement::is_required(int m) {
   // A selected monitor is never required.
   if (monitors[m]->value() == 1)
     return false;
@@ -207,7 +195,6 @@ bool Fl_Monitor_Arrangement::is_required(int m)
   std::set<int> selected = value();
   if (selected.size() <= 0)
     return false;
-
 
   // Go through all selected monitors and find the monitor
   // indices that bounds the fullscreen frame buffer. If
@@ -248,7 +235,6 @@ bool Fl_Monitor_Arrangement::is_required(int m)
     }
   }
 
-
   Fl::screen_xywh(x, y, w, h, m);
 
   if (x < left_x)
@@ -263,13 +249,12 @@ bool Fl_Monitor_Arrangement::is_required(int m)
   return true;
 }
 
-double Fl_Monitor_Arrangement::scale()
-{
+double Fl_Monitor_Arrangement::scale() {
   const int MARGIN = 20;
   std::pair<int, int> size = this->size();
 
-  double s_w = static_cast<double>(this->w()-MARGIN) / static_cast<double>(size.first);
-  double s_h = static_cast<double>(this->h()-MARGIN) / static_cast<double>(size.second);
+  double s_w = static_cast<double>(this->w() - MARGIN) / static_cast<double>(size.first);
+  double s_h = static_cast<double>(this->h() - MARGIN) / static_cast<double>(size.second);
 
   // Choose the one that scales the least, in order to
   // maximize our use of the given bounding area.
@@ -279,8 +264,7 @@ double Fl_Monitor_Arrangement::scale()
     return s_w;
 }
 
-std::pair<int, int> Fl_Monitor_Arrangement::size()
-{
+std::pair<int, int> Fl_Monitor_Arrangement::size() {
   int x, y, w, h;
   int top, bottom, left, right;
   int x_min, x_max, y_min, y_max;
@@ -310,20 +294,18 @@ std::pair<int, int> Fl_Monitor_Arrangement::size()
   return std::make_pair(x_max - x_min, y_max - y_min);
 }
 
-std::pair<int, int> Fl_Monitor_Arrangement::offset()
-{
+std::pair<int, int> Fl_Monitor_Arrangement::offset() {
   double scale = this->scale();
   std::pair<int, int> size = this->size();
   std::pair<int, int> origin = this->origin();
 
-  int offset_x = (this->w()/2) - (size.first/2 * scale);
-  int offset_y = (this->h()/2) - (size.second/2 * scale);
+  int offset_x = (this->w() / 2) - (size.first / 2 * scale);
+  int offset_y = (this->h() / 2) - (size.second / 2 * scale);
 
-  return std::make_pair(offset_x + abs(origin.first)*scale, offset_y + abs(origin.second)*scale);
+  return std::make_pair(offset_x + abs(origin.first) * scale, offset_y + abs(origin.second) * scale);
 }
 
-std::pair<int, int> Fl_Monitor_Arrangement::origin()
-{
+std::pair<int, int> Fl_Monitor_Arrangement::origin() {
   int x, y, w, h, ox, oy;
   ox = oy = 0;
 
@@ -340,8 +322,7 @@ std::pair<int, int> Fl_Monitor_Arrangement::origin()
   return std::make_pair(ox, oy);
 }
 
-std::string Fl_Monitor_Arrangement::description(int m)
-{
+std::string Fl_Monitor_Arrangement::description(int m) {
   std::string name;
   int x, y, w, h;
   std::stringstream ss;
@@ -360,18 +341,15 @@ std::string Fl_Monitor_Arrangement::description(int m)
 }
 
 #if defined(WIN32)
-static BOOL CALLBACK EnumDisplayMonitorsCallback(
-  HMONITOR monitor, HDC /*deviceContext*/, LPRECT /*rect*/,
-  LPARAM userData)
-{
+static BOOL CALLBACK EnumDisplayMonitorsCallback(HMONITOR monitor, HDC /*deviceContext*/, LPRECT /*rect*/,
+                                                 LPARAM userData) {
   std::set<HMONITOR>* sys_monitors = (std::set<HMONITOR>*)userData;
   sys_monitors->insert(monitor);
   return TRUE;
 }
 #endif
 
-std::string Fl_Monitor_Arrangement::get_monitor_name(int m)
-{
+std::string Fl_Monitor_Arrangement::get_monitor_name(int m) {
 #if defined(WIN32)
   std::set<HMONITOR> sys_monitors;
   std::set<HMONITOR>::const_iterator iter;
@@ -379,8 +357,7 @@ std::string Fl_Monitor_Arrangement::get_monitor_name(int m)
 
   Fl::screen_xywh(x, y, w, h, m);
 
-  EnumDisplayMonitors(nullptr, nullptr, EnumDisplayMonitorsCallback,
-                      (LPARAM)&sys_monitors);
+  EnumDisplayMonitors(nullptr, nullptr, EnumDisplayMonitorsCallback, (LPARAM)&sys_monitors);
 
   for (iter = sys_monitors.begin(); iter != sys_monitors.end(); ++iter) {
     MONITORINFOEX info;
@@ -399,7 +376,7 @@ std::string Fl_Monitor_Arrangement::get_monitor_name(int m)
     if ((info.rcMonitor.bottom - info.rcMonitor.top) != h)
       continue;
 
-    for (int i = 0; ; i++) {
+    for (int i = 0;; i++) {
       dev.cb = sizeof(dev);
       if (!EnumDisplayDevices(info.szDevice, i, &dev, 0))
         break;
@@ -439,12 +416,11 @@ std::string Fl_Monitor_Arrangement::get_monitor_name(int m)
   // Notice: Here we assume indices to be ordered the same as in FLTK (we rely on that in cocoa.mm as well).
   displayID = displays[m];
 
-  info = IODisplayCreateInfoDictionary(CGDisplayIOServicePort(displayID),
-                                       kIODisplayOnlyPreferredName);
+  info = IODisplayCreateInfoDictionary(CGDisplayIOServicePort(displayID), kIODisplayOnlyPreferredName);
   if (info == nullptr)
     return "";
 
-  dict = (CFDictionaryRef) CFDictionaryGetValue(info, CFSTR(kDisplayProductName));
+  dict = (CFDictionaryRef)CFDictionaryGetValue(info, CFSTR(kDisplayProductName));
   if (dict == nullptr) {
     CFRelease(info);
     return "";
@@ -453,32 +429,32 @@ std::string Fl_Monitor_Arrangement::get_monitor_name(int m)
   dict_len = CFDictionaryGetCount(dict);
 
   if (dict_len > 0) {
-    CFTypeRef * names = new CFTypeRef[dict_len];
-    CFDictionaryGetKeysAndValues(dict, nullptr, (const void **) names);
+    CFTypeRef* names = new CFTypeRef[dict_len];
+    CFDictionaryGetKeysAndValues(dict, nullptr, (const void**)names);
 
     if (names[0]) {
 
       // Because of `kIODisplayOnlyPreferredName` names *should* only contain the name with
       // the current system localization.
-      CFStringRef localized_name = (CFStringRef) names[0];
+      CFStringRef localized_name = (CFStringRef)names[0];
       CFIndex localized_name_len = CFStringGetLength(localized_name);
 
       // Even though we already have the length of `localized_name` above, we know that we will format it
       // as UTF-8 when we put it in the destination buffer. Therefore we need to check whether the name
       // with that encoding will fit.
-      CFIndex localized_name_max_size = CFStringGetMaximumSizeForEncoding(localized_name_len, kCFStringEncodingUTF8) + 1;
+      CFIndex localized_name_max_size =
+          CFStringGetMaximumSizeForEncoding(localized_name_len, kCFStringEncodingUTF8) + 1;
 
       if (localized_name_max_size != kCFNotFound) {
-        char *utf8_name = new char[localized_name_max_size];
+        char* utf8_name = new char[localized_name_max_size];
         if (CFStringGetCString(
-          /* ref = */ localized_name,
-          /* dest = */ utf8_name,
-          /* dest_len = */ localized_name_max_size,
-          /* encoding = */ kCFStringEncodingUTF8))
-        {
+                /* ref = */ localized_name,
+                /* dest = */ utf8_name,
+                /* dest_len = */ localized_name_max_size,
+                /* encoding = */ kCFStringEncodingUTF8)) {
           name = utf8_name;
         }
-        delete [] utf8_name;
+        delete[] utf8_name;
       }
     }
 
@@ -490,7 +466,7 @@ std::string Fl_Monitor_Arrangement::get_monitor_name(int m)
   return name;
 
 #else
-#if defined (HAVE_XRANDR)
+#if defined(HAVE_XRANDR)
   int x, y, w, h;
   int ev, err, xi_major;
   std::string name;
@@ -502,22 +478,21 @@ std::string Fl_Monitor_Arrangement::get_monitor_name(int m)
   if (!XQueryExtension(fl_display, "RANDR", &xi_major, &ev, &err))
     return "";
 
-  XRRScreenResources *res = XRRGetScreenResources(fl_display, DefaultRootWindow(fl_display));
+  XRRScreenResources* res = XRRGetScreenResources(fl_display, DefaultRootWindow(fl_display));
   if (!res)
     return "";
 
   for (int i = 0; i < res->ncrtc; i++) {
-    XRRCrtcInfo *crtc = XRRGetCrtcInfo(fl_display, res, res->crtcs[i]);
+    XRRCrtcInfo* crtc = XRRGetCrtcInfo(fl_display, res, res->crtcs[i]);
 
     if (!crtc)
       continue;
 
-    if ((crtc->x != x) || (crtc->y != y) ||
-        ((int)crtc->width != w) || ((int)crtc->height != h))
+    if ((crtc->x != x) || (crtc->y != y) || ((int)crtc->width != w) || ((int)crtc->height != h))
       continue;
 
     for (int j = 0; j < crtc->noutput; j++) {
-      XRROutputInfo *output;
+      XRROutputInfo* output;
 
       output = XRRGetOutputInfo(fl_display, res, crtc->outputs[j]);
       if (!output)
@@ -536,9 +511,8 @@ std::string Fl_Monitor_Arrangement::get_monitor_name(int m)
 #endif
 }
 
-int Fl_Monitor_Arrangement::fltk_event_handler(int event)
-{
-  std::set<Fl_Monitor_Arrangement *>::iterator it;
+int Fl_Monitor_Arrangement::fltk_event_handler(int event) {
+  std::set<Fl_Monitor_Arrangement*>::iterator it;
 
   if (event != FL_SCREEN_CONFIGURATION_CHANGED)
     return 0;
@@ -549,10 +523,8 @@ int Fl_Monitor_Arrangement::fltk_event_handler(int event)
   return 0;
 }
 
-void Fl_Monitor_Arrangement::monitor_pressed(Fl_Widget* /*widget*/,
-                                             void *user_data)
-{
-  Fl_Monitor_Arrangement *self = (Fl_Monitor_Arrangement *) user_data;
+void Fl_Monitor_Arrangement::monitor_pressed(Fl_Widget* /*widget*/, void* user_data) {
+  Fl_Monitor_Arrangement* self = (Fl_Monitor_Arrangement*)user_data;
 
   // When a monitor is selected, FLTK changes the state of it for us.
   // However, selecting a monitor might implicitly change the state of
@@ -562,9 +534,7 @@ void Fl_Monitor_Arrangement::monitor_pressed(Fl_Widget* /*widget*/,
   self->redraw();
 }
 
-void Fl_Monitor_Arrangement::checkered_pattern_draw(
-  int x, int y, int width, int height, Fl_Color color)
-{
+void Fl_Monitor_Arrangement::checkered_pattern_draw(int x, int y, int width, int height, Fl_Color color) {
   bool draw_checker = false;
   const int CHECKER_SIZE = 8;
 
@@ -584,11 +554,10 @@ void Fl_Monitor_Arrangement::checkered_pattern_draw(
 
       if (draw_checker) {
         fl_rectf(
-          /* x = */ x + i * CHECKER_SIZE,
-          /* y = */ y + j * CHECKER_SIZE,
-          /* w = */ CHECKER_SIZE - std::max(0, ((i + 1) * CHECKER_SIZE) - width),
-          /* h = */ CHECKER_SIZE - std::max(0, ((j + 1) * CHECKER_SIZE) - height)
-        );
+            /* x = */ x + i * CHECKER_SIZE,
+            /* y = */ y + j * CHECKER_SIZE,
+            /* w = */ CHECKER_SIZE - std::max(0, ((i + 1) * CHECKER_SIZE) - width),
+            /* h = */ CHECKER_SIZE - std::max(0, ((j + 1) * CHECKER_SIZE) - height));
       }
     }
   }

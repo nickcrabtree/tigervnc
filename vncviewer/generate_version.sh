@@ -9,17 +9,17 @@ BASE_VERSION="$2"
 if git rev-parse --git-dir > /dev/null 2>&1; then
     # Short commit hash
     GIT_HASH=$(git rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")
-    
+
     # Count commits since initial commit
     GIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
-    
+
     # Check if tree is dirty
     if ! git diff-index --quiet HEAD -- 2>/dev/null; then
         GIT_DIRTY="-dirty"
     else
         GIT_DIRTY=""
     fi
-    
+
     FULL_VERSION="${BASE_VERSION}+build.${GIT_COUNT}.${GIT_HASH}${GIT_DIRTY}"
 else
     FULL_VERSION="${BASE_VERSION}+build.unknown"

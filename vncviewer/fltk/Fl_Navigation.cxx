@@ -1,5 +1,5 @@
 /* Copyright 2022 Pierre Ossman for Cendio AB
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
  * "Software"), to deal in the Software without restriction, including
@@ -7,10 +7,10 @@
  * distribute, sublicense, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -35,9 +35,7 @@
 
 #include "Fl_Navigation.h"
 
-Fl_Navigation::Fl_Navigation(int x, int y, int w, int h)
-  : Fl_Group(x, y, w, h)
-{
+Fl_Navigation::Fl_Navigation(int x, int y, int w, int h) : Fl_Group(x, y, w, h) {
   int dummy;
 
   scroll = new Fl_Scroll(x, y, 1, 1);
@@ -55,20 +53,17 @@ Fl_Navigation::Fl_Navigation(int x, int y, int w, int h)
   Fl_Group::end();
 
   // Just to resize things, and avoid code duplication
-  client_area(dummy, dummy, dummy, dummy, w/10);
+  client_area(dummy, dummy, dummy, dummy, w / 10);
 
   begin();
 }
 
-Fl_Navigation::~Fl_Navigation()
-{
-}
+Fl_Navigation::~Fl_Navigation() {}
 
-Fl_Widget *Fl_Navigation::value()
-{
+Fl_Widget* Fl_Navigation::value() {
   int i;
 
-  for (i = 0;i < pages->children();i++) {
+  for (i = 0; i < pages->children(); i++) {
     if (pages->child(i)->visible())
       return pages->child(i);
   }
@@ -76,15 +71,14 @@ Fl_Widget *Fl_Navigation::value()
   return nullptr;
 }
 
-int Fl_Navigation::value(Fl_Widget *newpage)
-{
+int Fl_Navigation::value(Fl_Widget* newpage) {
   int i;
   int found;
 
   assert(labels->children() == pages->children());
 
   found = 0;
-  for (i = 0;i < pages->children();i++) {
+  for (i = 0; i < pages->children(); i++) {
     if (pages->child(i) == newpage) {
       pages->child(i)->show();
       ((Fl_Button*)labels->child(i))->setonly();
@@ -97,9 +91,7 @@ int Fl_Navigation::value(Fl_Widget *newpage)
   return found;
 }
 
-void Fl_Navigation::client_area(int &rx, int &ry,
-                                int &rw, int &rh, int lw)
-{
+void Fl_Navigation::client_area(int& rx, int& ry, int& rw, int& rh, int lw) {
   if (!pages->children()) {
     int cx, cy, cw, ch;
 
@@ -119,30 +111,24 @@ void Fl_Navigation::client_area(int &rx, int &ry,
   rh = pages->h();
 }
 
-void Fl_Navigation::draw()
-{
-  draw_box(FL_BORDER_FRAME, x(), y(),
-           labels->w()+2, h(), FL_DARK3);
-  draw_box(FL_BORDER_FRAME, x()+1+labels->w(), y(),
-           w() - (labels->w()+1), h(), FL_DARK3);
+void Fl_Navigation::draw() {
+  draw_box(FL_BORDER_FRAME, x(), y(), labels->w() + 2, h(), FL_DARK3);
+  draw_box(FL_BORDER_FRAME, x() + 1 + labels->w(), y(), w() - (labels->w() + 1), h(), FL_DARK3);
   Fl_Group::draw();
 }
 
-void Fl_Navigation::begin()
-{
+void Fl_Navigation::begin() {
   pages->begin();
 }
 
-void Fl_Navigation::end()
-{
+void Fl_Navigation::end() {
   pages->end();
   Fl_Group::end();
 
   update_labels();
 }
 
-void Fl_Navigation::update_labels()
-{
+void Fl_Navigation::update_labels() {
   int i, offset;
 
   labels->clear();
@@ -152,9 +138,9 @@ void Fl_Navigation::update_labels()
     return;
 
   offset = 0;
-  for (i = 0;i < pages->children();i++) {
-    Fl_Widget *page;
-    Fl_Button *btn;
+  for (i = 0; i < pages->children(); i++) {
+    Fl_Widget* page;
+    Fl_Button* btn;
     int w, h;
 
     page = pages->child(i);
@@ -164,9 +150,7 @@ void Fl_Navigation::update_labels()
     fl_measure(page->label(), w, h);
     h += page->labelsize() * 2;
 
-    btn = new Fl_Button(labels->x(), labels->y() + offset,
-                        labels->w(), h,
-                        page->label());
+    btn = new Fl_Button(labels->x(), labels->y() + offset, labels->w(), h, page->label());
     btn->box(FL_FLAT_BOX);
     btn->type(FL_RADIO_BUTTON);
     btn->align(btn->align() | FL_ALIGN_WRAP);
@@ -187,14 +171,13 @@ void Fl_Navigation::update_labels()
   value(pages->child(0));
 }
 
-void Fl_Navigation::label_pressed(Fl_Widget *widget, void *user_data)
-{
-  Fl_Navigation *self = (Fl_Navigation *) user_data;
+void Fl_Navigation::label_pressed(Fl_Widget* widget, void* user_data) {
+  Fl_Navigation* self = (Fl_Navigation*)user_data;
 
   int i, idx;
 
   idx = -1;
-  for (i = 0;i < self->labels->children();i++) {
+  for (i = 0; i < self->labels->children(); i++) {
     if (self->labels->child(i) == widget)
       idx = i;
   }

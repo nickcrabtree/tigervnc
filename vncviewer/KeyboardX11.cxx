@@ -1,15 +1,15 @@
 /* Copyright 2011-2021 Pierre Ossman <ossman@cendio.se> for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -25,27 +25,25 @@
 #include <algorithm>
 #include <stdexcept>
 
-#include <X11/XKBlib.h>
 #include <FL/x.H>
+#include <X11/XKBlib.h>
 
 #include <core/LogWriter.h>
 
 #include <rfb/ledStates.h>
 
-#include "i18n.h"
 #include "KeyboardX11.h"
+#include "i18n.h"
 
 extern const struct _code_map_xkb_to_qnum {
-  const char * from;
+  const char* from;
   const unsigned short to;
 } code_map_xkb_to_qnum[];
 extern const unsigned int code_map_xkb_to_qnum_len;
 
 static core::LogWriter vlog("KeyboardX11");
 
-KeyboardX11::KeyboardX11(KeyboardHandler* handler_)
-  : Keyboard(handler_)
-{
+KeyboardX11::KeyboardX11(KeyboardHandler* handler_) : Keyboard(handler_) {
   XkbDescPtr xkb;
   Status status;
 
@@ -58,64 +56,55 @@ KeyboardX11::KeyboardX11(KeyboardHandler* handler_)
     throw std::runtime_error("XkbGetNames");
 
   memset(code_map_keycode_to_qnum, 0, sizeof(code_map_keycode_to_qnum));
-  for (KeyCode keycode = xkb->min_key_code;
-       keycode < xkb->max_key_code;
-       keycode++) {
-    const char *keyname = xkb->names->keys[keycode].name;
+  for (KeyCode keycode = xkb->min_key_code; keycode < xkb->max_key_code; keycode++) {
+    const char* keyname = xkb->names->keys[keycode].name;
     unsigned short rfbcode;
 
     if (keyname[0] == '\0')
       continue;
 
     rfbcode = 0;
-    for (unsigned i = 0;i < code_map_xkb_to_qnum_len;i++) {
-        if (strncmp(code_map_xkb_to_qnum[i].from,
-                    keyname, XkbKeyNameLength) == 0) {
-            rfbcode = code_map_xkb_to_qnum[i].to;
-            break;
-        }
+    for (unsigned i = 0; i < code_map_xkb_to_qnum_len; i++) {
+      if (strncmp(code_map_xkb_to_qnum[i].from, keyname, XkbKeyNameLength) == 0) {
+        rfbcode = code_map_xkb_to_qnum[i].to;
+        break;
+      }
     }
     if (rfbcode != 0)
-        code_map_keycode_to_qnum[keycode] = rfbcode;
+      code_map_keycode_to_qnum[keycode] = rfbcode;
     else
-        vlog.debug("No key mapping for key %.4s", keyname);
+      vlog.debug("No key mapping for key %.4s", keyname);
   }
 
   XkbFreeKeyboard(xkb, 0, True);
 }
 
-KeyboardX11::~KeyboardX11()
-{
-}
+KeyboardX11::~KeyboardX11() {}
 
 struct GrabInfo {
   Window window;
   bool found;
 };
 
-static Bool is_same_window(Display*, XEvent* event, XPointer arg)
-{
+static Bool is_same_window(Display*, XEvent* event, XPointer arg) {
   GrabInfo* info = (GrabInfo*)arg;
 
   assert(info);
 
   // Focus is returned to our window
-  if ((event->type == FocusIn) &&
-      (event->xfocus.window == info->window)) {
+  if ((event->type == FocusIn) && (event->xfocus.window == info->window)) {
     info->found = true;
   }
 
   // Focus got stolen yet again
-  if ((event->type == FocusOut) &&
-      (event->xfocus.window == info->window)) {
+  if ((event->type == FocusOut) && (event->xfocus.window == info->window)) {
     info->found = false;
   }
 
   return False;
 }
 
-bool KeyboardX11::isKeyboardReset(const void* event)
-{
+bool KeyboardX11::isKeyboardReset(const void* event) {
   const XEvent* xevent = (const XEvent*)event;
 
   assert(event);
@@ -145,9 +134,8 @@ bool KeyboardX11::isKeyboardReset(const void* event)
   return false;
 }
 
-bool KeyboardX11::handleEvent(const void* event)
-{
-  const XEvent *xevent = (const XEvent*)event;
+bool KeyboardX11::handleEvent(const void* event) {
+  const XEvent* xevent = (const XEvent*)event;
 
   assert(event);
 
@@ -164,8 +152,7 @@ bool KeyboardX11::handleEvent(const void* event)
 
     XLookupString((XKeyEvent*)&xevent->xkey, &str, 1, &keysym, nullptr);
     if (keysym == NoSymbol) {
-      vlog.error(_("No symbol for key code %d (in the current state)"),
-                 (int)xevent->xkey.keycode);
+      vlog.error(_("No symbol for key code %d (in the current state)"), (int)xevent->xkey.keycode);
     }
 
     handler->handleKeyPress(xevent->xkey.keycode, keycode, keysym);
@@ -179,8 +166,7 @@ bool KeyboardX11::handleEvent(const void* event)
   return false;
 }
 
-std::list<uint32_t> KeyboardX11::translateToKeySyms(int systemKeyCode)
-{
+std::list<uint32_t> KeyboardX11::translateToKeySyms(int systemKeyCode) {
   Status status;
   XkbStateRec state;
   std::list<uint32_t> keySyms;
@@ -204,8 +190,7 @@ std::list<uint32_t> KeyboardX11::translateToKeySyms(int systemKeyCode)
   return keySyms;
 }
 
-unsigned KeyboardX11::getLEDState()
-{
+unsigned KeyboardX11::getLEDState() {
   unsigned state;
 
   unsigned int mask;
@@ -235,8 +220,7 @@ unsigned KeyboardX11::getLEDState()
   return state;
 }
 
-void KeyboardX11::setLEDState(unsigned state)
-{
+void KeyboardX11::setLEDState(unsigned state) {
   unsigned int affect, values;
   unsigned int mask;
 
@@ -263,11 +247,10 @@ void KeyboardX11::setLEDState(unsigned state)
     vlog.error(_("Failed to update keyboard LED state"));
 }
 
-unsigned KeyboardX11::getModifierMask(uint32_t keysym)
-{
+unsigned KeyboardX11::getModifierMask(uint32_t keysym) {
   XkbDescPtr xkb;
   unsigned int mask, keycode;
-  XkbAction *act;
+  XkbAction* act;
 
   mask = 0;
 
@@ -308,29 +291,23 @@ out:
   return mask;
 }
 
-void KeyboardX11::translateToKeySyms(int systemKeyCode,
-                                     unsigned char group,
-                                     std::list<uint32_t>* keySyms)
-{
+void KeyboardX11::translateToKeySyms(int systemKeyCode, unsigned char group, std::list<uint32_t>* keySyms) {
   unsigned int mods;
 
   // Start with no modifiers
   translateToKeySyms(systemKeyCode, group, 0, keySyms);
 
   // Next just a single modifier at a time
-  for (mods = 1; mods < (Mod5Mask+1); mods <<= 1)
+  for (mods = 1; mods < (Mod5Mask + 1); mods <<= 1)
     translateToKeySyms(systemKeyCode, group, mods, keySyms);
 
   // Finally everything
-  for (mods = 0; mods < (Mod5Mask<<1); mods++)
+  for (mods = 0; mods < (Mod5Mask << 1); mods++)
     translateToKeySyms(systemKeyCode, group, mods, keySyms);
 }
 
-void KeyboardX11::translateToKeySyms(int systemKeyCode,
-                                     unsigned char group,
-                                     unsigned char mods,
-                                     std::list<uint32_t>* keySyms)
-{
+void KeyboardX11::translateToKeySyms(int systemKeyCode, unsigned char group, unsigned char mods,
+                                     std::list<uint32_t>* keySyms) {
   KeySym ks;
   std::list<uint32_t>::const_iterator iter;
 

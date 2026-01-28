@@ -8,10 +8,10 @@
  * distribute, sublicense, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -25,15 +25,15 @@
 #ifndef __FL_MONITOR_ARRANGEMENT_H__
 #define __FL_MONITOR_ARRANGEMENT_H__
 
-#include <string>
 #include <map>
 #include <set>
+#include <string>
 
 #include <FL/Fl_Group.H>
 
 class Fl_Button;
 
-class Fl_Monitor_Arrangement: public Fl_Group {
+class Fl_Monitor_Arrangement : public Fl_Group {
 public:
   Fl_Monitor_Arrangement(int x, int y, int w, int h);
   ~Fl_Monitor_Arrangement();
@@ -49,7 +49,7 @@ protected:
 
 private:
   const Fl_Color AVAILABLE_COLOR;
-  typedef std::map<int, Fl_Button *> MonitorMap;
+  typedef std::map<int, Fl_Button*> MonitorMap;
   MonitorMap monitors;
 
   // Layout the monitor arrangement.
@@ -81,9 +81,8 @@ private:
   std::string get_monitor_name(int m);
 
   static int fltk_event_handler(int event);
-  static void monitor_pressed(Fl_Widget *widget, void *user_data);
-  static void checkered_pattern_draw(
-    int x, int y, int width, int height, Fl_Color color);
+  static void monitor_pressed(Fl_Widget* widget, void* user_data);
+  static void checkered_pattern_draw(int x, int y, int width, int height, Fl_Color color);
 };
 
 #endif

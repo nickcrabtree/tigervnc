@@ -1,15 +1,15 @@
 /* Copyright 2016 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -30,23 +30,19 @@
 #include <FL/Fl_Window.H>
 #include <FL/x.H>
 
-#include "cocoa.h"
 #include "Surface.h"
+#include "cocoa.h"
 #include "mac_coord_utils.h"
 
 static CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 
-static CGImageRef create_image(CGColorSpaceRef lut,
-                               const unsigned char* data,
-                               int w, int h, bool skip_alpha)
-{
+static CGImageRef create_image(CGColorSpaceRef lut, const unsigned char* data, int w, int h, bool skip_alpha) {
   CGDataProviderRef provider;
   CGImageAlphaInfo alpha;
 
   CGImageRef image;
 
-  provider = CGDataProviderCreateWithData(nullptr, data,
-                                          w * h * 4, nullptr);
+  provider = CGDataProviderCreateWithData(nullptr, data, w * h * 4, nullptr);
   if (!provider)
     throw std::runtime_error("CGDataProviderCreateWithData");
 
@@ -57,9 +53,7 @@ static CGImageRef create_image(CGColorSpaceRef lut,
   else
     alpha = kCGImageAlphaPremultipliedFirst;
 
-  image = CGImageCreate(w, h, 8, 32, w * 4, lut,
-                        alpha | kCGBitmapByteOrder32Little,
-                        provider, nullptr, false,
+  image = CGImageCreate(w, h, 8, 32, w * 4, lut, alpha | kCGBitmapByteOrder32Little, provider, nullptr, false,
                         kCGRenderingIntentDefault);
   CGDataProviderRelease(provider);
   if (!image)
@@ -68,12 +62,8 @@ static CGImageRef create_image(CGColorSpaceRef lut,
   return image;
 }
 
-static void render(CGContextRef gc, CGColorSpaceRef lut,
-                   const unsigned char* data,
-                   CGBlendMode mode, CGFloat alpha,
-                   int src_x, int src_y, int src_w, int src_h,
-                   int x, int y, int w, int h)
-{
+static void render(CGContextRef gc, CGColorSpaceRef lut, const unsigned char* data, CGBlendMode mode, CGFloat alpha,
+                   int src_x, int src_y, int src_w, int src_h, int x, int y, int w, int h) {
   CGRect rect;
   CGImageRef image, subimage;
 
@@ -106,11 +96,10 @@ static void render(CGContextRef gc, CGColorSpaceRef lut,
   CGImageRelease(image);
 }
 
-static CGContextRef make_bitmap(int width, int height, unsigned char* data)
-{
+static CGContextRef make_bitmap(int width, int height, unsigned char* data) {
   CGContextRef bitmap;
 
-  bitmap = CGBitmapContextCreate(data, width, height, 8, width*4, srgb,
+  bitmap = CGBitmapContextCreate(data, width, height, 8, width * 4, srgb,
                                  kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
   if (!bitmap)
     throw std::runtime_error("CGBitmapContextCreate");
@@ -118,8 +107,7 @@ static CGContextRef make_bitmap(int width, int height, unsigned char* data)
   return bitmap;
 }
 
-void Surface::clear(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
-{
+void Surface::clear(unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
   unsigned char* out;
   int x, y;
 
@@ -138,9 +126,7 @@ void Surface::clear(unsigned char r, unsigned char g, unsigned char b, unsigned 
   }
 }
 
-void Surface::draw(int src_x, int src_y, int dst_x, int dst_y,
-                   int dst_w, int dst_h)
-{
+void Surface::draw(int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h) {
   CGAffineTransform origTransform;
   CGFloat scale;
 
@@ -163,15 +149,12 @@ void Surface::draw(int src_x, int src_y, int dst_x, int dst_y,
   dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
 
   // Use sRGB to match the surface data format and avoid color space conversion
-  render(fl_gc, srgb, data, kCGBlendModeCopy, 1.0,
-         src_x, src_y, width(), height(), dst_x, dst_y, dst_w, dst_h);
+  render(fl_gc, srgb, data, kCGBlendModeCopy, 1.0, src_x, src_y, width(), height(), dst_x, dst_y, dst_w, dst_h);
 
   CGContextRestoreGState(fl_gc);
 }
 
-void Surface::draw(Surface* dst, int src_x, int src_y,
-                   int dst_x, int dst_y, int dst_w, int dst_h)
-{
+void Surface::draw(Surface* dst, int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h) {
   CGContextRef bitmap;
 
   bitmap = make_bitmap(dst->width(), dst->height(), dst->data);
@@ -179,15 +162,12 @@ void Surface::draw(Surface* dst, int src_x, int src_y,
   // macOS Coordinates are from bottom left, not top left
   dst_y = dst->height() - (dst_y + dst_h);
 
-  render(bitmap, srgb, data, kCGBlendModeCopy, 1.0,
-         src_x, src_y, width(), height(), dst_x, dst_y, dst_w, dst_h);
+  render(bitmap, srgb, data, kCGBlendModeCopy, 1.0, src_x, src_y, width(), height(), dst_x, dst_y, dst_w, dst_h);
 
   CGContextRelease(bitmap);
 }
 
-void Surface::blend(int src_x, int src_y, int dst_x, int dst_y,
-                    int dst_w, int dst_h, int a)
-{
+void Surface::blend(int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h, int a) {
   CGAffineTransform origTransform;
   CGFloat scale;
 
@@ -210,15 +190,13 @@ void Surface::blend(int src_x, int src_y, int dst_x, int dst_y,
   dst_y = Fl_Window::current()->h() - (dst_y + dst_h);
 
   // Use sRGB to match the surface data format and avoid color space conversion
-  render(fl_gc, srgb, data, kCGBlendModeNormal, (CGFloat)a/255.0,
-         src_x, src_y, width(), height(), dst_x, dst_y, dst_w, dst_h);
+  render(fl_gc, srgb, data, kCGBlendModeNormal, (CGFloat)a / 255.0, src_x, src_y, width(), height(), dst_x, dst_y,
+         dst_w, dst_h);
 
   CGContextRestoreGState(fl_gc);
 }
 
-void Surface::blend(Surface* dst, int src_x, int src_y,
-                    int dst_x, int dst_y, int dst_w, int dst_h, int a)
-{
+void Surface::blend(Surface* dst, int src_x, int src_y, int dst_x, int dst_y, int dst_w, int dst_h, int a) {
   CGContextRef bitmap;
 
   bitmap = make_bitmap(dst->width(), dst->height(), dst->data);
@@ -226,24 +204,21 @@ void Surface::blend(Surface* dst, int src_x, int src_y,
   // macOS Coordinates are from bottom left, not top left
   dst_y = dst->height() - (dst_y + dst_h);
 
-  render(bitmap, srgb, data, kCGBlendModeNormal, (CGFloat)a/255.0,
-         src_x, src_y, width(), height(), dst_x, dst_y, dst_w, dst_h);
+  render(bitmap, srgb, data, kCGBlendModeNormal, (CGFloat)a / 255.0, src_x, src_y, width(), height(), dst_x, dst_y,
+         dst_w, dst_h);
 
   CGContextRelease(bitmap);
 }
 
-void Surface::alloc()
-{
+void Surface::alloc() {
   data = new unsigned char[width() * height() * 4];
 }
 
-void Surface::dealloc()
-{
-  delete [] data;
+void Surface::dealloc() {
+  delete[] data;
 }
 
-void Surface::update(const Fl_RGB_Image* image)
-{
+void Surface::update(const Fl_RGB_Image* image) {
   int x, y;
   const unsigned char* in;
   unsigned char* out;
@@ -254,8 +229,8 @@ void Surface::update(const Fl_RGB_Image* image)
   // Convert data and pre-multiply alpha
   in = (const unsigned char*)image->data()[0];
   out = data;
-  for (y = 0;y < image->h();y++) {
-    for (x = 0;x < image->w();x++) {
+  for (y = 0; y < image->h(); y++) {
+    for (x = 0; x < image->w(); x++) {
       switch (image->d()) {
       case 1:
         *out++ = in[0];
@@ -289,8 +264,6 @@ void Surface::update(const Fl_RGB_Image* image)
   }
 }
 
-void Surface::debugSampleRect(int /*src_x*/, int /*src_y*/, int /*w*/, int /*h*/,
-                              const char* /*tag*/)
-{
+void Surface::debugSampleRect(int /*src_x*/, int /*src_y*/, int /*w*/, int /*h*/, const char* /*tag*/) {
   // No-op debug helper on macOS
 }

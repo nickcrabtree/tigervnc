@@ -1,16 +1,16 @@
 /* Copyright 2019 Aaron Sowry for Cendio AB
  * Copyright 2019-2020 Pierre Ossman for Cendio AB
- * 
+ *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this software; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
@@ -21,35 +21,31 @@
 #include <config.h>
 #endif
 
-#include <stdlib.h>
 #include <math.h>
+#include <stdlib.h>
 
 #include <core/time.h>
 
 #define XK_MISCELLANY
 #include <rfb/keysymdef.h>
 
-#include "GestureHandler.h"
 #include "BaseTouchHandler.h"
+#include "GestureHandler.h"
 
 // Sensitivity threshold for gestures
 static const int ZOOMSENS = 30;
 static const int SCRLSENS = 50;
 
-static const unsigned DOUBLE_TAP_TIMEOUT   = 1000;
+static const unsigned DOUBLE_TAP_TIMEOUT = 1000;
 static const unsigned DOUBLE_TAP_THRESHOLD = 50;
 
-BaseTouchHandler::BaseTouchHandler()
-{
+BaseTouchHandler::BaseTouchHandler() {
   gettimeofday(&lastTapTime, nullptr);
 }
 
-BaseTouchHandler::~BaseTouchHandler()
-{
-}
+BaseTouchHandler::~BaseTouchHandler() {}
 
-void BaseTouchHandler::handleGestureEvent(const GestureEvent& ev)
-{
+void BaseTouchHandler::handleGestureEvent(const GestureEvent& ev) {
   double magnitude;
 
   switch (ev.type) {
@@ -166,23 +162,20 @@ void BaseTouchHandler::handleGestureEvent(const GestureEvent& ev)
   }
 }
 
-void BaseTouchHandler::handleTapEvent(const GestureEvent& ev,
-                                      int buttonEvent)
-{
+void BaseTouchHandler::handleTapEvent(const GestureEvent& ev, int buttonEvent) {
   GestureEvent newEv = ev;
 
   // If the user quickly taps multiple times we assume they meant to
   // hit the same spot, so slightly adjust coordinates
-  if ((core::msSince(&lastTapTime) < DOUBLE_TAP_TIMEOUT) &&
-      (firstDoubleTapEvent.type == ev.type)) {
+  if ((core::msSince(&lastTapTime) < DOUBLE_TAP_TIMEOUT) && (firstDoubleTapEvent.type == ev.type)) {
 
     double dx = firstDoubleTapEvent.eventX - ev.eventX;
     double dy = firstDoubleTapEvent.eventY - ev.eventY;
     double distance = hypot(dx, dy);
 
     if (distance < DOUBLE_TAP_THRESHOLD) {
-     newEv.eventX = firstDoubleTapEvent.eventX;
-     newEv.eventY = firstDoubleTapEvent.eventY;
+      newEv.eventX = firstDoubleTapEvent.eventX;
+      newEv.eventY = firstDoubleTapEvent.eventY;
     } else {
       firstDoubleTapEvent = ev;
     }
