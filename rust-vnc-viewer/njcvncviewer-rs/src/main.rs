@@ -56,7 +56,7 @@ pub struct AppConfig {
     /// Display settings
     pub display: DisplayConfig,
 
-    /// Input settings  
+    /// Input settings
     pub input: InputConfig,
 
     /// UI settings
@@ -85,7 +85,7 @@ pub struct DisplayConfig {
     /// Default scaling mode
     pub scale_mode: String, // "native", "fit", "fill"
 
-    /// Window dimensions  
+    /// Window dimensions
     pub window_width: u32,
     pub window_height: u32,
 

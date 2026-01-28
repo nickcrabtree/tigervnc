@@ -578,7 +578,7 @@ impl Decoder for TightDecoder {
 
         // Determine compression type (upper 4 bits)
         let comp_type = comp_ctl >> 4;
-        
+
         tracing::debug!(
             "Tight: comp_ctl={:#04x} comp_type={:#x} reset_bits={:#x}",
             comp_ctl, comp_type, comp_ctl & 0x0F

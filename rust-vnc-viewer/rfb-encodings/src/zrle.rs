@@ -194,7 +194,7 @@ impl Decoder for ZRLEDecoder {
             rect.x, rect.y, rect.width, rect.height,
             buffer_before
         );
-        
+
         // Track exact byte consumption for verification
         let _decode_start_pos = buffer_before;
 
@@ -219,7 +219,7 @@ impl Decoder for ZRLEDecoder {
         // Read compressed data length (u32 big-endian)
         // First, check what bytes we're about to read for debugging
         let available_before_len_read = stream.available();
-        
+
         let compressed_len = stream
             .read_u32()
             .await
@@ -247,7 +247,7 @@ impl Decoder for ZRLEDecoder {
                 max_reasonable_size
             );
         }
-        
+
         // Do NOT compare against stream.available() here. available() only reflects bytes
         // currently buffered, not the total bytes available on the socket. read_bytes()
         // will call ensure_bytes() internally and pull more data from the network as needed.
@@ -273,7 +273,7 @@ impl Decoder for ZRLEDecoder {
         let mut compressed_data = vec![0u8; compressed_len as usize];
         let read_result = stream.read_bytes(&mut compressed_data).await;
         tracing::debug!("ZRLE: read_bytes completed, result={}", if read_result.is_ok() { "Ok" } else { "Err" });
-        
+
         if let Err(ref err) = read_result {
             tracing::error!(
                 "ZRLE: Failed to read {} compressed bytes for rect [{},{} {}x{}]",
@@ -284,7 +284,7 @@ impl Decoder for ZRLEDecoder {
             tracing::error!("  Tried to read {} bytes", compressed_len);
             tracing::error!("  Error: {:?}", err);
         }
-        
+
         read_result.context("ZRLE: failed to read compressed data")?;
 
         tracing::debug!(
@@ -332,7 +332,7 @@ impl Decoder for ZRLEDecoder {
         let buffer_after = stream.available();
         let actual_consumed = buffer_before.saturating_sub(buffer_after);
         let expected_consumed = 4 + compressed_len as usize; // 4-byte length + data
-        
+
         tracing::debug!(
             target: "rfb_encodings::framing",
             "ZRLE decode end: bytes_consumed={}, expected={}, buffer_after={}",
@@ -340,7 +340,7 @@ impl Decoder for ZRLEDecoder {
             expected_consumed,
             buffer_after
         );
-        
+
         // NOTE: Byte consumption verification disabled for now as stream.available()
         // doesn't work correctly with test mocks. The actual byte consumption is correct
         // (we read exactly compressed_len bytes), but available() returns 0 in tests.

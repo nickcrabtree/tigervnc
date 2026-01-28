@@ -63,7 +63,7 @@ impl VncConnection {
         }
 
         let config = config_builder.build()?;
-        
+
         // Note: SharedFlag is sent during protocol init, not part of config
 
         // Connect to server

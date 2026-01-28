@@ -10,18 +10,18 @@ struct OptionsState {
     scaling_mode: String,
     show_statusbar: bool,
     show_menubar: bool,
-    
+
     // Connection settings
     auto_reconnect: bool,
     reconnect_delay_ms: u64,
     remember_password: bool,
-    
+
     // Input settings
     view_only: bool,
-    
+
     // Quality settings
     encoding_preferences: Vec<String>,
-    
+
     // Window settings
     fullscreen: bool,
 }
@@ -86,16 +86,16 @@ impl OptionsDialog {
             ],
         }
     }
-    
+
     pub fn show(&mut self, ctx: &egui::Context, show: &mut bool, current_config: &AppConfig) -> Option<AppConfig> {
         // Reset state when dialog opens
         if *show && self.state.scaling_mode != current_config.scaling_mode {
             self.state = OptionsState::from(current_config);
         }
-        
+
         let mut result = None;
         let mut should_close = false;
-        
+
         egui::Window::new("Preferences")
             .collapsible(false)
             .resizable(true)
@@ -110,7 +110,7 @@ impl OptionsDialog {
                         ui.heading("Display Settings");
                         ui.separator();
                         ui.add_space(5.0);
-                        
+
                         ui.horizontal(|ui| {
                             ui.label("Scaling mode:");
                             ui.add_space(10.0);
@@ -130,22 +130,22 @@ impl OptionsDialog {
                                     }
                                 });
                         });
-                        
+
                         ui.add_space(5.0);
-                        
+
                         ui.checkbox(&mut self.state.show_menubar, "Show menu bar");
                         ui.checkbox(&mut self.state.show_statusbar, "Show status bar");
                         ui.checkbox(&mut self.state.fullscreen, "Start in fullscreen mode");
-                        
+
                         ui.add_space(15.0);
-                        
+
                         // Connection settings section
                         ui.heading("Connection Settings");
                         ui.separator();
                         ui.add_space(5.0);
-                        
+
                         ui.checkbox(&mut self.state.auto_reconnect, "Automatically reconnect on disconnection");
-                        
+
                         if self.state.auto_reconnect {
                             ui.horizontal(|ui| {
                                 ui.label("Reconnect delay:");
@@ -156,65 +156,65 @@ impl OptionsDialog {
                                 }
                             });
                         }
-                        
+
                         ui.add_space(5.0);
                         ui.checkbox(&mut self.state.remember_password, "Remember passwords");
-                        
+
                         ui.add_space(15.0);
-                        
+
                         // Input settings section
                         ui.heading("Input Settings");
                         ui.separator();
                         ui.add_space(5.0);
-                        
+
                         ui.checkbox(&mut self.state.view_only, "View-only mode (disable input)");
-                        
+
                         ui.add_space(15.0);
-                        
+
                         // Encoding settings section
                         ui.heading("Encoding Preferences");
                         ui.separator();
                         ui.add_space(5.0);
-                        
+
                         ui.label("Drag to reorder encoding preferences (higher = preferred):");
                         ui.add_space(5.0);
-                        
+
                         // Simple encoding preference list with buttons to reorder
                         let mut encodings_copy = self.state.encoding_preferences.clone();
                         let mut swap_action: Option<(usize, usize)> = None;
-                        
+
                         for (i, encoding) in encodings_copy.iter().enumerate() {
                             ui.horizontal(|ui| {
                                 ui.label(format!("{}.", i + 1));
                                 ui.label(encoding);
-                                
+
                                 // Move up button
                                 if i > 0 && ui.small_button("▲").clicked() {
                                     swap_action = Some((i, i - 1));
                                 }
-                                
+
                                 // Move down button
                                 if i < encodings_copy.len() - 1 && ui.small_button("▼").clicked() {
                                     swap_action = Some((i, i + 1));
                                 }
                             });
                         }
-                        
+
                         let modified = if let Some((from, to)) = swap_action {
                             encodings_copy.swap(from, to);
                             true
                         } else {
                             false
                         };
-                        
+
                         if modified {
                             self.state.encoding_preferences = encodings_copy;
                         }
-                        
+
                         ui.add_space(20.0);
                         ui.separator();
                         ui.add_space(10.0);
-                        
+
                         // Action buttons
                         ui.horizontal(|ui| {
                             if ui.button("Apply").clicked() {
@@ -222,27 +222,27 @@ impl OptionsDialog {
                                 result = Some(new_config);
                                 debug!("Applied preference changes");
                             }
-                            
+
                             ui.add_space(10.0);
-                            
+
                             if ui.button("OK").clicked() {
                                 let new_config = self.create_updated_config(current_config);
                                 result = Some(new_config);
                                 should_close = true;
                                 debug!("Applied preferences and closed dialog");
                             }
-                            
+
                             ui.add_space(10.0);
-                            
+
                             if ui.button("Cancel").clicked() {
                                 // Reset state to current config
                                 self.state = OptionsState::from(current_config);
                                 should_close = true;
                                 debug!("Cancelled preference changes");
                             }
-                            
+
                             ui.add_space(20.0);
-                            
+
                             if ui.button("Reset to Defaults").clicked() {
                                 self.state = OptionsState::from(&AppConfig::default());
                                 debug!("Reset preferences to defaults");
@@ -251,14 +251,14 @@ impl OptionsDialog {
                     });
                 });
             });
-        
+
         if should_close {
             *show = false;
         }
-        
+
         result
     }
-    
+
     fn create_updated_config(&self, current_config: &AppConfig) -> AppConfig {
         AppConfig {
             scaling_mode: self.state.scaling_mode.clone(),

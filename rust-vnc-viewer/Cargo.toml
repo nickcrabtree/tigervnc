@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "rfb-common",
-    "rfb-pixelbuffer", 
+    "rfb-pixelbuffer",
     "rfb-protocol",
     "rfb-encodings",
     "rfb-client",

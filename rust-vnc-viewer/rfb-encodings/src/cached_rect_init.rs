@@ -229,7 +229,7 @@ impl Decoder for CachedRectInitDecoder {
             buffer,
         )
         .await;
-        
+
         // If decode failed, log the full error chain before propagating
         if let Err(ref e) = decode_result {
             tracing::error!(
@@ -256,7 +256,7 @@ impl Decoder for CachedRectInitDecoder {
                 }
             }
         }
-        
+
         decode_result.with_context(|| {
             format!(
                 "Failed to decode actual_encoding {} for CachedRectInit cache_id={}",

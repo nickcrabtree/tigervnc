@@ -21,7 +21,7 @@ rfb-pixelbuffer = { path = "../rfb-pixelbuffer" }
 # GUI framework
 eframe = { version = "0.27", default-features = false, features = [
     "default_fonts",
-    "glow", 
+    "glow",
     "persistence",
 ] }
 egui = "0.27"

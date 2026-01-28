@@ -121,7 +121,7 @@ impl MonitorInfo {
 pub struct VideoModeInfo {
     /// Resolution width in pixels
     pub width: u32,
-    /// Resolution height in pixels  
+    /// Resolution height in pixels
     pub height: u32,
     /// Refresh rate in Hz
     pub refresh_rate_millihertz: u32,

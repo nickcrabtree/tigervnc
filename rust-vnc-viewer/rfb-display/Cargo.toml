@@ -29,5 +29,5 @@ tracing = "0.1"
 
 [features]
 default = []
-# Optional screenshot functionality  
+# Optional screenshot functionality
 screenshots = []

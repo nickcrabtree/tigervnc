@@ -6,17 +6,17 @@ pub enum MenuAction {
     NewConnection,
     Disconnect,
     Quit,
-    
+
     // View menu
     ToggleFullscreen,
     ToggleViewOnly,
     ScalingNative,
     ScalingFit,
     ScalingFill,
-    
+
     // Options menu
     Options,
-    
+
     // Help menu
     About,
 }
@@ -38,10 +38,10 @@ impl MenuBar {
             help_menu_open: false,
         }
     }
-    
+
     pub fn show(&mut self, ctx: &egui::Context) -> Option<MenuAction> {
         let mut action = None;
-        
+
         egui::TopBottomPanel::top("menubar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 // File menu
@@ -50,54 +50,54 @@ impl MenuBar {
                         action = Some(MenuAction::NewConnection);
                         ui.close_menu();
                     }
-                    
+
                     ui.separator();
-                    
+
                     if ui.button("Disconnect").clicked() {
                         action = Some(MenuAction::Disconnect);
                         ui.close_menu();
                     }
-                    
+
                     ui.separator();
-                    
+
                     if ui.button("Quit").clicked() {
                         action = Some(MenuAction::Quit);
                         ui.close_menu();
                     }
                 });
-                
+
                 // View menu
                 ui.menu_button("View", |ui| {
                     if ui.button("Toggle Fullscreen").clicked() {
                         action = Some(MenuAction::ToggleFullscreen);
                         ui.close_menu();
                     }
-                    
+
                     if ui.button("Toggle View-Only Mode").clicked() {
                         action = Some(MenuAction::ToggleViewOnly);
                         ui.close_menu();
                     }
-                    
+
                     ui.separator();
-                    
+
                     ui.menu_button("Scaling", |ui| {
                         if ui.button("Native (1:1)").clicked() {
                             action = Some(MenuAction::ScalingNative);
                             ui.close_menu();
                         }
-                        
+
                         if ui.button("Fit to Window").clicked() {
                             action = Some(MenuAction::ScalingFit);
                             ui.close_menu();
                         }
-                        
+
                         if ui.button("Fill Window").clicked() {
                             action = Some(MenuAction::ScalingFill);
                             ui.close_menu();
                         }
                     });
                 });
-                
+
                 // Options menu
                 ui.menu_button("Options", |ui| {
                     if ui.button("Preferences...").clicked() {
@@ -105,7 +105,7 @@ impl MenuBar {
                         ui.close_menu();
                     }
                 });
-                
+
                 // Help menu
                 ui.menu_button("Help", |ui| {
                     if ui.button("About TigerVNC Viewer").clicked() {
@@ -113,7 +113,7 @@ impl MenuBar {
                         ui.close_menu();
                     }
                 });
-                
+
                 // Add some spacing to push the following items to the right
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // You could add status indicators here, like connection status
@@ -121,7 +121,7 @@ impl MenuBar {
                 });
             });
         });
-        
+
         action
     }
 }

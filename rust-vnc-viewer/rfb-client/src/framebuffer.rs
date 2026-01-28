@@ -51,7 +51,7 @@ impl DecoderRegistry {
         // If each decoder has its own inflater, subsequent rectangles will fail.
         let tight_decoder = Arc::new(enc::TightDecoder::default());
         let zrle_decoder = Arc::new(enc::ZRLEDecoder::default());
-        
+
         let mut reg = Self::default();
         // Register standard encodings with shared stateful decoders
         reg.register(DecoderEntry::Raw(enc::RawDecoder));
@@ -60,7 +60,7 @@ impl DecoderRegistry {
         reg.register(DecoderEntry::Hextile(enc::HextileDecoder));
         reg.register(DecoderEntry::TightShared(tight_decoder));
         reg.register(DecoderEntry::ZRLEShared(zrle_decoder.clone()));
-        
+
         // Register cache decoders with shared ZRLE
         reg.register(DecoderEntry::CachedRect(
             enc::CachedRectDecoder::new_with_miss_reporter(cache.clone(), misses),

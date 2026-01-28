@@ -951,7 +951,7 @@ impl VncViewerApp {
                 pixels
             } else {
                 warn!(
-                "Unexpected framebuffer pixel data length: got {}, expected {} (RGB) or {} (RGBA)", 
+                "Unexpected framebuffer pixel data length: got {}, expected {} (RGB) or {} (RGBA)",
                 pixels.len(), expected_len_rgb, expected_len_rgba
             );
                 return false;

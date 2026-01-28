@@ -11,7 +11,7 @@
 //! 1. **Disconnected** - No connection established
 //! 2. **ProtocolVersion** - Negotiating RFB protocol version
 //! 3. **Security** - Negotiating security type
-//! 4. **SecurityResult** - Waiting for authentication result  
+//! 4. **SecurityResult** - Waiting for authentication result
 //! 5. **ClientInit** - Sending client initialization
 //! 6. **ServerInit** - Receiving server initialization
 //! 7. **Normal** - Normal operation (sending/receiving messages)

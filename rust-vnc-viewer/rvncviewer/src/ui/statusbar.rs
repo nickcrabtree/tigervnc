@@ -15,7 +15,7 @@ impl StatusBar {
             show_details: false,
         }
     }
-    
+
     pub fn show(&mut self, ctx: &egui::Context, stats: &ConnectionStats) {
         egui::TopBottomPanel::bottom("statusbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -27,20 +27,20 @@ impl StatusBar {
                     ui.colored_label(egui::Color32::RED, "●");
                     ui.label("Not connected");
                 }
-                
+
                 ui.separator();
-                
+
                 if stats.connected {
                     // Framebuffer info
                     ui.label(format!("{}×{}", stats.framebuffer_size.0, stats.framebuffer_size.1));
-                    
+
                     ui.separator();
-                    
+
                     // Encoding info
                     ui.label(format!("Encoding: {}", stats.encoding));
-                    
+
                     ui.separator();
-                    
+
                     // Performance metrics
                     if self.show_details {
                         ui.label(format!("FPS: {:.1}", stats.fps));
@@ -54,26 +54,26 @@ impl StatusBar {
                         ui.label(format!("FPS: {:.1}", stats.fps));
                     }
                 }
-                
+
                 // Spacer to push the following items to the right
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Toggle details button
                     if ui.small_button(if self.show_details { "Less" } else { "More" }).clicked() {
                         self.show_details = !self.show_details;
                     }
-                    
+
                     ui.separator();
-                    
+
                     // Current time (optional)
                     let now = chrono::Local::now();
                     ui.label(now.format("%H:%M:%S").to_string());
                 });
             });
         });
-        
+
         self.last_update = Instant::now();
     }
-    
+
     /// Format bandwidth for display
     fn format_bandwidth(kbps: f32) -> String {
         if kbps < 1024.0 {
@@ -82,7 +82,7 @@ impl StatusBar {
             format!("{:.1} MB/s", kbps / 1024.0)
         }
     }
-    
+
     /// Format latency for display
     fn format_latency(ms: u32) -> String {
         if ms < 1000 {
@@ -91,7 +91,7 @@ impl StatusBar {
             format!("{:.1}s", ms as f32 / 1000.0)
         }
     }
-    
+
     /// Get connection status color
     fn get_status_color(connected: bool, latency_ms: u32) -> egui::Color32 {
         if !connected {

@@ -7,7 +7,7 @@ use tracing::info;
 
 fn init_logging(verbose: bool) -> Result<()> {
     let log_level = if verbose { "debug" } else { "info" };
-    
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -18,13 +18,13 @@ fn init_logging(verbose: bool) -> Result<()> {
         .with_file(false)
         .with_line_number(false)
         .init();
-    
+
     Ok(())
 }
 
 fn create_app(args: Args) -> Result<VncViewerApp> {
     info!("Creating VNC viewer application");
-    
+
     // Initialize configuration directory
     let config_dir = match &args.config {
         Some(path) => path.parent().map(|p| p.to_path_buf()),
@@ -36,29 +36,29 @@ fn create_app(args: Args) -> Result<VncViewerApp> {
                 })
         }
     };
-    
+
     if let Some(dir) = &config_dir {
         if !dir.exists() {
             std::fs::create_dir_all(dir)?;
             info!("Created config directory: {}", dir.display());
         }
     }
-    
+
     VncViewerApp::new(args)
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    
+
     // Initialize logging first
     init_logging(args.verbose)?;
-    
+
     info!("Starting rvncviewer {}", env!("CARGO_PKG_VERSION"));
-    
+
     // Create the application
     let app = create_app(args)?;
-    
+
     // Set up eframe options
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
         window_builder: None,
         ..Default::default()
     };
-    
+
     // Run the application
     info!("Launching GUI");
     eframe::run_native(
@@ -99,12 +99,12 @@ fn load_icon() -> Result<egui::IconData> {
         .unwrap_or_else(|| std::path::Path::new("."))
         .join("assets")
         .join("icon.png");
-    
+
     if icon_path.exists() {
         let image = image::open(&icon_path)?;
         let rgba = image.to_rgba8();
         let (width, height) = rgba.dimensions();
-        
+
         Ok(egui::IconData {
             rgba: rgba.into_raw(),
             width: width as u32,
@@ -120,11 +120,11 @@ fn create_fallback_icon() -> Result<egui::IconData> {
     // Create a simple 32x32 icon with a basic VNC-like design
     const SIZE: u32 = 32;
     let mut rgba = vec![0u8; (SIZE * SIZE * 4) as usize];
-    
+
     for y in 0..SIZE {
         for x in 0..SIZE {
             let idx = ((y * SIZE + x) * 4) as usize;
-            
+
             // Simple design: blue background with white "VNC" text area
             if x >= 4 && x <= 28 && y >= 12 && y <= 20 {
                 // White text area
@@ -141,7 +141,7 @@ fn create_fallback_icon() -> Result<egui::IconData> {
             }
         }
     }
-    
+
     Ok(egui::IconData {
         rgba,
         width: SIZE,

@@ -13,7 +13,7 @@ use tracing::{debug, trace};
 pub struct ViewportConfig {
     /// Minimum zoom level (1.0 = native size)
     pub min_zoom: f64,
-    /// Maximum zoom level  
+    /// Maximum zoom level
     pub max_zoom: f64,
     /// Zoom increment/decrement step
     pub zoom_step: f64,

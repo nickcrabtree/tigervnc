@@ -70,32 +70,32 @@ impl Default for AppConfig {
 pub struct VncViewerApp {
     /// Command line arguments
     args: Args,
-    
+
     /// Application configuration
     config: AppConfig,
-    
+
     /// Current application state
     state: AppState,
-    
+
     /// Configuration file path
     config_path: Option<PathBuf>,
-    
+
     /// UI Components
     connection_dialog: ConnectionDialog,
     desktop_window: DesktopWindow,
     options_dialog: OptionsDialog,
     menubar: MenuBar,
     statusbar: StatusBar,
-    
+
     /// UI State
     show_connection_dialog: bool,
     show_options_dialog: bool,
     show_about_dialog: bool,
-    
+
     /// Connection state
     current_server: Option<String>,
     connection_stats: ConnectionStats,
-    
+
     /// Fullscreen state tracking
     fullscreen_pending: bool,
 
@@ -103,10 +103,10 @@ pub struct VncViewerApp {
     fullscreen: FullscreenController,
     monitors: Vec<MonitorInfo>,
     target_monitor_selector: Option<String>,
-    
+
     /// VNC connection manager
     vnc_connection: VncConnection,
-    
+
     /// Tokio runtime for async operations
     runtime: tokio::runtime::Runtime,
 }
@@ -127,7 +127,7 @@ pub struct ConnectionStats {
 impl VncViewerApp {
     pub fn new(args: Args) -> Result<Self> {
         info!("Initializing VNC viewer application");
-        
+
         // Load configuration
         let config_path = args.config.clone().or_else(|| {
             directories::UserDirs::new()
@@ -136,7 +136,7 @@ impl VncViewerApp {
                     Some(home_dir.join(".config/rvncviewer/config.toml"))
                 })
         });
-        
+
         let config = if let Some(ref path) = config_path {
             Self::load_config(path).unwrap_or_else(|e| {
                 warn!("Failed to load config from {}: {}", path.display(), e);
@@ -145,7 +145,7 @@ impl VncViewerApp {
         } else {
             AppConfig::default()
         };
-        
+
         // Override config with command line args
         let mut config = config;
         if let Some(scaling) = &args.scaling {
@@ -156,7 +156,7 @@ impl VncViewerApp {
         }
         config.fullscreen = args.fullscreen || config.fullscreen;
         config.view_only = args.view_only || config.view_only;
-        
+
         // Initialize UI components
         let connection_dialog = ConnectionDialog::new(&config);
         let desktop_window = DesktopWindow::new();
@@ -172,18 +172,18 @@ impl VncViewerApp {
         let target_monitor_selector = args.monitor.clone();
         fullscreen.set_target(&monitors, target_monitor_selector.as_deref());
         fullscreen.set_enabled(config.fullscreen);
-        
+
         // Determine initial state
         let (state, show_connection_dialog, current_server) = if let Some(server) = args.server.clone() {
             (AppState::Connecting, false, Some(server))
         } else {
             (AppState::Connecting, true, None)
         };
-        
+
         // Create tokio runtime for async operations
         let runtime = tokio::runtime::Runtime::new()
             .expect("Failed to create tokio runtime");
-        
+
         Ok(Self {
             args,
             config,
@@ -207,14 +207,14 @@ impl VncViewerApp {
             runtime,
         })
     }
-    
+
     fn load_config(path: &PathBuf) -> Result<AppConfig> {
         let content = std::fs::read_to_string(path)?;
         let config = toml::from_str(&content)?;
         info!("Loaded configuration from {}", path.display());
         Ok(config)
     }
-    
+
     fn save_config(&self) -> Result<()> {
         if let Some(ref path) = self.config_path {
             let content = toml::to_string_pretty(&self.config)?;
@@ -223,12 +223,12 @@ impl VncViewerApp {
         }
         Ok(())
     }
-    
+
     fn handle_menu_action(&mut self, action: crate::ui::menubar::MenuAction) {
         use crate::ui::menubar::MenuAction;
-        
+
         debug!("Handling menu action: {:?}", action);
-        
+
         match action {
             MenuAction::NewConnection => {
                 self.show_connection_dialog = true;
@@ -266,7 +266,7 @@ impl VncViewerApp {
             }
         }
     }
-    
+
     fn disconnect(&mut self, reason: String) {
         info!("Disconnecting: {}", reason);
         self.state = AppState::Disconnected { reason };
@@ -274,11 +274,11 @@ impl VncViewerApp {
         self.connection_stats = ConnectionStats::default();
         self.show_connection_dialog = true;
     }
-    
+
     /// Poll VNC events and update state
     fn poll_vnc_events(&mut self, ctx: &egui::Context) {
         use rfb_client::ServerEvent;
-        
+
         while let Some(event) = self.vnc_connection.poll_event() {
             match event {
                 ServerEvent::FramebufferUpdated { damage: _ } => {
@@ -288,7 +288,7 @@ impl VncViewerApp {
                             self.desktop_window.update_framebuffer(ctx, width, height, &pixels);
                         }
                     }
-                    
+
                     // Request repaint for next frame
                     ctx.request_repaint();
                 }
@@ -324,7 +324,7 @@ impl VncViewerApp {
         debug!("Fullscreen toggle requested: {}", self.config.fullscreen);
         // Fullscreen state will be applied in the update method
     }
-    
+
     fn apply_fullscreen_state(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         debug!("Applying fullscreen state: {}", self.config.fullscreen);
         self.fullscreen.set_enabled(self.config.fullscreen);
@@ -364,23 +364,23 @@ impl App for VncViewerApp {
                 }
             }
         }
-        
+
         // Apply pending fullscreen state change
         if self.fullscreen_pending {
             self.apply_fullscreen_state(ctx, frame);
             self.fullscreen_pending = false;
         }
-        
+
         // Poll VNC events
         self.poll_vnc_events(ctx);
-        
+
         // Handle menu bar
         if self.config.show_menubar {
             if let Some(action) = self.menubar.show(ctx) {
                 self.handle_menu_action(action);
             }
         }
-        
+
         // Show connection dialog if needed
         if self.show_connection_dialog {
             if let Some(result) = self.connection_dialog.show(ctx, &mut self.show_connection_dialog) {
@@ -390,18 +390,18 @@ impl App for VncViewerApp {
                         self.current_server = Some(connection_info.server.clone());
                         self.state = AppState::Connecting;
                         self.show_connection_dialog = false;
-                        
+
                         // Add to recent servers
                         if !self.config.recent_servers.contains(&connection_info.server) {
                             self.config.recent_servers.insert(0, connection_info.server.clone());
                             self.config.recent_servers.truncate(10); // Keep last 10
                         }
-                        
+
                         // Initiate actual VNC connection
                         let server = connection_info.server.clone();
                         let password = connection_info.password.clone();
                         let shared = connection_info.shared;
-                        
+
                         match self.runtime.block_on(async {
                             self.vnc_connection.connect(&server, None, password, shared).await
                         }) {
@@ -427,7 +427,7 @@ impl App for VncViewerApp {
                 }
             }
         }
-        
+
         // Show options dialog if needed
         if self.show_options_dialog {
             if let Some(new_config) = self.options_dialog.show(ctx, &mut self.show_options_dialog, &self.config) {
@@ -437,12 +437,12 @@ impl App for VncViewerApp {
                 }
             }
         }
-        
+
         // Show about dialog if needed
         if self.show_about_dialog {
             self.show_about_dialog(ctx);
         }
-        
+
         // Main content area
         egui::CentralPanel::default().show(ctx, |ui| {
             match &self.state {
@@ -464,7 +464,7 @@ impl App for VncViewerApp {
                         ui.label(format!("Disconnected: {}", reason_text));
                         ui.button("Reconnect").clicked()
                     }).inner;
-                    
+
                     if reconnect_clicked {
                         self.show_connection_dialog = true;
                         self.state = AppState::Connecting;
@@ -472,23 +472,23 @@ impl App for VncViewerApp {
                 }
             }
         });
-        
+
         // Show status bar
         if self.config.show_statusbar {
             self.statusbar.show(ctx, &self.connection_stats);
         }
-        
+
         // Request repaint for animations
         ctx.request_repaint();
     }
-    
+
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         // Save persistent state
         if let Ok(config_str) = toml::to_string(&self.config) {
             storage.set_string("config", config_str);
         }
     }
-    
+
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         info!("Application shutting down");
         if let Err(e) = self.save_config() {
@@ -507,15 +507,15 @@ impl VncViewerApp {
                 ui.vertical_centered(|ui| {
                     ui.heading("TigerVNC Viewer (Rust)");
                     ui.add_space(10.0);
-                    
+
                     ui.label(format!("Version: {}", env!("CARGO_PKG_VERSION")));
                     ui.label("Built with Rust and egui");
                     ui.add_space(10.0);
-                    
+
                     ui.label("A modern, cross-platform VNC viewer implementation");
                     ui.label("Part of the TigerVNC project");
                     ui.add_space(10.0);
-                    
+
                     ui.horizontal(|ui| {
                         if ui.button("Close").clicked() {
                             self.show_about_dialog = false;
