@@ -17,9 +17,9 @@ LicenseFile=@CMAKE_SOURCE_DIR@\LICENCE.TXT
 Name: "{sys}\config\systemprofile\Desktop"
 
 [Files]
-Source: "@CMAKE_BINARY_DIR@\win\winvnc\winvnc4.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace; 
-Source: "@CMAKE_BINARY_DIR@\win\wm_hooks\wm_hooks.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace; 
-Source: "@CMAKE_BINARY_DIR@\win\vncconfig\vncconfig.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace; 
+Source: "@CMAKE_BINARY_DIR@\win\winvnc\winvnc4.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace;
+Source: "@CMAKE_BINARY_DIR@\win\wm_hooks\wm_hooks.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace;
+Source: "@CMAKE_BINARY_DIR@\win\vncconfig\vncconfig.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace;
 Source: "@CMAKE_SOURCE_DIR@\README.rst"; DestDir: "{app}"; Flags: ignoreversion
 Source: "@CMAKE_SOURCE_DIR@\LICENCE.TXT"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -38,7 +38,7 @@ Name: "{group}\Read me"; FileName: "write.exe"; Parameters: "README.rst"; Workin
 Name: "{group}\Uninstall TigerVNC server"; FileName: "{uninstallexe}"; WorkingDir: "{app}";
 
 [Tasks]
-Name: installservice; Description: "&Register new TigerVNC server as a system service"; GroupDescription: "Server configuration:"; 
+Name: installservice; Description: "&Register new TigerVNC server as a system service"; GroupDescription: "Server configuration:";
 Name: startservice; Description: "&Start or restart TigerVNC service"; GroupDescription: "Server configuration:";
 
 [Run]
@@ -151,4 +151,4 @@ begin
       'SoftwareSASGeneration', Flags or 1
     );
   end;
-end;  
+end;

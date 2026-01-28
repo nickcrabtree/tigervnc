@@ -218,11 +218,7 @@ def refresh_depmap(force: bool = False) -> None:
         return
 
     if not XSERVER_BUILD_DIR.exists():
-        raise SystemExit(
-            f"X server build dir does not exist: {XSERVER_BUILD_DIR}.\n"
-            "Make sure you have set up unix/xserver under build/unix/xserver "
-            "per BUILDING.txt."
-        )
+        raise SystemExit(f"X server build dir does not exist: {XSERVER_BUILD_DIR}.\n" "Make sure you have set up unix/xserver under build/unix/xserver " "per BUILDING.txt.")
 
     # Ensure we have the core archives the xserver link depends on. This is a
     # no-op when they are already present and up to date.
@@ -270,10 +266,7 @@ def refresh_depmap(force: bool = False) -> None:
 def load_depmap() -> Dict[str, List[str]]:
     if not DEPMAP_PATH.exists():
         raise SystemExit(
-            f"Dependency map not found: {DEPMAP_PATH}.\n"
-            "Run `make server` (which will refresh the depmap) or invoke\n"
-            "  python3 tools/xserver_depmap.py refresh\n"
-            "explicitly first."
+            f"Dependency map not found: {DEPMAP_PATH}.\n" "Run `make server` (which will refresh the depmap) or invoke\n" "  python3 tools/xserver_depmap.py refresh\n" "explicitly first."
         )
     with open(DEPMAP_PATH, "r", encoding="utf-8") as f:
         return json.load(f)

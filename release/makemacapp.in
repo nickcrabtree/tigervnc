@@ -54,7 +54,7 @@ install -m 644 $SRCDIR/README.rst $TMPDIR/dmg/
 
 hdiutil create -fs HFS+ -volname $PACKAGE_NAME-$VERSION \
 	-srcfolder "$TMPDIR/dmg" \
-	$TMPDIR/$PACKAGE_NAME-$VERSION.dmg 
-cp $TMPDIR/$PACKAGE_NAME-$VERSION.dmg . 
+	$TMPDIR/$PACKAGE_NAME-$VERSION.dmg
+cp $TMPDIR/$PACKAGE_NAME-$VERSION.dmg .
 
 exit
