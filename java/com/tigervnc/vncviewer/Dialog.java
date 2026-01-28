@@ -110,8 +110,8 @@ class Dialog extends JDialog implements ActionListener,
   public int getButtonLabelInset(AbstractButton b) {
     // Aligning components vertically to the label of
     // a JCheckbox is absurdly difficult.  JCheckBox's
-    // getIcon() method generally returns null, so we 
-    // have to resort to querying the UIManager in 
+    // getIcon() method generally returns null, so we
+    // have to resort to querying the UIManager in
     // order to determine the width of the checkbox.
     // The default values are based on Nimbus.
     int width = 18;
@@ -188,7 +188,7 @@ class Dialog extends JDialog implements ActionListener,
 
     @Override
     public void setPrototypeDisplayValue(Object prototypeDisplayValue) {
-      // Even with setPrototypeDisplayValue set JComboxBox resizes 
+      // Even with setPrototypeDisplayValue set JComboxBox resizes
       // itself when setEditable(true) is called.
       super.setPrototypeDisplayValue(prototypeDisplayValue);
       boolean e = isEditable();

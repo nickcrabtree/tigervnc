@@ -32,7 +32,7 @@ abstract public class CConnection extends CMsgHandler {
 
   static LogWriter vlog = new LogWriter("CConnection");
 
-  private static final String osName = 
+  private static final String osName =
     System.getProperty("os.name").toLowerCase(Locale.ENGLISH);
 
   public CConnection()
@@ -409,7 +409,7 @@ abstract public class CConnection extends CMsgHandler {
                          PixelFormat pf, String name)
   {
     super.serverInit(width, height, pf, name);
-    
+
     state_ = stateEnum.RFBSTATE_NORMAL;
     vlog.debug("Initialisation done");
 
@@ -522,32 +522,32 @@ abstract public class CConnection extends CMsgHandler {
   {
     if (preferredEncoding == encoding)
       return;
-  
+
     preferredEncoding = encoding;
     encodingChange = true;
   }
-  
+
   public int getPreferredEncoding()
   {
     return preferredEncoding;
   }
-  
+
   // setCompressLevel()/setQualityLevel() controls the encoding hints
   // sent to the server
   public void setCompressLevel(int level)
   {
     if (compressLevel == level)
       return;
-  
+
     compressLevel = level;
     encodingChange = true;
   }
-  
+
   public void setQualityLevel(int level)
   {
     if (qualityLevel == level)
       return;
-  
+
     qualityLevel = level;
     encodingChange = true;
   }

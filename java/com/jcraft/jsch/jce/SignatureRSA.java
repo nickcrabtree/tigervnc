@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -41,23 +41,23 @@ public class SignatureRSA implements com.jcraft.jsch.SignatureRSA{
   public void init() throws Exception{
     signature=java.security.Signature.getInstance("SHA1withRSA");
     keyFactory=KeyFactory.getInstance("RSA");
-  }     
+  }
   public void setPubKey(byte[] e, byte[] n) throws Exception{
-    RSAPublicKeySpec rsaPubKeySpec = 
+    RSAPublicKeySpec rsaPubKeySpec =
 	new RSAPublicKeySpec(new BigInteger(n),
 			     new BigInteger(e));
     PublicKey pubKey=keyFactory.generatePublic(rsaPubKeySpec);
     signature.initVerify(pubKey);
   }
   public void setPrvKey(byte[] d, byte[] n) throws Exception{
-    RSAPrivateKeySpec rsaPrivKeySpec = 
+    RSAPrivateKeySpec rsaPrivKeySpec =
 	new RSAPrivateKeySpec(new BigInteger(n),
 			      new BigInteger(d));
     PrivateKey prvKey = keyFactory.generatePrivate(rsaPrivKeySpec);
     signature.initSign(prvKey);
   }
   public byte[] sign() throws Exception{
-    byte[] sig=signature.sign();      
+    byte[] sig=signature.sign();
     return sig;
   }
   public void update(byte[] foo) throws Exception{
@@ -74,7 +74,7 @@ public class SignatureRSA implements com.jcraft.jsch.SignatureRSA{
     i+=j;
     j=((sig[i++]<<24)&0xff000000)|((sig[i++]<<16)&0x00ff0000)|
 	((sig[i++]<<8)&0x0000ff00)|((sig[i++])&0x000000ff);
-    tmp=new byte[j]; 
+    tmp=new byte[j];
     System.arraycopy(sig, i, tmp, 0, j); sig=tmp;
     }
 //System.err.println("j="+j+" "+Integer.toHexString(sig[0]&0xff));

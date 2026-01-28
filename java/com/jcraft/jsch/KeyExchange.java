@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -67,7 +67,7 @@ public abstract class KeyExchange{
   protected byte[] H=null;
   protected byte[] K_S=null;
 
-  public abstract void init(Session session, 
+  public abstract void init(Session session,
 			    byte[] V_S, byte[] V_C, byte[] I_S, byte[] I_C) throws Exception;
   public abstract boolean next(Buffer buf) throws Exception;
 
@@ -115,13 +115,13 @@ public abstract class KeyExchange{
 
       loop:
       while(j<cp.length){
-	while(j<cp.length && cp[j]!=',')j++; 
+	while(j<cp.length && cp[j]!=',')j++;
 	if(k==j) return null;
 	String algorithm=Util.byte2str(cp, k, j-k);
 	int l=0;
 	int m=0;
 	while(l<sp.length){
-	  while(l<sp.length && sp[l]!=',')l++; 
+	  while(l<sp.length && sp[l]!=',')l++;
 	  if(m==l) return null;
 	  if(algorithm.equals(Util.byte2str(sp, m, l-m))){
 	    guess[i]=algorithm;
@@ -129,7 +129,7 @@ public abstract class KeyExchange{
 	  }
 	  l++;
 	  m=l;
-	}	
+	}
 	j++;
 	k=j;
       }
@@ -142,12 +142,12 @@ public abstract class KeyExchange{
     }
 
     if(JSch.getLogger().isEnabled(Logger.INFO)){
-      JSch.getLogger().log(Logger.INFO, 
+      JSch.getLogger().log(Logger.INFO,
                            "kex: server->client"+
                            " "+guess[PROPOSAL_ENC_ALGS_STOC]+
                            " "+guess[PROPOSAL_MAC_ALGS_STOC]+
                            " "+guess[PROPOSAL_COMP_ALGS_STOC]);
-      JSch.getLogger().log(Logger.INFO, 
+      JSch.getLogger().log(Logger.INFO,
                            "kex: client->server"+
                            " "+guess[PROPOSAL_ENC_ALGS_CTOS]+
                            " "+guess[PROPOSAL_MAC_ALGS_CTOS]+
@@ -202,7 +202,7 @@ public abstract class KeyExchange{
 
       type=RSA;
       key_alg_name=alg;
-      
+
       j=((K_S[i++]<<24)&0xff000000)|((K_S[i++]<<16)&0x00ff0000)|
         ((K_S[i++]<<8)&0x0000ff00)|((K_S[i++])&0x000000ff);
       tmp=new byte[j]; System.arraycopy(K_S, i, tmp, 0, j); i+=j;
@@ -211,7 +211,7 @@ public abstract class KeyExchange{
         ((K_S[i++]<<8)&0x0000ff00)|((K_S[i++])&0x000000ff);
       tmp=new byte[j]; System.arraycopy(K_S, i, tmp, 0, j); i+=j;
       n=tmp;
-	
+
       SignatureRSA sig=null;
       try{
         Class c=Class.forName(session.getConfig("signature.rsa"));
@@ -221,12 +221,12 @@ public abstract class KeyExchange{
       catch(Exception e){
         System.err.println(e);
       }
-      sig.setPubKey(ee, n);   
+      sig.setPubKey(ee, n);
       sig.update(H);
       result=sig.verify(sig_of_H);
 
       if(JSch.getLogger().isEnabled(Logger.INFO)){
-        JSch.getLogger().log(Logger.INFO, 
+        JSch.getLogger().log(Logger.INFO,
                              "ssh_rsa_verify: signature "+result);
       }
     }
@@ -236,7 +236,7 @@ public abstract class KeyExchange{
       byte[] p;
       byte[] g;
       byte[] f;
-      
+
       type=DSS;
       key_alg_name=alg;
 
@@ -266,12 +266,12 @@ public abstract class KeyExchange{
       catch(Exception e){
         System.err.println(e);
       }
-      sig.setPubKey(f, p, q, g);   
+      sig.setPubKey(f, p, q, g);
       sig.update(H);
       result=sig.verify(sig_of_H);
 
       if(JSch.getLogger().isEnabled(Logger.INFO)){
-        JSch.getLogger().log(Logger.INFO, 
+        JSch.getLogger().log(Logger.INFO,
                              "ssh_dss_verify: signature "+result);
       }
     }
@@ -282,7 +282,7 @@ public abstract class KeyExchange{
       byte[] r;
       byte[] s;
 
-      // RFC 5656, 
+      // RFC 5656,
       type=ECDSA;
       key_alg_name=alg;
 
@@ -317,7 +317,7 @@ public abstract class KeyExchange{
     }
     else{
       System.err.println("unknown alg");
-    }	    
+    }
 
     return result;
   }

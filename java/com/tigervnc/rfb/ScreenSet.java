@@ -88,4 +88,3 @@ public class ScreenSet {
   static LogWriter vlog = new LogWriter("ScreenSet");
 
 }
-

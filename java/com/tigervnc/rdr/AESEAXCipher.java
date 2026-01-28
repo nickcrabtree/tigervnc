@@ -32,7 +32,7 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 
 public class AESEAXCipher {
-    
+
   private static final byte[] zeroBlock = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
   private static final byte[] prefixBlock0 = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
   private static final byte[] prefixBlock1 = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
@@ -89,7 +89,7 @@ public class AESEAXCipher {
     byte[] cbcData = new byte[(m + 1) * 16];
     System.arraycopy(prefix, 0, cbcData, 0, 16);
     System.arraycopy(input, offset, cbcData, 16, length);
-    
+
     if (r == 0) {
       for (int i = 0; i < 16; i++) {
         cbcData[n * 16 + i] ^= subKey1[i] & 0xff;
@@ -137,7 +137,7 @@ public class AESEAXCipher {
     for (int i = 0; i < 16; i++) {
       byte x = (byte)((m[i] & 0xff) ^ (nCMAC[i] & 0xff) ^ (adCMAC[i] & 0xff));
       if (x != mac[macOffset + i])
-        throw new Exception("AESEAXCipher: failed to authenticate message"); 
+        throw new Exception("AESEAXCipher: failed to authenticate message");
     }
     encryptCTR(input, inputOffset, inputLength, output, outputOffset, nCMAC);
   }

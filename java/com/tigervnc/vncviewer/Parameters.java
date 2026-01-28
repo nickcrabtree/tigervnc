@@ -348,7 +348,7 @@ public class Parameters {
     File f = new File(filepath);
     if (f.exists() && !f.canWrite())
 	    throw new Exception(String.format("Failed to write configuration file,"+
-                                        "can't open %s", filepath)); 
+                                        "can't open %s", filepath));
 
     PrintWriter pw = null;
     try {
@@ -404,7 +404,7 @@ public class Parameters {
       if (filename == null || filename.isEmpty())
         return null;
       throw new Exception(String.format("Failed to read configuration file, can't open %s",
-                          filepath)); 
+                          filepath));
     }
 
     String line = "";
@@ -449,7 +449,7 @@ public class Parameters {
         continue;
       }
       String value = line.substring(idx+1).trim();
-      boolean invalidParameterName = true; // Will be set to false below if 
+      boolean invalidParameterName = true; // Will be set to false below if
                                            // the line contains a valid name.
 
       if (line.substring(0,idx).trim().equalsIgnoreCase("ServerName")) {

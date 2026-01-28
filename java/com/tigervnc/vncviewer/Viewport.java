@@ -137,7 +137,7 @@ class Viewport extends JPanel implements ActionListener {
     if (!r.is_empty()) {
       if (cc.server.width() != scaledWidth ||
           cc.server.height() != scaledHeight) {
-        AffineTransform t = new AffineTransform(); 
+        AffineTransform t = new AffineTransform();
         t.scale((double)scaleRatioX, (double)scaleRatioY);
         Rectangle s = new Rectangle(r.tl.x, r.tl.y, r.width(), r.height());
         s = t.createTransformedShape(s).getBounds();
@@ -522,7 +522,7 @@ class Viewport extends JPanel implements ActionListener {
 
       if (ev.getID() == KeyEvent.KEY_PRESSED) {
         // Generate a fake keycode just for tracking if we can't figure
-        // out the proper one.  Java virtual key codes aren't unique 
+        // out the proper one.  Java virtual key codes aren't unique
         // between left/right versions of keys, so we can't use them as
         // indexes to the downKeySym map.
         long keyCode = KeyMap.get_keycode_fallback_extended(ev) | ((long)ev.getKeyLocation()<<32);

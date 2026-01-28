@@ -197,7 +197,7 @@ public class KeyMap {
       else if (keyCode >= 0 && keyCode <= 127)
         if (ucs == CHAR_UNDEFINED || ev.isAltDown())
           ucs = vk_to_ascii(keyCode, ev.isShiftDown());
-        else if (VncViewer.os.startsWith("mac os x") && ev.isMetaDown()) 
+        else if (VncViewer.os.startsWith("mac os x") && ev.isMetaDown())
         // Alt on OS X behaves more like AltGr on other systems, and to get
         // sane behaviour we should translate things in that manner for the
         // remote VNC server. However that means we lose the ability to use

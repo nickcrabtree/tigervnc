@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -61,7 +61,7 @@ class ChannelX11 extends Channel{
     return 0;
   }
   static void setCookie(String foo){
-    cookie_hex=Util.str2byte(foo); 
+    cookie_hex=Util.str2byte(foo);
     cookie=new byte[16];
     for(int i=0; i<16; i++){
 	cookie[i]=(byte)(((revtable(cookie_hex[i*2])<<4)&0xf0) |
@@ -117,7 +117,7 @@ System.err.println("");
 
     connected=true;
     /*
-    try{ 
+    try{
       socket=Util.createSocket(host, port, TIMEOUT);
       socket.setTcpNoDelay(true);
       io=new IO();
@@ -132,7 +132,7 @@ System.err.println("");
 
   public void run(){
 
-    try{ 
+    try{
       socket=Util.createSocket(host, port, TIMEOUT);
       socket.setTcpNoDelay(true);
       io=new IO();
@@ -155,8 +155,8 @@ System.err.println("");
       while(thread!=null &&
             io!=null &&
             io.in!=null){
-        i=io.in.read(buf.buffer, 
-		     14, 
+        i=io.in.read(buf.buffer,
+		     14,
 		     buf.buffer.length-14-Session.buffer_margin);
 	if(i<=0){
 	  eof();
@@ -201,7 +201,7 @@ System.err.println("");
       }
 
       foo=addCache(foo, s, l);
-      s=0; 
+      s=0;
       l=foo.length;
 
       if(l<9)

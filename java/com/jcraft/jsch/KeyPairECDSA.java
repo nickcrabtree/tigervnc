@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -67,7 +67,7 @@ public class KeyPairECDSA extends KeyPair{
     this.s_array = s_array;
     this.prv_array = prv_array;
     if(prv_array!=null)
-      key_size = prv_array.length>=64 ? 521 : 
+      key_size = prv_array.length>=64 ? 521 :
                   (prv_array.length>=48 ? 384 : 256);
   }
 
@@ -91,7 +91,7 @@ public class KeyPairECDSA extends KeyPair{
     }
   }
 
-  private static final byte[] begin = 
+  private static final byte[] begin =
     Util.str2byte("-----BEGIN EC PRIVATE KEY-----");
   private static final byte[] end =
     Util.str2byte("-----END EC PRIVATE KEY-----");
@@ -113,7 +113,7 @@ public class KeyPairECDSA extends KeyPair{
     int bar = ((point.length+1)&0x80)==0 ? 3 : 4;
     byte[] foo = new byte[point.length+bar];
     System.arraycopy(point, 0, foo, bar, point.length);
-    foo[0]=0x03;                     // BITSTRING 
+    foo[0]=0x03;                     // BITSTRING
     if(bar==3){
       foo[1]=(byte)(point.length+1);
     }
@@ -243,7 +243,7 @@ public class KeyPairECDSA extends KeyPair{
       s_array = tmp[1];
 
       if(prv_array!=null)
-        key_size = prv_array.length>=64 ? 521 : 
+        key_size = prv_array.length>=64 ? 521 :
                     (prv_array.length>=48 ? 384 : 256);
     }
     catch(Exception e){
@@ -283,7 +283,7 @@ public class KeyPairECDSA extends KeyPair{
   }
 
   @SuppressWarnings({"static"}) public byte[] getSignature(byte[] data){
-    try{      
+    try{
       Class c=Class.forName((String)jsch.getConfig("signature.ecdsa"));
       SignatureECDSA ecdsa=(SignatureECDSA)(c.newInstance());
       ecdsa.init();
@@ -304,7 +304,7 @@ public class KeyPairECDSA extends KeyPair{
   }
 
   @SuppressWarnings({"static"}) public Signature getVerifier(){
-    try{      
+    try{
       Class c=Class.forName((String)jsch.getConfig("signature.ecdsa"));
       final SignatureECDSA ecdsa=(SignatureECDSA)(c.newInstance());
       ecdsa.init();
@@ -316,7 +316,7 @@ public class KeyPairECDSA extends KeyPair{
         byte[][] tmp = fromPoint(buf.getString());
         r_array = tmp[0];
         s_array = tmp[1];
-      } 
+      }
       ecdsa.setPubKey(r_array, s_array);
       return ecdsa;
     }

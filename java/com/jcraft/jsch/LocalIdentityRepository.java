@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -68,11 +68,11 @@ class LocalIdentityRepository implements IdentityRepository {
       for(int i = 0; i<identities.size(); i++){
         byte[] blob2 = ((Identity)identities.elementAt(i)).getPublicKeyBlob();
         if(blob2 != null && Util.array_equals(blob1, blob2)){
-          if(!identity.isEncrypted() && 
+          if(!identity.isEncrypted() &&
              ((Identity)identities.elementAt(i)).isEncrypted()){
             remove(blob2);
           }
-          else {  
+          else {
             return;
           }
         }
@@ -123,7 +123,7 @@ class LocalIdentityRepository implements IdentityRepository {
       identity.clear();
     }
     identities.removeAllElements();
-  } 
+  }
 
   private void removeDupulicates(){
     Vector v = new Vector();

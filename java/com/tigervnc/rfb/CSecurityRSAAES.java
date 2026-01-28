@@ -305,7 +305,7 @@ public class CSecurityRSAAES extends CSecurity {
     StringBuffer password = new StringBuffer();
     CSecurity.upg.getUserPasswd(secType == Security.secTypeRA256,
                                 subtype == Security.secTypeRA2UserPass ?
-                                  username : null, 
+                                  username : null,
                                 password);
     if (username.length() > 255)
       throw new AuthFailureException("username is too long");

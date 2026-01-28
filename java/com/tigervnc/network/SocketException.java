@@ -25,4 +25,3 @@ public class SocketException extends SystemException {
     super(s);
   }
 }
-

@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -55,7 +55,7 @@ class KnownHosts implements HostKeyRepository{
     }
     catch(FileNotFoundException e){
       throw new JSchException(e.toString(), (Throwable)e);
-    } 
+    }
   }
   void setKnownHosts(InputStream input) throws JSchException{
     pool.removeAllElements();
@@ -100,9 +100,9 @@ loop:
 	  }
 	  break;
 	}
-	if(j>=bufl){ 
+	if(j>=bufl){
 	  addInvalidLine(Util.byte2str(buf, 0, bufl));
-	  continue loop; 
+	  continue loop;
 	}
 
         sb.setLength(0);
@@ -114,7 +114,7 @@ loop:
 	host=sb.toString();
 	if(j>=bufl || host.length()==0){
 	  addInvalidLine(Util.byte2str(buf, 0, bufl));
-	  continue loop; 
+	  continue loop;
 	}
 
         while(j<bufl){
@@ -136,7 +136,7 @@ loop:
           host=sb.toString();
           if(j>=bufl || host.length()==0){
             addInvalidLine(Util.byte2str(buf, 0, bufl));
-            continue loop; 
+            continue loop;
           }
 
           while(j<bufl){
@@ -160,7 +160,7 @@ loop:
 	else { j=bufl; }
 	if(j>=bufl){
 	  addInvalidLine(Util.byte2str(buf, 0, bufl));
-	  continue loop; 
+	  continue loop;
 	}
 
         while(j<bufl){
@@ -180,7 +180,7 @@ loop:
 	key=sb.toString();
 	if(key.length()==0){
 	  addInvalidLine(Util.byte2str(buf, 0, bufl));
-	  continue loop; 
+	  continue loop;
 	}
 
         while(j<bufl){
@@ -215,8 +215,8 @@ loop:
 	//System.err.println("|"+key+"|");
 
 	HostKey hk = null;
-        hk = new HashedHostKey(marker, host, type, 
-                               Util.fromBase64(Util.str2byte(key), 0, 
+        hk = new HashedHostKey(marker, host, type,
+                               Util.fromBase64(Util.str2byte(key), 0,
                                                key.length()), comment);
 	pool.addElement(hk);
       }
@@ -226,7 +226,7 @@ loop:
     }
     catch(Exception e){
       if(e instanceof JSchException)
-	throw (JSchException)e;         
+	throw (JSchException)e;
       if(e instanceof Throwable)
         throw new JSchException(e.toString(), (Throwable)e);
       throw new JSchException(e.toString());
@@ -341,8 +341,8 @@ loop:
         }
       }
       if(foo){
-        try{ 
-          sync(bar); 
+        try{
+          sync(bar);
         }
         catch(Exception e){ System.err.println("sync known_hosts: "+e); }
       }
@@ -358,8 +358,8 @@ loop:
       for(int i=0; i<pool.size(); i++){
 	HostKey hk=(HostKey)pool.elementAt(i);
 	if(hk.type==HostKey.UNKNOWN) continue;
-	if(host==null || 
-	   (hk.isMatched(host) && 
+	if(host==null ||
+	   (hk.isMatched(host) &&
 	    (type==null || hk.getType().equals(type)))){
           v.add(hk);
 	}
@@ -390,11 +390,11 @@ loop:
     for(int i=0; i<pool.size(); i++){
       HostKey hk=(HostKey)(pool.elementAt(i));
       if(host==null ||
-	 (hk.isMatched(host) && 
+	 (hk.isMatched(host) &&
 	  (type==null || (hk.getType().equals(type) &&
 			  (key==null || Util.array_equals(key, hk.key)))))){
         String hosts=hk.getHost();
-        if(hosts.equals(host) || 
+        if(hosts.equals(host) ||
            ((hk instanceof HashedHostKey) &&
             ((HashedHostKey)hk).isHashed())){
           pool.removeElement(hk);
@@ -411,9 +411,9 @@ loop:
     }
   }
 
-  protected void sync() throws IOException { 
+  protected void sync() throws IOException {
     if(known_hosts!=null)
-      sync(known_hosts); 
+      sync(known_hosts);
   }
   protected synchronized void sync(String foo) throws IOException {
     if(foo==null) return;
@@ -471,7 +471,7 @@ loop:
       j=hosts.indexOf(',', i);
       if(j==-1) break;
       if(!host.equals(hosts.substring(i, j))){
-        i=j+1;	  
+        i=j+1;
         continue;
       }
       return hosts.substring(0, i)+hosts.substring(j+1);
@@ -488,8 +488,8 @@ loop:
         Class c=Class.forName(jsch.getConfig("hmac-sha1"));
         hmacsha1=(MAC)(c.newInstance());
       }
-      catch(Exception e){ 
-        System.err.println("hmacsha1: "+e); 
+      catch(Exception e){
+        System.err.println("hmacsha1: "+e);
       }
     }
     return hmacsha1;
@@ -499,7 +499,7 @@ loop:
     HashedHostKey hhk=new HashedHostKey(host, key);
     hhk.hash();
     return hhk;
-  } 
+  }
   class HashedHostKey extends HostKey{
     private static final String HASH_MAGIC="|1|";
     private static final String HASH_DELIM="|";

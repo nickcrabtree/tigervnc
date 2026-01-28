@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -74,7 +74,7 @@ public class KeyPairDSA extends KeyPair{
       keypairgen=null;
     }
     catch(Exception e){
-      //System.err.println("KeyPairDSA: "+e); 
+      //System.err.println("KeyPairDSA: "+e);
       if(e instanceof Throwable)
         throw new JSchException(e.toString(), (Throwable)e);
       throw new JSchException(e.toString());
@@ -248,7 +248,7 @@ public class KeyPairDSA extends KeyPair{
   }
 
   @SuppressWarnings({"static"}) public byte[] getSignature(byte[] data){
-    try{      
+    try{
       Class c=Class.forName((String)jsch.getConfig("signature.dss"));
       SignatureDSA dsa=(SignatureDSA)(c.newInstance());
       dsa.init();
@@ -268,7 +268,7 @@ public class KeyPairDSA extends KeyPair{
   }
 
   @SuppressWarnings({"static"}) public Signature getVerifier(){
-    try{      
+    try{
       Class c=Class.forName((String)jsch.getConfig("signature.dss"));
       SignatureDSA dsa=(SignatureDSA)(c.newInstance());
       dsa.init();
@@ -280,7 +280,7 @@ public class KeyPairDSA extends KeyPair{
         Q_array = buf.getString();
         G_array = buf.getString();
         pub_array = buf.getString();
-      } 
+      }
 
       dsa.setPubKey(pub_array, P_array, Q_array, G_array);
       return dsa;

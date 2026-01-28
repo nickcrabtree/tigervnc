@@ -26,4 +26,3 @@ public class SystemException extends Exception {
     super(s);
   }
 }
-

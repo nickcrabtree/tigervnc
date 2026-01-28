@@ -62,7 +62,7 @@ import com.tigervnc.network.TcpSocket;
 
 import static com.tigervnc.vncviewer.Parameters.*;
 
-public class CConn extends CConnection implements 
+public class CConn extends CConnection implements
   FdInStreamBlockCallback, ActionListener {
 
   // 8 colours (1 bit per component)

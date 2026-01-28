@@ -216,7 +216,7 @@ public abstract class ModifiablePixelBuffer extends PixelBuffer
 
   // Render in a specific format
   //   Does the exact same thing as the above methods, but the given
-  //   pixel values are defined by the given PixelFormat. 
+  //   pixel values are defined by the given PixelFormat.
   public void fillRect(PixelFormat pf, Rect dest, byte[] pix)
   {
     WritableRaster dstBuffer = getBufferRW(dest);

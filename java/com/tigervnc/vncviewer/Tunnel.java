@@ -199,7 +199,7 @@ public class Tunnel {
       else
         session.setPortForwardingL(localPort, remoteHost, remotePort);
     } catch (java.lang.Exception e) {
-      throw new Exception(e.getMessage()); 
+      throw new Exception(e.getMessage());
     }
   }
 

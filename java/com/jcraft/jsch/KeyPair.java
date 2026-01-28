@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -103,7 +103,7 @@ public abstract class KeyPair{
 
   /**
    * Writes the plain private key to the given output stream.
-   * @param out output stream 
+   * @param out output stream
    * @see #writePrivateKey(java.io.OutputStream out, byte[] passphrase)
    */
   public void writePrivateKey(java.io.OutputStream out){
@@ -112,7 +112,7 @@ public abstract class KeyPair{
 
   /**
    * Writes the cyphered private key to the given output stream.
-   * @param out output stream 
+   * @param out output stream
    * @param passphrase a passphrase to encrypt the private key
    */
   public void writePrivateKey(java.io.OutputStream out, byte[] passphrase){
@@ -131,7 +131,7 @@ public abstract class KeyPair{
       out.write(getBegin()); out.write(cr);
       if(passphrase!=null){
 	out.write(header[0]); out.write(cr);
-	out.write(header[1]); 
+	out.write(header[1]);
 	for(int i=0; i<iv.length; i++){
 	  out.write(b2a((byte)((iv[i]>>>4)&0x0f)));
 	  out.write(b2a((byte)(iv[i]&0x0f)));
@@ -176,7 +176,7 @@ public abstract class KeyPair{
 
   /**
    * Writes the public key with the specified comment to the output stream.
-   * @param out output stream 
+   * @param out output stream
    * @param comment comment
    */
   public void writePublicKey(java.io.OutputStream out, String comment){
@@ -207,7 +207,7 @@ public abstract class KeyPair{
   /**
    * Writes the public key with the specified comment to the output stream in
    * the format defined in http://www.ietf.org/rfc/rfc4716.txt
-   * @param out output stream 
+   * @param out output stream
    * @param comment comment
    */
   public void writeSECSHPublicKey(java.io.OutputStream out, String comment){
@@ -440,7 +440,7 @@ public abstract class KeyPair{
 	  System.arraycopy(tmp, 0, hn, index, tmp.length);
 	  index+=tmp.length;
 	}
-	System.arraycopy(hn, 0, key, 0, key.length); 
+	System.arraycopy(hn, 0, key, 0, key.length);
       }
       else if(vendor==VENDOR_FSECURE){
 	for(int index=0; index+hsize<=hn.length;){
@@ -450,7 +450,7 @@ public abstract class KeyPair{
 	  System.arraycopy(tmp, 0, hn, index, tmp.length);
 	  index+=tmp.length;
 	}
-	System.arraycopy(hn, 0, key, 0, key.length); 
+	System.arraycopy(hn, 0, key, 0, key.length);
       }
       else if(vendor==VENDOR_PUTTY){
         Class c=Class.forName((String)jsch.getConfig("sha-1"));
@@ -470,7 +470,7 @@ public abstract class KeyPair{
       System.err.println(e);
     }
     return key;
-  } 
+  }
 
   /**
    * @deprecated use #writePrivateKey(java.io.OutputStream out, byte[] passphrase)
@@ -488,7 +488,7 @@ public abstract class KeyPair{
    * @deprecated use #writePrivateKey(String name, byte[] passphrase)
    */
   public void setPassphrase(byte[] passphrase){
-    if(passphrase!=null && passphrase.length==0) 
+    if(passphrase!=null && passphrase.length==0)
       passphrase=null;
     this.passphrase=passphrase;
   }
@@ -552,7 +552,7 @@ public abstract class KeyPair{
       pubkey = Util.fromFile(_pubfile);
     }
     catch(IOException e){
-      if(pubfile!=null){  
+      if(pubfile!=null){
         throw new JSchException(e.toString(), (Throwable)e);
       }
     }
@@ -580,7 +580,7 @@ public abstract class KeyPair{
 
     // prvkey from "ssh-add" command on the remote.
     if(pubkey==null &&
-       prvkey!=null && 
+       prvkey!=null &&
        (prvkey.length>11 &&
         prvkey[0]==0 && prvkey[1]==0 && prvkey[2]==0 &&
         (prvkey[3]==7 || prvkey[3]==19))){
@@ -622,8 +622,8 @@ public abstract class KeyPair{
 
       // skip garbage lines.
       while(i<len){
-        if(buf[i] == '-' && i+4<len && 
-           buf[i+1] == '-' && buf[i+2] == '-' && 
+        if(buf[i] == '-' && i+4<len &&
+           buf[i+1] == '-' && buf[i+2] == '-' &&
            buf[i+3] == '-' && buf[i+4] == '-'){
           break;
         }
@@ -666,7 +666,7 @@ public abstract class KeyPair{
           i+=3;
 	  continue;
 	}
-        if(buf[i]=='A'&& i+7<len && buf[i+1]=='E'&& buf[i+2]=='S'&& buf[i+3]=='-' && 
+        if(buf[i]=='A'&& i+7<len && buf[i+1]=='E'&& buf[i+2]=='S'&& buf[i+3]=='-' &&
            buf[i+4]=='2'&& buf[i+5]=='5'&& buf[i+6]=='6'&& buf[i+7]=='-'){
           i+=8;
           if(Session.checkCipher((String)jsch.getConfig("aes256-cbc"))){
@@ -680,7 +680,7 @@ public abstract class KeyPair{
           }
           continue;
         }
-        if(buf[i]=='A'&& i+7<len && buf[i+1]=='E'&& buf[i+2]=='S'&& buf[i+3]=='-' && 
+        if(buf[i]=='A'&& i+7<len && buf[i+1]=='E'&& buf[i+2]=='S'&& buf[i+3]=='-' &&
            buf[i+4]=='1'&& buf[i+5]=='9'&& buf[i+6]=='2'&& buf[i+7]=='-'){
           i+=8;
           if(Session.checkCipher((String)jsch.getConfig("aes192-cbc"))){
@@ -694,7 +694,7 @@ public abstract class KeyPair{
           }
           continue;
         }
-        if(buf[i]=='A'&& i+7<len && buf[i+1]=='E'&& buf[i+2]=='S'&& buf[i+3]=='-' && 
+        if(buf[i]=='A'&& i+7<len && buf[i+1]=='E'&& buf[i+2]=='S'&& buf[i+3]=='-' &&
            buf[i+4]=='1'&& buf[i+5]=='2'&& buf[i+6]=='8'&& buf[i+7]=='-'){
           i+=8;
           if(Session.checkCipher((String)jsch.getConfig("aes128-cbc"))){
@@ -732,7 +732,7 @@ public abstract class KeyPair{
 	    if(buf[j]==':'){inheader=true; break;}
 	  }
 	  if(!inheader){
-	    i++; 
+	    i++;
 	    if(vendor!=VENDOR_PKCS8)
               encrypted=false;    // no passphrase
 	    break;
@@ -778,7 +778,7 @@ public abstract class KeyPair{
           if(_buf[i]=='-'){  break; }
           i++;
         }
-        
+
         if(i-start > 0)
           data=Util.fromBase64(_buf, start, i-start);
 
@@ -796,9 +796,9 @@ public abstract class KeyPair{
 	_buf.getInt();  // 0x3f6ff9be
 	_buf.getInt();
 	byte[]_type=_buf.getString();
-	//System.err.println("type: "+new String(_type)); 
+	//System.err.println("type: "+new String(_type));
 	String _cipher=Util.byte2str(_buf.getString());
-	//System.err.println("cipher: "+_cipher); 
+	//System.err.println("cipher: "+_cipher);
 	if(_cipher.equals("3des-cbc")){
   	   _buf.getInt();
 	   byte[] foo=new byte[data.length-_buf.getOffSet()];
@@ -839,7 +839,7 @@ public abstract class KeyPair{
 		  if(buf[j]==':'){inheader=true; break;}
 		}
 		if(!inheader){
-		  i++; 
+		  i++;
 		  break;
 		}
 	      }
@@ -886,7 +886,7 @@ public abstract class KeyPair{
                 if(start<i){
                   publicKeyComment = new String(buf, start, i-start);
                 }
-              } 
+              }
 	    }
             else if(buf[0]=='e'&& buf[1]=='c'&& buf[2]=='d' && buf[3]=='s'){
               if(prvkey==null && buf.length>7){
@@ -906,7 +906,7 @@ public abstract class KeyPair{
                 if(start<i){
                   publicKeyComment = new String(buf, start, i-start);
                 }
-              } 
+              }
             }
 	  }
 	}
@@ -996,7 +996,7 @@ public abstract class KeyPair{
     while(true){
       if(!parseHeader(buffer, v))
         break;
-    } 
+    }
 
     String typ = (String)v.get("PuTTY-User-Key-File-2");
     if(typ == null){
@@ -1004,20 +1004,20 @@ public abstract class KeyPair{
     }
 
     lines = Integer.parseInt((String)v.get("Public-Lines"));
-    pubkey = parseLines(buffer, lines); 
+    pubkey = parseLines(buffer, lines);
 
     while(true){
       if(!parseHeader(buffer, v))
         break;
-    } 
-    
+    }
+
     lines = Integer.parseInt((String)v.get("Private-Lines"));
-    prvkey = parseLines(buffer, lines); 
+    prvkey = parseLines(buffer, lines);
 
     while(true){
       if(!parseHeader(buffer, v))
         break;
-    } 
+    }
 
     prvkey = Util.fromBase64(prvkey, 0, prvkey.length);
     pubkey = Util.fromBase64(pubkey, 0, pubkey.length);
@@ -1108,7 +1108,7 @@ public abstract class KeyPair{
             System.arraycopy(buf, index, tmp, data.length, i - index -1);
             for(int j = 0; j < data.length; j++) data[j] = 0; // clear
             data = tmp;
-          } 
+          }
           break;
         }
       }

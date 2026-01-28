@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -67,7 +67,7 @@ class Util{
 
     byte[] tmp=new byte[length*2];
     int i,j,k;
-    
+
     int foo=(length/3)*3+start;
     i=0;
     for(j=start; j<foo; j+=3){
@@ -160,7 +160,7 @@ class Util{
 	if(i+1==patternlen)
 	  return false;
 	i++;
-	if(pattern[i]!=name[j]) 
+	if(pattern[i]!=name[j])
           return false;
         i+=skipUTF8Char(pattern[i]);
         j+=skipUTF8Char(name[j]);
@@ -232,14 +232,14 @@ class Util{
         if(!(i<patternlen)){    // pattern is end
 	  return true;
 	}
-	if(pattern[i]=='*'){    
+	if(pattern[i]=='*'){
           break;
 	}
       }
       continue;
     }
 
-    if(i==patternlen && j==namelen) 
+    if(i==patternlen && j==namelen)
       return true;
 
     if(!(j<namelen) &&  // name is end
@@ -375,7 +375,7 @@ class Util{
       });
     tmp.setName("Opening Socket "+host);
     tmp.start();
-    try{ 
+    try{
       tmp.join(timeout);
       message="timeout: ";
     }
@@ -394,10 +394,10 @@ class Util{
       throw new JSchException(message, ee[0]);
     }
     return socket;
-  } 
+  }
 
   static byte[] str2byte(String str, String encoding){
-    if(str==null) 
+    if(str==null)
       return null;
     try{ return str.getBytes(encoding); }
     catch(java.io.UnsupportedEncodingException e){

@@ -44,7 +44,7 @@ public class ExtProcess implements Runnable {
     private final LogWriter vlog;
 
     public MyProcessLogger(Process p, LogWriter vlog) {
-      InputStreamReader reader = 
+      InputStreamReader reader =
         new InputStreamReader(p.getErrorStream());
       err = new BufferedReader(reader);
       this.vlog = vlog;
@@ -92,7 +92,7 @@ public class ExtProcess implements Runnable {
   }
 
   public ExtProcess(String command, LogWriter vlog, boolean shutdown) {
-    cmd = command;  
+    cmd = command;
     this.vlog = vlog;
     this.shutdown = shutdown;
   }

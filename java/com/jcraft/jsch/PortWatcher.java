@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -137,8 +137,8 @@ class PortWatcher implements Runnable{
       }
     }
   }
-  PortWatcher(Session session, 
-	      String address, int lport, 
+  PortWatcher(Session session,
+	      String address, int lport,
 	      String host, int rport,
               ServerSocketFactory factory) throws JSchException{
     this.session=session;
@@ -147,11 +147,11 @@ class PortWatcher implements Runnable{
     this.rport=rport;
     try{
       boundaddress=InetAddress.getByName(address);
-      ss=(factory==null) ? 
+      ss=(factory==null) ?
         new ServerSocket(lport, 0, boundaddress) :
         factory.createServerSocket(lport, 0, boundaddress);
     }
-    catch(Exception e){ 
+    catch(Exception e){
       //System.err.println(e);
       String message="PortForwardingL: local port "+address+":"+lport+" cannot be bound.";
       if(e instanceof Throwable)
@@ -195,7 +195,7 @@ class PortWatcher implements Runnable{
 
   void delete(){
     thread=null;
-    try{ 
+    try{
       if(ss!=null)ss.close();
       ss=null;
     }

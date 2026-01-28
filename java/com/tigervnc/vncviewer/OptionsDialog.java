@@ -755,7 +755,7 @@ class OptionsDialog extends Dialog {
     tightPanel.add(jpegCheckbox,
                    new GridBagConstraints(0, 2,
                                           REMAINDER, 1,
-                                          LIGHT, LIGHT, 
+                                          LIGHT, LIGHT,
                                           LINE_START, NONE,
                                           new Insets(5, 0, 0, 0),
                                           NONE, NONE));

@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -29,8 +29,8 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*
  This file depends on following documents,
-   - RFC 1928  SOCKS Protocol Verseion 5  
-   - RFC 1929  Username/Password Authentication for SOCKS V5. 
+   - RFC 1928  SOCKS Protocol Verseion 5
+   - RFC 1929  Username/Password Authentication for SOCKS V5.
  */
 
 package com.jcraft.jsch;
@@ -74,7 +74,7 @@ public class ProxySOCKS5 implements Proxy{
     try{
       if(socket_factory==null){
         socket=Util.createSocket(proxy_host, proxy_port, timeout);
-        //socket=new Socket(proxy_host, proxy_port);    
+        //socket=new Socket(proxy_host, proxy_port);
         in=socket.getInputStream();
         out=socket.getOutputStream();
       }
@@ -132,7 +132,7 @@ public class ProxySOCKS5 implements Proxy{
 */
       //in.read(buf, 0, 2);
       fill(in, buf, 2);
- 
+
       boolean check=false;
       switch((buf[1])&0xff){
         case 0:                // NO AUTHENTICATION REQUIRED
@@ -225,7 +225,7 @@ public class ProxySOCKS5 implements Proxy{
       o  DST.PORT desired destination port in network octet
          order
 */
-     
+
       index=0;
       buf[index++]=5;
       buf[index++]=1;       // CONNECT

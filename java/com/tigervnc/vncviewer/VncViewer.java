@@ -78,7 +78,7 @@ public class VncViewer implements Runnable {
   public static final Image logoImage = logoIcon.getImage();
   public static final InputStream timestamp =
     VncViewer.class.getResourceAsStream("timestamp");
-  public static final String os = 
+  public static final String os =
     System.getProperty("os.name").toLowerCase(Locale.ENGLISH);
 
   private String defaultServerName;
@@ -99,7 +99,7 @@ public class VncViewer implements Runnable {
           setIconMethodName = new String("setIconImage");
         }
         Class appClass = Class.forName(appClassName);
-        Method getApplication = 
+        Method getApplication =
           appClass.getMethod(appMethodName, (Class[])null);
         Object app = getApplication.invoke(appClass);
         Class paramTypes[] = new Class[1];

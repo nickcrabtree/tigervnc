@@ -109,7 +109,7 @@ class ClipboardDialog extends Dialog {
 	  private class MyTextListener implements DocumentListener {
 	    public MyTextListener() { }
 
-	    public void changedUpdate(DocumentEvent e) { } 
+	    public void changedUpdate(DocumentEvent e) { }
 
 	    public void insertUpdate(DocumentEvent e) {
         if (!listen) return;
@@ -191,7 +191,7 @@ class ClipboardDialog extends Dialog {
 
   public static void clientCutText() {
     // Update the textArea with the current contents of the system clipboard.
-    // The TransferHandler ensures that the textArea's contents are only 
+    // The TransferHandler ensures that the textArea's contents are only
     // changed when they differ from the clipboard's.  If the textArea is
     // updated, the DocumentListener will trigger an RFB clientCutText msg.
     textArea.paste();

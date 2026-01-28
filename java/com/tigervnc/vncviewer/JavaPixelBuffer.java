@@ -26,7 +26,7 @@ import java.nio.*;
 import com.tigervnc.rfb.*;
 import com.tigervnc.rfb.Point;
 
-public class JavaPixelBuffer extends PlatformPixelBuffer 
+public class JavaPixelBuffer extends PlatformPixelBuffer
 {
 
   public JavaPixelBuffer(int w, int h) {

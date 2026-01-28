@@ -49,7 +49,7 @@ public class Region extends Area {
   }
 
   public void translate(Point delta) {
-    AffineTransform t = 
+    AffineTransform t =
       AffineTransform.getTranslateInstance((double)delta.x, (double)delta.y);
     transform(t);
   }

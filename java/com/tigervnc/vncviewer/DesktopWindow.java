@@ -639,4 +639,3 @@ public class DesktopWindow extends JFrame
   private int lastState;
   private Timer timer;
 }
-

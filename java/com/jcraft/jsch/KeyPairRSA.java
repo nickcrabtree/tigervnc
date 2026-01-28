@@ -8,8 +8,8 @@ modification, are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice,
      this list of conditions and the following disclaimer.
 
-  2. Redistributions in binary form must reproduce the above copyright 
-     notice, this list of conditions and the following disclaimer in 
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
      the documentation and/or other materials provided with the distribution.
 
   3. The names of the authors may not be used to endorse or promote products
@@ -33,7 +33,7 @@ import java.math.BigInteger;
 
 public class KeyPairRSA extends KeyPair{
   private byte[] n_array;   // modulus   p multiply q
-  private byte[] pub_array; // e         
+  private byte[] pub_array; // e
   private byte[] prv_array; // d         e^-1 mod (p-1)(q-1)
 
   private byte[] p_array;  // prime p
@@ -80,7 +80,7 @@ public class KeyPairRSA extends KeyPair{
       keypairgen=null;
     }
     catch(Exception e){
-      //System.err.println("KeyPairRSA: "+e); 
+      //System.err.println("KeyPairRSA: "+e);
       if(e instanceof Throwable)
         throw new JSchException(e.toString(), (Throwable)e);
       throw new JSchException(e.toString());
@@ -317,7 +317,7 @@ public class KeyPairRSA extends KeyPair{
   }
 
   @SuppressWarnings({"static"}) public byte[] getSignature(byte[] data){
-    try{      
+    try{
       Class c=Class.forName((String)jsch.getConfig("signature.rsa"));
       SignatureRSA rsa=(SignatureRSA)(c.newInstance());
       rsa.init();
@@ -336,7 +336,7 @@ public class KeyPairRSA extends KeyPair{
   }
 
   @SuppressWarnings({"static"}) public Signature getVerifier(){
-    try{      
+    try{
       Class c=Class.forName((String)jsch.getConfig("signature.rsa"));
       SignatureRSA rsa=(SignatureRSA)(c.newInstance());
       rsa.init();
@@ -346,7 +346,7 @@ public class KeyPairRSA extends KeyPair{
         buf.getString();
         pub_array = buf.getString();
         n_array = buf.getString();
-      } 
+      }
 
       rsa.setPubKey(pub_array, n_array);
       return rsa;
@@ -395,21 +395,21 @@ public class KeyPairRSA extends KeyPair{
       ep_array=(new BigInteger(prv_array)).mod(new BigInteger(p_array).subtract(BigInteger.ONE)).toByteArray();
     }
     return ep_array;
-  } 
+  }
 
   private byte[] getEQArray(){
     if(eq_array==null){
       eq_array=(new BigInteger(prv_array)).mod(new BigInteger(q_array).subtract(BigInteger.ONE)).toByteArray();
     }
     return eq_array;
-  } 
+  }
 
   private byte[] getCArray(){
     if(c_array==null){
       c_array=(new BigInteger(q_array)).modInverse(new BigInteger(p_array)).toByteArray();
     }
     return c_array;
-  } 
+  }
 
   public void dispose(){
     super.dispose();
