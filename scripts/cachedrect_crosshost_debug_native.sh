@@ -97,17 +97,17 @@ if [[ -n "${REMOTE_ART_LOG}" ]]; then
   LOCAL_SERVER_LOG="${LOCAL_LOG_DIR}/server_$(date +%Y%m%d_%H%M%S).log"
   scp -q "${REMOTE}:${REMOTE_ART_LOG}" "${LOCAL_SERVER_LOG}"
   echo "[ok] Server log: ${LOCAL_SERVER_LOG}"
-  
+
   # Show server stats
   echo ""
   echo "=== Server-side ContentCache Statistics ==="
   grep -A 5 "ContentCache statistics" "${LOCAL_SERVER_LOG}" || echo "(no statistics found)"
-  
+
   echo ""
   echo "=== Server Cache Activity ==="
   grep -c "ContentCache protocol hit" "${LOCAL_SERVER_LOG}" 2>/dev/null | \
     xargs -I{} echo "  ContentCache hits logged: {}" || echo "  No hits found"
-  
+
   echo ""
   echo "NOTE: The native macOS viewer doesn't provide verbose protocol logs."
   echo "For detailed client-side analysis, we need to use the C++ viewer build."

@@ -99,20 +99,20 @@ REMOTE_LOG=$(ssh "${REMOTE}" "ls -1dt ${REMOTE_DIR}/tests/e2e/_artifacts/*/logs/
 if [[ -n "${REMOTE_LOG}" ]]; then
   LOCAL_SERVER_LOG="${LOCAL_LOG_DIR}/server_$(date +%Y%m%d_%H%M%S).log"
   scp -q "${REMOTE}:${REMOTE_LOG}" "${LOCAL_SERVER_LOG}"
-  
+
   echo "[6/6] Comparison:"
   python3 scripts/compare_cachedrect_logs.py --server "${LOCAL_SERVER_LOG}" --client "${VIEWER_LOG}" 2>/dev/null || {
     # Fallback manual analysis
     echo ""
     echo "=== Server Stats ==="
     grep "Lookups:" "${LOCAL_SERVER_LOG}" | tail -1 || echo "No server stats"
-    
+
     echo ""
     echo "=== Client Activity ==="
     echo "  Cache misses: $(grep -c 'Cache miss for ID' "${VIEWER_LOG}" 2>/dev/null || echo 0)"
     echo "  Stores: $(grep -c 'Storing decoded rect.*cache ID' "${VIEWER_LOG}" 2>/dev/null || echo 0)"
     echo "  CachedRectInit: $(grep -c 'CachedRectInit' "${VIEWER_LOG}" 2>/dev/null || echo 0)"
-    
+
     echo ""
     echo "Check logs for details:"
     echo "  Server: ${LOCAL_SERVER_LOG}"

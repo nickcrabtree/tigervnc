@@ -126,11 +126,11 @@ REMOTE_LOG=$(ssh "${REMOTE}" "ls -1dt ${REMOTE_DIR}/tests/e2e/_artifacts/*/logs/
 if [[ -n "${REMOTE_LOG}" ]]; then
   LOCAL_SERVER_LOG="${LOCAL_LOG_DIR}/server_$(date +%Y%m%d_%H%M%S).log"
   scp -q "${REMOTE}:${REMOTE_LOG}" "${LOCAL_SERVER_LOG}"
-  
+
   echo ""
   echo "[7/7] Protocol Analysis"
   echo "========================================================================"
-  
+
   if [[ -x "scripts/compare_cachedrect_logs.py" ]]; then
     python3 scripts/compare_cachedrect_logs.py --server "${LOCAL_SERVER_LOG}" --client "${VIEWER_LOG}"
   else
@@ -138,26 +138,26 @@ if [[ -n "${REMOTE_LOG}" ]]; then
     echo ""
     echo "=== Server Statistics ==="
     grep "Lookups:" "${LOCAL_SERVER_LOG}" | tail -1 || echo "No stats found"
-    
+
     echo ""
     echo "=== Client Activity ==="
     echo "  Cache misses: $(grep -c 'Cache miss for ID' "${VIEWER_LOG}" 2>/dev/null || echo 0)"
     echo "  Stores: $(grep -c 'Storing decoded rect.*cache ID' "${VIEWER_LOG}" 2>/dev/null || echo 0)"
     echo "  CachedRectInit: $(grep -c 'CachedRectInit' "${VIEWER_LOG}" 2>/dev/null || echo 0)"
     echo "  SetEncodings: $(grep -c 'SetEncodings' "${VIEWER_LOG}" 2>/dev/null || echo 0)"
-    
+
     echo ""
     echo "=== Key Issue Checks ==="
     if ! grep -q "CachedRect" "${VIEWER_LOG}"; then
       echo "  ⚠ WARNING: No ContentCache encoding references in client log"
       echo "             Client may not have advertised ContentCache capability"
     fi
-    
+
     if grep -q "unknown encoding" "${VIEWER_LOG}"; then
       echo "  ⚠ WARNING: Client reported unknown encoding(s)"
     fi
   fi
-  
+
   echo ""
   echo "========================================================================"
   echo "Logs saved:"

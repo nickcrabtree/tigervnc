@@ -107,18 +107,18 @@ echo "      Target: ${TARGET_HOST}::${SERVER_PORT}"
 if [[ "${NONINTERACTIVE}" == "1" ]]; then
   echo "      Mode: Non-interactive (${VIEWER_DURATION}s timeout)"
   echo ""
-  
+
   # Start viewer in background
   set +e
   "${VIEWER_BIN}" -Log="*:stderr:100" "${TARGET_HOST}::${SERVER_PORT}" 2>&1 | tee "${VIEWER_LOG}" &
   VIEWER_PID=$!
   set -e
-  
+
   echo "  Viewer started (PID ${VIEWER_PID}), running for ${VIEWER_DURATION}s..."
-  
+
   # Wait for specified duration
   sleep "${VIEWER_DURATION}"
-  
+
   # Kill viewer
   echo "  Stopping viewer after ${VIEWER_DURATION}s..."
   if kill -0 "${VIEWER_PID}" 2>/dev/null; then
@@ -136,7 +136,7 @@ else
   echo "  The TigerVNC viewer window will appear on your desktop."
   echo "  Use it normally, then close it when done testing."
   echo ""
-  
+
   set +e
   "${VIEWER_BIN}" -Log="*:stderr:100" "${TARGET_HOST}::${SERVER_PORT}" 2>&1 | tee "${VIEWER_LOG}"
   VIEWER_RC=$?

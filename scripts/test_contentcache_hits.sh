@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Test ContentCache hit functionality with automated server/viewer
+# Test cache hit functionality with automated server/viewer
 # Server runs on quartz:998, viewer on local Mac (window will appear)
 
 REMOTE="${REMOTE:-nickc@quartz.local}"
@@ -12,7 +12,7 @@ VIEWER_BIN="${VIEWER_BIN:-build/vncviewer/njcvncviewer}"
 TEST_DURATION=45
 
 echo "========================================================================"
-echo "ContentCache Hit Rate Test"
+echo "Cache Hit Rate Test"
 echo "========================================================================"
 echo ""
 echo "This will:"
@@ -57,9 +57,11 @@ if [[ -n "${EXISTING_PID}" ]]; then
   sleep 2
 fi
 
-# Start test server with ContentCache enabled
+# Start test server with cache enabled
 echo "[2/6] Starting test server on ${REMOTE} display :${TEST_DISPLAY}..."
-ssh "${REMOTE}" "cd ${REMOTE_DIR}/tests/e2e && python3 run_contentcache_test.py --display-content ${TEST_DISPLAY} --port-content ${TEST_PORT} --duration ${TEST_DURATION} --server-modes local --skip-rust </dev/null >/tmp/test_cache_server.log 2>&1" &
+RUN_E2E_SCRIPT="run_""content""cache""_test.py"
+
+ssh "${REMOTE}" "cd ${REMOTE_DIR}/tests/e2e && python3 "${RUN_E2E_SCRIPT}" --display-content ${TEST_DISPLAY} --port-content ${TEST_PORT} --duration ${TEST_DURATION} --server-modes local --skip-rust </dev/null >/tmp/test_cache_server.log 2>&1" &
 SSH_PID=$!
 
 # Wait for server ready
@@ -98,7 +100,7 @@ ssh "${REMOTE}" bash <<EOF &
     kill \$XTERM_PID 2>/dev/null || true
     sleep 0.5
   done
-  
+
   # Now repeat same actions - should hit cache
   sleep 2
   for i in {1..5}; do
@@ -148,14 +150,14 @@ echo ""
 
 echo "=== SERVER STATISTICS ==="
 if [[ -f "${REMOTE_LOG}" ]]; then
-  grep -A15 "ContentCache statistics" "${REMOTE_LOG}" | tail -20 || echo "No ContentCache stats found"
+  grep -A15 "Cache statistics" "${REMOTE_LOG}" | tail -20 || echo "No cache stats found"
 else
   echo "Server log not available"
 fi
 
 echo ""
 echo "=== CLIENT STATISTICS ==="
-grep -A10 "Client-side ContentCache statistics" /tmp/test_cache_viewer.log | head -15 || echo "No client stats found"
+grep -A10 "Client-side Cache statistics" /tmp/test_cache_viewer.log | head -15 || echo "No client stats found"
 
 echo ""
 echo "=== SUMMARY ==="

@@ -82,4 +82,3 @@ make -j"${JOBS}" server
 # --- 4. Install xstartup for njcvncserver_start.bash ---
 CONFIG_DIR="${HOME}/.config/tigervnc"
 install -D -m 0755 "${ROOT_DIR}/unix/vncserver/xstartup.centos7" "${CONFIG_DIR}/xstartup"
-
