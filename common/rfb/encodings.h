@@ -38,6 +38,8 @@ const int encodingH264 = 50;
 // is whether the viewer preloads entries from disk and advertises an initial
 const int encodingPersistentCachedRect =
     102; // Reference: 16-byte CacheKey + U16 ox/oy + U16 cachedW/cachedH (offset extension)
+// Backwards-compatible alias: offset extension is part of encodingPersistentCachedRect
+const int encodingPersistentCachedRectWithOffset = encodingPersistentCachedRect;
 const int encodingPersistentCachedRectInit =
     103; // Init: 16-byte CacheKey + optional flags/PF + actual encoding + pixels
 

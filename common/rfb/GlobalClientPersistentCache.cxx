@@ -258,7 +258,7 @@ static size_t mbDoubleClamped(size_t mb) {
 GlobalClientPersistentCache::GlobalClientPersistentCache(size_t maxMemorySizeMB, size_t maxDiskSizeMB,
                                                          size_t shardSizeMB, const std::string& cacheDirOverride)
     : maxMemorySize_(mbToBytesClamped(maxMemorySizeMB)),
-      maxDiskSize_(mbToBytesClamped(maxDiskSizeMB == 0 ? 4096 : maxDiskSizeMB)),
+      maxDiskSize_(mbToBytesClamped(maxDiskSizeMB == 0 ? mbDoubleClamped(maxMemorySizeMB) : maxDiskSizeMB)),
       shardSize_(mbToBytesClamped(shardSizeMB)), hydrationState_(HydrationState::Uninitialized), indexDirty_(false),
       currentShardId_(0), currentShardHandle_(nullptr), currentShardSize_(0) {
   PersistentCacheDebugLogger::getInstance().log(
@@ -792,77 +792,79 @@ void GlobalClientPersistentCache::closeCurrentShard() {
   }
 }
 
-// Enforce on-disk quota before writing. We must prevent unbounded shard growth,
-// especially when eviction/GC cannot reclaim fragmented shards.
-const size_t needBytes = entry.pixels.size();
-size_t diskUsage = getDiskUsage();
-if (needBytes > 0 && diskUsage + needBytes > maxDiskSize_) {
-  vlog.info("PersistentCache: disk usage %zuMB + write %zuKB exceeds limit %zuMB; attempting GC",
-            diskUsage / (1024 * 1024), needBytes / 1024, maxDiskSize_ / (1024 * 1024));
-  garbageCollect();
-  cleanupOrphanShardsOnDisk();
-  diskUsage = getDiskUsage();
-  if (diskUsage + needBytes > maxDiskSize_) {
-    vlog.error(
-        "PersistentCache: refusing to write entry (%zuKB) because disk would exceed limit (%zuMB used, %zuMB limit)",
-        needBytes / 1024, diskUsage / (1024 * 1024), maxDiskSize_ / (1024 * 1024));
+bool GlobalClientPersistentCache::writeEntryToShard(const std::vector<uint8_t>& hash, const CachedPixels& entry) {
+
+  // Enforce on-disk quota before writing. We must prevent unbounded shard growth,
+  // especially when eviction/GC cannot reclaim fragmented shards.
+  const size_t needBytes = entry.pixels.size();
+  size_t diskUsage = getDiskUsage();
+  if (needBytes > 0 && diskUsage + needBytes > maxDiskSize_) {
+    vlog.info("PersistentCache: disk usage %zuMB + write %zuKB exceeds limit %zuMB; attempting GC",
+              diskUsage / (1024 * 1024), needBytes / 1024, maxDiskSize_ / (1024 * 1024));
+    garbageCollect();
+    cleanupOrphanShardsOnDisk();
+    diskUsage = getDiskUsage();
+    if (diskUsage + needBytes > maxDiskSize_) {
+      vlog.error(
+          "PersistentCache: refusing to write entry (%zuKB) because disk would exceed limit (%zuMB used, %zuMB limit)",
+          needBytes / 1024, diskUsage / (1024 * 1024), maxDiskSize_ / (1024 * 1024));
+      return false;
+    }
+  }
+  // Check if current shard is full
+  if (currentShardSize_ >= shardSize_) {
+    closeCurrentShard();
+    currentShardId_++;
+    currentShardSize_ = 0;
+  }
+
+  if (!openCurrentShard())
+    return false;
+
+  // Record position before write
+  uint32_t offset = currentShardSize_;
+
+  // Write pixel data to shard
+  errno = 0;
+  size_t written = fwrite(entry.pixels.data(), 1, entry.pixels.size(), currentShardHandle_);
+  if (written != entry.pixels.size()) {
+    int err = errno;
+    vlog.error("PersistentCache: failed to write to shard %u (%zu/%zu bytes written): %s", currentShardId_, written,
+               entry.pixels.size(), strerror(err));
     return false;
   }
-}
-// Check if current shard is full
-if (currentShardSize_ >= shardSize_) {
-  closeCurrentShard();
-  currentShardId_++;
-  currentShardSize_ = 0;
-}
+  if (fflush(currentShardHandle_) != 0) {
+    int err = errno;
+    vlog.error("PersistentCache: failed to flush shard %u: %s", currentShardId_, strerror(err));
+    return false;
+  }
 
-if (!openCurrentShard())
-  return false;
+  currentShardSize_ += written;
+  shardSizes_[currentShardId_] = currentShardSize_;
 
-// Record position before write
-uint32_t offset = currentShardSize_;
+  // Update index entry
+  IndexEntry idx;
+  idx.shardId = currentShardId_;
+  idx.payloadOffset = offset;
+  idx.payloadSize = entry.pixels.size();
+  idx.width = entry.width;
+  idx.height = entry.height;
+  idx.stridePixels = entry.stridePixels;
+  idx.format = entry.format;
+  idx.isCold = false;
+  idx.canonicalHash = entry.canonicalHash;
 
-// Write pixel data to shard
-errno = 0;
-size_t written = fwrite(entry.pixels.data(), 1, entry.pixels.size(), currentShardHandle_);
-if (written != entry.pixels.size()) {
-  int err = errno;
-  vlog.error("PersistentCache: failed to write to shard %u (%zu/%zu bytes written): %s", currentShardId_, written,
-             entry.pixels.size(), strerror(err));
-  return false;
-}
-if (fflush(currentShardHandle_) != 0) {
-  int err = errno;
-  vlog.error("PersistentCache: failed to flush shard %u: %s", currentShardId_, strerror(err));
-  return false;
-}
+  // NEW in v7: compute quality code from pixel format and lossy flag
+  bool isLossy = (entry.actualHash != entry.canonicalHash);
+  idx.qualityCode = computeQualityCode(entry.format, isLossy);
 
-currentShardSize_ += written;
-shardSizes_[currentShardId_] = currentShardSize_;
+  // Set key for index lookups (unified 16-byte hash)
+  idx.key = CacheKey(hash.data());
 
-// Update index entry
-IndexEntry idx;
-idx.shardId = currentShardId_;
-idx.payloadOffset = offset;
-idx.payloadSize = entry.pixels.size();
-idx.width = entry.width;
-idx.height = entry.height;
-idx.stridePixels = entry.stridePixels;
-idx.format = entry.format;
-idx.isCold = false;
-idx.canonicalHash = entry.canonicalHash;
+  indexMap_[hash] = idx;
+  indexDirty_ = true;
 
-// NEW in v7: compute quality code from pixel format and lossy flag
-bool isLossy = (entry.actualHash != entry.canonicalHash);
-idx.qualityCode = computeQualityCode(entry.format, isLossy);
-
-// Set key for index lookups (unified 16-byte hash)
-idx.key = CacheKey(hash.data());
-
-indexMap_[hash] = idx;
-indexDirty_ = true;
-
-return true;
+  return true;
 }
 
 size_t GlobalClientPersistentCache::getDiskUsage() const {
@@ -1598,6 +1600,8 @@ bool GlobalClientPersistentCache::saveToDisk() {
     return false;
   }
 
+  // Best-effort: ensure directory metadata is durable after atomic rename
+  fsyncDirBestEffort(cacheDir_);
   vlog.debug("PersistentCache: saved v7 index with %zu entries", indexMap_.size());
 
   return true;

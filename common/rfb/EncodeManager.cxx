@@ -851,8 +851,6 @@ void EncodeManager::runOffsetTilePrepass(core::Region* changed, const PixelBuffe
     tileSizes.push_back(256);
   }
   // Offset-tile prepass: satisfy newly-exposed damage from cached tiles (uses same tile size list).
-  if (pb != nullptr && !changed.is_empty())
-    runOffsetTilePrepass(&changed, pb);
 
   // Prefer largest-first if configured (reduces rectangle count).
   if (rfb::Server::cacheScanPreferLargestFirst)
