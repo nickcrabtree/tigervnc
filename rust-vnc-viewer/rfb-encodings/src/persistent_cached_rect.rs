@@ -10,11 +10,20 @@ use tokio::io::AsyncRead;
 
 pub struct PersistentCachedRectDecoder {
     cache: Arc<Mutex<PersistentClientCache>>,
+    /// Optional reporter queue to record hashes that missed during decode.
+    pending_misses: Option<Arc<Mutex<Vec<[u8; 16]>>>>,
 }
 
 impl PersistentCachedRectDecoder {
     pub fn new(cache: Arc<Mutex<PersistentClientCache>>) -> Self {
-        Self { cache }
+        Self { cache, pending_misses: None }
+    }
+
+    pub fn new_with_miss_reporter(
+        cache: Arc<Mutex<PersistentClientCache>>,
+        misses: Arc<Mutex<Vec<[u8; 16]>>>,
+    ) -> Self {
+        Self { cache, pending_misses: Some(misses) }
     }
 }
 
@@ -65,7 +74,11 @@ impl Decoder for PersistentCachedRectDecoder {
             );
             Ok(())
         } else {
-            anyhow::bail!("PersistentCache MISS for id {:02x?}", &id)
+            tracing::warn!("PersistentCache MISS: rect {}x{} id={:02x?}", rect.width, rect.height, &id);
+            if let Some(m) = &self.pending_misses {
+                if let Ok(mut v) = m.lock() { v.push(id); }
+            }
+            Ok(())
         }
     }
 }
