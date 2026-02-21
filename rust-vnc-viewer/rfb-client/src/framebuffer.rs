@@ -251,9 +251,10 @@ impl Framebuffer {
     ) -> Self {
         let local_format = LocalPixelFormat::rgb888();
         let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
+        let pmisses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
         let mut reg = DecoderRegistry::with_standard();
         reg.register(DecoderEntry::PersistentCachedRect(
-            enc::PersistentCachedRectDecoder::new(pcache.clone()),
+            enc::PersistentCachedRectDecoder::new_with_miss_reporter(pcache.clone(), pmisses.clone()),
         ));
         reg.register(DecoderEntry::PersistentCachedRectInit(
             enc::PersistentCachedRectInitDecoder::new(pcache.clone()),
@@ -263,7 +264,7 @@ impl Framebuffer {
             server_pixel_format,
             registry: reg,
             pending_misses: None,
-            pending_pcache_misses: None,
+            pending_pcache_misses: Some(pmisses),
             content_cache: None,
             persistent_cache: Some(pcache),
             cache_protocol: CacheProtocolNegotiated::None,
@@ -285,9 +286,10 @@ impl Framebuffer {
         let local_format = LocalPixelFormat::rgb888();
         let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
         let misses: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
+        let pmisses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
         let mut reg = DecoderRegistry::with_content_cache(ccache.clone(), misses.clone());
         reg.register(DecoderEntry::PersistentCachedRect(
-            enc::PersistentCachedRectDecoder::new(pcache.clone()),
+            enc::PersistentCachedRectDecoder::new_with_miss_reporter(pcache.clone(), pmisses.clone()),
         ));
         reg.register(DecoderEntry::PersistentCachedRectInit(
             enc::PersistentCachedRectInitDecoder::new(pcache.clone()),
@@ -297,7 +299,7 @@ impl Framebuffer {
             server_pixel_format,
             registry: reg,
             pending_misses: Some(misses),
-            pending_pcache_misses: None,
+            pending_pcache_misses: Some(pmisses),
             content_cache: Some(ccache),
             persistent_cache: Some(pcache),
             cache_protocol: CacheProtocolNegotiated::None,
@@ -663,6 +665,31 @@ impl Framebuffer {
                         .saturating_add(missed);
                     self.content_cache_counters.queries_sent = self
                         .content_cache_counters
+                        .queries_sent
+                        .saturating_add(missed);
+                }
+                v.clear();
+                return out;
+            }
+        }
+        Vec::new()
+    }
+
+    /// Drain and return any pending PersistentCache miss IDs reported during the last decode.
+    ///
+    /// Also updates protocol counters to reflect the misses and the corresponding queries that will be sent.
+    pub fn drain_pending_persistent_cache_misses(&mut self) -> Vec<[u8; 16]> {
+        if let Some(m) = &self.pending_pcache_misses {
+            if let Ok(mut v) = m.lock() {
+                let out = v.clone();
+                let missed = out.len() as u32;
+                if missed > 0 {
+                    self.persistent_cache_counters.cache_misses = self
+                        .persistent_cache_counters
+                        .cache_misses
+                        .saturating_add(missed);
+                    self.persistent_cache_counters.queries_sent = self
+                        .persistent_cache_counters
                         .queries_sent
                         .saturating_add(missed);
                 }
