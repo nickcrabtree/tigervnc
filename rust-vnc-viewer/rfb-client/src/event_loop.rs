@@ -213,7 +213,12 @@ pub async fn spawn(
                             {
                                 let mut fb = framebuffer.lock().await;
                                 let misses = fb.drain_pending_cache_misses();
+                                let pc_misses = fb.drain_pending_persistent_cache_misses();
                                 drop(fb);
+                                if !pc_misses.is_empty() {
+                                    let _ = protocol::write_persistent_cache_query(&mut output, &pc_misses).await;
+                                    tracing::info!("PersistentCacheQuery count={}", pc_misses.len());
+                                }
                                 for cache_id in misses {
                                     let _ =
                                         protocol::write_request_cached_data(&mut output, cache_id)
@@ -460,7 +465,12 @@ pub async fn spawn(
                             {
                                 let mut fb = framebuffer.lock().await;
                                 let misses = fb.drain_pending_cache_misses();
+                                let pc_misses = fb.drain_pending_persistent_cache_misses();
                                 drop(fb);
+                                if !pc_misses.is_empty() {
+                                    let _ = protocol::write_persistent_cache_query(&mut output, &pc_misses).await;
+                                    tracing::info!("PersistentCacheQuery count={}", pc_misses.len());
+                                }
                                 for cache_id in misses {
                                     let _ =
                                         protocol::write_request_cached_data(&mut output, cache_id)
