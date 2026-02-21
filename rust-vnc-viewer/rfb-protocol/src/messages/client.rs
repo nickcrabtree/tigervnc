@@ -295,6 +295,56 @@ impl RequestCachedData {
     }
 }
 
+/// PersistentCacheQuery message - request init data for missing hashes (PersistentCache protocol).
+///
+/// NOTE: In this fork, message type 254 is also used by ContentCache's RequestCachedData.
+/// The negotiated cache protocol determines which wire format is used.
+///
+/// # Wire Format
+/// - 1 byte: message type (254)
+/// - 2 bytes: count (u16, big-endian)
+/// - For each entry:
+///   - 1 byte: hashLen (u8, always 16)
+///   - 16 bytes: hashBytes
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersistentCacheQuery {
+    pub hashes: Vec<[u8; 16]>,
+}
+
+impl PersistentCacheQuery {
+    pub fn write_to<W: AsyncWrite + Unpin>(&self, stream: &mut RfbOutStream<W>) {
+        stream.write_u8(254); // msgTypePersistentCacheQuery (overlaps RequestCachedData)
+        stream.write_u16(self.hashes.len() as u16);
+        for h in &self.hashes {
+            stream.write_u8(16); // hashLen
+            stream.write_bytes(h);
+        }
+    }
+}
+
+#[cfg(test)]
+mod persistent_cache_query_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_persistent_cache_query_wire_format() {
+        let msg = PersistentCacheQuery { hashes: vec![[0x11u8; 16], [0x22u8; 16]] };
+        let mut buf: Vec<u8> = Vec::new();
+        let mut out = RfbOutStream::new(&mut buf);
+        msg.write_to(&mut out);
+        out.flush().await.unwrap();
+
+        assert_eq!(buf[0], 254u8);
+        assert_eq!(u16::from_be_bytes([buf[1], buf[2]]), 2u16);
+
+        assert_eq!(buf[3], 16u8);
+        assert_eq!(&buf[4..20], &[0x11u8; 16]);
+
+        assert_eq!(buf[20], 16u8);
+        assert_eq!(&buf[21..37], &[0x22u8; 16]);
+    }
+}
+
 impl ClientCutText {
     /// Read ClientCutText from an RFB input stream.
     pub async fn read_from<R: AsyncRead + Unpin>(
