@@ -175,6 +175,8 @@ pub struct Framebuffer {
     registry: DecoderRegistry,
     /// Queue of cache IDs that missed during decoding and should be requested.
     pending_misses: Option<Arc<Mutex<Vec<u64>>>>,
+    /// Queue of PersistentCache hashes (16-byte IDs) that missed during decoding.
+    pending_pcache_misses: Option<Arc<Mutex<Vec<[u8; 16]>>>>,
     /// Optional ContentCache backing the decoder registry.
     content_cache: Option<Arc<Mutex<ContentCache>>>,
     /// Optional PersistentClientCache backing the decoder registry.
@@ -203,6 +205,7 @@ impl Framebuffer {
             server_pixel_format,
             registry: DecoderRegistry::with_standard(),
             pending_misses: None,
+            pending_pcache_misses: None,
             content_cache: None,
             persistent_cache: None,
             cache_protocol: CacheProtocolNegotiated::None,
@@ -228,6 +231,7 @@ impl Framebuffer {
             server_pixel_format,
             registry: DecoderRegistry::with_content_cache(cache.clone(), misses.clone()),
             pending_misses: Some(misses),
+            pending_pcache_misses: None,
             content_cache: Some(cache),
             persistent_cache: None,
             cache_protocol: CacheProtocolNegotiated::None,
@@ -259,6 +263,7 @@ impl Framebuffer {
             server_pixel_format,
             registry: reg,
             pending_misses: None,
+            pending_pcache_misses: None,
             content_cache: None,
             persistent_cache: Some(pcache),
             cache_protocol: CacheProtocolNegotiated::None,
@@ -292,6 +297,7 @@ impl Framebuffer {
             server_pixel_format,
             registry: reg,
             pending_misses: Some(misses),
+            pending_pcache_misses: None,
             content_cache: Some(ccache),
             persistent_cache: Some(pcache),
             cache_protocol: CacheProtocolNegotiated::None,
