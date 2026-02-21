@@ -215,12 +215,17 @@ impl InputDispatcher {
 mod tests {
     use super::*;
     use winit::event::{ElementState, MouseButton, VirtualKeyCode, WindowEvent};
+    fn dummy_device_id() -> winit::event::DeviceId {
+        // DeviceId is an opaque platform type; tests only need a placeholder value.
+        unsafe { std::mem::zeroed() }
+    }
+
 
     #[test]
     fn test_mouse_move_generates_pointer() {
         let mut d = InputDispatcher::new();
         let cmds = d.handle_window_event(&WindowEvent::CursorMoved {
-            device_id: unsafe { std::mem::transmute(0usize) },
+            device_id: dummy_device_id(),
             position: winit::dpi::PhysicalPosition::new(100.0, 200.0),
             modifiers: winit::event::ModifiersState::empty(),
         });
@@ -238,13 +243,13 @@ mod tests {
         let mut d = InputDispatcher::new();
         // Move first
         let _ = d.handle_window_event(&WindowEvent::CursorMoved {
-            device_id: unsafe { std::mem::transmute(0usize) },
+            device_id: dummy_device_id(),
             position: winit::dpi::PhysicalPosition::new(10.0, 10.0),
             modifiers: winit::event::ModifiersState::empty(),
         });
         // Press
         let cmds = d.handle_window_event(&WindowEvent::MouseInput {
-            device_id: unsafe { std::mem::transmute(0usize) },
+            device_id: dummy_device_id(),
             state: ElementState::Pressed,
             button: MouseButton::Left,
             modifiers: winit::event::ModifiersState::empty(),
@@ -252,7 +257,7 @@ mod tests {
         assert!(!cmds.is_empty());
         // Release
         let cmds2 = d.handle_window_event(&WindowEvent::MouseInput {
-            device_id: unsafe { std::mem::transmute(0usize) },
+            device_id: dummy_device_id(),
             state: ElementState::Released,
             button: MouseButton::Left,
             modifiers: winit::event::ModifiersState::empty(),
