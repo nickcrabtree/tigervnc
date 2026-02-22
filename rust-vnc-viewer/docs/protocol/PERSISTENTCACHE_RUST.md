@@ -39,7 +39,8 @@ pub const PSEUDO_ENCODING_PERSISTENT_CACHE: i32 = -321;
 // rfb-protocol/src/messages/types.rs
 pub const MSG_TYPE_PERSISTENT_CACHE_QUERY: u8 = 254;
 pub const MSG_TYPE_PERSISTENT_CACHE_HASH_LIST: u8 = 253;
-```
+```text
+
 
 ### Wire Format
 
@@ -47,7 +48,7 @@ pub const MSG_TYPE_PERSISTENT_CACHE_HASH_LIST: u8 = 253;
 
 Server → Client: Reference cached content by hash
 
-```
+```text
 ┌─────────────────────────────────────┐
 │ Standard RFB Rectangle Header       │
 ├─────────────────────────────────────┤
@@ -63,9 +64,11 @@ Server → Client: Reference cached content by hash
 │ hashBytes: [u8; 16]                 │
 │ flags: u16 (reserved, must be 0)    │
 └─────────────────────────────────────┘
-```
+```text
+
 
 **Client behavior**:
+
 - Lookup `hashBytes` in cache
 - On hit: Blit cached pixels to framebuffer
 - On miss: Queue `PersistentCacheQuery` for this hash
@@ -74,7 +77,7 @@ Server → Client: Reference cached content by hash
 
 Server → Client: Send full data + hash for caching
 
-```
+```text
 ┌─────────────────────────────────────┐
 │ Standard RFB Rectangle Header       │
 ├─────────────────────────────────────┤
@@ -93,9 +96,11 @@ Server → Client: Send full data + hash for caching
 │ payloadLen: u32                     │
 │ payloadBytes: [u8; payloadLen]      │
 └─────────────────────────────────────┘
-```
+```text
+
 
 **Client behavior**:
+
 - Decode `payloadBytes` using `innerEncoding` decoder
 - Store decoded pixels in cache indexed by `hashBytes`
 - Blit to framebuffer
@@ -104,7 +109,7 @@ Server → Client: Send full data + hash for caching
 
 Client → Server: Request missing hashes
 
-```
+```text
 ┌─────────────────────────────────────┐
 │ type: u8 = 254                      │
 │ count: u16                          │
@@ -113,7 +118,8 @@ Client → Server: Request missing hashes
 │   hashLen: u8 (always 16)           │
 │   hashBytes: [u8; 16]               │
 └─────────────────────────────────────┘
-```
+```text
+
 
 **Batching strategy**: Accumulate 5-10 misses before sending query to reduce roundtrips.
 
@@ -121,7 +127,7 @@ Client → Server: Request missing hashes
 
 Client → Server: Advertise known hashes (optional)
 
-```
+```text
 ┌─────────────────────────────────────┐
 │ type: u8 = 253                      │
 │ sequenceId: u32                     │
@@ -133,7 +139,8 @@ Client → Server: Advertise known hashes (optional)
 │   hashLen: u8 (always 16)           │
 │   hashBytes: [u8; 16]               │
 └─────────────────────────────────────┘
-```
+```text
+
 
 **Usage**: Send after initial framebuffer update, chunked in batches of 1000 hashes.
 
@@ -141,7 +148,7 @@ Client → Server: Advertise known hashes (optional)
 
 ### Integration Points
 
-```
+```text
 rfb-protocol/              # Low-level protocol primitives
 ├── src/
 │   ├── content_hash.rs    # SHA-256 hashing utility (NEW)
@@ -160,7 +167,8 @@ rfb-client/                # High-level client orchestration
 ├── src/
 │   ├── decoder_registry.rs  # Register new decoders (MODIFY)
 │   └── connection.rs         # Negotiation, query batching (MODIFY)
-```
+```text
+
 
 ## Content Hashing
 
@@ -180,19 +188,20 @@ pub fn compute_rect_hash(
     let mut hasher = Sha256::new();
     let stride_bytes = stride_pixels * bytes_per_pixel;  // CRITICAL!
     let row_bytes = width * bytes_per_pixel;
-    
+
     for y in 0..height {
         let row_start = y * stride_bytes;
         let row_end = row_start + row_bytes;
         hasher.update(&pixels[row_start..row_end]);
     }
-    
+
     let result = hasher.finalize();
     let mut hash = [0u8; 16];
     hash.copy_from_slice(&result[..16]);  // Truncate to 16 bytes
     hash
 }
-```
+```text
+
 
 ### Critical: Stride Handling
 
@@ -204,7 +213,8 @@ let row_bytes = stride;  // BUG!
 
 // ✅ CORRECT - multiply by bytes per pixel
 let stride_bytes = stride_pixels * bytes_per_pixel;
-```
+```text
+
 
 This was the source of a critical bug in the C++ implementation (Oct 7, 2025) that caused hash collisions and visual corruption.
 
@@ -213,12 +223,13 @@ This was the source of a critical bug in the C++ implementation (Oct 7, 2025) th
 **Requirement**: Hashes must match C++ implementation exactly for cross-compatibility.
 
 Test vector validation:
+
 ```rust
 #[test]
 fn test_hash_matches_cpp() {
     let pixels = vec![0xFF; 64 * 64 * 4];  // RGBA, all white
     let hash = compute_rect_hash(&pixels, 64, 64, 64, 4);
-    
+
     // Expected hash from C++ ContentHash::computeRect
     let expected = [
         0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0,
@@ -226,7 +237,8 @@ fn test_hash_matches_cpp() {
     ];
     assert_eq!(hash, expected);
 }
-```
+```text
+
 
 ## GlobalClientPersistentCache
 
@@ -243,21 +255,21 @@ use std::collections::{HashMap, HashSet};
 pub struct GlobalClientPersistentCache {
     // Main storage: hash → cached pixel data
     cache: HashMap<[u8; 16], CachedEntry>,
-    
+
     // ARC lists (most recent at front)
     t1: IndexMap<[u8; 16], ()>,  // Recently used once
     t2: IndexMap<[u8; 16], ()>,  // Frequently used
     b1: HashSet<[u8; 16]>,       // Ghost: evicted from T1
     b2: HashSet<[u8; 16]>,       // Ghost: evicted from T2
-    
+
     // Adaptive parameter: target T1 size in bytes
     p: usize,
-    
+
     // Size tracking
     max_size_bytes: usize,
     t1_size_bytes: usize,
     t2_size_bytes: usize,
-    
+
     // Statistics
     hits: u64,
     misses: u64,
@@ -271,7 +283,8 @@ pub struct CachedEntry {
     pub height: u32,
     pub stride_pixels: usize,
 }
-```
+```text
+
 
 #### ARC Algorithm Logic
 
@@ -280,7 +293,7 @@ impl GlobalClientPersistentCache {
     pub fn get(&mut self, hash: &[u8; 16]) -> Option<&CachedEntry> {
         if let Some(entry) = self.cache.get(hash) {
             self.hits += 1;
-            
+
             // Promotion logic
             if self.t1.contains_key(hash) {
                 // Hit in T1: Move to T2 (frequency promotion)
@@ -291,11 +304,11 @@ impl GlobalClientPersistentCache {
                 self.t2.remove(hash);
                 self.t2.insert(*hash, ());
             }
-            
+
             Some(entry)
         } else {
             self.misses += 1;
-            
+
             // Ghost hit logic
             if self.b1.contains(hash) {
                 // Ghost hit in B1: Increase p (favor recency)
@@ -304,25 +317,25 @@ impl GlobalClientPersistentCache {
                 // Ghost hit in B2: Decrease p (favor frequency)
                 self.p = self.p.saturating_sub(self.cache[hash].byte_size());
             }
-            
+
             None
         }
     }
-    
+
     pub fn insert(&mut self, hash: [u8; 16], entry: CachedEntry) {
         let size = entry.byte_size();
-        
+
         // Make room if needed
         while self.t1_size_bytes + self.t2_size_bytes + size > self.max_size_bytes {
             self.evict_one();
         }
-        
+
         // Insert into T1 (recency list)
         self.cache.insert(hash, entry);
         self.t1.insert(hash, ());
         self.t1_size_bytes += size;
     }
-    
+
     fn evict_one(&mut self) {
         // ARC replacement policy
         if self.t1_size_bytes > self.p {
@@ -346,7 +359,8 @@ impl GlobalClientPersistentCache {
         }
     }
 }
-```
+```text
+
 
 ### Size Accounting
 
@@ -358,7 +372,8 @@ impl CachedEntry {
         self.pixels.len() + std::mem::size_of::<Self>()
     }
 }
-```
+```text
+
 
 ## File Format and Disk I/O
 
@@ -375,14 +390,15 @@ fn cache_file_path() -> Result<PathBuf> {
     } else {
         bail!("Cannot determine cache directory");
     };
-    
+
     Ok(cache_dir.join("tigervnc").join("persistentcache.dat"))
 }
-```
+```text
+
 
 ### File Format
 
-```
+```text
 ┌────────────────────────────────────────┐
 │ Header (64 bytes)                      │
 ├────────────────────────────────────────┤
@@ -409,7 +425,8 @@ fn cache_file_path() -> Result<PathBuf> {
 │ Checksum (32 bytes)                    │
 │  SHA-256 of all above data             │
 └────────────────────────────────────────┘
-```
+```text
+
 
 ### Load/Save Implementation
 
@@ -419,66 +436,66 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 impl GlobalClientPersistentCache {
     pub fn load_from_disk() -> Result<Self> {
         let path = cache_file_path()?;
-        
+
         if !path.exists() {
             return Ok(Self::new(DEFAULT_SIZE_MB));
         }
-        
+
         let mut file = File::open(&path)?;
-        
+
         // Read and validate header
         let magic = file.read_u32::<BigEndian>()?;
         if magic != 0x50435643 {
             warn!("Invalid cache magic, starting fresh");
             return Ok(Self::new(DEFAULT_SIZE_MB));
         }
-        
+
         let version = file.read_u32::<BigEndian>()?;
         if version != 1 {
             warn!("Unsupported cache version {}, starting fresh", version);
             return Ok(Self::new(DEFAULT_SIZE_MB));
         }
-        
+
         let total_entries = file.read_u64::<BigEndian>()?;
         // ... read remaining header fields
-        
+
         // Read entries
         let mut cache = Self::new(DEFAULT_SIZE_MB);
         for _ in 0..total_entries {
             let hash_len = file.read_u8()?;
             assert_eq!(hash_len, 16);
-            
+
             let mut hash = [0u8; 16];
             file.read_exact(&mut hash)?;
-            
+
             let width = file.read_u16::<BigEndian>()?;
             let height = file.read_u16::<BigEndian>()?;
             // ... read entry fields
-            
+
             cache.insert(hash, entry);
         }
-        
+
         // TODO: Verify checksum
-        
+
         Ok(cache)
     }
-    
+
     pub fn save_to_disk(&self) -> Result<()> {
         let path = cache_file_path()?;
-        
+
         // Create directory
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        
+
         let mut file = File::create(&path)?;
-        
+
         // Write header
         file.write_u32::<BigEndian>(0x50435643)?;  // Magic
         file.write_u32::<BigEndian>(1)?;           // Version
         file.write_u64::<BigEndian>(self.cache.len() as u64)?;
         // ... write remaining header
-        
+
         // Write entries
         for (hash, entry) in &self.cache {
             file.write_u8(16)?;
@@ -488,13 +505,14 @@ impl GlobalClientPersistentCache {
             // ... write entry fields
             file.write_all(&entry.pixels)?;
         }
-        
+
         // TODO: Compute and write checksum
-        
+
         Ok(())
     }
 }
-```
+```text
+
 
 ### Corruption Handling
 
@@ -504,19 +522,20 @@ pub fn load_from_disk() -> Result<Self> {
         Ok(cache) => Ok(cache),
         Err(e) => {
             warn!("Cache load failed: {}, starting fresh", e);
-            
+
             // Preserve corrupt file as .bak
             let path = cache_file_path()?;
             if path.exists() {
                 let bak_path = path.with_extension("dat.bak");
                 let _ = std::fs::rename(&path, &bak_path);
             }
-            
+
             Ok(Self::new(DEFAULT_SIZE_MB))
         }
     }
 }
-```
+```text
+
 
 ## Client Protocol Handling
 
@@ -534,47 +553,64 @@ both ContentCache and PersistentCache implementations:
 
 - Normal rectangles were decoded via `DecodeManager::decodeRect()` into a work queue.
 - Worker threads applied rectangles to the framebuffer with ordering controlled by
+
   decoder flags and `affectedRegion`.
+
 - ContentCache operations:
   - `storeCachedRect` read pixels directly from the framebuffer into the cache.
   - `handleCachedRect` blitted cached pixels via `imageRect()` on the main thread.
 - These cache operations were not synchronized with the decode queue, so under load they
+
   occasionally stored or replayed pixels from an intermediate framebuffer state that never
   appeared in the non-cache viewer, causing visual divergence.
 
 **How C++ fixed it (ContentCache):**
 
 - `DecodeManager::storeCachedRect()` now calls `flush()` before reading pixels, ensuring
+
   all pending decodes that might affect that rect have completed.
+
 - `DecodeManager::handleCachedRect()` now calls `flush()` before blitting cached pixels
+
   to the framebuffer, ensuring no overlapping decodes are in-flight.
+
 - After this change, a ContentCache-enabled viewer produced pixel-identical output vs a
+
   cache-disabled viewer in the e2e black-box screenshot tests.
 
 **Implications for Rust PersistentCache implementation:**
 
 - The Rust viewer **must not** perform PersistentCache store/replay as unsynchronized
+
   framebuffer mutations on some side channel.
+
 - Instead, it must integrate PersistentCache into the existing ordering model:
 
   1. **Store path** (`PersistentCachedRectInit`):
      - Only snapshot pixels into the cache after all relevant decodes have completed.
      - In practice, this means either:
        - Routing the “store” step through whatever mechanism the Rust client uses to
+
          signal “end of rect decode” in a single-threaded or serialized context, or
+
        - Explicitly flushing/waiting for pending decode work to finish for that rect’s
+
          region before reading from the framebuffer.
 
   2. **Replay path** (`PersistentCachedRect`):
      - Apply cached blits with the same ordering guarantees as normal decodes:
        - Option A: enqueue a “cache blit” operation into the same decode/compose
+
          machinery that handles Tight/ZRLE/CopyRect, so ordering and conflict resolution
          are identical.
+
        - Option B: if the Rust decode pipeline is single-threaded, ensure that cache
+
          blits are only invoked at points where no other rects are being applied and the
          current framebuffer state matches what a non-cache client would see.
 
 - In all cases, the Rust implementation should be validated by the same black-box
+
   screenshot tests used for the C++ viewer: PersistentCache-on vs PersistentCache-off
   runs must produce pixel-identical output across all checkpoints.
 
@@ -583,6 +619,7 @@ both ContentCache and PersistentCache implementations:
 See implementation plan in `IMPLEMENTATION_PLAN.md` for full decoder pseudocode.
 
 **Key points**:
+
 - Encoding 102: Read hash, lookup cache, blit or queue query
 - Encoding 103: Read hash + inner encoding, decode, cache, blit
 - Query batching: Accumulate 5-10 misses before flushing
@@ -597,7 +634,7 @@ fn build_set_encodings(&self) -> Vec<i32> {
         ENCODING_ZRLE,
         ENCODING_HEXTILE,
         // ... others
-        
+
         // Pseudo-encodings (order matters!)
         PSEUDO_ENCODING_PERSISTENT_CACHE,  // -321 (prefer this)
         PSEUDO_ENCODING_CONTENT_CACHE,     // -320 (fallback)
@@ -605,7 +642,8 @@ fn build_set_encodings(&self) -> Vec<i32> {
         PSEUDO_ENCODING_DESKTOP_SIZE,
     ]
 }
-```
+```text
+
 
 ## Testing Strategy
 
@@ -617,10 +655,10 @@ fn test_arc_promotion() {
     let mut cache = GlobalClientPersistentCache::new(10);
     let hash1 = [0x01; 16];
     let entry = create_test_entry(64, 64);
-    
+
     cache.insert(hash1, entry);
     assert!(cache.t1.contains_key(&hash1));
-    
+
     // Second access should promote to T2
     cache.get(&hash1);
     assert!(!cache.t1.contains_key(&hash1));
@@ -634,7 +672,8 @@ fn test_stride_bytes_calculation() {
     let stride_bytes = stride_pixels * bytes_per_pixel;
     assert_eq!(stride_bytes, 320);  // Not 80!
 }
-```
+```text
+
 
 ### Integration Tests
 
@@ -646,7 +685,7 @@ Mock server sequences testing cache hit/miss flows.
 #[tokio::test]
 async fn test_cross_session() {
     let cache_file = temp_cache_file();
-    
+
     // Session 1
     {
         let mut client = connect_with_cache(&cache_file).await?;
@@ -654,7 +693,7 @@ async fn test_cross_session() {
         client.receive_updates(100).await?;
         client.shutdown().await?;  // Triggers save
     }
-    
+
     // Session 2
     {
         let mut client = connect_with_cache(&cache_file).await?;
@@ -663,11 +702,13 @@ async fn test_cross_session() {
         // Verify immediate hits
     }
 }
-```
+```text
+
 
 ### WARP Safety
 
 **CRITICAL**: When testing with TigerVNC server:
+
 - ✅ **SAFE**: Use the e2e framework (displays :998 and :999)
 - ❌ **FORBIDDEN**: Do NOT touch production servers `:1`, `:2`, or `:3`
 
@@ -703,7 +744,8 @@ debug!("PersistentCache: insert hash={:02x?} size={}KB", hash, size/1024);
 debug!("PersistentCache: evicted {} entries, freed {}KB", count, freed/1024);
 debug!("PersistentCache: query batch size={}", batch.len());
 debug!("PersistentCache: stats hits={} misses={} rate={:.1}%", hits, misses, hit_rate);
-```
+```text
+
 
 ### Common Issues
 
@@ -724,14 +766,18 @@ remains to be done for full PersistentCache parity with the C++ viewer.
 - ✅ **Shared ARC core** (`rfb-encodings/src/arc_cache.rs`)
   - Generic `ArcCache<K>` with T1/T2/B1/B2 lists and byte-sized capacity accounting
   - Hit promotion (`on_hit`), ghost-hit adaptation (`on_ghost_hit_b1`/`on_ghost_hit_b2`),
+
     resident insert/remove, and `take_pending_evictions()` for eviction notifications
+
 - ✅ **ContentCache integration** (`rfb-encodings/src/content_cache.rs`)
   - Uses `ArcCache<ContentKey>` for session-only cache eviction and promotion
   - `ContentKey { cache_id, width, height }` ensures dimension-aware keys
 - ✅ **PersistentClientCache ARC integration** (`rfb-encodings/src/persistent_cache.rs`)
   - `PersistentClientCache` owns an `ArcCache<[u8; 16]>` and a `HashMap<[u8; 16], PersistentCachedPixels>`
   - `insert()` delegates capacity management and eviction to `ArcCache::insert_resident()`
+
     and removes evicted payloads from the map while keeping `current_bytes` in sync
+
   - `lookup()` calls `arc.on_hit()` on resident hits to feed ARC’s adaptation logic
   - `take_evicted_ids()` exposes ARC’s pending evictions for use by the protocol layer
 
@@ -743,24 +789,29 @@ remains free of deprecation warnings and `allow(deprecated)` annotations.
 The following pieces described earlier in this guide and in
 `PERSISTENTCACHE_IMPLEMENTATION_PLAN.md` are still **TODO**:
 
-- ❌ **Wire protocol support** for PersistentCache-specific messages
-  - Client-side writers for `PersistentCacheQuery` / `PersistentHashList` (message types 254/253)
-  - Any server-side handling in tests/mocks (only needed for e2e)
-- ❌ **Decoder-level integration** for encodings 102/103
-  - Persistent-aware variants of `PersistentCachedRectDecoder` and
-    `PersistentCachedRectInitDecoder` are present but not yet wired into
-    a full protocol loop with eviction notifications
+- ❌ **PersistentHashList (253) support**
+  - The wire format is specified above, but the Rust viewer does not yet emit this message.
+  - This is optional, but useful for advertising known hashes efficiently after initial connect.
+
 - ❌ **Eviction notification to server**
-  - No code yet consumes `PersistentClientCache::take_evicted_ids()` to send
-    protocol-level “drop these hashes” messages back to the server
+  - The cache layer exposes `PersistentClientCache::take_evicted_ids()` (ARC pending evictions),
+
+    but nothing yet consumes those IDs to inform the server which hashes should be dropped.
+
 - ❌ **Disk-backed persistence layer**
-  - No `.dat` file format or on-disk `DiskStore` for `PersistentClientCache`
-  - No load/save on viewer startup/shutdown
-- ❌ **Negotiation & configuration plumbing**
-  - The viewer does not yet advertise PersistentCache capability in `SetEncodings`
-    or select “persistent vs session-only vs none” cache modes based on server support
-- ❌ **Cross-session/e2e tests**
-  - No automated tests yet validating persistent hit rates or cross-session behavior
+  - There is no on-disk `DiskStore` implementation for `PersistentClientCache`.
+  - No load/save on viewer startup/shutdown, so there are no cross-session hits yet.
+
+- ❌ **Cross-session / e2e tests for persistence**
+  - There are no automated tests that run two sessions and assert persistent hit rates / bandwidth savings.
+
+Notes on what is already implemented (and may differ from older versions of this document):
+
+- ✅ The client can advertise PersistentCache (`-321`) and registers decoders for encodings 102/103.
+- ✅ PersistentCache misses can be queued during decoding and drained after framebuffer updates.
+- ✅ The client can send batched `PersistentCacheQuery` (message type 254), noting that 254 overlaps
+
+  `RequestCachedData` for ContentCache in this fork.
 
 The next section outlines concrete tasks to complete these remaining items.
 
@@ -776,22 +827,32 @@ integration. It assumes familiarity with the existing ContentCache integration i
 correct cache mode based on server support.
 
 **Where to work:**
+
 - `rfb-client/src/connection.rs` (or wherever `SetEncodings` is built)
 - `rfb-encodings/src/lib.rs` / `rfb-protocol/src/messages/types.rs` for any missing constants
 
 **Steps:**
+
 1. Confirm `PSEUDO_ENCODING_PERSISTENT_CACHE` and `ENCODING_PERSISTENT_CACHED_RECT{,_INIT}`
+
    are defined and exported from `rfb-encodings` and `rfb-protocol`.
+
 2. Update the `build_set_encodings`/`effective_encodings` helper so that the
+
    encodings list includes, in this exact order:
+
    - `PSEUDO_ENCODING_PERSISTENT_CACHE` (`-321`) **before** `PSEUDO_ENCODING_CONTENT_CACHE` (`-320`)
    - `ENCODING_LAST_RECT` and `ENCODING_DESKTOP_SIZE` after the caching pseudo-encodings
 3. Introduce a `CacheMode` enum in `rfb-client` (e.g. `Persistent`, `Session`, `None`)
+
    and determine the selected mode from the server’s supported encodings.
+
 4. Expose the chosen `CacheMode` to the framebuffer/decoder setup so the correct
+
    cache type(s) are instantiated.
 
 **Acceptance checklist:**
+
 - [ ] Encodings list shows `-321` before `-320` when persistent cache is enabled
 - [ ] Client logs clearly indicate which cache mode was negotiated
 - [ ] Behavior falls back cleanly to ContentCache or no-cache when `-321` is unsupported
@@ -803,31 +864,42 @@ correct cache mode based on server support.
 is used for `ENCODING_CACHED_RECT{,_INIT}`.
 
 **Where to work:**
+
 - `rfb-encodings/src/persistent_cached_rect.rs`
 - `rfb-encodings/src/persistent_cached_rect_init.rs`
 - `rfb-client/src/framebuffer.rs` (decoder registry wiring)
 
 **Steps:**
+
 1. Ensure `Framebuffer::with_persistent_cache` and `Framebuffer::with_both_caches`
+
    correctly register `PersistentCachedRectDecoder` and `PersistentCachedRectInitDecoder`
    for encodings 102 and 103.
+
 2. In `PersistentCachedRectDecoder::decode`:
    - Read the 16-byte cache ID from the stream.
    - Lock `PersistentClientCache` and call `lookup(&id)`.
    - On hit: blit `PersistentCachedPixels` into the framebuffer via
+
      `MutablePixelBuffer::image_rect`, and return `Ok(())`.
+
    - On miss: return an error that is recognizable by the caller (e.g. a specific
+
      `RfbClientError::PersistentCacheMiss`), so the event loop can react by sending
      a `PersistentCacheQuery`.
+
 3. In `PersistentCachedRectInitDecoder::decode`:
    - Read the 16-byte ID and inner encoding.
    - Decode the payload using the existing inner decoders (Raw/Tight/ZRLE/...).
    - Snapshot the decoded pixels using `buffer.get_buffer(rect, &mut stride_pixels)`
+
      and compute byte length with `height * stride_pixels * bytes_per_pixel`.
+
    - Construct `PersistentCachedPixels` and call `PersistentClientCache::insert(entry)`.
    - Blit the decoded pixels to the framebuffer (just as today).
 
 **Acceptance checklist:**
+
 - [ ] Known-server traces show encodings 102/103 being handled by the persistent decoders
 - [ ] Cache hits avoid re-decoding and simply blit from `PersistentClientCache`
 - [ ] Misses are surfaced in a way the event loop can see and act on
@@ -838,23 +910,31 @@ is used for `ENCODING_CACHED_RECT{,_INIT}`.
 corresponding disk entries and avoid referencing stale hashes.
 
 **Where to work:**
+
 - `rfb-client/src/event_loop.rs` (or wherever outbound messages are written)
 - `rfb-encodings/src/persistent_cache.rs` (already exposes `take_evicted_ids()`)
 - `rfb-protocol` (writer for eviction/“drop hash” messages, if specified)
 
 **Steps:**
+
 1. Confirm the intended server-side eviction-notification message from the C++
+
    implementation/design (e.g. a dedicated message type or reusing `PersistentCacheHashList`).
+
 2. Add a helper in `rfb-protocol` to write this message, given a list of 16-byte IDs.
 3. After each framebuffer update is applied (in the same place where
+
    `drain_pending_cache_misses()` is called for ContentCache), add logic to:
+
    - Lock `PersistentClientCache` via the framebuffer handle.
    - Call `take_evicted_ids()` to obtain any evicted IDs since the last check.
    - For any non-empty list, send the eviction-notification message to the server.
 4. Ensure this runs in the main event loop, **after** all rectangles for the current
+
    `FramebufferUpdate` have been applied, to keep ordering simple and predictable.
 
 **Acceptance checklist:**
+
 - [ ] Logs show eviction IDs being sent when ARC evicts entries
 - [ ] The server’s logs (or test harness) confirm receipt of those notifications
 - [ ] No additional visual corruption or protocol errors under heavy churn
@@ -865,13 +945,17 @@ corresponding disk entries and avoid referencing stale hashes.
 per-server disk file, enabling cross-session hits.
 
 **Where to work:**
+
 - `rfb-encodings/src/persistent_cache.rs` (or a new `persistent_cache_store.rs`)
 - `rfb-client` connection/shutdown plumbing
 
 **Steps:**
+
 1. Design a minimal on-disk format (you can base this directly on the
+
    `DiskStore` section in `PERSISTENTCACHE_IMPLEMENTATION_PLAN.md`, but you do
    not need to implement compaction initially).
+
 2. Implement a small `DiskStore` for `[u8; 16] → PersistentCachedPixels`:
    - `load(path) -> Result<DiskStore>` that builds an index and total size in bytes
    - `append(id, &entry)` to add new records
@@ -884,9 +968,12 @@ per-server disk file, enabling cross-session hits.
    - On clean shutdown, any buffered `DiskStore` writer is flushed and synced
 
 **Acceptance checklist:**
+
 - [ ] A cache file appears under `~/.cache/tigervnc/rust-viewer/` (or agreed path)
 - [ ] Restarting the viewer with the same server and pixel format yields immediate hits
+
   (verified via logs and e2e tests)
+
 - [ ] Corrupting the cache file does not crash the viewer; it falls back to an empty cache
 
 ### 5. Extend Tests for PersistentCache Behavior
@@ -894,30 +981,42 @@ per-server disk file, enabling cross-session hits.
 **Goal:** Validate correctness, ordering, and cross-session behavior.
 
 **Where to work:**
+
 - `rfb-encodings/tests` (unit tests for hashing, ARC, DiskStore)
 - `rfb-client/tests` or `tests/e2e` (integration and screenshot-based tests)
 
 **Steps:**
+
 1. Add unit tests for:
    - `PersistentClientCache::insert` honoring byte capacity via ARC and evicting old entries
    - `take_evicted_ids()` returning the expected IDs after forced evictions
 2. Add integration tests with a mock server that:
    - Sends a mix of 102/103 rectangles for a few distinct hashes
    - Verifies that only the first occurrence of each hash triggers full decode,
+
      subsequent references are served from cache
+
    - Forces evictions by pushing enough unique entries to exceed capacity and
+
      confirms eviction notifications are sent
+
 3. Add e2e tests (modeled on the existing C++ PersistentCache tests) that:
    - Run a first session to populate the cache file
    - Run a second session and verify a high persistent hit rate and significant
+
      bandwidth reduction
+
    - Compare screenshots between “PersistentCache off” and “PersistentCache on” runs
+
      to ensure pixel-identical output
 
 **Acceptance checklist:**
+
 - [ ] New unit tests pass and cover the key ARC + persistence behaviors
 - [ ] E2E tests demonstrate persistent hit rates and bandwidth savings comparable
+
   to the C++ viewer
+
 - [ ] No new warnings or `allow(deprecated)` are introduced; `cargo clippy -- -D warnings` remains clean
 
 ---
@@ -934,7 +1033,7 @@ per-server disk file, enabling cross-session hits.
 ### RFB Protocol
 
 - RFC 6143: The Remote Framebuffer Protocol
-- TigerVNC extensions: https://tigervnc.org/doc/protocol-extensions.txt
+- TigerVNC extensions: <https://tigervnc.org/doc/protocol-extensions.txt>
 
 ### Dependencies
 
