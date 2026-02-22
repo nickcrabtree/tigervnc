@@ -322,6 +322,53 @@ impl PersistentCacheQuery {
     }
 }
 
+/// PersistentCacheEviction message - notify server that the client evicted cache hashes
+/// (PersistentCache protocol).
+///
+/// The server should stop sending PersistentCachedRect references for these hashes.
+///
+/// # Wire Format
+/// - 1 byte: message type (249)
+/// - 2 bytes: count (u16, big-endian)
+/// - For each entry:
+///   - 1 byte: hashLen (u8, always 16)
+///   - 16 bytes: hashBytes
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersistentCacheEviction {
+    pub hashes: Vec<[u8; 16]>,
+}
+
+impl PersistentCacheEviction {
+    pub fn write_to<W: AsyncWrite + Unpin>(&self, stream: &mut RfbOutStream<W>) {
+        stream.write_u8(249); // msgTypePersistentCacheEviction
+        stream.write_u16(self.hashes.len() as u16);
+        for h in &self.hashes {
+            stream.write_u8(16); // hashLen
+            stream.write_bytes(h);
+        }
+    }
+}
+
+#[cfg(test)]
+mod persistent_cache_eviction_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_persistent_cache_eviction_wire_format() {
+        let msg = PersistentCacheEviction { hashes: vec![[0xAAu8; 16], [0xBBu8; 16]] };
+        let mut buf: Vec<u8> = Vec::new();
+        let mut out = RfbOutStream::new(&mut buf);
+        msg.write_to(&mut out);
+        out.flush().await.unwrap();
+
+        assert_eq!(buf[0], 249u8);
+        assert_eq!(u16::from_be_bytes([buf[1], buf[2]]), 2u16);
+        assert_eq!(buf[3], 16u8);
+        assert_eq!(&buf[4..20], &[0xAAu8; 16]);
+        assert_eq!(buf[20], 16u8);
+        assert_eq!(&buf[21..37], &[0xBBu8; 16]);
+    }
+}
 #[cfg(test)]
 mod persistent_cache_query_tests {
     use super::*;

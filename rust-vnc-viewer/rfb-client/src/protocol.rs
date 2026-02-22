@@ -12,7 +12,7 @@ use crate::errors::RfbClientError;
 use crate::protocol_trace;
 use rfb_protocol::io::{RfbInStream, RfbOutStream};
 use rfb_protocol::messages as msg;
-use rfb_protocol::messages::client::PersistentCacheQuery;
+use rfb_protocol::messages::client::{PersistentCacheEviction, PersistentCacheQuery};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 /// Incoming server message (high-level wrapper around rfb-protocol messages).
@@ -345,6 +345,22 @@ pub async fn write_persistent_cache_query<W: AsyncWrite + Unpin>(
     msg.write_to(outstream);
     outstream.flush().await.map_err(|e| RfbClientError::Transport(e))
 }
+
+/// Write PersistentCacheEviction (client eviction notification) and flush.
+///
+/// Wire format is a dedicated message type (249) carrying a list of 16-byte hashes.
+pub async fn write_persistent_cache_eviction<W: AsyncWrite + Unpin>(
+    outstream: &mut RfbOutStream<W>,
+    hashes: &[[u8; 16]],
+) -> Result<(), RfbClientError> {
+    let msg = PersistentCacheEviction { hashes: hashes.to_vec() };
+    if protocol_trace::enabled() {
+        protocol_trace::out_msg("PersistentCacheEviction", &format!("count={}", hashes.len()));
+    }
+    msg.write_to(outstream);
+    outstream.flush().await.map_err(RfbClientError::Transport)
+}
+
 
 /// Enable or disable continuous updates over a specified rectangle and flush.
 pub async fn write_enable_continuous_updates<W: AsyncWrite + Unpin>(

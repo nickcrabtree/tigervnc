@@ -214,7 +214,14 @@ pub async fn spawn(
                                 let mut fb = framebuffer.lock().await;
                                 let misses = fb.drain_pending_cache_misses();
                                 let pc_misses = fb.drain_pending_persistent_cache_misses();
+                                let pc_evictions = fb.drain_pending_persistent_cache_evictions();
                                 drop(fb);
+                                if !pc_evictions.is_empty() {
+                                    for chunk in pc_evictions.chunks(1000) {
+                                        let _ = protocol::write_persistent_cache_eviction(&mut output, chunk).await;
+                                        tracing::info!("PersistentCacheEviction count={}", chunk.len());
+                                    }
+                                }
                                 if !pc_misses.is_empty() {
                                     let _ = protocol::write_persistent_cache_query(&mut output, &pc_misses).await;
                                     tracing::info!("PersistentCacheQuery count={}", pc_misses.len());
@@ -466,7 +473,14 @@ pub async fn spawn(
                                 let mut fb = framebuffer.lock().await;
                                 let misses = fb.drain_pending_cache_misses();
                                 let pc_misses = fb.drain_pending_persistent_cache_misses();
+                                let pc_evictions = fb.drain_pending_persistent_cache_evictions();
                                 drop(fb);
+                                if !pc_evictions.is_empty() {
+                                    for chunk in pc_evictions.chunks(1000) {
+                                        let _ = protocol::write_persistent_cache_eviction(&mut output, chunk).await;
+                                        tracing::info!("PersistentCacheEviction count={}", chunk.len());
+                                    }
+                                }
                                 if !pc_misses.is_empty() {
                                     let _ = protocol::write_persistent_cache_query(&mut output, &pc_misses).await;
                                     tracing::info!("PersistentCacheQuery count={}", pc_misses.len());

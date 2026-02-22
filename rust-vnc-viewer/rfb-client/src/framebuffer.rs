@@ -678,7 +678,7 @@ impl Framebuffer {
     /// Drain and return any pending PersistentCache miss IDs reported during the last decode.
     ///
     /// Also updates protocol counters to reflect the misses and the corresponding queries that will be sent.
-    pub fn drain_pending_persistent_cache_misses(&mut self) -> Vec<[u8; 16]> {
+        pub fn drain_pending_persistent_cache_misses(&mut self) -> Vec<[u8; 16]> {
         if let Some(m) = &self.pending_pcache_misses {
             if let Ok(mut v) = m.lock() {
                 let out = v.clone();
@@ -699,6 +699,19 @@ impl Framebuffer {
         }
         Vec::new()
     }
+    /// Drain and return any pending PersistentCache eviction IDs produced by ARC.
+    ///
+    /// This clears the internal pending eviction list so callers should send
+    /// any returned IDs to the server promptly.
+    pub fn drain_pending_persistent_cache_evictions(&mut self) -> Vec<[u8; 16]> {
+        if let Some(pcache) = &self.persistent_cache {
+            if let Ok(mut pc) = pcache.lock() {
+                return pc.take_evicted_ids();
+            }
+        }
+        Vec::new()
+    }
+
 
     /// Log cache statistics mirroring the C++ viewer, including a cache
     /// summary and per-protocol details for the negotiated cache only.
