@@ -224,11 +224,29 @@ impl VncViewerApp {
             crate::parse_server_address(server_address).context("Invalid server address")?;
 
         // Build client configuration
-        let client_config = Config::builder()
-            .host(host)
-            .port(port)
+        let mut builder = Config::builder().host(host).port(port);
+        // Optional password from UI
+        if !self.ui_state.password_input.is_empty() {
+            builder = builder.password(self.ui_state.password_input.clone());
+        }
+        let mut client_config = builder
             .build()
             .context("Invalid client configuration")?;
+
+        // Apply cache settings from AppConfig
+        if self.config.content_cache.enabled && self.config.content_cache.size_mb == 0 {
+            anyhow::bail!("content_cache.size_mb must be > 0 when enabled");
+        }
+        if self.config.persistent_cache.enabled && self.config.persistent_cache.size_mb == 0 {
+            anyhow::bail!("persistent_cache.size_mb must be > 0 when enabled");
+        }
+        client_config.content_cache.enabled = self.config.content_cache.enabled;
+        client_config.content_cache.size_mb = self.config.content_cache.size_mb;
+        client_config.persistent_cache.enabled = self.config.persistent_cache.enabled;
+        client_config.persistent_cache.size_mb = self.config.persistent_cache.size_mb;
+        client_config
+            .validate()
+            .context("Invalid client configuration after applying cache settings")?;
 
         self.state = AppState::Connecting;
         self.error_message = None;

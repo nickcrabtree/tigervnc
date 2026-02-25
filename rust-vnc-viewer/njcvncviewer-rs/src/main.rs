@@ -61,6 +61,13 @@ pub struct AppConfig {
 
     /// UI settings
     pub ui: UiConfig,
+    /// ContentCache settings (bandwidth reduction).
+    #[serde(default)]
+    pub content_cache: ContentCacheConfig,
+    /// PersistentCache settings (disk-backed cache).
+    #[serde(default)]
+    pub persistent_cache: PersistentCacheConfig,
+
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,6 +137,53 @@ pub struct UiConfig {
     pub stats_refresh_ms: u64,
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentCacheConfig {
+    /// Enable ContentCache protocol for bandwidth reduction.
+    #[serde(default = "default_content_cache_enabled")]
+    pub enabled: bool,
+    /// Maximum cache size in megabytes.
+    #[serde(default = "default_cache_size_mb")]
+    pub size_mb: usize,
+}
+
+fn default_content_cache_enabled() -> bool {
+    true
+}
+
+fn default_cache_size_mb() -> usize {
+    2048
+}
+
+impl Default for ContentCacheConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_content_cache_enabled(),
+            size_mb: default_cache_size_mb(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistentCacheConfig {
+    /// Enable PersistentCache protocol (-321).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Maximum cache size in megabytes.
+    #[serde(default = "default_cache_size_mb")]
+    pub size_mb: usize,
+}
+
+impl Default for PersistentCacheConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            size_mb: default_cache_size_mb(),
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -163,6 +217,15 @@ impl Default for AppConfig {
                 show_menu_bar: true,
                 dark_mode: false,
                 stats_refresh_ms: 1000,
+            },
+
+            content_cache: ContentCacheConfig {
+                enabled: true,
+                size_mb: 2048,
+            },
+            persistent_cache: PersistentCacheConfig {
+                enabled: false,
+                size_mb: 2048,
             },
         }
     }
