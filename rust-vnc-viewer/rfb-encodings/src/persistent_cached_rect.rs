@@ -67,6 +67,7 @@ impl Decoder for PersistentCachedRectDecoder {
         let incompatible = entry.width < rect.width as u32
             || entry.height < rect.height as u32
             || entry.stride_pixels < need_w
+            || entry.format != *buffer.pixel_format()
             || entry.pixels.len() < need_bytes;
         if incompatible {
             tracing::warn!(
@@ -189,4 +190,79 @@ mod tests {
         assert_eq!(v.len(), 1);
         assert_eq!(v[0], id);
     }
+
+    // RED test (TDD): pixel format mismatch on a cache hit should be treated as a miss.
+    // Desired behaviour: if cached pixels are not in the buffer's pixel format, the
+    // decoder should enqueue the id as a miss and return Ok(()), rather than erroring.
+    #[tokio::test]
+    async fn persistent_cached_rect_pixel_format_mismatch_is_treated_as_miss() {
+        let id = [0xCDu8; 16];
+
+        // Entry is 4x4 but uses RGB565 (2 bytes/pixel) while the destination buffer is RGB888.
+        let entry_format = LocalPixelFormat {
+            bits_per_pixel: 16,
+            depth: 16,
+            big_endian: false,
+            true_color: true,
+            red_max: 31,
+            green_max: 63,
+            blue_max: 31,
+            red_shift: 11,
+            green_shift: 5,
+            blue_shift: 0,
+        };
+        let entry = PersistentCachedPixels {
+            id,
+            pixels: vec![0x22u8; 4 * 4 * 2],
+            format: entry_format,
+            width: 4,
+            height: 4,
+            stride_pixels: 4,
+            last_used: Instant::now(),
+        };
+
+        let mut pc = PersistentClientCache::new(10);
+        pc.insert(entry);
+        let pc = Arc::new(Mutex::new(pc));
+
+        let misses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
+        let decoder = PersistentCachedRectDecoder::new_with_miss_reporter(pc, misses.clone());
+
+        let mut stream = RfbInStream::new(Cursor::new(id.to_vec()));
+        let rect = Rectangle {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 4,
+            encoding: ENCODING_PERSISTENT_CACHED_RECT,
+        };
+
+        let mut buf = ManagedPixelBuffer::new(4, 4, LocalPixelFormat::rgb888());
+        let pixel_format = PixelFormat {
+            bits_per_pixel: 32,
+            depth: 24,
+            big_endian: 0,
+            true_color: 1,
+            red_max: 255,
+            green_max: 255,
+            blue_max: 255,
+            red_shift: 16,
+            green_shift: 8,
+            blue_shift: 0,
+        };
+
+        let result = decoder
+            .decode(&mut stream, &rect, &pixel_format, &mut buf)
+            .await;
+        assert!(
+            result.is_ok(),
+            "expected pixel format mismatch to be treated as miss, got: {:?}",
+            result
+        );
+
+        let v = misses.lock().unwrap();
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0], id);
+    }
+
 }
