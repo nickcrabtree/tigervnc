@@ -776,8 +776,9 @@ impl Framebuffer {
                     if let Ok(pcache) = pcache.lock() {
                         let stats = pcache.stats();
                         let c = self.persistent_cache_counters;
-                        let pct = if c.cache_lookups > 0 {
-                            100.0 * c.cache_hits as f64 / c.cache_lookups as f64
+                        let lookups = stats.cache_hits.saturating_add(stats.cache_misses);
+                        let pct = if lookups > 0 {
+                            100.0 * stats.cache_hits as f64 / lookups as f64
                         } else {
                             0.0
                         };
@@ -788,13 +789,13 @@ impl Framebuffer {
                         );
                         tracing::info!(
                             "    Lookups: {}, Hits: {} ({:.1}%)",
-                            c.cache_lookups,
-                            c.cache_hits,
+                            lookups,
+                            stats.cache_hits,
                             pct
                         );
                         tracing::info!(
                             "    Misses: {}, Queries sent: {}",
-                            c.cache_misses,
+                            stats.cache_misses,
                             c.queries_sent
                         );
                         tracing::info!("  ARC cache performance:");
