@@ -45,6 +45,11 @@ impl Decoder for PersistentCachedRectDecoder {
             .read_bytes(&mut id)
             .await
             .context("read persistent cache id")?;
+        // Offset extension (encoding 102): U16 ox/oy + U16 cachedW/cachedH (network byte order).
+        let ox = stream.read_u16().await.context("read persistent cache ox")?;
+        let oy = stream.read_u16().await.context("read persistent cache oy")?;
+        let cached_w = stream.read_u16().await.context("read persistent cache cachedW")?;
+        let cached_h = stream.read_u16().await.context("read persistent cache cachedH")?;
 
         // Lookup
         let hit = {
@@ -59,14 +64,22 @@ impl Decoder for PersistentCachedRectDecoder {
         // Validate cached payload is compatible with destination rectangle.
         // If not, treat as a cache miss (enqueue id) rather than returning a decode error.
         let bpp = entry.format.bytes_per_pixel() as usize;
+        let ox = ox as usize;
+        let oy = oy as usize;
+        let cached_w = cached_w as usize;
+        let cached_h = cached_h as usize;
         let need_w = rect.width as usize;
         let need_h = rect.height as usize;
-        let need_bytes = need_h
+        let req_w = ox.saturating_add(need_w);
+        let req_h = oy.saturating_add(need_h);
+        let need_bytes = req_h
             .saturating_mul(entry.stride_pixels)
             .saturating_mul(bpp);
-        let incompatible = entry.width < rect.width as u32
-            || entry.height < rect.height as u32
-            || entry.stride_pixels < need_w
+        let incompatible = entry.width != cached_w as u32
+            || entry.height != cached_h as u32
+            || cached_w < req_w
+            || cached_h < req_h
+            || entry.stride_pixels < req_w
             || entry.format != *buffer.pixel_format()
             || entry.pixels.len() < need_bytes;
         if incompatible {
@@ -97,9 +110,26 @@ impl Decoder for PersistentCachedRectDecoder {
                 rect.width as u32,
                 rect.height as u32,
             );
-            buffer
-                .image_rect(dest_rect, &entry.pixels, entry.stride_pixels)
-                .context("blit persistent cache hit")?;
+            if ox == 0 && oy == 0 {
+                buffer
+                    .image_rect(dest_rect, &entry.pixels, entry.stride_pixels)
+                    .context("blit persistent cache hit")?;
+            } else {
+                let row_bytes = need_w.saturating_mul(bpp);
+                let mut tmp = vec![0u8; need_h.saturating_mul(row_bytes)];
+                for row in 0..need_h {
+                    let src_off = (oy.saturating_add(row))
+                        .saturating_mul(entry.stride_pixels)
+                        .saturating_add(ox)
+                        .saturating_mul(bpp);
+                    let dst_off = row.saturating_mul(row_bytes);
+                    tmp[dst_off..dst_off + row_bytes]
+                        .copy_from_slice(&entry.pixels[src_off..src_off + row_bytes]);
+                }
+                buffer
+                    .image_rect(dest_rect, &tmp, need_w)
+                    .context("blit persistent cache hit (offset)")?;
+            }
             tracing::info!(
                 "PersistentCache HIT: rect {}x{} id={:02x?}",
                 rect.width,
@@ -121,7 +151,7 @@ impl Decoder for PersistentCachedRectDecoder {
 mod tests {
     use super::*;
     use crate::persistent_cache::PersistentCachedPixels;
-    use rfb_pixelbuffer::{ManagedPixelBuffer, PixelFormat as LocalPixelFormat};
+    use rfb_pixelbuffer::{ManagedPixelBuffer, PixelBuffer, PixelFormat as LocalPixelFormat};
     use std::io::Cursor;
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
@@ -154,8 +184,14 @@ mod tests {
         let misses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
         let decoder = PersistentCachedRectDecoder::new_with_miss_reporter(pc, misses.clone());
 
-        // Stream contains only the 16-byte id.
-        let mut stream = RfbInStream::new(Cursor::new(id.to_vec()));
+        // Stream contains only the 16-byte id plus the encoding-102 offset extension.
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&id);
+        payload.extend_from_slice(&0u16.to_be_bytes());
+        payload.extend_from_slice(&0u16.to_be_bytes());
+        payload.extend_from_slice(&2u16.to_be_bytes());
+        payload.extend_from_slice(&2u16.to_be_bytes());
+        let mut stream = RfbInStream::new(Cursor::new(payload));
 
         let rect = Rectangle {
             x: 0,
@@ -228,7 +264,13 @@ mod tests {
         let misses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
         let decoder = PersistentCachedRectDecoder::new_with_miss_reporter(pc, misses.clone());
 
-        let mut stream = RfbInStream::new(Cursor::new(id.to_vec()));
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&id);
+        payload.extend_from_slice(&0u16.to_be_bytes());
+        payload.extend_from_slice(&0u16.to_be_bytes());
+        payload.extend_from_slice(&4u16.to_be_bytes());
+        payload.extend_from_slice(&4u16.to_be_bytes());
+        let mut stream = RfbInStream::new(Cursor::new(payload));
         let rect = Rectangle {
             x: 0,
             y: 0,
@@ -263,6 +305,101 @@ mod tests {
         let v = misses.lock().unwrap();
         assert_eq!(v.len(), 1);
         assert_eq!(v[0], id);
+    }
+
+
+    // RED test (TDD): PersistentCachedRect offset extension should blit a sub-rectangle.
+    // Wire format (per C++): 16-byte CacheKey + U16 ox + U16 oy + U16 cachedW + U16 cachedH.
+    #[tokio::test]
+    async fn persistent_cached_rect_with_offset_blits_subrect() {
+        use rfb_common::Rect;
+
+        let id = [0xEEu8; 16];
+
+        // Cached entry is 4x4 in RGB888. Fill each pixel with a marker value v=y*16+x.
+        let format = LocalPixelFormat::rgb888();
+        let bpp = format.bytes_per_pixel() as usize;
+
+        let mut pixels: Vec<u8> = Vec::with_capacity(4 * 4 * bpp);
+        for y in 0..4u8 {
+            for x in 0..4u8 {
+                let v = y.wrapping_mul(16).wrapping_add(x);
+                for _ in 0..bpp {
+                    pixels.push(v);
+                }
+            }
+        }
+
+        let entry = PersistentCachedPixels {
+            id,
+            pixels,
+            format,
+            width: 4,
+            height: 4,
+            stride_pixels: 4,
+            last_used: Instant::now(),
+        };
+
+        let mut pc = PersistentClientCache::new(10);
+        pc.insert(entry);
+        let pc = Arc::new(Mutex::new(pc));
+
+        let misses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
+        let decoder = PersistentCachedRectDecoder::new_with_miss_reporter(pc, misses.clone());
+
+        // Build stream: id + ox/oy + cachedW/cachedH (U16 big-endian).
+        let ox: u16 = 1;
+        let oy: u16 = 1;
+        let cached_w: u16 = 4;
+        let cached_h: u16 = 4;
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&id);
+        payload.extend_from_slice(&ox.to_be_bytes());
+        payload.extend_from_slice(&oy.to_be_bytes());
+        payload.extend_from_slice(&cached_w.to_be_bytes());
+        payload.extend_from_slice(&cached_h.to_be_bytes());
+
+        let mut stream = RfbInStream::new(Cursor::new(payload));
+
+        // Request a 2x2 rect; expected source is cached pixels at (1,1).
+        let rect = Rectangle {
+            x: 0,
+            y: 0,
+            width: 2,
+            height: 2,
+            encoding: ENCODING_PERSISTENT_CACHED_RECT,
+        };
+
+        let mut buf = ManagedPixelBuffer::new(2, 2, LocalPixelFormat::rgb888());
+        let pixel_format = PixelFormat {
+            bits_per_pixel: 32,
+            depth: 24,
+            big_endian: 0,
+            true_color: 1,
+            red_max: 255,
+            green_max: 255,
+            blue_max: 255,
+            red_shift: 16,
+            green_shift: 8,
+            blue_shift: 0,
+        };
+
+        let result = decoder.decode(&mut stream, &rect, &pixel_format, &mut buf).await;
+        assert!(result.is_ok(), "expected offset hit to decode ok, got: {:?}", result);
+
+        // Verify output pixels match cached source at (1,1): 17,18 / 33,34.
+        let out_rect = Rect::new(0, 0, 2, 2);
+        let mut out_stride = 0usize;
+        let out = buf.get_buffer(out_rect, &mut out_stride).expect("get_buffer");
+        let out_bpp = buf.pixel_format().bytes_per_pixel() as usize;
+        let at = |row: usize, col: usize| -> u8 { out[row * out_stride * out_bpp + col * out_bpp] };
+        assert_eq!(at(0, 0), 17);
+        assert_eq!(at(0, 1), 18);
+        assert_eq!(at(1, 0), 33);
+        assert_eq!(at(1, 1), 34);
+
+        // Should not record a miss on a valid offset hit.
+        assert!(misses.lock().unwrap().is_empty());
     }
 
 }
