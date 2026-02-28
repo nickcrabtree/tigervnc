@@ -79,6 +79,8 @@ const char* rfb::encodingName(int num) {
 #endif
   case encodingPersistentCachedRect:
     return "PersistentCachedRect";
+  case encodingPersistentCachedRectWithOffset:
+    return "PersistentCachedRectWithOffset";
   case encodingPersistentCachedRectInit:
     return "PersistentCachedRectInit";
   default:
