@@ -17,7 +17,7 @@ import subprocess
 import signal
 import shutil
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List
 from datetime import datetime
 
 # Project root detection
@@ -30,16 +30,17 @@ ARTIFACTS_BASE = Path(__file__).parent / "_artifacts"
 
 class PreflightError(Exception):
     """Raised when preflight checks fail."""
+
     pass
 
 
 class ProcessTracker:
     """Track all processes we start for safe cleanup."""
-    
+
     def __init__(self):
         self.processes: Dict[str, subprocess.Popen] = {}
         self.pgids: Dict[str, int] = {}
-    
+
     def register(self, name: str, proc: subprocess.Popen):
         """Register a process we own."""
         self.processes[name] = proc
@@ -48,17 +49,17 @@ class ProcessTracker:
             self.pgids[name] = pgid
         except ProcessLookupError:
             pass  # Process already exited
-    
+
     def cleanup(self, name: str, timeout: float = 5.0):
         """Gracefully terminate a process tree."""
         if name not in self.processes:
             return
-        
+
         proc = self.processes[name]
         if proc.poll() is not None:
             # Already exited
             return
-        
+
         pgid = self.pgids.get(name)
         if pgid:
             try:
@@ -80,7 +81,7 @@ class ProcessTracker:
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait(timeout=1.0)
-    
+
     def cleanup_all(self):
         """Clean up all tracked processes."""
         for name in list(self.processes.keys()):
@@ -440,7 +441,7 @@ def timestamped_log_path(artifacts_dir: Path, role: str, suffix: str) -> Path:
 
 class ArtifactManager:
     """Manage test artifact directories."""
-    
+
     def __init__(self):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.base_dir = ARTIFACTS_BASE / timestamp
@@ -448,7 +449,7 @@ class ArtifactManager:
         self.screenshots_dir = self.base_dir / "screenshots"
         self.reports_dir = self.base_dir / "reports"
         self.cache_dir = None  # Lazy-initialized
-    
+
     def create(self):
         """Create artifact directory structure."""
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -456,19 +457,19 @@ class ArtifactManager:
         self.screenshots_dir.mkdir(exist_ok=True)
         self.reports_dir.mkdir(exist_ok=True)
         print(f"Artifacts will be saved to: {self.base_dir}")
-    
+
     def get_sandboxed_cache_dir(self):
         """Get sandboxed persistent cache directory for this test.
-        
+
         CRITICAL: This ensures tests do NOT use the user's production
         persistent cache (~/.cache/tigervnc/persistentcache), which would
         corrupt it with test data.
-        
+
         Returns:
             Path: Sandboxed cache directory path
         """
         if self.cache_dir is None:
-            self.cache_dir = self.base_dir / 'persistent_cache'
+            self.cache_dir = self.base_dir / "persistent_cache"
             self.cache_dir.mkdir(parents=True, exist_ok=True)
         return self.cache_dir
 
@@ -493,14 +494,9 @@ def _run_build_target(target: str, description: str, timeout: float = 600.0, ver
             stderr=(subprocess.STDOUT if quiet and not verbose else None),
         )
     except subprocess.TimeoutExpired:
-        raise PreflightError(
-            f"Building {description} timed out after {int(timeout)}s. "
-            f"Command: {' '.join(cmd)}"
-        )
+        raise PreflightError(f"Building {description} timed out after {int(timeout)}s. " f"Command: {' '.join(cmd)}")
     except (OSError, subprocess.CalledProcessError) as exc:
-        raise PreflightError(
-            f"Failed to build {description} using {' '.join(cmd)}: {exc}"
-        )
+        raise PreflightError(f"Failed to build {description} using {' '.join(cmd)}: {exc}")
 
 
 def _ensure_cpp_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
@@ -524,10 +520,7 @@ def _ensure_cpp_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
 
     cpp_viewer = BUILD_DIR / "vncviewer" / "njcvncviewer"
     if not cpp_viewer.exists():
-        raise PreflightError(
-            f"C++ viewer not found after attempting to build it: {cpp_viewer}\n"
-            "Check your build configuration or run 'make viewer' manually."
-        )
+        raise PreflightError(f"C++ viewer not found after attempting to build it: {cpp_viewer}\n" "Check your build configuration or run 'make viewer' manually.")
     binaries["cpp_viewer"] = str(cpp_viewer)
     if verbose:
         print(f"✓ C++ viewer: {cpp_viewer}")
@@ -553,9 +546,7 @@ def _ensure_rust_viewer(binaries: Dict[str, str], verbose: bool = False) -> None
     _run_build_target("rust_viewer", "Rust viewer", verbose=verbose)
 
     rust_viewer_symlink = BUILD_DIR / "vncviewer" / "njcvncviewer-rs"
-    rust_viewer_direct = (
-        PROJECT_ROOT / "rust-vnc-viewer" / "target" / "release" / "njcvncviewer-rs"
-    )
+    rust_viewer_direct = PROJECT_ROOT / "rust-vnc-viewer" / "target" / "release" / "njcvncviewer-rs"
 
     rust_viewer = None
     if rust_viewer_symlink.exists():
@@ -564,10 +555,7 @@ def _ensure_rust_viewer(binaries: Dict[str, str], verbose: bool = False) -> None
         rust_viewer = rust_viewer_direct
 
     if rust_viewer is None:
-        raise PreflightError(
-            "Rust viewer not found after attempting to build it. "
-            "Ensure 'make rust_viewer' succeeds and that njcvncviewer-rs is available."
-        )
+        raise PreflightError("Rust viewer not found after attempting to build it. " "Ensure 'make rust_viewer' succeeds and that njcvncviewer-rs is available.")
 
     binaries["rust_viewer"] = str(rust_viewer)
     if verbose:
@@ -631,22 +619,22 @@ def _maybe_rebuild_local_server(server_path: Path, verbose: bool = False) -> Non
 def preflight_check(verbose: bool = False) -> Dict[str, str]:
     """
     Run preflight checks for required dependencies.
-    
+
     Returns dict of binary paths.
     Raises PreflightError if critical requirements missing.
     """
     binaries = {}
-    
+
     # Required binaries
     required = [
-        ('Xtigervnc', 'System TigerVNC server (install tigervnc-standalone-server or tigervnc-server)'),
-        ('xterm', 'Terminal emulator (install xterm)'),
-        ('openbox', 'Window manager (install openbox)'),
-        ('xsetroot', 'X11 utilities (install x11-xserver-utils)'),
-        ('wmctrl', 'Window manager control (install wmctrl)'),
-        ('xdotool', 'X11 automation (install xdotool)'),
+        ("Xtigervnc", "System TigerVNC server (install tigervnc-standalone-server or tigervnc-server)"),
+        ("xterm", "Terminal emulator (install xterm)"),
+        ("openbox", "Window manager (install openbox)"),
+        ("xsetroot", "X11 utilities (install x11-xserver-utils)"),
+        ("wmctrl", "Window manager control (install wmctrl)"),
+        ("xdotool", "X11 automation (install xdotool)"),
     ]
-    
+
     missing = []
     for binary, description in required:
         try:
@@ -654,15 +642,15 @@ def preflight_check(verbose: bool = False) -> Dict[str, str]:
             binaries[binary] = path
             if verbose:
                 print(f"✓ Found {binary}: {path}")
-        except PreflightError as e:
+        except PreflightError:
             missing.append(f"  - {binary}: {description}")
-    
+
     if missing:
         msg = "Missing required binaries:\n" + "\n".join(missing)
         raise PreflightError(msg)
-    
+
     # Optional binaries
-    optional = ['Xvfb', 'xwd', 'convert', 'vncsnapshot', 'xclock', 'display', 'feh', 'xloadimage']
+    optional = ["Xvfb", "xwd", "convert", "vncsnapshot", "xclock", "display", "feh", "xloadimage"]
     for binary in optional:
         path = check_binary(binary, required=False)
         if path:
@@ -671,33 +659,33 @@ def preflight_check(verbose: bool = False) -> Dict[str, str]:
                 print(f"✓ Found {binary}: {path}")
         elif verbose:
             print(f"⚠ Optional binary not found: {binary}")
-    
+
     # Ensure viewer binaries exist, building them on demand if needed.
     _ensure_cpp_viewer(binaries, verbose=verbose)
     _ensure_rust_viewer(binaries, verbose=verbose)
-    
+
     return binaries
 
 
 def preflight_check_cpp_only(verbose: bool = False) -> Dict[str, str]:
     """
     Run preflight checks for C++ viewer tests only (no Rust viewer required).
-    
+
     Returns dict of binary paths.
     Raises PreflightError if critical requirements missing.
     """
     binaries = {}
-    
+
     # Required binaries
     required = [
-        ('Xtigervnc', 'System TigerVNC server (install tigervnc-standalone-server or tigervnc-server)'),
-        ('xterm', 'Terminal emulator (install xterm)'),
-        ('openbox', 'Window manager (install openbox)'),
-        ('xsetroot', 'X11 utilities (install x11-xserver-utils)'),
-        ('wmctrl', 'Window manager control (install wmctrl)'),
-        ('xdotool', 'X11 automation (install xdotool)'),
+        ("Xtigervnc", "System TigerVNC server (install tigervnc-standalone-server or tigervnc-server)"),
+        ("xterm", "Terminal emulator (install xterm)"),
+        ("openbox", "Window manager (install openbox)"),
+        ("xsetroot", "X11 utilities (install x11-xserver-utils)"),
+        ("wmctrl", "Window manager control (install wmctrl)"),
+        ("xdotool", "X11 automation (install xdotool)"),
     ]
-    
+
     missing = []
     for binary, description in required:
         try:
@@ -705,15 +693,15 @@ def preflight_check_cpp_only(verbose: bool = False) -> Dict[str, str]:
             binaries[binary] = path
             if verbose:
                 print(f"✓ Found {binary}: {path}")
-        except PreflightError as e:
+        except PreflightError:
             missing.append(f"  - {binary}: {description}")
-    
+
     if missing:
         msg = "Missing required binaries:\n" + "\n".join(missing)
         raise PreflightError(msg)
-    
+
     # Optional binaries
-    optional = ['Xvfb', 'xwd', 'convert', 'vncsnapshot', 'xclock', 'display', 'feh', 'xloadimage']
+    optional = ["Xvfb", "xwd", "convert", "vncsnapshot", "xclock", "display", "feh", "xloadimage"]
     for binary in optional:
         path = check_binary(binary, required=False)
         if path:
@@ -722,22 +710,29 @@ def preflight_check_cpp_only(verbose: bool = False) -> Dict[str, str]:
                 print(f"✓ Found {binary}: {path}")
         elif verbose:
             print(f"⚠ Optional binary not found: {binary}")
-    
+
     # Ensure C++ viewer exists, building it on demand if needed.
     _ensure_cpp_viewer(binaries, verbose=verbose)
-    
+
     return binaries
 
 
 class VNCServer:
     """Manage VNC server lifecycle (prefers local Xnjcvnc if available)."""
-    
-    def __init__(self, display: int, port: int, name: str, 
-                 artifacts: ArtifactManager, tracker: ProcessTracker,
-                 geometry: str = "1600x1000", depth: int = 24,
-                 log_level: str = "*:stderr:100",
-                 server_choice: str = 'auto',
-                 server_params: Optional[Dict[str, str]] = None):
+
+    def __init__(
+        self,
+        display: int,
+        port: int,
+        name: str,
+        artifacts: ArtifactManager,
+        tracker: ProcessTracker,
+        geometry: str = "1600x1000",
+        depth: int = 24,
+        log_level: str = "*:stderr:100",
+        server_choice: str = "auto",
+        server_params: Optional[Dict[str, str]] = None,
+    ):
         self.display = display
         self.port = port
         self.name = name
@@ -750,7 +745,7 @@ class VNCServer:
         self.server_params = server_params or {}  # Extra server parameters
         self.proc: Optional[subprocess.Popen] = None
         self.wm_proc: Optional[subprocess.Popen] = None
-    
+
     def _select_server_binary(self) -> str:
         """Select server binary based on preference and availability.
 
@@ -766,22 +761,22 @@ class VNCServer:
         Xtigervnc when 'local' is requested.
         """
         # Try both symlink and actual binary location
-        local_xnjcvnc_symlink = BUILD_DIR / 'unix' / 'vncserver' / 'Xnjcvnc'
-        local_xnjcvnc_actual = BUILD_DIR / 'unix' / 'xserver' / 'hw' / 'vnc' / 'Xnjcvnc'
+        local_xnjcvnc_symlink = BUILD_DIR / "unix" / "vncserver" / "Xnjcvnc"
+        local_xnjcvnc_actual = BUILD_DIR / "unix" / "xserver" / "hw" / "vnc" / "Xnjcvnc"
 
         # If we appear to have a local server binary, ensure it is up-to-date
         # relative to the repository before we decide which binary to run.
         _maybe_rebuild_local_server(local_xnjcvnc_actual, verbose=False)
-        
+
         local_xnjcvnc = None
         if local_xnjcvnc_symlink.exists() and os.access(local_xnjcvnc_symlink, os.X_OK):
             local_xnjcvnc = local_xnjcvnc_symlink
         elif local_xnjcvnc_actual.exists() and os.access(local_xnjcvnc_actual, os.X_OK):
             local_xnjcvnc = local_xnjcvnc_actual
-        
-        is_macos = (sys.platform == 'darwin')
 
-        if self.server_choice == 'local':
+        is_macos = sys.platform == "darwin"
+
+        if self.server_choice == "local":
             if local_xnjcvnc is not None:
                 return str(local_xnjcvnc)
             # No usable local server binary
@@ -790,11 +785,10 @@ class VNCServer:
                 # fall back to the system server so viewer-focused tests can
                 # still run.
                 print(
-                    "⚠ Using system Xtigervnc because local Xnjcvnc server "
-                    "is not available on this platform.",
+                    "⚠ Using system Xtigervnc because local Xnjcvnc server " "is not available on this platform.",
                     file=sys.stderr,
                 )
-                return 'Xtigervnc'
+                return "Xtigervnc"
             raise PreflightError(
                 "Local Xnjcvnc server requested (server_choice='local') but "
                 "no executable Xnjcvnc binary was found under the build tree. "
@@ -802,75 +796,78 @@ class VNCServer:
                 "if you intentionally want the system Xtigervnc."
             )
 
-        if self.server_choice == 'system':
-            return 'Xtigervnc'
+        if self.server_choice == "system":
+            return "Xtigervnc"
 
         # auto: prefer local server when available; otherwise fall back to
         # system Xtigervnc. Tests that truly require the custom server should
         # pass server_choice='local' so they fail fast if Xnjcvnc is missing.
         if local_xnjcvnc is not None:
             return str(local_xnjcvnc)
-        return 'Xtigervnc'
-    
+        return "Xtigervnc"
+
     def start(self) -> bool:
         """Start the VNC server."""
         # Check availability
         if not check_display_available(self.display):
             print(f"ERROR: Display :{self.display} already in use", file=sys.stderr)
             return False
-        
+
         if not check_port_available(self.port):
             print(f"ERROR: Port {self.port} already in use", file=sys.stderr)
             return False
-        
+
         # Select server binary
         server_bin = self._select_server_binary()
-        
+
         # Build command
         cmd = [
             server_bin,
-            f':{self.display}',
-            '-rfbport', str(self.port),
-            '-SecurityTypes', 'None',
-            '-AlwaysShared=1',
-            '-AcceptKeyEvents=1',
-            '-AcceptPointerEvents=1',
-            '-geometry', self.geometry,
-            '-depth', str(self.depth),
-            '-Log', self.log_level,
+            f":{self.display}",
+            "-rfbport",
+            str(self.port),
+            "-SecurityTypes",
+            "None",
+            "-AlwaysShared=1",
+            "-AcceptKeyEvents=1",
+            "-AcceptPointerEvents=1",
+            "-geometry",
+            self.geometry,
+            "-depth",
+            str(self.depth),
+            "-Log",
+            self.log_level,
         ]
-        
+
         # Add extra server parameters (e.g., EnableContentCache=0)
         for key, value in self.server_params.items():
-            cmd.append(f'-{key}={value}')
-        
+            # System Xtigervnc may reject custom flags (e.g. -EnablePersistentCache=1).
+            if os.path.basename(server_bin) == "Xtigervnc" and key == "EnablePersistentCache":
+                print("⚠ Skipping EnablePersistentCache for system Xtigervnc (unsupported flag)", file=sys.stderr)
+                continue
+            cmd.append(f"-{key}={value}")
+
         log_path = self.artifacts.logs_dir / f"{self.name}_server_{self.display}.log"
         print(f"Starting VNC server :{self.display} (port {self.port}) using {os.path.basename(server_bin)}...")
-        
-        with open(log_path, 'w') as log_file:
+
+        with open(log_path, "w") as log_file:
             # Start in its own process group
-            self.proc = subprocess.Popen(
-                cmd,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                preexec_fn=os.setpgrp,
-                env=os.environ.copy()
-            )
-        
+            self.proc = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT, preexec_fn=os.setpgrp, env=os.environ.copy())
+
         self.tracker.register(f"vnc_{self.name}", self.proc)
-        
+
         # Wait for server to be ready
         if not wait_for_x_display(self.display, timeout=10.0):
             print(f"ERROR: X display :{self.display} did not start", file=sys.stderr)
             return False
-        
-        if not wait_for_tcp_port('127.0.0.1', self.port, timeout=10.0):
+
+        if not wait_for_tcp_port("127.0.0.1", self.port, timeout=10.0):
             print(f"ERROR: VNC port {self.port} not listening", file=sys.stderr)
             return False
-        
+
         print(f"✓ VNC server :{self.display} ready")
         return True
-    
+
     def start_session(self, wm: str = "openbox") -> bool:
         """Start window manager and desktop session.
 
@@ -878,105 +875,84 @@ class VNCServer:
         script (full XFCE desktop) on this display instead of a simple WM.
         """
         display_env = f":{self.display}"
-        
+
         # Set background
-        subprocess.run(['xsetroot', '-solid', '#202020'], 
-                      env={**os.environ, 'DISPLAY': display_env},
-                      check=False)
-        
+        subprocess.run(["xsetroot", "-solid", "#202020"], env={**os.environ, "DISPLAY": display_env}, check=False)
+
         # Full session via ~/.config/tigervnc/xstartup (matches production :2)
         if wm == "xstartup":
             xstartup_path = Path(os.path.expanduser("~/.config/tigervnc/xstartup"))
             if not xstartup_path.exists():
                 print(f"ERROR: xstartup script not found at {xstartup_path}", file=sys.stderr)
                 return False
-            
+
             log_path = self.artifacts.logs_dir / f"{self.name}_xstartup.log"
             print(f"Starting xstartup session ({xstartup_path}) on :{self.display}...")
-            with open(log_path, 'w') as log_file:
-                self.wm_proc = subprocess.Popen(
-                    ["bash", "-lc", str(xstartup_path)],
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    preexec_fn=os.setpgrp,
-                    env={**os.environ, 'DISPLAY': display_env}
-                )
-            
+            with open(log_path, "w") as log_file:
+                self.wm_proc = subprocess.Popen(["bash", "-lc", str(xstartup_path)], stdout=log_file, stderr=subprocess.STDOUT, preexec_fn=os.setpgrp, env={**os.environ, "DISPLAY": display_env})
+
             self.tracker.register(f"wm_{self.name}", self.wm_proc)
-            
+
             # Give XFCE a moment to start up before probing WM state
             time.sleep(3.0)
             result = subprocess.run(
-                ['wmctrl', '-m'],
-                env={**os.environ, 'DISPLAY': display_env},
+                ["wmctrl", "-m"],
+                env={**os.environ, "DISPLAY": display_env},
                 capture_output=True,
                 timeout=5.0,
             )
-            
+
             if result.returncode != 0:
                 print("ERROR: xstartup session failed to start a usable window manager", file=sys.stderr)
                 return False
-            
+
             print("✓ xstartup session ready")
             return True
-        
+
         # Start a simple window manager (default: openbox)
-        wm_cmd = [wm, '--sm-disable'] if wm == 'openbox' else [wm]
+        wm_cmd = [wm, "--sm-disable"] if wm == "openbox" else [wm]
         log_path = self.artifacts.logs_dir / f"{self.name}_wm.log"
-        
+
         print(f"Starting window manager ({wm}) on :{self.display}...")
-        with open(log_path, 'w') as log_file:
-            self.wm_proc = subprocess.Popen(
-                wm_cmd,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                preexec_fn=os.setpgrp,
-                env={**os.environ, 'DISPLAY': display_env}
-            )
-        
+        with open(log_path, "w") as log_file:
+            self.wm_proc = subprocess.Popen(wm_cmd, stdout=log_file, stderr=subprocess.STDOUT, preexec_fn=os.setpgrp, env={**os.environ, "DISPLAY": display_env})
+
         self.tracker.register(f"wm_{self.name}", self.wm_proc)
-        
+
         # Verify WM started
         time.sleep(1.0)
         result = subprocess.run(
-            ['wmctrl', '-m'],
-            env={**os.environ, 'DISPLAY': display_env},
+            ["wmctrl", "-m"],
+            env={**os.environ, "DISPLAY": display_env},
             capture_output=True,
             timeout=5.0,
         )
-        
+
         if result.returncode != 0:
-            print(f"ERROR: Window manager failed to start", file=sys.stderr)
+            print("ERROR: Window manager failed to start", file=sys.stderr)
             return False
-        
-        print(f"✓ Window manager ready")
+
+        print("✓ Window manager ready")
         return True
-    
-    def run_in_display(self, cmd: List[str], name: str, 
-                      env_overrides: Optional[Dict[str, str]] = None) -> subprocess.Popen:
+
+    def run_in_display(self, cmd: List[str], name: str, env_overrides: Optional[Dict[str, str]] = None) -> subprocess.Popen:
         """Run a command in this display."""
-        display_env = {**os.environ, 'DISPLAY': f':{self.display}'}
+        display_env = {**os.environ, "DISPLAY": f":{self.display}"}
         if env_overrides:
             display_env.update(env_overrides)
-        
+
         log_path = self.artifacts.logs_dir / f"{self.name}_{name}.log"
-        
-        log_file = open(log_path, 'w')
-        proc = subprocess.Popen(
-            cmd,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            preexec_fn=os.setpgrp,
-            env=display_env
-        )
-        
+
+        log_file = open(log_path, "w")
+        proc = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT, preexec_fn=os.setpgrp, env=display_env)
+
         self.tracker.register(f"{self.name}_{name}", proc)
         return proc
-    
+
     def is_alive(self) -> bool:
         """Check if server is still running."""
         return self.proc is not None and self.proc.poll() is None
-    
+
     def stop(self):
         """Stop the VNC server and all associated processes."""
         if self.wm_proc:
