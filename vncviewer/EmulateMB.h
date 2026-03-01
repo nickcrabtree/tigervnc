@@ -21,6 +21,7 @@
 
 #include <core/Rect.h>
 #include <core/Timer.h>
+#include <cstdint>
 
 class EmulateMB : public core::Timer::Callback {
 public:
