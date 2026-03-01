@@ -19,6 +19,7 @@
 
 #ifndef RFB_GLUE_H
 #define RFB_GLUE_H
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,4 +59,3 @@ void vncSetDisplayName(const char* displayNumStr);
 #endif
 
 #endif
-#include <stddef.h>
