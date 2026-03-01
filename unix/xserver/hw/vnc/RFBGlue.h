@@ -58,3 +58,4 @@ void vncSetDisplayName(const char* displayNumStr);
 #endif
 
 #endif
+#include <stddef.h>
