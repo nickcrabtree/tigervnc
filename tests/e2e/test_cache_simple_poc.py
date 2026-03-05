@@ -158,10 +158,21 @@ def main():
         pv1 = parse_cpp_log(viewer_log_p1)
         pv2 = parse_cpp_log(viewer_log_p2)
         parse_server_log(server_log, verbose=True)
-        p1_hits, p1_misses = pv1.persistent_hits, pv1.persistent_misses
-        p2_hits, p2_misses = pv2.persistent_hits, pv2.persistent_misses
-        p1_lookups = p1_hits + p1_misses
-        p2_lookups = p2_hits + p2_misses
+
+        def pc_stats(parsed):
+            hits = parsed.persistent_hits
+            misses = parsed.persistent_misses
+            lookups = hits + misses
+            # Fallback: viewer reports PersistentCache protocol ops as plain Lookups/Hits
+            # in the Client-side PersistentCache statistics block.
+            if lookups == 0 and getattr(parsed, "negotiated_persistentcache", False) and parsed.total_lookups > 0:
+                hits = parsed.total_hits
+                lookups = parsed.total_lookups
+                misses = max(0, lookups - hits)
+            return hits, misses, lookups
+
+        p1_hits, p1_misses, p1_lookups = pc_stats(pv1)
+        p2_hits, p2_misses, p2_lookups = pc_stats(pv2)
         p2_hit_rate = (100.0 * p2_hits / p2_lookups) if p2_lookups > 0 else 0.0
 
         print("\n[7/7] Results")
