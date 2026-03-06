@@ -229,8 +229,11 @@ def main():
         # If PersistentCache protocol activity not observed, skip enforcement
         pers = metrics["persistent"]
         if pers["hits"] == 0 and pers["misses"] == 0:
-            print("\nNote: PersistentCache protocol not observed in viewer log; skipping this test's enforcement.")
-            return 0
+            print("\n✗ FAIL: PersistentCache protocol not observed in viewer log (expected protocol activity)")
+            print(" This indicates the test did not exercise PersistentCache or the feature is broken.")
+            print(f" Viewer log: {log_path}")
+            print(f" Server log: {server_log_path}")
+            return 1
         print("  Parsing server log...")
         server_parsed = parse_server_log(server_log_path, verbose=args.verbose)
 

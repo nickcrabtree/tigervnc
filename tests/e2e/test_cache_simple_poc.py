@@ -193,13 +193,18 @@ def main():
         print(f" Viewer phase 2: {viewer_log_p2}")
         print(f" Server: {server_log}")
 
-        if p2_hits > 0:
-            print("\n✓ SUCCESS: Cache hits detected on phase 2!")
-            print(f" PersistentCache is working with {p2_hits} hits on reconnect")
-            return 0
-        else:
-            print("\n✗ FAIL: No PersistentCache hits on phase 2 (hits=0, lookups=", p2_lookups, ")")
+        # Strict success criteria: phase 2 must be fully populated
+        # (lookups>0 and misses==0 => 100% hit rate on reconnect).
+        if p2_lookups <= 0:
+            print("\n✗ FAIL: Phase 2 produced no PersistentCache lookups (expected >0 on reconnect)")
             return 1
+        if p2_misses != 0:
+            print("\n✗ FAIL: Phase 2 PersistentCache not fully populated (expected 100% hit rate)")
+            print(f" Phase 2 lookups={p2_lookups} hits={p2_hits} misses={p2_misses} hit_rate={p2_hit_rate:.1f}%")
+            return 1
+        print("\n✓ SUCCESS: Phase 2 achieved 100% PersistentCache hit rate!")
+        print(f" Phase 2 lookups={p2_lookups} hits={p2_hits} misses={p2_misses} hit_rate={p2_hit_rate:.1f}%")
+        return 0
     except KeyboardInterrupt:
         print("\nInterrupted")
         return 130
