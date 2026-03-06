@@ -26,6 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from wanem import apply_wan_profile, clear_wan_shaping
+from framework import sudo_mode, skip_sudo_required
 
 
 def main() -> int:
@@ -38,25 +39,13 @@ def main() -> int:
 
     # WAN shaping requires CAP_NET_ADMIN (typically root). Prefer to run the
     # test unprivileged and delegate shaping to the privileged helper via sudo.
-    if os.geteuid() != 0:
-        can_sudo = (
-            subprocess.run(
-                ["sudo", "-n", "true"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            ).returncode
-            == 0
-        )
-        if not can_sudo:
-            print(
-                "ERROR: Passwordless sudo not available; cannot enable WAN shaping for this test.",
-                file=sys.stderr,
-            )
-            return 1
-
-        if "TIGERVNC_WAN_HELPER" not in os.environ:
-            helper = (Path(__file__).resolve().parent / "wanem_helper.py").resolve()
-            os.environ["TIGERVNC_WAN_HELPER"] = f"sudo -n {sys.executable} {helper}"
+    sudo = sudo_mode(timeout_noninteractive_s=3.0, timeout_prompt_s=60.0)
+    if os.geteuid() != 0 and sudo == "none":
+        return skip_sudo_required("sudo unavailable (non-interactive or auth timed out); cannot enable WAN shaping")
+    if os.geteuid() != 0 and "TIGERVNC_WAN_HELPER" not in os.environ:
+        helper = (Path(__file__).resolve().parent / "wanem_helper.py").resolve()
+        sudo_prefix = "sudo -n" if sudo == "passwordless" else "sudo"
+        os.environ["TIGERVNC_WAN_HELPER"] = f"{sudo_prefix} {sys.executable} {helper}"
 
     # Ensure we do not go through the external helper path when running as root.
     if os.geteuid() == 0:
