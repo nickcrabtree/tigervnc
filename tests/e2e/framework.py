@@ -20,6 +20,49 @@ from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime
 
+# ---------------------------------------------------------------------------
+# Conditional sudo support for e2e tests
+# ---------------------------------------------------------------------------
+# Exit code convention: 77 means SKIP (common harness convention).
+E2E_SKIP_RC = 77
+
+
+def is_interactive() -> bool:
+    if os.environ.get("TIGERVNC_E2E_NONINTERACTIVE", "").strip() not in ("", "0"):
+        return False
+    try:
+        return sys.stdin.isatty() and (sys.stderr.isatty() or sys.stdout.isatty())
+    except Exception:
+        return False
+
+
+def _run_quick(cmd: list[str], timeout_s: float) -> int:
+    try:
+        p = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout_s)
+        return int(p.returncode)
+    except subprocess.TimeoutExpired:
+        return 124
+    except OSError:
+        return 127
+
+
+def sudo_mode(timeout_noninteractive_s: float = 3.0, timeout_prompt_s: float = 60.0) -> str:
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        return "root"
+    if _run_quick(["sudo", "-n", "true"], timeout_noninteractive_s) == 0:
+        return "passwordless"
+    if not is_interactive():
+        return "none"
+    if _run_quick(["sudo", "-v"], timeout_prompt_s) == 0:
+        return "interactive"
+    return "none"
+
+
+def skip_sudo_required(msg: str) -> int:
+    print("SKIP: " + msg, file=sys.stderr)
+    return E2E_SKIP_RC
+
+
 # Project root detection
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 BUILD_DIR = PROJECT_ROOT / os.environ.get("BUILD_DIR", "build")
