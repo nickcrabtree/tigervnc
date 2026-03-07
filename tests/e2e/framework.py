@@ -564,9 +564,15 @@ def _ensure_cpp_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
     cpp_viewer = BUILD_DIR / "vncviewer" / "njcvncviewer"
     if not cpp_viewer.exists():
         raise PreflightError(f"C++ viewer not found after attempting to build it: {cpp_viewer}\n" "Check your build configuration or run 'make viewer' manually.")
-    binaries["cpp_viewer"] = str(cpp_viewer)
+    wrapper = Path(__file__).resolve().parent / "njcvncviewer_wrapper.py"
+    if not wrapper.exists():
+        raise PreflightError(f"Viewer wrapper not found: {wrapper}")
+    # Export the real binary path so subprocess env copies inherit it.
+    os.environ["TIGERVNC_REAL_CPP_VIEWER"] = str(cpp_viewer)
+    binaries["cpp_viewer"] = str(wrapper)
     if verbose:
-        print(f"✓ C++ viewer: {cpp_viewer}")
+        print(f"✓ C++ viewer (wrapped): {wrapper}")
+        print(f"  ↳ real viewer: {cpp_viewer}")
 
 
 def _ensure_rust_viewer(binaries: Dict[str, str], verbose: bool = False) -> None:
