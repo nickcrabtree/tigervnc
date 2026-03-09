@@ -154,3 +154,23 @@ fn human_bytes(bytes: u64) -> String {
         format!("{} B", bytes)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summary_formats_human_readable_values() {
+        let mut s = CacheProtocolStats::default();
+        // Pretend alternative path would have sent 10 MiB
+        s.alternative_bytes = 10 * 1024 * 1024;
+        // Actual used via cache is 3 MiB (init + refs combined)
+        s.cached_rect_init_bytes = 2 * 1024 * 1024;
+        s.cached_rect_bytes = 1 * 1024 * 1024;
+        let out = s.format_summary("PersistentCache");
+        // Expect a positive saving and a percentage with one decimal place
+        assert!(out.contains("PersistentCache:"));
+        assert!(out.contains("MiB"));
+        assert!(out.contains("% reduction"));
+    }
+}
