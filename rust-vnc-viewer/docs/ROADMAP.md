@@ -1,306 +1,373 @@
-# Rust VNC Viewer - Roadmap
+# Rust VNC Viewer roadmap
 
-Development roadmap prioritizing fullscreen and multi-monitor support for desktop-focused VNC viewer.
+Development roadmap for bringing the Rust viewer to feature parity with the
+C++ viewer while keeping the implementation notes and test expectations aligned
+with the code.
 
-## Milestone Overview
+## Roadmap principles
 
-- **M0** (Current): Core VNC functionality stable
-- **M1** (Priority): Enhanced fullscreen support
-- **M2** (Priority): Multi-monitor support
-- **M3** (Priority): PersistentCache protocol (immediately after M2)
-- **M4+**: Windowed UX polish and advanced features
+- Treat `docs/ROADMAP.md` as the canonical roadmap for the Rust viewer.
+- Keep documentation updates in the same series as the code and test changes
+  they describe.
+- Prefer small, reviewable commits that make the parity story easy to follow.
+- Preserve protocol details that matter for interoperability, especially for
+  PersistentCache negotiation and wire-format behaviour.
 
-## Milestone M0: Foundation (COMPLETED)
+## Milestone overview
 
-**Status**: ✅ Complete  
-**Scope**: Core desktop VNC viewer with basic functionality
+- **M0 (complete):** Core desktop VNC functionality is stable.
+- **M1 (next):** Enhanced fullscreen behaviour for desktop use.
+- **M2 (next):** Multi-monitor support and monitor-navigation polish.
+- **M3 (priority after M2):** PersistentCache protocol parity with the C++
+  viewer.
+- **M4+:** Windowed UX polish and lower-priority advanced features.
 
-### Completed Features
-- ✅ Complete RFB protocol implementation (all standard encodings)
-- ✅ ContentCache protocol (97-99% bandwidth reduction)
-- ✅ Cross-platform GUI (egui/eframe)
-- ✅ Basic keyboard/mouse input handling
-- ✅ Bidirectional clipboard synchronization
-- ✅ CLI-based configuration
-- ✅ Production-ready error handling and logging
+## M0 foundation
 
-### Architecture Achievements
-- ✅ Modular crate structure (8 crates, 320+ tests)
-- ✅ Async tokio-based networking
-- ✅ GPU-accelerated rendering pipeline
-- ✅ Comprehensive test coverage
+**Status:** Complete.
 
-## Milestone M1: Enhanced Fullscreen Support (NEXT)
+**Scope:** Core desktop VNC viewer functionality.
 
-**Priority**: HIGH  
-**Timeline**: 1-2 weeks  
-**Goal**: Excellent single-monitor fullscreen experience
+### M0 completed features
 
-### Features
+- Complete RFB protocol implementation for the standard encodings.
+- ContentCache protocol support.
+- Cross-platform GUI built on `egui` and `eframe`.
+- Basic keyboard and mouse input handling.
+- Bidirectional clipboard synchronisation.
+- CLI-based configuration.
+- Production-ready error handling and logging.
 
-#### Core Fullscreen
-- [x] **F11 toggle**: Reliable fullscreen entry/exit via F11 (implemented in rvncviewer)
-- [x] **CLI start option**: `--fullscreen` flag for immediate fullscreen (implemented)
-- [ ] **Borderless vs exclusive**: Intelligent mode selection with fallback (pending)
-- [ ] **State preservation**: Remember and restore windowed position/size (pending)
+### M0 architecture achievements
 
-#### DPI and Scaling
-- [x] **Per-monitor DPI**: Detection wired via winit enumeration (used for logging; application pending)
-- [ ] **High-DPI support**: Crisp rendering on Retina/4K displays
-- [ ] **Scaling policies**: Fit (letterbox), Fill, 1:1 with quality preservation
-- [ ] **Aspect ratio**: Configurable aspect ratio preservation
+- Workspace crate structure with extensive test coverage.
+- Async Tokio-based networking.
+- Comprehensive automated test coverage.
 
-#### Keyboard Shortcuts
-- [x] **F11**: Primary fullscreen toggle
-- [x] **Ctrl+Alt+F**: Alternative fullscreen toggle
-- [ ] **Esc**: Optional fullscreen exit (configurable)
-- [ ] **F1**: Connection info overlay in fullscreen
+## M1 enhanced fullscreen support
 
-### Acceptance Criteria
-- [ ] Smooth fullscreen transitions (<200ms)
-- [ ] No flicker or visual artifacts
-- [ ] Correct scaling on common monitor types
-- [ ] Reliable state transitions (windowed ↔ fullscreen)
-- [ ] Cross-platform consistency (X11/Wayland)
+**Priority:** High.
 
-### Manual QA Checklist
-- [ ] Standard 1920x1080 monitor
-- [ ] 4K monitor at 150% scaling
-- [ ] Ultrawide 21:9 monitor
-- [ ] Remote desktop larger than local screen
-- [ ] Remote desktop smaller than local screen
+**Timeline:** 1 to 2 weeks.
 
-## Milestone M2: Multi-Monitor Support (PRIORITY)
+**Goal:** Excellent single-monitor fullscreen behaviour.
 
-**Priority**: HIGH  
-**Timeline**: 1-2 weeks (after M1)  
-**Goal**: Seamless multi-monitor fullscreen experience
+### M1 core fullscreen checklist
 
-### Features
+- [x] Reliable `F11` fullscreen toggle.
+- [x] `--fullscreen` CLI flag for immediate fullscreen startup.
+- [ ] Intelligent borderless versus exclusive fullscreen mode selection with
+  fallback.
+- [ ] Windowed-state preservation for position and size restoration.
 
-#### Monitor Enumeration
-- [x] **Detect all monitors**: Enumerate available displays with metadata (rvncviewer/display)
-- [x] **Primary detection**: Identify primary monitor reliably  
-- [x] **Monitor metadata**: Name, resolution, DPI (position pending)
-- [ ] **Deterministic ordering**: Consistent monitor indexing across runs (basic ordering implemented)
+### M1 DPI and scaling checklist
 
-#### Monitor Selection
-- [x] **CLI selection**: `--monitor primary|index|name` option (parsed and stored)
-- [ ] **Runtime switching**: Hotkeys to move between monitors
-- [x] **Fallback handling**: Graceful handling of missing monitors (defaults to primary)
-- [ ] **Hotplug support**: Monitor connect/disconnect detection
+- [x] Per-monitor DPI detection wired via monitor enumeration.
+- [ ] High-DPI rendering support for Retina and 4K displays.
+- [ ] Scaling policies for fit, fill, and 1:1 presentation.
+- [ ] Configurable aspect-ratio preservation.
 
-#### Multi-Monitor Navigation
-- [x] **Ctrl+Alt+←/→**: Move fullscreen to prev/next monitor
-- [x] **Ctrl+Alt+0-9**: Jump to monitor by index
-- [x] **Ctrl+Alt+P**: Jump to primary monitor
-- [ ] **Visual feedback**: Brief overlay showing target monitor (pending)
+### M1 keyboard shortcut checklist
 
-### Acceptance Criteria
-- [ ] Accurate enumeration of 2-4 monitor setups
-- [ ] Smooth movement between monitors without artifacts
-- [ ] Mixed DPI handling (different scaling factors)
-- [ ] Persistent monitor preferences across sessions
-- [ ] Clear error messages for invalid selections
+- [x] `F11` as the primary fullscreen toggle.
+- [x] `Ctrl+Alt+F` as an alternative fullscreen toggle.
+- [ ] Optional `Esc` fullscreen exit.
+- [ ] `F1` connection information overlay in fullscreen mode.
 
-### Manual QA Matrix
+### M1 acceptance criteria
+
+- [ ] Smooth fullscreen transitions in under 200 ms.
+- [ ] No visible flicker or fullscreen artefacts.
+- [ ] Correct scaling on common monitor configurations.
+- [ ] Reliable transitions between windowed and fullscreen modes.
+- [ ] Consistent behaviour across X11 and Wayland.
+
+### M1 manual QA checklist
+
+- [ ] Standard 1920x1080 monitor.
+- [ ] 4K monitor at 150% scaling.
+- [ ] Ultrawide 21:9 monitor.
+- [ ] Remote desktop larger than the local display.
+- [ ] Remote desktop smaller than the local display.
+
+## M2 multi-monitor support
+
+**Priority:** High.
+
+**Timeline:** 1 to 2 weeks after M1.
+
+**Goal:** Seamless multi-monitor fullscreen behaviour.
+
+### M2 monitor enumeration checklist
+
+- [x] Detect all monitors with basic metadata.
+- [x] Identify the primary monitor reliably.
+- [x] Record monitor name, resolution, and DPI.
+- [ ] Guarantee deterministic ordering across runs.
+
+### M2 monitor selection checklist
+
+- [x] Parse and store `--monitor primary|index|name` CLI selection.
+- [ ] Runtime switching between monitors.
+- [x] Fallback to the primary monitor when a requested monitor is missing.
+- [ ] Hotplug detection for monitor connect and disconnect.
+
+### M2 multi-monitor navigation checklist
+
+- [x] `Ctrl+Alt+Left` and `Ctrl+Alt+Right` move fullscreen between monitors.
+- [x] `Ctrl+Alt+0-9` jumps to a monitor by index.
+- [x] `Ctrl+Alt+P` jumps to the primary monitor.
+- [ ] Brief visual feedback shows the selected target monitor.
+
+### M2 acceptance criteria
+
+- [ ] Accurate enumeration on 2 to 4 monitor setups.
+- [ ] Smooth movement between monitors without visible artefacts.
+- [ ] Correct behaviour on mixed-DPI setups.
+- [ ] Persistent monitor preferences across sessions.
+- [ ] Clear error messages for invalid selections.
+
+### M2 manual QA matrix
+
 | Configuration | Enumeration | Selection | Hotkeys | Mixed DPI |
-|---------------|-------------|-----------|---------|-----------|
+| --- | --- | --- | --- | --- |
 | Dual 1080p | ✓ | ✓ | ✓ | N/A |
 | Dual mixed DPI | ✓ | ✓ | ✓ | ✓ |
 | Triple setup | ✓ | ✓ | ✓ | ✓ |
 | Portrait mode | ✓ | ✓ | ✓ | ✓ |
 
-### Stretch Goals
-- [ ] **Monitor memory**: Remember last used monitor per connection
-- [ ] **Position awareness**: Logical monitor positioning for navigation
-- [ ] **Span support**: Documentation for multi-monitor spanning (implementation deferred)
+### M2 stretch goals
 
-## Milestone M3: PersistentCache Protocol (PRIORITY)
+- [ ] Remember the last-used monitor per connection.
+- [ ] Track logical monitor positioning for navigation.
+- [ ] Document multi-monitor span behaviour while keeping implementation
+  deferred.
 
-**Priority**: HIGH  
-**Timeline**: 1-2 weeks (after M2)  
-**Goal**: Persistent, hash-based caching for cross-session and cross-server cache hits
+## M3 PersistentCache protocol parity
 
-### Overview
+**Priority:** High.
 
-The C++ TigerVNC viewer recently implemented the **PersistentCache** protocol, a new RFB extension that uses content hashes (SHA-256) as stable cache keys. This enables:
-- **Cross-session persistence**: Cache survives client restarts
-- **Cross-server hits**: Same content on different servers reuses cached data
-- **97-99% bandwidth reduction**: Even better than ContentCache for repeated content
+**Timeline:** 1 to 2 weeks after M2.
 
-### Features
+**Goal:** Persistent, hash-based caching for cross-session and cross-server
+reuse.
 
-#### Protocol Foundation
-- [ ] **Protocol constants**: Pseudo-encoding `-321`, encodings `102` and `103`
-- [ ] **Message types**: `254` (PersistentCacheQuery), `253` (PersistentHashList)
-- [ ] **Content hashing**: SHA-256 truncated to 128 bits (16 bytes)
-- [ ] **Wire format**: Variable-length hash encoding for efficiency
+### M3 overview
 
-#### Cache Storage
-- [ ] **GlobalClientPersistentCache**: Hash-indexed storage with ARC eviction
-- [ ] **ARC algorithm**: Adaptive replacement with T1, T2, B1, B2 lists
-- [ ] **Size management**: Configurable limit (default: 2GB), byte-accurate accounting
-- [ ] **Statistics**: Hits, misses, evictions, memory usage tracking
+The C++ TigerVNC viewer now includes the PersistentCache protocol, an RFB
+extension that uses content hashes as stable cache keys. The Rust viewer should
+match that behaviour so the two viewers stay aligned on interoperability,
+tests, and performance expectations.
 
-#### Client Protocol
-- [ ] **Decoders**: PersistentCachedRect (102), PersistentCachedRectInit (103)
-- [ ] **Query batching**: Efficient miss handling with batch requests
-- [ ] **Hash list**: Initial synchronization of known hashes
-- [ ] **Negotiation**: Prefer PersistentCache over ContentCache in SetEncodings
+### M3 expected outcomes
 
-#### Disk Persistence
-- [ ] **File format**: `~/.cache/tigervnc/persistentcache.dat` with 64-byte header
-- [ ] **Load/Save**: Automatic persistence on startup/shutdown
-- [ ] **Corruption handling**: Graceful recovery from invalid cache files
-- [ ] **Checksum**: SHA-256 verification for integrity
+- Cross-session persistence so cache entries survive client restarts.
+- Cross-server hits when different servers render the same content.
+- Meaningful bandwidth reduction for repeated content.
+- Negotiation that prefers PersistentCache when the server supports both cache
+  protocols.
 
-### Implementation Phases
+### M3 protocol foundation checklist
 
-| Phase | Duration | Description |
-|-------|----------|--------------|
-| PC-1 | 0.5 day | Protocol constants, ContentHash utility |
-| PC-2 | 2 days | GlobalClientPersistentCache with ARC |
+- [ ] Add pseudo-encoding `-321` and encodings `102` and `103`.
+- [ ] Add protocol message support for `PersistentCacheQuery` (`254`) and
+  `PersistentHashList` (`253`).
+- [ ] Match the C++ content hashing behaviour using SHA-256 truncated to
+  16 bytes.
+- [ ] Implement the variable-length wire format used for hash transmission.
+
+### M3 cache storage checklist
+
+- [ ] Implement `GlobalClientPersistentCache` with hash-indexed storage and ARC
+  eviction.
+- [ ] Track ARC state using `T1`, `T2`, `B1`, and `B2` lists.
+- [ ] Enforce byte-accurate capacity limits.
+- [ ] Record hits, misses, evictions, and cache-size statistics.
+
+### M3 client protocol integration checklist
+
+- [ ] Add `PersistentCachedRect` (`102`) and `PersistentCachedRectInit` (`103`)
+  decoders.
+- [ ] Batch cache misses efficiently.
+- [ ] Synchronise the initial set of known hashes.
+- [ ] Advertise PersistentCache before ContentCache in `SetEncodings`.
+
+### M3 disk persistence checklist
+
+- [ ] Persist the cache under the user cache directory.
+- [ ] Load on startup and save on shutdown.
+- [ ] Recover cleanly from corrupt cache files.
+- [ ] Validate persisted content with checksums.
+
+### M3 implementation phases
+
+| Phase | Estimated duration | Description |
+| --- | --- | --- |
+| PC-1 | 0.5 day | Protocol constants and content-hash utility |
+| PC-2 | 2 days | `GlobalClientPersistentCache` with ARC bookkeeping |
 | PC-3 | 1 day | Client protocol messages and decoders |
 | PC-4 | 1 day | Integration and negotiation |
-| PC-5 | 1-2 days | Disk persistence implementation |
+| PC-5 | 1 to 2 days | Disk persistence |
 | PC-6 | 1 day | Testing and validation |
 
-### Dependencies
+### M3 dependencies
 
-**Cargo dependencies:**
 ```toml
-sha2 = "0.10"          # SHA-256 hashing
-byteorder = "1"        # Binary I/O
-indexmap = "2"         # Ordered maps for ARC
-directories = "5"      # XDG cache directory
+sha2 = "0.10"
+byteorder = "1"
+indexmap = "2"
+directories = "5"
 ```
 
-### Acceptance Criteria
-- [ ] Protocol negotiation prefers PersistentCache when both are available
-- [ ] Hash computation matches C++ ContentHash::computeRect
-- [ ] ARC eviction maintains configured size limits
-- [ ] Disk persistence survives restarts without data loss
-- [ ] Cross-session hits verified with e2e test framework (:999)
-- [ ] Performance: <1ms hash computation, <200ms disk load/save
+### M3 acceptance criteria
 
-### Testing Strategy
-- **Unit tests**: Hash computation, ARC eviction, disk round-trip
-- **Integration tests**: Mock server with encoding 102/103 sequences
-- **Cross-session**: Connect, disconnect, reconnect - verify cache hits
-- **Performance**: Benchmark hashing and I/O operations
-- **Safety**: Only use Xnjcvnc :2 per WARP.md (never Xtigervnc :1 or :3)
+- [ ] Protocol negotiation prefers PersistentCache when both cache protocols
+  are available.
+- [ ] Hash computation matches the C++ `ContentHash::computeRect` behaviour.
+- [ ] ARC eviction maintains the configured size limit.
+- [ ] Disk persistence survives restarts without data loss.
+- [ ] Cross-session hits are verified with the end-to-end test framework.
+- [ ] Hashing and disk persistence meet the target latency budget.
 
-### Technical Notes
+### M3 testing strategy
 
-**Critical: Stride handling**
-```rust
-// Stride is in PIXELS, not bytes!
-let stride_bytes = stride_pixels * bytes_per_pixel;
-```
+- **Unit tests:** Hash computation, ARC eviction, and disk round trips.
+- **Integration tests:** Mock server flows for encodings `102` and `103`.
+- **Cross-session tests:** Connect, disconnect, reconnect, and verify cache
+  hits.
+- **Performance checks:** Benchmark hashing and cache I/O.
+- **Safety note:** Continue to respect the project guidance for the dedicated
+  end-to-end test displays.
 
-**Hash stability**: Must match C++ implementation exactly for interoperability.
+### M3 critical PersistentCache gotchas
 
-**Protocol preference**: Include both `-321` and `-320` in SetEncodings, server chooses PersistentCache if supported.
+- **Stride units:** Stride is measured in pixels, not bytes; multiply by bytes
+  per pixel when walking rows.
+- **Hash length:** PersistentCache uses 16-byte identifiers on the wire.
+- **Negotiation order:** Advertise `-321` before `-320` so servers prefer
+  PersistentCache.
+- **ARC accounting:** Capacity limits must be tracked in bytes, not entry
+  count.
 
-### Related Documentation
-- C++ design: `/home/nickc/code/tigervnc/PERSISTENTCACHE_DESIGN.md`
-- Rust implementation guide: `docs/protocol/PERSISTENTCACHE_RUST.md` (to be created)
-- ARC algorithm: `/home/nickc/code/tigervnc/ARC_ALGORITHM.md`
+### M3 related documentation
 
-## Milestone M4: Windowed UX Polish (FUTURE)
+- C++ and fork design notes: `../../docs/PERSISTENTCACHE_DESIGN.md`
+- Rust viewer PersistentCache notes: `protocol/persistent_cache.md`
+- ARC algorithm background: `../../docs/ARC_ALGORITHM.md`
 
-**Priority**: MEDIUM  
-**Timeline**: Post-M2  
-**Goal**: Enhanced windowed mode experience
+## M4 windowed UX polish
 
-### Features
-- [ ] **Window state memory**: Remember size/position per connection
-- [ ] **Smart initial sizing**: Intelligent default window dimensions
-- [ ] **Minimize to tray**: Optional system tray integration
-- [ ] **Connection management**: Recent connections, favorites
-- [ ] **Status indicators**: Connection quality, latency display
-- [ ] **Theme support**: Dark/light mode preference
+**Priority:** Medium.
 
-## Milestone M5: Advanced Features (FUTURE)
+**Timeline:** After M3.
 
-**Priority**: LOW  
-**Timeline**: Post-M4  
-**Goal**: Power user features and optimizations
+**Goal:** A smoother day-to-day windowed experience.
 
-### Features
-- [ ] **Performance monitoring**: Detailed bandwidth/latency metrics
-- [ ] **Connection profiles**: Save/load connection configurations (CLI-based)
-- [ ] **Encoding preferences**: Per-connection encoding selection
-- [ ] **Security enhancements**: TLS support, certificate management
-- [ ] **Accessibility**: Screen reader support, high-contrast mode
+### M4 feature checklist
 
-## Out-of-Scope Features
+- [ ] Remember window size and position per connection.
+- [ ] Choose better default initial window sizes.
+- [ ] Optional minimise-to-tray support.
+- [ ] Recent connections and favourites.
+- [ ] Connection quality and latency indicators.
+- [ ] Theme preference support.
 
-The following features are **explicitly excluded** from all milestones per [SEP-0001](SEP/SEP-0001-out-of-scope.md):
+## M5 advanced features
 
-### Permanently Out-of-Scope
-- **Touch/Gesture support**: Desktop-only focus; use trackpad scrolling
-- **Settings UI/Profiles GUI**: Use CLI configuration and environment variables
-- **Screenshot functionality**: Use OS-native tools (gnome-screenshot, grim, etc.)
+**Priority:** Low.
+
+**Timeline:** After M4.
+
+**Goal:** Power-user features and further optimisation.
+
+### M5 feature checklist
+
+- [ ] Detailed performance monitoring.
+- [ ] Save and load connection profiles.
+- [ ] Per-connection encoding preferences.
+- [ ] TLS and certificate-management enhancements.
+- [ ] Accessibility improvements.
+
+## Out-of-scope features
+
+The following items remain explicitly out of scope in line with `SEP-0001`.
+
+### Permanent exclusions
+
+- Touch and gesture support.
+- GUI settings and profile editors.
+- Built-in screenshot functionality.
 
 ### Rationale
-These features add complexity without proportional value for desktop users. CLI configuration and OS integration provide better solutions.
 
-## Dependencies and Risks
+These items add complexity without enough value for the desktop-first viewer
+goal. CLI configuration and host-operating-system tooling remain the preferred
+solutions.
 
-### Technical Dependencies
-- **winit**: Cross-platform window management and monitor enumeration
-- **egui/eframe**: GUI framework for consistent behavior
-- **Platform support**: X11 and Wayland compatibility
+## Dependencies and risks
 
-### Risk Mitigation
-- **X11/Wayland differences**: Comprehensive testing on both platforms
-- **Monitor API variations**: Fallback strategies for unsupported features
-- **Hardware quirks**: Graceful handling of unusual monitor configurations
+### Technical dependencies
 
-### Testing Strategy
-- **Unit tests**: Monitor selection logic, scaling calculations
-- **Integration tests**: Fullscreen transitions, multi-monitor movement
-- **Manual QA**: Real hardware testing with various monitor configurations
-- **VNC server compatibility**: Test with the e2e framework (displays :998/:999)
+- `winit` for window and monitor management.
+- `egui` and `eframe` for the GUI.
+- Ongoing X11 and Wayland compatibility work.
 
-## Timeline Summary
+### Risk mitigation
 
-| Milestone | Duration | Dependencies | Status |
-|-----------|----------|--------------|---------|
-| M0 | - | - | ✅ Complete |
-| M1 | 1-2 weeks | winit, testing | 🎯 Next |
-| M2 | 1-2 weeks | M1 complete | 📋 Planned |
-| M3 | 1-2 weeks | M2 complete | 📋 Planned |
-| M4 | 2-3 weeks | M3 complete | 💭 Future |
-| M5 | TBD | M4 complete | 💭 Future |
+- Test X11 and Wayland paths explicitly.
+- Keep fallback behaviour for unsupported monitor APIs.
+- Handle unusual or changing monitor layouts gracefully.
 
-**Total estimate for M1+M2+M3**: 3-6 weeks for core fullscreen, multi-monitor, and PersistentCache functionality.
+### Cross-cutting test strategy
 
-## Success Metrics
+- Unit tests for monitor selection and scaling behaviour.
+- Integration tests for fullscreen transitions and monitor movement.
+- Manual QA on real hardware.
+- End-to-end compatibility checks against the supported test displays.
 
-### M1 Success
-- [ ] Fullscreen "just works" on single monitor systems
-- [ ] Zero reported issues with common desktop environments
-- [ ] User feedback confirms smooth, reliable experience
+## Timeline summary
 
-### M2 Success  
-- [ ] Multi-monitor users can easily select and switch monitors
-- [ ] Hotkey navigation feels intuitive and responsive
-- [ ] Mixed DPI environments handled correctly
+| Milestone | Estimated duration | Main dependency | Status |
+| --- | --- | --- | --- |
+| M0 | Complete | None | Complete |
+| M1 | 1 to 2 weeks | Monitor and fullscreen work | Next |
+| M2 | 1 to 2 weeks | M1 complete | Planned |
+| M3 | 1 to 2 weeks | M2 complete | Planned |
+| M4 | 2 to 3 weeks | M3 complete | Future |
+| M5 | TBD | M4 complete | Future |
 
-### M3 Success
-- [ ] PersistentCache protocol fully functional with hash-based caching
-- [ ] Cross-session persistence verified through restart testing
-- [ ] Performance meets targets (<1ms hashing, <200ms I/O)
-- [ ] Cache interoperability with C++ viewer confirmed
+**Estimated total for M1 to M3:** 3 to 6 weeks.
 
-### Overall Project Success
-- [ ] Competitive feature parity with C++ vncviewer for desktop use
-- [ ] Demonstrably better performance (ContentCache benefits)
-- [ ] Positive user adoption in desktop VNC scenarios
+## Success metrics
+
+### M1 success criteria
+
+- [ ] Fullscreen works reliably on single-monitor systems.
+- [ ] Common desktop environments show no major fullscreen regressions.
+- [ ] User feedback confirms smooth behaviour.
+
+### M2 success criteria
+
+- [ ] Multi-monitor users can select and switch monitors easily.
+- [ ] Hotkey navigation feels responsive and predictable.
+- [ ] Mixed-DPI environments behave correctly.
+
+### M3 success criteria
+
+- [ ] PersistentCache is fully functional.
+- [ ] Cross-session persistence is verified through restart testing.
+- [ ] Hashing and persistence meet the agreed performance budget.
+- [ ] Cache interoperability with the C++ viewer is confirmed.
+
+### Overall project success criteria
+
+- [ ] The Rust viewer reaches practical feature parity with the C++ viewer for
+  desktop workflows.
+- [ ] Caching delivers measurable performance wins.
+- [ ] The viewer is credible for day-to-day desktop VNC use.
 
 ---
 
-**Related Documents**: [SEP-0001 Out-of-Scope](SEP/SEP-0001-out-of-scope.md), [CLI Usage](cli/USAGE.md), [Fullscreen & Multi-Monitor Spec](spec/fullscreen-and-multimonitor.md)
+**Related documents:** [SEP-0001 Out-of-Scope](SEP/SEP-0001-out-of-scope.md),
+[CLI Usage](cli/USAGE.md), and
+[Fullscreen & Multi-Monitor Spec](spec/fullscreen-and-multimonitor.md).
