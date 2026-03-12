@@ -3,7 +3,12 @@
 use crate::arc_cache::ArcCache;
 use rfb_pixelbuffer::PixelFormat;
 use std::collections::HashMap;
+use std::fmt::Write as _;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
+
+const PERSISTENT_CACHE_SCAFFOLD_MAGIC: &str = "RVPCACHE-SCAFFOLD-V1";
 
 #[derive(Debug, Clone)]
 pub struct PersistentCachedPixels {
@@ -28,6 +33,7 @@ pub struct PersistentClientCache {
     map: HashMap<[u8; 16], PersistentCachedPixels>,
     max_size_mb: usize,
     current_bytes: usize,
+    cache_path: Option<PathBuf>,
     /// ARC eviction core tracking resident and ghost entries by cache ID.
     arc: ArcCache<[u8; 16]>,
     /// Aggregate statistics similar to the C++ GlobalClientPersistentCache.
@@ -36,19 +42,85 @@ pub struct PersistentClientCache {
     evictions: u64,
 }
 
-impl PersistentClientCache {
-    pub fn new(max_size_mb: usize) -> Self {
-        let max_bytes = max_size_mb.saturating_mul(1024 * 1024);
-        Self {
-            map: HashMap::new(),
-            max_size_mb,
-            current_bytes: 0,
-            arc: ArcCache::new(max_bytes),
-            cache_hits: 0,
-            cache_misses: 0,
-            evictions: 0,
+    impl PersistentClientCache {
+        pub fn new(max_size_mb: usize) -> Self {
+            Self::new_with_path(max_size_mb, None)
         }
-    }
+
+        pub fn new_with_path(max_size_mb: usize, cache_path: Option<PathBuf>) -> Self {
+            let max_bytes = max_size_mb.saturating_mul(1024 * 1024);
+            Self {
+                map: HashMap::new(),
+                max_size_mb,
+                current_bytes: 0,
+                cache_path,
+                arc: ArcCache::new(max_bytes),
+                cache_hits: 0,
+                cache_misses: 0,
+                evictions: 0,
+            }
+        }
+
+        pub fn cache_path(&self) -> Option<&Path> {
+            self.cache_path.as_deref()
+        }
+
+        pub fn load_from_disk(&mut self) -> io::Result<usize> {
+            let Some(path) = self.cache_path.as_ref() else {
+                return Ok(0);
+            };
+
+            let data = match std::fs::read_to_string(path) {
+                Ok(data) => data,
+                Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(0),
+                Err(err) => return Err(err),
+            };
+
+            let mut lines = data.lines();
+            let Some(magic) = lines.next() else {
+                return Ok(0);
+            };
+            if magic != PERSISTENT_CACHE_SCAFFOLD_MAGIC {
+                return Ok(0);
+            }
+
+            // The initial scaffold only restores the persisted inventory count.
+            // Payload hydration will be added in a follow-up slice.
+            let mut persisted_ids = 0usize;
+            for line in lines {
+                if line.starts_with("id ") {
+                    persisted_ids = persisted_ids.saturating_add(1);
+                }
+            }
+            Ok(persisted_ids)
+        }
+
+        pub fn save_to_disk(&self) -> io::Result<()> {
+            let Some(path) = self.cache_path.as_ref() else {
+                return Ok(());
+            };
+
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+
+            let mut out = String::new();
+            out.push_str(PERSISTENT_CACHE_SCAFFOLD_MAGIC);
+            out.push('\n');
+            out.push_str(&format!("entries {}
+", self.map.len()));
+            out.push_str(&format!("bytes {}
+", self.current_bytes));
+            for id in self.map.keys() {
+                out.push_str("id ");
+                for byte in id {
+                    let _ = write!(&mut out, "{:02x}", byte);
+                }
+                out.push('\n');
+            }
+
+            std::fs::write(path, out)
+        }
 
     pub fn lookup(&mut self, id: &[u8; 16]) -> Option<&PersistentCachedPixels> {
         if let Some(entry) = self.map.get(id) {

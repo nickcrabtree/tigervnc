@@ -201,10 +201,21 @@ pub struct PersistentCacheConfig {
     /// Maximum cache size in megabytes (on disk and in memory accounting).
     #[serde(default = "default_persistent_cache_size_mb")]
     pub size_mb: usize,
+    /// On-disk scaffold path used for the first persistence slice.
+    #[serde(default = "default_persistent_cache_path")]
+    pub path: PathBuf,
 }
 
 fn default_persistent_cache_size_mb() -> usize {
     2048
+}
+
+fn default_persistent_cache_path() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".cache/tigervnc/rust-persistentcache.index")
+    } else {
+        std::env::temp_dir().join("tigervnc-rust-persistentcache.index")
+    }
 }
 
 impl Default for Config {
@@ -246,6 +257,7 @@ impl Default for Config {
             persistent_cache: PersistentCacheConfig {
                 enabled: false,
                 size_mb: default_persistent_cache_size_mb(),
+                path: default_persistent_cache_path(),
             },
         }
     }
