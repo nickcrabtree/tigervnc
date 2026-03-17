@@ -154,18 +154,20 @@ reuse.
 
 ### M3 overview
 
-The C++ TigerVNC viewer now includes the PersistentCache protocol, an RFB
-extension that uses content hashes as stable cache keys. The Rust viewer should
-match that behaviour so the two viewers stay aligned on interoperability,
-tests, and performance expectations.
+The current C++ TigerVNC cache implementation has moved beyond the older split
+ContentCache-versus-PersistentCache design and now centres on a unified cache
+path driven by PersistentCache negotiation and message handling. The Rust viewer
+still reflects the older split model, so this milestone is about converging on
+the current C++ behaviour rather than just re-implementing the older design
+notes.
 
 ### M3 expected outcomes
 
 - Cross-session persistence so cache entries survive client restarts.
 - Cross-server hits when different servers render the same content.
 - Meaningful bandwidth reduction for repeated content.
-- Negotiation that prefers PersistentCache when the server supports both cache
-  protocols.
+- Convergence on the current C++ unified-cache model, including clearer
+  documentation of where the Rust code still lags behind.
 
 ### M3 protocol foundation checklist
 
@@ -190,7 +192,9 @@ tests, and performance expectations.
   decoders.
 - [ ] Batch cache misses efficiently.
 - [ ] Synchronise the initial set of known hashes.
-- [ ] Advertise PersistentCache before ContentCache in `SetEncodings`.
+- [ ] Converge negotiation and cache wiring on the current C++ unified-cache
+  model rather than treating ContentCache and PersistentCache as separate peer
+  capabilities.
 
 ### M3 disk persistence checklist
 
@@ -244,8 +248,9 @@ directories = "5"
 - **Stride units:** Stride is measured in pixels, not bytes; multiply by bytes
   per pixel when walking rows.
 - **Hash length:** PersistentCache uses 16-byte identifiers on the wire.
-- **Negotiation order:** Advertise `-321` before `-320` so servers prefer
-  PersistentCache.
+- **Negotiation model:** current Rust code still advertises `-321` before
+  `-320`, but parity work should target the newer unified C++ cache model
+  rather than preserving the older split design indefinitely.
 - **ARC accounting:** Capacity limits must be tracked in bytes, not entry
   count.
 

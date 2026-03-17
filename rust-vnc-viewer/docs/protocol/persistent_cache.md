@@ -3,13 +3,19 @@
 This document explains how the Rust viewer negotiates and uses the TigerVNC
 **PersistentCache** protocol and how to enable it at runtime.
 
+> **Parity note:** this document describes the current Rust behaviour. The
+> current C++ viewer/server implementation has already moved to a unified cache
+> path centred on PersistentCache negotiation, while Rust still contains
+> separate ContentCache and PersistentCache code paths.
+
 ## Enabling PersistentCache
 
-PersistentCache is **disabled by default**. When enabled in the client
-configuration, the viewer advertises the pseudo-encoding `-321` and adds the
-PersistentCache encodings (`102` and `103`) **before** ContentCache in the
-`SetEncodings` list so that servers prefer the cross-session cache when it is
-available.
+PersistentCache is **disabled by default**. In the current Rust
+implementation, enabling it causes the viewer to advertise the pseudo-encoding
+`-321` and add the PersistentCache encodings (`102` and `103`) **before**
+ContentCache in the `SetEncodings` list. This matches the current Rust code,
+but it does **not** yet represent full parity with the newer C++ unified-cache
+model.
 
 ```rust
 let mut cfg = rfb_client::config::Config::default();
@@ -47,5 +53,5 @@ Client-side PersistentCache statistics:
 - PersistentCache decoders and client-cache logic live under `rfb-encodings/`.
 - The event loop wires miss drains, eviction drains, and message writers in
   `rfb-client/src/event_loop.rs`.
-- Keep the negotiation order as `-321` before `-320` so the server can prefer
-  PersistentCache over ContentCache.
+- Use this file together with `docs/ROADMAP.md` when planning Rust/C++ cache
+  parity work; the current Rust negotiation order is still transitional.
