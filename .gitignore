@@ -25,6 +25,11 @@ Cargo.lock.bak
 # Backup files (format: filename.ext_YYYY-MM-DD_HHMM.bak)
 *_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9][0-9][0-9].bak
 
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
 # E2E temporary workspace and artifacts
 tests/e2e/tmp/
 tests/e2e/_artifacts/
