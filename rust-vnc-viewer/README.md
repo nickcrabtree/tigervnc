@@ -1,12 +1,15 @@
 # Rust VNC Viewer
 
-**Desktop-focused** high-performance VNC viewer with **ContentCache protocol support** for 97-99% bandwidth reduction and excellent **fullscreen/multi-monitor** experience.
+**Desktop-focused** high-performance VNC viewer with mature **ContentCache** support, in-progress **PersistentCache** work, and excellent **fullscreen/multi-monitor** experience.
 
 Note: This README is the canonical documentation for the Rust viewer. Historical phase/progress reports have been removed to reduce noise. For roadmap and usage, see docs/ROADMAP.md and docs/cli/USAGE.md.
 
+> **Current cache-status note:** the Rust viewer still reflects an older split ContentCache/PersistentCache design. The current C++ viewer/server code has already moved to a unified cache path centred on PersistentCache negotiation, so Rust cache-parity work should be read in that light.
+
 ## 🚀 Key Features
 
-- **ContentCache Protocol**: 97-99% bandwidth reduction for repeated content
+- **ContentCache Protocol**: 97-99% bandwidth reduction for repeated content in the current Rust codebase
+- **PersistentCache parity work**: ongoing alignment with the current C++ unified-cache model
 - **Complete RFB Implementation**: All standard encodings (Raw, CopyRect, RRE, Hextile, Tight, ZRLE)
 - **Desktop-Optimized**: Fullscreen and multi-monitor support for desktop workflows
 - **CLI-Configured**: Command-line driven configuration, no settings GUI
@@ -19,7 +22,7 @@ Note: This README is the canonical documentation for the Rust viewer. Historical
 This is a Cargo workspace containing multiple crates:
 
 - **`rfb-common`** - Common types (geometry, configuration, cursors)
-- **`rfb-pixelbuffer`** - Pixel buffer abstraction and management  
+- **`rfb-pixelbuffer`** - Pixel buffer abstraction and management
 - **`rfb-protocol`** - RFB protocol implementation (network, I/O, messages)
 - **`rfb-encodings`** - Encoding/decoding implementations with ContentCache support
 - **`rfb-client`** - High-level async VNC client library with framebuffer sharing
@@ -43,13 +46,13 @@ cargo run --release
 
 🎆 **Major Milestone: All Standard VNC Encodings Complete!** 🎆
 
-✅ **Phase 9A Complete** - All standard VNC encodings (Tight, ZRLE, Hextile, RRE) with production quality!  
-✅ **Phase 8A Complete** - ContentCache protocol for 97-99% bandwidth reduction!  
-✅ **Phase 7 Complete** - GUI integration with framebuffer rendering  
+✅ **Phase 9A Complete** - All standard VNC encodings (Tight, ZRLE, Hextile, RRE) with production quality!
+✅ **Phase 8A Complete** - ContentCache protocol for 97-99% bandwidth reduction!
+✅ **Phase 7 Complete** - GUI integration with framebuffer rendering
 ✅ **Phase 6 Complete** - Platform input handling (keyboard, mouse, gestures)
 
-**Current Status**: Production-ready VNC client with full encoding support  
-**Last Updated**: 2025-10-24  
+**Current Status**: Production-ready VNC client for core viewing workflows; cache-parity work with the current C++ unified model remains in progress
+**Last Updated**: 2025-10-24
 **Overall Progress**: ~90% (All standard encodings + ContentCache + GUI complete)
 **Tests**: All workspace unit/integration/doc tests passing
 
@@ -83,7 +86,7 @@ cargo run --release
 ### Just Completed ✅
 - [x] **Phase 9A**: Advanced Encodings (**COMPLETE!**)
   - [x] Tight encoding (JPEG + zlib, most advanced)
-  - [x] ZRLE encoding (zlib + RLE with 64x64 tiling)  
+  - [x] ZRLE encoding (zlib + RLE with 64x64 tiling)
   - [x] Hextile encoding (16x16 tiles with sub-rectangles)
   - [x] RRE encoding (Rise-and-Run-length encoding)
   - [x] 94+ tests passing, production-quality implementation
@@ -93,7 +96,7 @@ cargo run --release
   - [x] F11 toggle, CLI `--fullscreen` option
   - [ ] Borderless/exclusive modes with DPI awareness
   - [ ] Scaling policies (fit, fill, 1:1) with aspect ratio control
-- [ ] **Multi-monitor support** (M2 - HIGH PRIORITY)  
+- [ ] **Multi-monitor support** (M2 - HIGH PRIORITY)
   - [x] Monitor enumeration and CLI selection parsing (`--monitor primary|index|name`)
   - [x] Runtime hotkeys (Ctrl+Alt+←/→, Ctrl+Alt+0-9, Ctrl+Alt+P)
   - [ ] Mixed DPI handling and smooth transitions
@@ -114,7 +117,7 @@ cargo run --release
 - For priorities and next milestones, see docs/ROADMAP.md
 - For CLI usage, see docs/cli/USAGE.md
 
-### Technical References  
+### Technical References
 - **[../CONTENTCACHE_DESIGN_IMPLEMENTATION.md](../CONTENTCACHE_DESIGN_IMPLEMENTATION.md)** - C++ ContentCache reference
 - **[../WARP.md](../WARP.md)** - Build and test environment guide
 
@@ -174,7 +177,7 @@ With ContentCache protocol enabled:
 ├─────────────────────────────────────────────┤
 │ platform-input │ rfb-display │ rfb-client  │
 │ (Input)        │ (Rendering) │ (Protocol)  │
-├─────────────────────────────────────────────┤  
+├─────────────────────────────────────────────┤
 │ rfb-encodings (Decoders + ContentCache)    │
 ├─────────────────────────────────────────────┤
 │ rfb-protocol (Messages + I/O)              │
@@ -189,7 +192,7 @@ With ContentCache protocol enabled:
 The following features are **explicitly out-of-scope** for the desktop-focused viewer (see [SEP-0001](docs/SEP/SEP-0001-out-of-scope.md)):
 
 - **🚫 Touch/Gesture Support**: Desktop-only; use trackpad scrolling
-- **🚫 Settings UI/Profiles**: Use CLI configuration and environment variables  
+- **🚫 Settings UI/Profiles**: Use CLI configuration and environment variables
 - **🚫 Screenshot Capture**: Use OS tools (`gnome-screenshot`, `grim`, `scrot`, etc.)
 
 ### Alternatives
@@ -199,7 +202,7 @@ The following features are **explicitly out-of-scope** for the desktop-focused v
 # X11: Capture VNC window
 gnome-screenshot --window --file vnc-session.png
 
-# Wayland: Capture active window  
+# Wayland: Capture active window
 grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.focused?) | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" vnc.png
 ```
 

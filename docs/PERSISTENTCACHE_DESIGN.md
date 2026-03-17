@@ -11,6 +11,18 @@ This document specifies **PersistentCache**, a new RFB protocol extension that e
 
 > Unified cache note (November 2025): In the current experimental fork, the old `rfb::ContentCache` engine has been removed and both ContentCache and PersistentCache protocol messages are served by a single unified cache engine keyed by `ContentKey(width, height, contentHash64)` and a 64-bit ID on the wire. Sections that describe two distinct engines reflect the original design; for this fork, see the "Unified Cache Model" section below and `docs/remove_contentcache_implementation.md`.
 
+## Current implementation note
+
+For future work in this fork, the most important current-state facts are:
+
+- The current C++ viewer/server implementation uses a unified cache path
+  centred on PersistentCache negotiation and message handling.
+- Older split ContentCache-versus-PersistentCache descriptions in this
+  document are retained as historical background unless they are explicitly
+  labelled as current behaviour.
+- The current Rust viewer has not yet converged with that unified C++ design
+  and still contains separate ContentCache and PersistentCache code paths.
+
 ### Test Results (November 2025)
 
 **C++ Viewer Tests** (128×128 logos, 30s duration):
@@ -23,7 +35,11 @@ This document specifies **PersistentCache**, a new RFB protocol extension that e
 
 ## Protocol Relationship and Negotiation
 
-### Two Distinct Protocols
+### Historical split design
+
+> Historical note: the table below describes the older split-protocol model.
+> In the current C++ codebase for this fork, the active cache path is the
+> unified PersistentCache-centred model described above.
 
 > Historical note: The table below describes the original split between ContentCache (session-only) and PersistentCache (cross-session). In the unified implementation used by this fork, both pseudo-encodings are handled by the same 64-bit ID cache engine and differ only in viewer policy (ephemeral vs persistent).
 
@@ -33,6 +49,11 @@ This document specifies **PersistentCache**, a new RFB protocol extension that e
 || **PersistentCache** (new) | `-321` | Content hash | Cross-session | This document |
 
 ### Negotiation Rules
+
+> **Current C++ note:** the current C++ viewer advertises the
+> PersistentCache pseudo-encoding and uses the unified cache path described
+> above. The split negotiation rules below are retained as historical
+> background and to explain older documentation and tests.
 
 **Client Behavior:**
 - Include `-321` in `SetEncodings` to indicate PersistentCache support
@@ -305,31 +326,31 @@ public:
         uint16_t height;              // Rectangle height
         uint16_t stridePixels;        // Stride in pixels
         uint32_t lastAccessTime;      // For LRU/ARC eviction
-        
+
         size_t byteSize() const {
             return pixels.size();
         }
     };
-    
+
     GlobalClientPersistentCache(size_t maxSizeMB = 2048);
     ~GlobalClientPersistentCache();
-    
+
     // Lifecycle
     bool loadFromDisk();
     bool saveToDisk();
-    
+
     // Protocol operations
     bool has(const std::vector<uint8_t>& hash) const;
     const CachedPixels* get(const std::vector<uint8_t>& hash);
-    void insert(const std::vector<uint8_t>& hash, 
+    void insert(const std::vector<uint8_t>& hash,
                const uint8_t* pixels,
                const PixelFormat& pf,
                uint16_t width, uint16_t height,
                uint16_t stridePixels);
-    
+
     // Optional: Get all known hashes for HashList
     std::vector<std::vector<uint8_t>> getAllHashes() const;
-    
+
     // Statistics
     struct Stats {
         size_t totalEntries;
@@ -338,16 +359,16 @@ public:
         uint64_t cacheMisses;
     };
     Stats getStats() const;
-    
+
 private:
     // Using vector<uint8_t> for hash to support variable lengths
-    std::unordered_map<std::vector<uint8_t>, 
+    std::unordered_map<std::vector<uint8_t>,
                       CachedPixels,
                       HashVectorHasher> cache_;
-    
+
     // ARC algorithm for eviction
     // ... (see ARC_ALGORITHM.md for details)
-    
+
     size_t maxCacheSize_;
     size_t currentSize_;
     std::string cacheFilePath_;
@@ -363,15 +384,15 @@ class EncodeManager {
 private:
     // Track which hashes the client has advertised
     std::unordered_set<std::vector<uint8_t>, HashVectorHasher> clientKnownHashes_;
-    
+
     // Pending queries from client
     std::queue<std::vector<uint8_t>> pendingQueries_;
-    
+
 public:
     void handleHashList(const std::vector<std::vector<uint8_t>>& hashes);
     void handleCacheQuery(const std::vector<std::vector<uint8_t>>& hashes);
-    
-    void writeRectWithPersistentCache(const core::Rect& r, 
+
+    void writeRectWithPersistentCache(const core::Rect& r,
                                      const PixelBuffer* pb);
 };
 ```
@@ -464,18 +485,18 @@ with the C++ ContentCache/PersistentCache behaviour.
 
 class ContentHash {
 public:
-    static std::vector<uint8_t> compute(const uint8_t* data, 
+    static std::vector<uint8_t> compute(const uint8_t* data,
                                        size_t len) {
         // Use SHA-256, truncate to 16 bytes
         std::vector<uint8_t> hash(16);
-        
+
         SHA256_CTX ctx;
         SHA256_Init(&ctx);
         SHA256_Update(&ctx, data, len);
-        
+
         uint8_t full_hash[32];
         SHA256_Final(full_hash, &ctx);
-        
+
         // Take first 16 bytes
         memcpy(hash.data(), full_hash, 16);
         return hash;
@@ -489,27 +510,27 @@ public:
 
 ```cpp
 // Compute hash for a rectangle
-std::vector<uint8_t> computeRectHash(const PixelBuffer* pb, 
+std::vector<uint8_t> computeRectHash(const PixelBuffer* pb,
                                      const core::Rect& r) {
     int stride;
     const uint8_t* pixels = pb->getBuffer(r, &stride);
-    
+
     int bytesPerPixel = pb->getPF().bpp / 8;
     size_t rowBytes = r.width() * bytesPerPixel;
     size_t strideBytes = stride * bytesPerPixel;  // CRITICAL: multiply!
-    
+
     // Hash row-major pixel data
     SHA256_CTX ctx;
     SHA256_Init(&ctx);
-    
+
     for (int y = 0; y < r.height(); y++) {
         const uint8_t* row = pixels + (y * strideBytes);
         SHA256_Update(&ctx, row, rowBytes);
     }
-    
+
     uint8_t full_hash[32];
     SHA256_Final(full_hash, &ctx);
-    
+
     std::vector<uint8_t> hash(16);
     memcpy(hash.data(), full_hash, 16);
     return hash;
@@ -691,13 +712,13 @@ The payload data itself is stored in separate shard files (`shard_0000.dat`, etc
 ```cpp
 TEST(PersistentCache, BasicStoreAndRetrieve) {
     GlobalClientPersistentCache cache(10);  // 10 MB
-    
+
     std::vector<uint8_t> hash = {0xAB, 0xCD, ...};
     uint8_t pixels[256] = { /* test data */ };
     PixelFormat pf(...);
-    
+
     cache.insert(hash, pixels, pf, 16, 16, 16);
-    
+
     ASSERT_TRUE(cache.has(hash));
     const auto* entry = cache.get(hash);
     ASSERT_NE(entry, nullptr);
@@ -706,14 +727,14 @@ TEST(PersistentCache, BasicStoreAndRetrieve) {
 
 TEST(PersistentCache, Eviction) {
     GlobalClientPersistentCache cache(1);  // 1 MB - triggers eviction
-    
+
     // Fill beyond capacity
     for (int i = 0; i < 100; i++) {
         std::vector<uint8_t> hash = makeTestHash(i);
         uint8_t pixels[16384];  // 16 KB each
         cache.insert(hash, pixels, pf, 64, 64, 64);
     }
-    
+
     auto stats = cache.getStats();
     EXPECT_LT(stats.totalBytes, 1024 * 1024);  // Under 1 MB
 }
