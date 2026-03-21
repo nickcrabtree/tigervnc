@@ -1,8 +1,8 @@
 # PersistentCache Protocol: Design and Implementation Guide
 
-**Author**: TigerVNC Team  
-**Date**: 2025-10-24  
-**Status**: Implemented and Tested  
+**Author**: TigerVNC Team
+**Date**: 2025-10-24
+**Status**: Implemented and Tested
 **Related**: CONTENTCACHE_DESIGN_IMPLEMENTATION.md
 
 ## Executive Summary
@@ -56,16 +56,16 @@ For future work in this fork, the most important current-state facts are:
 > background and to explain older documentation and tests.
 
 **Client Behavior:**
-- Include `-321` in `SetEncodings` to indicate PersistentCache support
-- Include `-320` for backward compatibility with ContentCache-only servers
+- Include `-321` in `SetEncodings` to indicate support for the current unified cache negotiation path
+- Include `-320` only as a compatibility alias for older ContentCache-labelled servers and logs
 - Example: `[..., encodingH264, encodingZRLE, -321, -320]`
 
 **Server Behavior:**
-- If client sends `-321` and server supports it: **use PersistentCache**
-- Else if client sends `-320` and server supports it: **use ContentCache**
+- If client sends `-321` and server supports it: **use the unified PersistentCache-centred path**
+- Else if client sends `-320` and server supports it: **use the compatibility alias / historical ContentCache-labelled path**
 - Else: **no caching**
 
-**Priority:** When both are available, PersistentCache is preferred.
+**Priority:** When both are available, the current implementation prefers `pseudoEncodingPersistentCache (-321)`.
 
 ### Compatibility Matrix
 
@@ -806,22 +806,22 @@ These log lines are emitted through the DecodeManager logger and appear alongsid
 ### Old Client + New Server
 
 - Client sends only `-320`
-- Server enables ContentCache
-- PersistentCache code path never executed
-- **Result:** Works perfectly with ContentCache
+- New server treats `-320` as the compatibility alias for the unified cache protocol
+- Viewer remains in the historical session-only / disk-free policy mode
+- **Result:** Works with the historical ContentCache-labelled compatibility path
 
 ### New Client + Old Server
 
 - Client sends `-321` and `-320`
-- Server doesn't recognize `-321`, uses `-320`
-- Client falls back to ContentCache
+- Old server doesn't recognize `-321`, so it falls back to `-320`
+- Client interoperates through the older ContentCache-labelled path
 - **Result:** Works perfectly with ContentCache
 
 ### Both Support Both
 
 - Client sends `-321` and `-320`
 - Server prefers `-321`
-- **Result:** PersistentCache enabled
+- **Result:** The current unified PersistentCache-centred path is enabled
 
 ## Known Issues and Pitfalls
 
@@ -956,7 +956,7 @@ preserving the existing PersistentCache protocol semantics.
 ## References
 
 - **ContentCache Design:** CONTENTCACHE_DESIGN_IMPLEMENTATION.md
-- **ARC Algorithm:** ARC_ALGORITHM.md  
+- **ARC Algorithm:** ARC_ALGORITHM.md
 - **RFB Protocol:** RFC 6143
 - **SHA-256:** FIPS 180-4
 
