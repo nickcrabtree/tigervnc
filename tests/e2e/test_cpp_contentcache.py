@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-End-to-end test: C++ viewer ContentCache functionality.
+End-to-end test: C++ viewer unified cache path (historical ContentCache scenario).
 
 Validates that the C++ viewer (njcvncviewer) properly utilizes the
 session-only "ContentCache" policy when connected to the C++ server
 (Xnjcvnc).
 
-IMPORTANT: ContentCache is now implemented as an alias to the unified
-GlobalClientPersistentCache engine with disk persistence disabled
-ContentCache and PersistentCache; only the policy differs (memory-only
-vs disk-backed). Therefore, it's expected to see PersistentCache
-engine constructs the cache with disk writes disabled.
+IMPORTANT: the historical "ContentCache" scenario is now implemented through the unified
+GlobalClientPersistentCache engine with disk persistence disabled. ContentCache
+and PersistentCache therefore share the same cache engine; only the policy differs
+(memory-only versus disk-backed). It is normal for the viewer log to show
+PersistentCache-flavoured engine activity while this scenario is running.
 
 Test validates:
 - Cache hits occur (> 20% hit rate confirms functionality)
@@ -43,7 +43,7 @@ from log_parser import parse_cpp_log, compute_metrics
 
 
 def run_cpp_viewer(viewer_path, port, artifacts, tracker, name, cache_size_mb=256, display_for_viewer=None, cache_dir=None):
-    """Run C++ viewer with ContentCache enabled."""
+    """Run the C++ viewer through the unified cache path using the historical ContentCache-named scenario."""
     cmd = [
         viewer_path,
         f"127.0.0.1::{port}",
@@ -65,7 +65,7 @@ def run_cpp_viewer(viewer_path, port, artifacts, tracker, name, cache_size_mb=25
     else:
         env.pop("DISPLAY", None)
 
-    print(f"  Starting {name} with ContentCache={cache_size_mb}MB...")
+    print(f"  Starting {name} with the unified cache path (historical ContentCache scenario, cache size={cache_size_mb}MB)...")
     log_file = open(log_path, "w")
 
     proc = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT, preexec_fn=os.setpgrp, env=env)
@@ -77,13 +77,13 @@ def run_cpp_viewer(viewer_path, port, artifacts, tracker, name, cache_size_mb=25
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test C++ viewer ContentCache functionality")
+    parser = argparse.ArgumentParser(description="Test the C++ viewer unified cache path using the historical ContentCache-named scenario")
     parser.add_argument("--display-content", type=int, default=998, help="Display number for content server (default: 998)")
     parser.add_argument("--port-content", type=int, default=6898, help="Port for content server (default: 6898)")
     parser.add_argument("--display-viewer", type=int, default=999, help="Display number for viewer window (default: 999)")
     parser.add_argument("--port-viewer", type=int, default=6899, help="Port for viewer window server (default: 6899)")
     parser.add_argument("--duration", type=int, default=60, help="Test duration in seconds (default: 60)")
-    parser.add_argument("--cache-size", type=int, default=256, help="Content cache size in MB (default: 256MB)")
+    parser.add_argument("--cache-size", type=int, default=256, help="Unified cache size in MB for the historical ContentCache-named scenario (default: 256MB)")
     parser.add_argument("--wm", default="openbox", help="Window manager (default: openbox)")
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
     parser.add_argument("--hit-rate-threshold", type=float, default=20.0, help="Minimum cache hit rate percentage (default: 20)")
@@ -92,7 +92,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 70)
-    print("C++ Viewer ContentCache Test")
+    print("C++ Viewer unified cache test (historical ContentCache scenario)")
     print("=" * 70)
     print(f"\nCache Size: {args.cache_size}MB")
     print(f"Duration: {args.duration}s")
@@ -246,7 +246,7 @@ def main():
         hit_rate = (100.0 * hits / lookups) if lookups > 0 else 0.0
         bandwidth_reduction = metrics["cache_operations"].get("bandwidth_reduction_pct", 0.0)
 
-        print("\nContentCache Performance:")
+        print("\nUnified cache performance (historical ContentCache scenario):")
         print(f"  Cache lookups: {lookups}")
         print(f"  Cache hits:    {hits} ({hit_rate:.1f}%)")
         print(f"  Cache misses:  {lookups - hits}")
@@ -296,7 +296,7 @@ def main():
 
         if success:
             print("\n✓ TEST PASSED")
-            print("\nC++ viewer ContentCache working correctly:")
+            print("\nC++ viewer unified cache path working correctly for the historical ContentCache scenario:")
             print(f"  • Hit rate: {hit_rate:.1f}% (threshold: {args.hit_rate_threshold}%)")
             print(f"  • Bandwidth reduction: {bandwidth_reduction:.1f}% (threshold: {args.bandwidth_threshold}%)")
             return 0
