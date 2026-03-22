@@ -724,16 +724,25 @@ def preflight_check_cpp_only(verbose: bool = False) -> Dict[str, str]:
     Raises PreflightError if critical requirements missing.
     """
     binaries = {}
+    is_macos = sys.platform == "darwin"
 
     # Required binaries
-    required = [
-        ("Xtigervnc", "System TigerVNC server (install tigervnc-standalone-server or tigervnc-server)"),
-        ("xterm", "Terminal emulator (install xterm)"),
-        ("openbox", "Window manager (install openbox)"),
-        ("xsetroot", "X11 utilities (install x11-xserver-utils)"),
-        ("wmctrl", "Window manager control (install wmctrl)"),
-        ("xdotool", "X11 automation (install xdotool)"),
-    ]
+    if is_macos:
+        # macOS/Quartz in ARO is typically no-sudo, and MacPorts tigervnc may be
+        # viewer-only. Run headless and rely on XQuartz xsetroot plus the in-tree
+        # Xnjcvnc server or the existing macOS server-selection fallback.
+        required = [
+            ("xsetroot", "X11 utility (provided by XQuartz)"),
+        ]
+    else:
+        required = [
+            ("Xtigervnc", "System TigerVNC server (install tigervnc-standalone-server or tigervnc-server)"),
+            ("xterm", "Terminal emulator (install xterm)"),
+            ("openbox", "Window manager (install openbox)"),
+            ("xsetroot", "X11 utilities (install x11-xserver-utils)"),
+            ("wmctrl", "Window manager control (install wmctrl)"),
+            ("xdotool", "X11 automation (install xdotool)"),
+        ]
 
     missing = []
     for binary, description in required:
@@ -917,7 +926,7 @@ class VNCServer:
         print(f"✓ VNC server :{self.display} ready")
         return True
 
-    def start_session(self, wm: str = "openbox") -> bool:
+    def start_session(self, wm: Optional[str] = "openbox") -> bool:
         """Start window manager and desktop session.
 
         Special case: if ``wm == 'xstartup'``, run the user's VNC xstartup
@@ -927,6 +936,11 @@ class VNCServer:
 
         # Set background
         subprocess.run(["xsetroot", "-solid", "#202020"], env={**os.environ, "DISPLAY": display_env}, check=False)
+
+        # Headless/no-WM mode: allow tests to run without openbox/wmctrl.
+        if wm is None or str(wm).lower() in ("none", ""):
+            time.sleep(0.5)
+            return True
 
         # Full session via ~/.config/tigervnc/xstartup (matches production :2)
         if wm == "xstartup":

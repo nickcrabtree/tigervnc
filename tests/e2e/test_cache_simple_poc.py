@@ -33,7 +33,7 @@ def main():
     print("=" * 70)
     print("Simple Cache Proof-of-Concept Test")
     print("=" * 70)
-    print("\nThis test uses xclock to generate repeated content")
+    print("\nThis test uses a deterministic root-window pattern cycle to generate repeated content")
     print("that should produce cache hits.\n")
 
     # Setup
@@ -93,12 +93,12 @@ def main():
                 # PersistentCacheMinRectSize keeps default unless overridden
             },
         )
-        if not server_content.start() or not server_content.start_session(wm="openbox"):
+        if not server_content.start() or not server_content.start_session(wm=None):
             print("✗ FAIL: Content server failed")
             return 1
 
         server_viewer = VNCServer(display_viewer, port_viewer, "poc_viewerwin", artifacts, tracker, geometry="800x600", log_level="*:stderr:30", server_choice=server_mode)
-        if not server_viewer.start() or not server_viewer.start_session(wm="openbox"):
+        if not server_viewer.start() or not server_viewer.start_session(wm=None):
             print("✗ FAIL: Viewer server failed")
             return 1
 
@@ -126,9 +126,9 @@ def main():
             return proc
 
         def run_scenario(label: str):
-            print(f"\n[4/7] Phase {label}: Generating repeated static content (tiled logos)...")
+            print(f"\n[4/7] Phase {label}: Generating repeated static content (root pattern cycle)...")
             runner = StaticScenarioRunner(display_content, verbose=False)
-            stats = runner.tiled_logos_test(tiles=12, duration=60.0, delay_between=3.0)
+            stats = runner.root_pattern_cycle(cycles=12, delay_between=1.0)
             print(f" Phase {label} scenario completed: {stats}")
 
         viewer_log_p1 = artifacts.logs_dir / "poc_viewer_phase1.log"
