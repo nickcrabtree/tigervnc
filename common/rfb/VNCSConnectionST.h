@@ -174,6 +174,11 @@ private:
     return (knownPersistentIds_.find(id) != knownPersistentIds_.end());
   }
 
+  // Record that the client now knows this cache ID (INIT/seed sent).
+  void markPersistentIdKnown(uint64_t id) override {
+    knownPersistentIds_.insert(id);
+  }
+
   // Lossy hash cache management
   void cacheLossyHash(uint64_t canonical, const CacheKey& lossyKey) override {
     lossyHashCache_[canonical] = lossyKey;
@@ -236,72 +241,72 @@ private:
   // Timer callbacks
   void handleTimeout(core::Timer* t) override;
 
-// Internal methods
+  // Internal methods
 
-bool isShiftPressed();
+  bool isShiftPressed();
 
-// Congestion control
-void writeRTTPing();
-bool isCongested();
+  // Congestion control
+  void writeRTTPing();
+  bool isCongested();
 
-// writeFramebufferUpdate() attempts to write a framebuffer update to the
-// client.
+  // writeFramebufferUpdate() attempts to write a framebuffer update to the
+  // client.
 
-void writeFramebufferUpdate();
-void writeNoDataUpdate();
-void writeDataUpdate();
-void writeLosslessRefresh();
+  void writeFramebufferUpdate();
+  void writeNoDataUpdate();
+  void writeDataUpdate();
+  void writeLosslessRefresh();
 
-void screenLayoutChange(uint16_t reason);
-void setCursor();
-void setCursorPos();
-void setDesktopName(const char* name);
-void setLEDState(unsigned int state);
-void desktopReady() override;
+  void screenLayoutChange(uint16_t reason);
+  void setCursor();
+  void setCursorPos();
+  void setDesktopName(const char* name);
+  void setLEDState(unsigned int state);
+  void desktopReady() override;
 
 private:
-network::Socket* sock;
-std::string peerEndpoint;
-bool reverseConnection;
+  network::Socket* sock;
+  std::string peerEndpoint;
+  bool reverseConnection;
 
-bool inProcessMessages;
+  bool inProcessMessages;
 
-bool pendingSyncFence, syncFence;
-uint32_t fenceFlags;
-unsigned fenceDataLen;
-uint8_t* fenceData;
+  bool pendingSyncFence, syncFence;
+  uint32_t fenceFlags;
+  unsigned fenceDataLen;
+  uint8_t* fenceData;
 
-Congestion congestion;
-core::Timer congestionTimer;
-core::Timer losslessTimer;
+  Congestion congestion;
+  core::Timer congestionTimer;
+  core::Timer losslessTimer;
 
-VNCServerST* server;
-SimpleUpdateTracker updates;
-core::Region requested;
-bool updateRenderedCursor, removeRenderedCursor;
-core::Region damagedCursorRegion;
-bool continuousUpdates;
-core::Region cuRegion;
-EncodeManager encodeManager;
+  VNCServerST* server;
+  SimpleUpdateTracker updates;
+  core::Region requested;
+  bool updateRenderedCursor, removeRenderedCursor;
+  core::Region damagedCursorRegion;
+  bool continuousUpdates;
+  core::Region cuRegion;
+  EncodeManager encodeManager;
 
-// Track last referenced rectangle per cacheId for targeted refresh on miss
-std::unordered_map<uint64_t, core::Rect> lastCachedRectRef_;
+  // Track last referenced rectangle per cacheId for targeted refresh on miss
+  std::unordered_map<uint64_t, core::Rect> lastCachedRectRef_;
 
-// Update counter for periodic cache statistics logging
-unsigned updateCount_;
+  // Update counter for periodic cache statistics logging
+  unsigned updateCount_;
 
-std::map<uint32_t, uint32_t> pressedKeys;
+  std::map<uint32_t, uint32_t> pressedKeys;
 
-core::Timer idleTimer;
+  core::Timer idleTimer;
 
-time_t pointerEventTime;
-core::Point pointerEventPos;
-bool clientHasCursor;
+  time_t pointerEventTime;
+  core::Point pointerEventPos;
+  bool clientHasCursor;
 
-// Session timing for aggregate per-client bandwidth statistics
-struct timeval sessionStartTime_;
+  // Session timing for aggregate per-client bandwidth statistics
+  struct timeval sessionStartTime_;
 
-std::string closeReason;
+  std::string closeReason;
 };
 } // namespace rfb
 #endif
