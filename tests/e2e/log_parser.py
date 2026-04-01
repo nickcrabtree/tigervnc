@@ -165,6 +165,7 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
     """Parse C++ viewer log file."""
     parsed = ParsedLog()
 
+    in_persistent_stats = False
     if not log_path.exists():
         parsed.errors.append(f"Log file not found: {log_path}")
         return parsed
@@ -186,6 +187,33 @@ def parse_cpp_log(log_path: Path) -> ParsedLog:
                 message = line
 
             lower = message.lower()
+
+            # Track when we're inside the viewer's PersistentCache summary block.
+            # The Lookups/Hits/Misses lines in that block may not repeat the word
+            # 'PersistentCache', so we must parse them contextually.
+            if "client-side persistentcache statistics" in lower:
+                in_persistent_stats = True
+                continue
+
+            if in_persistent_stats:
+                # Lookups/Hits line: "Lookups: N, Hits: M (P%)"
+                m = re.search(r"lookups:\s*(\d+).*hits:\s*(\d+)", message, re.IGNORECASE)
+                if m:
+                    _lookups = int(m.group(1))
+                    _hits = int(m.group(2))
+                    parsed.persistent_hits = _hits
+                    # Don't infer misses from lookups here; wait for the explicit Misses line.
+                    continue
+
+                # Misses line: "Misses: K, Queries sent: ..."
+                m = re.search(r"misses:\s*(\d+)\s*,\s*queries\s+sent", message, re.IGNORECASE)
+                if m:
+                    parsed.persistent_misses = int(m.group(1))
+                    continue
+
+                # End of stats block heuristics
+                if "arc cache performance" in lower or "persistentcache:" in lower:
+                    in_persistent_stats = False
 
             # Detect PersistentCache initialization or disk-loading events in the
             # viewer log. These should *not* appear when the viewer is started
