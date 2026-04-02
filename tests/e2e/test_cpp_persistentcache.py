@@ -162,8 +162,8 @@ def main():
     parser.add_argument(
         "--index-min-entries",
         type=int,
-        default=50,
-        help="STRICT: minimum index entries after cold phase (default: 50)",
+        default=1,
+        help="STRICT: minimum index entries after cold phase (default: 1; proxy only — strictness is enforced by 0-miss warm phase)",
     )
 
     args = parser.parse_args()
@@ -380,6 +380,15 @@ def main():
         print(f" Bandwidth reduction (server): {bw:.1f}%")
 
         failures = []
+
+        # STRICT duplicated workload requirement after reconnect:
+        # Phase 2 must have zero PersistentCache misses and at least one hit.
+        if pers_v["misses"] != 0:
+            failures.append(f"PersistentCache warm phase had {pers_v['misses']} misses (expected 0)")
+            failures.append("Likely causes: viewer did not advertise disk inventory on reconnect, or server did not emit stable canonical references for identical content")
+        if pers_v["hits"] == 0:
+            failures.append("PersistentCache warm phase had 0 hits (expected >0)")
+
         if lookups < args.min_lookups:
             failures.append(f"Too few lookups: {lookups} < {args.min_lookups}")
         if hit_rate < args.hit_rate_threshold:
