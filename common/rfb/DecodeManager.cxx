@@ -488,22 +488,38 @@ void DecodeManager::triggerPersistentCacheLoad() {
     return;
   }
 
-  persistentCacheLoadTriggered = true; // Log the concrete cache directory and index file path so users and
+  // Log the concrete cache directory and index file path so users and
   // tests can see exactly where PersistentCache state will be read from.
   const std::string& cacheDir = persistentCache->getCacheDirectory();
   std::string indexPath = persistentCache->getIndexFilePath();
-  vlog.info("PersistentCache: protocol negotiated, loading index from %s "
-            "(directory %s)",
-            indexPath.c_str(),
-            cacheDir.c_str()); // Use v3 lazy loading: only load index, hydrate
-                               // payloads on-demand or
-  // proactively
-  if (persistentCache->loadIndexFromDisk()) {
-    vlog.info("PersistentCache index loaded from %s (entries will hydrate "
-              "on-demand/background)",
-              indexPath.c_str());
+
+  // Avoid misleading logs: only claim we are loading index.dat when it exists.
+  struct stat stIndex;
+  bool haveIndex = (stat(indexPath.c_str(), &stIndex) == 0) && S_ISREG(stIndex.st_mode);
+  if (!haveIndex) {
+    vlog.info("PersistentCache: protocol negotiated, no index.dat at %s (fresh start)", indexPath.c_str());
   } else {
-    vlog.debug("PersistentCache starting fresh (no index at %s or load failed)", indexPath.c_str());
+    // Emit a short, unambiguous proof line for tests and humans.
+    vlog.info("PersistentCache: loading index from index.dat");
+    vlog.info("PersistentCache: protocol negotiated, loading index from %s (directory %s)", indexPath.c_str(),
+              cacheDir.c_str());
+  }
+
+  // Use v3 lazy loading: only load index, hydrate payloads on-demand/background
+  bool loaded = false;
+  if (haveIndex) {
+    loaded = persistentCache->loadIndexFromDisk();
+  }
+  if (loaded) {
+    // Emit a short proof line that cannot be wrapped away from index.dat.
+    vlog.info("PersistentCache: loaded index.dat");
+    vlog.info("PersistentCache index loaded from %s (entries will hydrate on-demand/background)", indexPath.c_str());
+  } else {
+    if (haveIndex) {
+      vlog.error("PersistentCache: failed to load index.dat at %s; starting fresh", indexPath.c_str());
+    } else {
+      vlog.debug("PersistentCache starting fresh (no index at %s)", indexPath.c_str());
+    }
   }
 
   // After loading index, advertise our hashes to the server
