@@ -914,23 +914,8 @@ bool CMsgReader::readCachedRectInit(const core::Rect& r) {
 }
 
 bool CMsgReader::readPersistentCachedRect(const core::Rect& r) {
-  // Reference to cached content (legacy PersistentCachedRect).
-  // Payload: 16-byte CacheKey
-  if (!is->hasData(16))
-    return false;
-  is->setRestorePoint();
-  if (!is->hasDataOrRestore(16))
-    return false;
-  uint8_t keyBuf[16];
-  is->readBytes(keyBuf, 16);
-  CacheKey key(keyBuf);
-  is->clearRestorePoint();
-  handler->handlePersistentCachedRect(r, key);
-  return true;
-}
-bool CMsgReader::readPersistentCachedRectWithOffset(const core::Rect& r) {
-  // Reference to cached content with a sub-rect offset.
-  // Payload: 16-byte CacheKey + U16 ox + U16 oy + U16 cachedW + U16 cachedH
+  // Reference to cached content (PersistentCachedRect).
+  // Wire format: 16-byte CacheKey + U16 ox + U16 oy + U16 cachedW + U16 cachedH
   if (!is->hasData(16 + 2 + 2 + 2 + 2))
     return false;
   is->setRestorePoint();
@@ -947,7 +932,11 @@ bool CMsgReader::readPersistentCachedRectWithOffset(const core::Rect& r) {
   handler->handlePersistentCachedRectWithOffset(r, key, ox, oy, cachedW, cachedH);
   return true;
 }
-
+bool CMsgReader::readPersistentCachedRectWithOffset(const core::Rect& r) {
+  // Backwards-compatible entry point. The offset extension is part of
+  // encodingPersistentCachedRect, so both helpers consume the same payload.
+  return readPersistentCachedRect(r);
+}
 bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r) {
   // Incremental decode without outer restore point to avoid nesting with decoder
   if (!pendingPersistentCacheInitActive) {
