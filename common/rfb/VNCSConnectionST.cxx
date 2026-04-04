@@ -877,16 +877,13 @@ void VNCSConnectionST::handlePersistentHashList(uint32_t sequenceId, uint16_t to
   vlog.debug("Client advertised %d persistent cache IDs (chunk %d/%d, seq %u)", (int)cacheIds.size(), chunkIndex + 1,
              totalChunks, sequenceId);
 
-  // Forward to EncodeManager to track client's known IDs
+  // Treat the advertised ID list as authoritative for this session so the
+  // encoder can emit references immediately (avoids unnecessary INITs on reconnect).
   for (uint64_t id : cacheIds) {
+    // Mark as known in unified tracking and in the encoder.
+    markPersistentIdKnown(id);
     encodeManager.addClientKnownHash(id);
   }
-
-  // Also populate session tracking (for within-session hit detection)
-  for (uint64_t id : cacheIds) {
-    knownPersistentIds_.insert(id);
-  }
-
   vlog.info("Received ID list: %d IDs (session tracking now has %zu total)", (int)cacheIds.size(),
             knownPersistentIds_.size());
 }
