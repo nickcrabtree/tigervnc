@@ -623,16 +623,29 @@ std::vector<CacheKey> GlobalClientPersistentCache::getAllKeys() const {
 
   // Hydrated entries
   for (const auto& kv : cache_) {
-    keys.insert(kv.first);
+    CacheKey k = kv.first;
+    // Advertise canonical identity (first u64) so the server can reference without INIT.
+    uint64_t canon = kv.second.canonicalHash;
+    if (canon)
+      std::memcpy(k.bytes.data(), &canon, sizeof(uint64_t));
+    keys.insert(k);
   }
 
   // Index-only entries
   for (const auto& kv : indexMap_) {
+    CacheKey k;
     auto it = hashToKey_.find(kv.first);
     if (it != hashToKey_.end())
-      keys.insert(it->second);
+      k = it->second;
     else if (kv.first.size() >= 16)
-      keys.insert(CacheKey(kv.first.data()));
+      k = CacheKey(kv.first.data());
+    else
+      continue;
+    // Prefer canonical identity (first u64) for advertisement.
+    uint64_t canon = kv.second.canonicalHash;
+    if (canon)
+      std::memcpy(k.bytes.data(), &canon, sizeof(uint64_t));
+    keys.insert(k);
   }
 
   return std::vector<CacheKey>(keys.begin(), keys.end());
