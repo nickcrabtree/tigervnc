@@ -492,6 +492,15 @@ void VNCSConnectionST::setEncodings(int nEncodings, const int32_t* encodings) {
 
   // Gate native-format cache upgrades behind explicit capability advertisement
   encodeManager.setNativeFormatCacheSupported(clientWantsNativeFormat);
+  // If the client advertised persistent cache IDs before SetEncodings, then
+  // EncodeManager may not yet have been configured to use the protocol.
+  // Re-apply any known IDs here so the first updates can use references
+  // rather than sending unnecessary INITs.
+  if (clientWantsPersistent && Server::enablePersistentCache && !knownPersistentIds_.empty()) {
+    for (uint64_t id : knownPersistentIds_) {
+      encodeManager.addClientKnownHash(id);
+    }
+  }
 
   if (clientWantsPersistent && Server::enablePersistentCache) {
     vlog.info("PersistentCache enabled for this connection (server allows persistence)");
