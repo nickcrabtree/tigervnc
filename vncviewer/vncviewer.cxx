@@ -491,7 +491,6 @@ static void potentiallyLoadConfigurationFile(const char* filename) {
       // don't try to connect to the filename
       strncpy(vncServerName, newServerName, VNCSERVERNAMELEN - 1);
       vncServerName[VNCSERVERNAMELEN - 1] = '\0';
-      cmdlineServerSeen = true;
     } catch (std::exception& e) {
       vlog.error("%s", e.what());
       abort_vncviewer(_("Unable to load the specified configuration "
