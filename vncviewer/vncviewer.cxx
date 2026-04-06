@@ -491,6 +491,7 @@ static void potentiallyLoadConfigurationFile(const char* filename) {
       // don't try to connect to the filename
       strncpy(vncServerName, newServerName, VNCSERVERNAMELEN - 1);
       vncServerName[VNCSERVERNAMELEN - 1] = '\0';
+      cmdlineServerSeen = true;
     } catch (std::exception& e) {
       vlog.error("%s", e.what());
       abort_vncviewer(_("Unable to load the specified configuration "
@@ -682,6 +683,9 @@ int main(int argc, char** argv) {
     vlog.error("%s", e.what());
   }
 
+  // Track whether the server target was specified on the command line.
+  // A pre-set vncServerName (e.g. from config) should be overridable.
+  bool cmdlineServerSeen = false;
   for (int i = 1; i < argc;) {
     int ret;
 
@@ -707,7 +711,7 @@ int main(int argc, char** argv) {
       exit(1);
     }
 
-    if (vncServerName[0] != '\0') {
+    if (cmdlineServerSeen) {
       fprintf(stderr, "\n");
       fprintf(stderr, _("%s: Extra argument '%s'\n"), argv[0], argv[i]);
       fprintf(stderr, _("See '%s --help' for more information.\n"), argv[0]);
