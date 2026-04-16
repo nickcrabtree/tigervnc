@@ -1466,7 +1466,7 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
 
       // For very large bordered regions with low coverage, skip cache lookup
       // to avoid potential visual corruption from hash collisions or races
-      if (contentArea > WholeRectCacheMinArea && coverage < 0.5 && !alreadyKnown) {
+      if (contentArea > WholeRectCacheMinArea && (coverage < 0.05 || (coverage < 0.5 && !alreadyKnown))) {
         vlog.info("%s BORDERED: Skipping cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)%s",
                   strTimestamp(), contentRect.tl.x, contentRect.tl.y, contentRect.br.x, contentRect.br.y, coverage,
                   alreadyKnown ? " - hash known but coverage too low" : "");
