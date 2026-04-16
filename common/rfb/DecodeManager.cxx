@@ -240,6 +240,11 @@ DecodeManager::DecodeManager(CConnection* conn_)
     if (const auto* ip = dynamic_cast<const core::IntParameter*>(v))
       pcMemSizeMB = static_cast<size_t>(*ip);
   }
+  size_t ccMemSizeMB = 256;
+  if (auto* v = core::Configuration::getParam("ContentCacheSize")) {
+    if (const auto* ip = dynamic_cast<const core::IntParameter*>(v))
+      ccMemSizeMB = static_cast<size_t>(*ip);
+  }
   size_t pcDiskSizeMB = 0;
   if (auto* v = core::Configuration::getParam("PersistentCacheDiskSize")) {
     if (const auto* ip = dynamic_cast<const core::IntParameter*>(v))
@@ -259,9 +264,10 @@ DecodeManager::DecodeManager(CConnection* conn_)
     }
   }
   if (!enablePersistentCache) {
-    // When disabled, keep the engine in a lightweight, memory-only mode and
-    // force disk persistence off.
-    pcMemSizeMB = 1;
+    // Session-only ContentCache compatibility mode:
+    // keep the unified engine memory-only, but honour the legacy
+    // ContentCacheSize knob instead of collapsing to a 1MB stub cache.
+    pcMemSizeMB = ccMemSizeMB;
     pcDiskSizeMB = std::numeric_limits<size_t>::max();
     pcPathOverride.clear();
   }
@@ -530,8 +536,6 @@ void DecodeManager::triggerPersistentCacheLoad() {
 void DecodeManager::advertisePersistentCacheHashes() {
   // Only send the HashList once per connection, and only when we have a
   // fully-initialised CConnection with a valid writer.
-  if (!persistentCacheEnabled_)
-    return;
   if (persistentHashListSent)
     return;
   if (!persistentCache || !conn || !conn->writer())
@@ -834,8 +838,8 @@ void DecodeManager::handlePersistentCachedRect(const core::Rect& r, const CacheK
     vlog.error("handlePersistentCachedRect called with null framebuffer");
     return;
   }
-  if (!persistentCacheEnabled_ || persistentCache == nullptr) {
-    // PersistentCache disabled; ignore cache references.
+  if (persistentCache == nullptr) {
+    // Unified cache engine unavailable; ignore cache references.
     return;
   }
 
@@ -924,7 +928,7 @@ void DecodeManager::handlePersistentCachedRectWithOffset(const core::Rect& r, co
     vlog.error("handlePersistentCachedRectWithOffset called with null framebuffer");
     return;
   }
-  if (!persistentCacheEnabled_ || persistentCache == nullptr) {
+  if (persistentCache == nullptr) {
     return;
   }
   // Track bandwidth for this reference (same accounting as PersistentCachedRect)
@@ -1125,8 +1129,8 @@ void DecodeManager::seedCachedRect(const core::Rect& r, const CacheKey& key, Mod
   int stridePixels;
   const uint8_t* pixels = pb->getBuffer(r, &stridePixels); // When viewer's PersistentCache is
                                                            // disabled, fall back to CachedRect
-  if (!persistentCacheEnabled_ || persistentCache == nullptr) {
-    // Unified cache engine disabled; nothing to seed.
+  if (persistentCache == nullptr) {
+    // Unified cache engine unavailable; nothing to seed.
     return;
   }
 
@@ -1243,9 +1247,6 @@ void DecodeManager::logArcEvictionsThrottled() {
 void DecodeManager::flushPendingEvictions() {
   // Emit throttled ARC eviction logs for production visibility.
   logArcEvictionsThrottled();
-  if (!persistentCacheEnabled_)
-    return;
-
   // Forward any evictions from the unified cache engine to the server.
   if (persistentCache != nullptr && persistentCache->hasPendingEvictions() && conn && conn->writer()) {
     auto evictions = persistentCache->getPendingEvictions();

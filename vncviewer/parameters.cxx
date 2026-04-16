@@ -190,6 +190,8 @@ core::BoolParameter persistentCache("PersistentCache",
                                     "Enable PersistentCache protocol with content-hash based caching", true);
 core::IntParameter persistentCacheSize("PersistentCacheSize", "Maximum size of persistent cache in memory (MB)", 2048,
                                        0, 8192);
+core::IntParameter contentCacheSize("ContentCacheSize",
+                                    "Compatibility alias for session-only ContentCache memory size (MB)", 256, 0, 8192);
 core::IntParameter persistentCacheDiskSize("PersistentCacheDiskSize",
                                            "Maximum size of persistent cache on disk (MB, 0=auto default cap)", 0, 0,
                                            INT_MAX);

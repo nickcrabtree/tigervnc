@@ -33,6 +33,7 @@
 #include <cstdlib>
 #include <fstream>
 
+#include <core/Configuration.h>
 #include <core/LogWriter.h>
 #include <core/Timer.h>
 #include <core/string.h>
@@ -126,8 +127,18 @@ CConn::CConn()
   supportsLEDState = true;
 
   // Cache protocol support (controlled by command-line/config file).
+  // The viewer now uses a unified PersistentCache wire protocol for both
+  // cross-session PersistentCache and session-only ContentCache policy.
+  // Session-only ContentCache should therefore still advertise the unified
+  // cache capability whenever ContentCacheSize is set > 0, even when the
+  // PersistentCache toggle itself is off.
+  bool enableSessionContentCache = false;
+  if (auto* p = core::Configuration::getParam("ContentCacheSize")) {
+    if (const auto* ip = dynamic_cast<const core::IntParameter*>(p))
+      enableSessionContentCache = (static_cast<int>(*ip) > 0);
+  }
   supportsContentCache = false;
-  supportsPersistentCache = (::persistentCache);
+  supportsPersistentCache = (::persistentCache || enableSessionContentCache);
 
   if (customCompressLevel)
     setCompressLevel(::compressLevel);
