@@ -292,7 +292,21 @@ def main():
             return 1
 
         runner = StaticScenarioRunner(args.display_content, verbose=args.verbose)
-        stats1 = runner.tiled_logos_test(tiles=12, duration=args.phase1_duration, delay_between=3.0)
+
+        # The tiled_logos_test() duration parameter is a final dwell after all logos
+        # are displayed, not a repeated-workload budget. To make the strict
+        # min-lookups threshold meaningful, drive a larger tiled-logo pass with a
+        # short inter-logo delay (same pattern used by test_hash_collision_handling).
+        strict_tile_delay = 0.25
+        strict_tile_count = max(args.min_lookups + 20, 240)
+        strict_final_dwell = 2.0
+        print(f"  Strict tiled-logo workload: tiles={strict_tile_count}, delay={strict_tile_delay}s, final_dwell={strict_final_dwell}s")
+
+        stats1 = runner.tiled_logos_test(
+            tiles=strict_tile_count,
+            duration=strict_final_dwell,
+            delay_between=strict_tile_delay,
+        )
         print(f" Phase 1 completed: {stats1}")
         time.sleep(3.0)
 
@@ -336,7 +350,11 @@ def main():
             print("\n✗ FAIL: Phase 2 viewer exited prematurely")
             return 1
 
-        stats2 = runner.tiled_logos_test(tiles=12, duration=args.phase2_duration, delay_between=3.0)
+        stats2 = runner.tiled_logos_test(
+            tiles=strict_tile_count,
+            duration=strict_final_dwell,
+            delay_between=strict_tile_delay,
+        )
         print(f" Phase 2 completed: {stats2}")
         time.sleep(3.0)
 
