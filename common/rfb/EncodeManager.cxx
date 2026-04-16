@@ -1466,7 +1466,7 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
 
       // For very large bordered regions with low coverage, skip cache lookup
       // to avoid potential visual corruption from hash collisions or races
-      if (contentArea > WholeRectCacheMinArea && coverage < 0.5) {
+      if (contentArea > WholeRectCacheMinArea && coverage < 0.5 && !alreadyKnown) {
         vlog.info("%s BORDERED: Skipping cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)%s",
                   strTimestamp(), contentRect.tl.x, contentRect.tl.y, contentRect.br.x, contentRect.br.y, coverage,
                   alreadyKnown ? " - hash known but coverage too low" : "");
@@ -1489,8 +1489,7 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
       // If pixel format is now full quality but we only have a lossy match,
       // skip the cache reference - client's minBpp filter would reject anyway
       bool pixelFormatIsFullQuality = (conn->client.pf().bpp >= 24);
-      if (hasLossyContentMapping && pixelFormatIsFullQuality) {
-        hasMatch = false; // Force miss, send fresh data
+      if (hasLossyContentMapping && pixelFormatIsFullQuality && !hasMatch) {
         vlog.debug("BORDERED: Skipping lossy match for [%d,%d-%d,%d] - format now %dbpp", contentRect.tl.x,
                    contentRect.tl.y, contentRect.br.x, contentRect.br.y, conn->client.pf().bpp);
       }
@@ -1570,10 +1569,20 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
       if (damageArea > 0) {
         const double bboxCoverage = static_cast<double>(damageArea) / static_cast<double>(bboxArea);
         if (bboxCoverage < 0.5) {
-          attemptBboxHit = false;
-          if (isCCDebugEnabled()) {
-            vlog.info("TILING: Skipping bbox cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)",
-                      bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y, bboxCoverage);
+          bool bboxAlreadyKnown = false;
+          std::vector<uint8_t> bboxHashForCoverage = ContentHash::computeRect(pb, bbox);
+          if (!bboxHashForCoverage.empty()) {
+            CacheKey bboxKeyForCoverage = cacheKeyFromHash(bboxHashForCoverage);
+            uint64_t bboxIdForCoverage = cacheKeyToU64(bboxKeyForCoverage);
+            bool bboxClientRequested = conn->clientRequestedPersistent(bboxIdForCoverage);
+            bboxAlreadyKnown = conn->knowsPersistentId(bboxIdForCoverage) && !bboxClientRequested;
+          }
+          if (!bboxAlreadyKnown) {
+            attemptBboxHit = false;
+            if (isCCDebugEnabled()) {
+              vlog.info("TILING: Skipping bbox cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)",
+                        bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y, bboxCoverage);
+            }
           }
         }
       }
@@ -1604,8 +1613,7 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
           vlog.debug("TILING: Would skip lossy match for bbox [%d,%d-%d,%d]", bbox.tl.x, bbox.tl.y, bbox.br.x,
                      bbox.br.y);
         }
-        if (hasLossyBboxMappingCheck && pixelFormatIsFullQuality) {
-          hasHit = false; // Force miss, send fresh data
+        if (hasLossyBboxMappingCheck && pixelFormatIsFullQuality && !hasHit) {
           vlog.debug("TILING: Skipping lossy match for bbox [%d,%d-%d,%d] - format now %dbpp", bbox.tl.x, bbox.tl.y,
                      bbox.br.x, bbox.br.y, conn->client.pf().bpp);
         }
