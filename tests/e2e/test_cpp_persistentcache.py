@@ -308,6 +308,18 @@ def main():
             delay_between=strict_tile_delay,
         )
         print(f" Phase 1 completed: {stats1}")
+
+        # A single cold pass still leaves a handful of late composite variants
+        # (full bordered-region / wide-strip seeds) that only materialise near
+        # the end of a long tiled-logo run. Replay the same workload once more
+        # in Phase 1 so those canonicals land on disk before the reconnect.
+        print("  Phase 1 variant-seed replay: repeating strict tiled-logo workload to persist late composite variants...")
+        stats1_replay = runner.tiled_logos_test(
+            tiles=strict_tile_count,
+            duration=strict_final_dwell,
+            delay_between=strict_tile_delay,
+        )
+        print(f"  Phase 1 variant-seed replay completed: {stats1_replay}")
         time.sleep(3.0)
 
         tracker.cleanup("cpp_pc_phase1_viewer")
