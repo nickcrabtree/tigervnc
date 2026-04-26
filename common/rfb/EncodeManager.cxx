@@ -1453,10 +1453,11 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
       // viewer to display a cached full-screen rect even though a non-trivial
       // sub-rect has new content.
       //
-      // SAFETY: We now ALWAYS apply the coverage check for large bordered regions.
-      // Even if the hash is "known", a low-coverage HIT can cause corruption if
-      // there's a hash collision or framebuffer race condition. The small
-      // performance cost of re-encoding is worth the visual correctness.
+      // SAFETY: For large bordered regions we still apply a coverage guard
+      // before optimistic cache hits, but once the client is already known
+      // to hold this exact canonical ID we allow the lookup to proceed even
+      // at very low coverage. That keeps reconnect/replay paths hot without
+      // relaxing the guard for first-seen large composites.
       const int contentArea = contentRect.area();
       bool alreadyKnown = conn->knowsPersistentId(contentId);
 
@@ -1465,11 +1466,10 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
       const double coverage = static_cast<double>(damageAreaInContent) / static_cast<double>(contentArea);
 
       // For very large bordered regions with low coverage, skip cache lookup
-      // to avoid potential visual corruption from hash collisions or races
-      if (contentArea > WholeRectCacheMinArea && (coverage < 0.05 || (coverage < 0.5 && !alreadyKnown))) {
-        vlog.info("%s BORDERED: Skipping cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)%s",
-                  strTimestamp(), contentRect.tl.x, contentRect.tl.y, contentRect.br.x, contentRect.br.y, coverage,
-                  alreadyKnown ? " - hash known but coverage too low" : "");
+      // unless the client is already known to hold this exact canonical ID.
+      if (contentArea > WholeRectCacheMinArea && coverage < 0.5 && !alreadyKnown) {
+        vlog.info("%s BORDERED: Skipping cache lookup for [%d,%d-%d,%d] due to low damage coverage (%.3f)",
+                  strTimestamp(), contentRect.tl.x, contentRect.tl.y, contentRect.br.x, contentRect.br.y, coverage);
         continue;
       }
 
