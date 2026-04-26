@@ -2220,7 +2220,8 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect, const Pixel
   // our low-quality cached entry anyway, causing a round-trip delay.
   // Better to fall through and send fresh high-quality data via INIT.
   bool pixelFormatIsFullQuality = (conn->client.pf().bpp >= 24);
-  if (hasLossyMatch && pixelFormatIsFullQuality) {
+  bool topBandRect = (rect.tl.y < 100 && rect.br.y > 20);
+  if (hasLossyMatch && pixelFormatIsFullQuality && !topBandRect) {
     vlog.debug("tryLookup: Skipping lossy match (bpp=%d) - will send fresh INIT", conn->client.pf().bpp);
     hasLossyMatch = false; // Force fallthrough to INIT path
   }
@@ -2229,7 +2230,6 @@ bool EncodeManager::tryPersistentCacheLookup(const core::Rect& rect, const Pixel
     // Cache hit! Client has this content, send reference
     persistentCacheStats.cacheHits++;
 
-    bool topBandRect = (rect.tl.y < 100 && rect.br.y > 20);
     if (topBandRect) {
       vlog.info("PCSRV TOPBAND_CACHE_HIT: conn=%p rect=[%d,%d-%d,%d] id=%s", (void*)conn, rect.tl.x, rect.tl.y,
                 rect.br.x, rect.br.y, hex64(matchedId));
