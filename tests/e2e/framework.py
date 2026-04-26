@@ -729,11 +729,9 @@ def preflight_check_cpp_only(verbose: bool = False) -> Dict[str, str]:
     # Required binaries
     if is_macos:
         # macOS/Quartz in ARO is typically no-sudo, and MacPorts tigervnc may be
-        # viewer-only. Run headless and rely on XQuartz xsetroot plus the in-tree
-        # Xnjcvnc server or the existing macOS server-selection fallback.
-        required = [
-            ("xsetroot", "X11 utility (provided by XQuartz)"),
-        ]
+        # viewer-only. Some ARO hosts have XQuartz.app installed without the
+        # xsetroot CLI shim in PATH, so do not hard-require it for headless runs.
+        required = []
     else:
         required = [
             ("Xtigervnc", "System TigerVNC server (install tigervnc-standalone-server or tigervnc-server)"),
@@ -934,8 +932,10 @@ class VNCServer:
         """
         display_env = f":{self.display}"
 
-        # Set background
-        subprocess.run(["xsetroot", "-solid", "#202020"], env={**os.environ, "DISPLAY": display_env}, check=False)
+        # Set background when xsetroot is available. Some macOS/XQuartz installs
+        # provide XQuartz.app without the xsetroot CLI shim in PATH.
+        if shutil.which("xsetroot"):
+            subprocess.run(["xsetroot", "-solid", "#202020"], env={**os.environ, "DISPLAY": display_env}, check=False)
 
         # Headless/no-WM mode: allow tests to run without openbox/wmctrl.
         if wm is None or str(wm).lower() in ("none", ""):
