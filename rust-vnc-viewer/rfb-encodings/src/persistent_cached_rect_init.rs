@@ -18,20 +18,32 @@ pub struct PersistentCachedRectInitDecoder {
     copyrect: CopyRectDecoder,
     rre: RREDecoder,
     hextile: HextileDecoder,
-    tight: TightDecoder,
-    zrle: ZRLEDecoder,
+    tight: Arc<TightDecoder>,
+    zrle: Arc<ZRLEDecoder>,
 }
 
 impl PersistentCachedRectInitDecoder {
     pub fn new(cache: Arc<Mutex<PersistentClientCache>>) -> Self {
+        Self::new_with_shared_state(
+            cache,
+            Arc::new(TightDecoder::default()),
+            Arc::new(ZRLEDecoder::default()),
+        )
+    }
+
+    pub fn new_with_shared_state(
+        cache: Arc<Mutex<PersistentClientCache>>,
+        tight: Arc<TightDecoder>,
+        zrle: Arc<ZRLEDecoder>,
+    ) -> Self {
         Self {
             cache,
             raw: RawDecoder,
             copyrect: CopyRectDecoder,
             rre: RREDecoder,
             hextile: HextileDecoder,
-            tight: TightDecoder::default(),
-            zrle: ZRLEDecoder::default(),
+            tight,
+            zrle,
         }
     }
 }

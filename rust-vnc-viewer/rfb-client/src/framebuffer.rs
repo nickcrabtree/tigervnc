@@ -51,7 +51,15 @@ impl DecoderRegistry {
         // If each decoder has its own inflater, subsequent rectangles will fail.
         let tight_decoder = Arc::new(enc::TightDecoder::default());
         let zrle_decoder = Arc::new(enc::ZRLEDecoder::default());
+        Self::content_registry_with_shared_state(cache, misses, tight_decoder, zrle_decoder)
+    }
 
+    fn content_registry_with_shared_state(
+        cache: Arc<Mutex<ContentCache>>,
+        misses: Arc<Mutex<Vec<u64>>>,
+        tight_decoder: Arc<enc::TightDecoder>,
+        zrle_decoder: Arc<enc::ZRLEDecoder>,
+    ) -> Self {
         let mut reg = Self::default();
         // Register standard encodings with shared stateful decoders
         reg.register(DecoderEntry::Raw(enc::RawDecoder));
@@ -67,6 +75,28 @@ impl DecoderRegistry {
         ));
         reg.register(DecoderEntry::CachedRectInit(
             enc::CachedRectInitDecoder::new(cache, zrle_decoder),
+        ));
+        reg
+    }
+
+    fn persistent_registry(
+        pcache: Arc<Mutex<enc::PersistentClientCache>>,
+        pmisses: Arc<Mutex<Vec<[u8; 16]>>>,
+        tight_decoder: Arc<enc::TightDecoder>,
+        zrle_decoder: Arc<enc::ZRLEDecoder>,
+    ) -> Self {
+        let mut reg = Self::default();
+        reg.register(DecoderEntry::Raw(enc::RawDecoder));
+        reg.register(DecoderEntry::CopyRect(enc::CopyRectDecoder));
+        reg.register(DecoderEntry::RRE(enc::RREDecoder));
+        reg.register(DecoderEntry::Hextile(enc::HextileDecoder));
+        reg.register(DecoderEntry::TightShared(tight_decoder.clone()));
+        reg.register(DecoderEntry::ZRLEShared(zrle_decoder.clone()));
+        reg.register(DecoderEntry::PersistentCachedRect(
+            enc::PersistentCachedRectDecoder::new_with_miss_reporter(pcache.clone(), pmisses),
+        ));
+        reg.register(DecoderEntry::PersistentCachedRectInit(
+            enc::PersistentCachedRectInitDecoder::new_with_shared_state(pcache, tight_decoder, zrle_decoder),
         ));
         reg
     }
@@ -252,13 +282,9 @@ impl Framebuffer {
         let local_format = LocalPixelFormat::rgb888();
         let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
         let pmisses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
-        let mut reg = DecoderRegistry::with_standard();
-        reg.register(DecoderEntry::PersistentCachedRect(
-            enc::PersistentCachedRectDecoder::new_with_miss_reporter(pcache.clone(), pmisses.clone()),
-        ));
-        reg.register(DecoderEntry::PersistentCachedRectInit(
-            enc::PersistentCachedRectInitDecoder::new(pcache.clone()),
-        ));
+        let tight_decoder = Arc::new(enc::TightDecoder::default());
+        let zrle_decoder = Arc::new(enc::ZRLEDecoder::default());
+        let mut reg = DecoderRegistry::persistent_registry(pcache.clone(), pmisses.clone(), tight_decoder, zrle_decoder);
         Self {
             buffer,
             server_pixel_format,
@@ -287,12 +313,23 @@ impl Framebuffer {
         let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
         let misses: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
         let pmisses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
-        let mut reg = DecoderRegistry::with_content_cache(ccache.clone(), misses.clone());
+        let tight_decoder = Arc::new(enc::TightDecoder::default());
+        let zrle_decoder = Arc::new(enc::ZRLEDecoder::default());
+        let mut reg = DecoderRegistry::content_registry_with_shared_state(
+            ccache.clone(),
+            misses.clone(),
+            tight_decoder.clone(),
+            zrle_decoder.clone(),
+        );
         reg.register(DecoderEntry::PersistentCachedRect(
             enc::PersistentCachedRectDecoder::new_with_miss_reporter(pcache.clone(), pmisses.clone()),
         ));
         reg.register(DecoderEntry::PersistentCachedRectInit(
-            enc::PersistentCachedRectInitDecoder::new(pcache.clone()),
+            enc::PersistentCachedRectInitDecoder::new_with_shared_state(
+                pcache.clone(),
+                tight_decoder,
+                zrle_decoder,
+            ),
         ));
         Self {
             buffer,
