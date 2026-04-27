@@ -64,3 +64,41 @@ async fn persistent_cache_round_trip() {
     pc.lock().unwrap().insert(entry);
     let _evicted = pc.lock().unwrap().take_evicted_ids();
 }
+
+
+#[test]
+fn persistent_cache_disk_save_load_round_trip() {
+    let pf = pf_rgb888();
+    let path = std::env::temp_dir().join(format!(
+        "tigervnc-rs-persistent-cache-roundtrip-{}-{}.bin",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+
+    let entry = PersistentCachedPixels {
+        id: [0x33u8; 16],
+        pixels: vec![0x55u8; 8 * 8 * 4],
+        format: pf.into(),
+        width: 8,
+        height: 8,
+        stride_pixels: 8,
+        last_used: std::time::Instant::now(),
+    };
+
+    let mut cache = PersistentClientCache::new_with_path(1, Some(path.clone()));
+    cache.insert(entry.clone());
+    cache.save_to_disk().unwrap();
+
+    let mut restored = PersistentClientCache::new_with_path(1, Some(path.clone()));
+    let restored_count = restored.load_from_disk().unwrap();
+    assert_eq!(restored_count, 1);
+    let hit = restored.lookup(&entry.id).expect("entry should be restored");
+    assert_eq!(hit.width, entry.width);
+    assert_eq!(hit.height, entry.height);
+    assert_eq!(hit.pixels, entry.pixels);
+
+    let _ = std::fs::remove_file(&path);
+}

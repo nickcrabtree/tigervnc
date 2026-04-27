@@ -173,6 +173,17 @@ pub struct PersistentCacheConfig {
     /// Maximum cache size in megabytes.
     #[serde(default = "default_cache_size_mb")]
     pub size_mb: usize,
+    /// On-disk cache index path used for cross-session persistence.
+    #[serde(default = "default_persistent_cache_path")]
+    pub path: PathBuf,
+}
+
+fn default_persistent_cache_path() -> PathBuf {
+    if let Some(proj_dirs) = ProjectDirs::from("org", "tigervnc", "njcvncviewer-rs") {
+        proj_dirs.cache_dir().join("persistent_cache.index")
+    } else {
+        std::env::temp_dir().join("tigervnc-rust-persistentcache.index")
+    }
 }
 
 impl Default for PersistentCacheConfig {
@@ -180,6 +191,7 @@ impl Default for PersistentCacheConfig {
         Self {
             enabled: false,
             size_mb: default_cache_size_mb(),
+            path: default_persistent_cache_path(),
         }
     }
 }
@@ -226,6 +238,7 @@ impl Default for AppConfig {
             persistent_cache: PersistentCacheConfig {
                 enabled: false,
                 size_mb: 2048,
+                path: default_persistent_cache_path(),
             },
         }
     }

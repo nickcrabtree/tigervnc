@@ -31,11 +31,27 @@ pub async fn spawn(
     let pixel_format = conn.server_init.pixel_format.clone();
 
     // Initialize shared framebuffer with server pixel format and optional caches
+    let mut persistent_cache_handle: Option<Arc<Mutex<rfb_encodings::PersistentClientCache>>> = None;
     let framebuffer = if config.persistent_cache.enabled && config.content_cache.enabled {
         // Both caches enabled - need custom registry
-        let pcache = Arc::new(Mutex::new(rfb_encodings::PersistentClientCache::new(
+        let pcache = Arc::new(Mutex::new(rfb_encodings::PersistentClientCache::new_with_path(
             config.persistent_cache.size_mb,
+            Some(config.persistent_cache.path.clone()),
         )));
+        if let Ok(mut cache) = pcache.lock() {
+            match cache.load_from_disk() {
+                Ok(restored) => tracing::info!(
+                    "PersistentCache load_from_disk restored {} entries from {}",
+                    restored,
+                    cache
+                        .cache_path()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "<none>".to_string())
+                ),
+                Err(err) => tracing::warn!("PersistentCache load_from_disk failed: {}", err),
+            }
+        }
+        persistent_cache_handle = Some(pcache.clone());
         let ccache = Arc::new(Mutex::new(ContentCache::new(config.content_cache.size_mb)));
         Arc::new(tokio::sync::Mutex::new(Framebuffer::with_both_caches(
             width,
@@ -45,9 +61,24 @@ pub async fn spawn(
             pcache,
         )))
     } else if config.persistent_cache.enabled {
-        let pcache = Arc::new(Mutex::new(rfb_encodings::PersistentClientCache::new(
+        let pcache = Arc::new(Mutex::new(rfb_encodings::PersistentClientCache::new_with_path(
             config.persistent_cache.size_mb,
+            Some(config.persistent_cache.path.clone()),
         )));
+        if let Ok(mut cache) = pcache.lock() {
+            match cache.load_from_disk() {
+                Ok(restored) => tracing::info!(
+                    "PersistentCache load_from_disk restored {} entries from {}",
+                    restored,
+                    cache
+                        .cache_path()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "<none>".to_string())
+                ),
+                Err(err) => tracing::warn!("PersistentCache load_from_disk failed: {}", err),
+            }
+        }
+        persistent_cache_handle = Some(pcache.clone());
         Arc::new(tokio::sync::Mutex::new(Framebuffer::with_persistent_cache(
             width,
             height,
@@ -635,7 +666,23 @@ pub async fn spawn(
             }
         }
 
-        // End-of-loop: log cache statistics similar to the C++ viewer.
+        // End-of-loop: flush persistent cache scaffold and log cache statistics
+        // similar to the C++ viewer.
+        if let Some(pcache) = persistent_cache_handle.as_ref() {
+            if let Ok(cache) = pcache.lock() {
+                if let Err(err) = cache.save_to_disk() {
+                    tracing::warn!("PersistentCache save_to_disk failed: {}", err);
+                } else {
+                    tracing::info!(
+                        "PersistentCache save_to_disk completed: {}",
+                        cache
+                            .cache_path()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|| "<none>".to_string())
+                    );
+                }
+            }
+        }
         let fb = framebuffer.lock().await;
         fb.log_cache_stats();
     });

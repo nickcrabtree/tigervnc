@@ -244,6 +244,7 @@ impl VncViewerApp {
         client_config.content_cache.size_mb = self.config.content_cache.size_mb;
         client_config.persistent_cache.enabled = self.config.persistent_cache.enabled;
         client_config.persistent_cache.size_mb = self.config.persistent_cache.size_mb;
+        client_config.persistent_cache.path = self.config.persistent_cache.path.clone();
         client_config
             .validate()
             .context("Invalid client configuration after applying cache settings")?;
