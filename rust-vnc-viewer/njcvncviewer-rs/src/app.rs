@@ -268,11 +268,10 @@ impl VncViewerApp {
             match ClientBuilder::new(client_config).build().await {
                 Ok(client) => {
                     let handle = client.handle();
-                    // Send the client handle back to the main thread
+                    // Send the client handle back to the main thread.
+                    // The background client task continues running after
+                    // `Client` is dropped; the UI only needs the handle.
                     let _ = tx.send(Ok(handle));
-                    // Keep the client alive by storing it temporarily
-                    // In a real implementation, we'd need to store this somewhere
-                    std::mem::forget(client);
                 }
                 Err(e) => {
                     let _ = tx.send(Err(format!("Failed to connect: {:#}", e)));
@@ -308,6 +307,10 @@ impl VncViewerApp {
         self.error_message = Some(message);
         self.client_handle = None;
         self.renderer = None;
+        self.framebuffer_texture = None;
+        self.last_framebuffer_version = 0;
+        self.framebuffer_width = 0;
+        self.framebuffer_height = 0;
     }
 
     fn process_connection_results(&mut self, ctx: &EguiContext) {
@@ -341,21 +344,6 @@ impl VncViewerApp {
             }
         }
     }
-
-    fn request_framebuffer_update(&self) {
-        if let Some(ref client_handle) = self.client_handle {
-            // Request incremental update for entire framebuffer using actual dimensions
-            if self.framebuffer_width > 0 && self.framebuffer_height > 0 {
-                let rect =
-                    rfb_common::Rect::new(0, 0, self.framebuffer_width, self.framebuffer_height);
-                let _ = client_handle.send(rfb_client::ClientCommand::RequestUpdate {
-                    incremental: true,
-                    rect: Some(rect),
-                });
-            }
-        }
-    }
-
     fn handle_client_event(&mut self, event: ServerEvent, ctx: &EguiContext) {
         match event {
             ServerEvent::Connected {
@@ -399,15 +387,17 @@ impl VncViewerApp {
                     stats.last_update = Instant::now();
                 }
 
-                // Request next incremental update
-                self.request_framebuffer_update();
+                // The rfb-client event loop owns framebuffer update sequencing.
 
                 ctx.request_repaint();
             }
 
             ServerEvent::DesktopResized { width, height } => {
                 info!("Desktop resized to {}x{}", width, height);
-                // TODO: Update viewport content size
+                self.framebuffer_width = width as u32;
+                self.framebuffer_height = height as u32;
+                self.framebuffer_texture = None;
+                self.last_framebuffer_version = 0;
                 ctx.request_repaint();
             }
 
@@ -444,6 +434,10 @@ impl VncViewerApp {
                 self.state = AppState::Disconnected;
                 self.client_handle = None;
                 self.renderer = None;
+                self.framebuffer_texture = None;
+                self.last_framebuffer_version = 0;
+                self.framebuffer_width = 0;
+                self.framebuffer_height = 0;
                 ctx.request_repaint();
             }
         }

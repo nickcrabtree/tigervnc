@@ -284,7 +284,7 @@ impl Framebuffer {
         let pmisses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
         let tight_decoder = Arc::new(enc::TightDecoder::default());
         let zrle_decoder = Arc::new(enc::ZRLEDecoder::default());
-        let mut reg = DecoderRegistry::persistent_registry(pcache.clone(), pmisses.clone(), tight_decoder, zrle_decoder);
+        let reg = DecoderRegistry::persistent_registry(pcache.clone(), pmisses.clone(), tight_decoder, zrle_decoder);
         Self {
             buffer,
             server_pixel_format,
