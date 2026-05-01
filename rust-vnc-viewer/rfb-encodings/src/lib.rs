@@ -106,11 +106,16 @@ pub use persistent_cached_rect::PersistentCachedRectDecoder;
 pub mod persistent_cached_rect_init;
 pub use persistent_cached_rect_init::PersistentCachedRectInitDecoder;
 
+pub mod persistent_cached_rect_seed;
+pub use persistent_cached_rect_seed::PersistentCachedRectSeedDecoder;
+
 // PersistentCache encodings
 /// PersistentCachedRect encoding: reference by 16-byte content hash
 pub const ENCODING_PERSISTENT_CACHED_RECT: i32 = 102;
 /// PersistentCachedRectInit encoding: include hash + actual encoding + data
 pub const ENCODING_PERSISTENT_CACHED_RECT_INIT: i32 = 103;
+/// CachedRectSeed encoding: seed PersistentCache from existing framebuffer pixels.
+pub const ENCODING_CACHED_RECT_SEED: i32 = 105;
 
 // Standard VNC encodings
 /// Raw encoding: uncompressed pixel data (simplest encoding).

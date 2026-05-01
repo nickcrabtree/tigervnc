@@ -4,11 +4,8 @@
 //! encoding decoders to apply server framebuffer update rectangles.
 
 use crate::cache_stats::{
-    track_content_cache_init,
-    track_content_cache_ref,
-    track_persistent_cache_init,
-    track_persistent_cache_ref,
-    CacheProtocolStats,
+    track_content_cache_init, track_content_cache_ref, track_persistent_cache_init,
+    track_persistent_cache_ref, CacheProtocolStats,
 };
 use crate::errors::RfbClientError;
 use anyhow::Result as AnyResult;
@@ -96,7 +93,14 @@ impl DecoderRegistry {
             enc::PersistentCachedRectDecoder::new_with_miss_reporter(pcache.clone(), pmisses),
         ));
         reg.register(DecoderEntry::PersistentCachedRectInit(
-            enc::PersistentCachedRectInitDecoder::new_with_shared_state(pcache, tight_decoder, zrle_decoder),
+            enc::PersistentCachedRectInitDecoder::new_with_shared_state(
+                pcache.clone(),
+                tight_decoder,
+                zrle_decoder,
+            ),
+        ));
+        reg.register(DecoderEntry::PersistentCachedRectSeed(
+            enc::PersistentCachedRectSeedDecoder::new(pcache),
         ));
         reg
     }
@@ -128,6 +132,7 @@ pub(crate) enum DecoderEntry {
     CachedRectInit(enc::CachedRectInitDecoder),
     PersistentCachedRect(enc::PersistentCachedRectDecoder),
     PersistentCachedRectInit(enc::PersistentCachedRectInitDecoder),
+    PersistentCachedRectSeed(enc::PersistentCachedRectSeedDecoder),
 }
 
 impl DecoderEntry {
@@ -145,6 +150,7 @@ impl DecoderEntry {
             Self::CachedRectInit(d) => d.encoding_type(),
             Self::PersistentCachedRect(d) => d.encoding_type(),
             Self::PersistentCachedRectInit(d) => d.encoding_type(),
+            Self::PersistentCachedRectSeed(d) => d.encoding_type(),
         }
     }
 
@@ -168,6 +174,7 @@ impl DecoderEntry {
             Self::CachedRectInit(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::PersistentCachedRect(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::PersistentCachedRectInit(d) => d.decode(stream, rect, pixel_format, buffer).await,
+            Self::PersistentCachedRectSeed(d) => d.decode(stream, rect, pixel_format, buffer).await,
         }
     }
 }
@@ -284,7 +291,12 @@ impl Framebuffer {
         let pmisses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
         let tight_decoder = Arc::new(enc::TightDecoder::default());
         let zrle_decoder = Arc::new(enc::ZRLEDecoder::default());
-        let reg = DecoderRegistry::persistent_registry(pcache.clone(), pmisses.clone(), tight_decoder, zrle_decoder);
+        let reg = DecoderRegistry::persistent_registry(
+            pcache.clone(),
+            pmisses.clone(),
+            tight_decoder,
+            zrle_decoder,
+        );
         Self {
             buffer,
             server_pixel_format,
@@ -322,7 +334,10 @@ impl Framebuffer {
             zrle_decoder.clone(),
         );
         reg.register(DecoderEntry::PersistentCachedRect(
-            enc::PersistentCachedRectDecoder::new_with_miss_reporter(pcache.clone(), pmisses.clone()),
+            enc::PersistentCachedRectDecoder::new_with_miss_reporter(
+                pcache.clone(),
+                pmisses.clone(),
+            ),
         ));
         reg.register(DecoderEntry::PersistentCachedRectInit(
             enc::PersistentCachedRectInitDecoder::new_with_shared_state(
@@ -399,6 +414,7 @@ impl Framebuffer {
                     DecoderEntry::CachedRectInit(_) => "CachedRectInit",
                     DecoderEntry::PersistentCachedRect(_) => "PersistentCachedRect",
                     DecoderEntry::PersistentCachedRectInit(_) => "PersistentCachedRectInit",
+                    DecoderEntry::PersistentCachedRectSeed(_) => "PersistentCachedRectSeed",
                 };
                 tracing::debug!(
                     "Decoder selected: {} (encoding={}) for rect x={}, y={}, w={}, h={}",
@@ -593,14 +609,10 @@ impl Framebuffer {
                 if matches!(self.cache_protocol, CacheProtocolNegotiated::None) {
                     self.cache_protocol = CacheProtocolNegotiated::Content;
                 }
-                self.content_cache_counters.cache_lookups = self
-                    .content_cache_counters
-                    .cache_lookups
-                    .saturating_add(1);
-                self.content_cache_counters.cache_hits = self
-                    .content_cache_counters
-                    .cache_hits
-                    .saturating_add(1);
+                self.content_cache_counters.cache_lookups =
+                    self.content_cache_counters.cache_lookups.saturating_add(1);
+                self.content_cache_counters.cache_hits =
+                    self.content_cache_counters.cache_hits.saturating_add(1);
                 track_content_cache_ref(
                     &mut self.content_cache_bandwidth,
                     rect,
@@ -627,10 +639,8 @@ impl Framebuffer {
                     .persistent_cache_counters
                     .cache_lookups
                     .saturating_add(1);
-                self.persistent_cache_counters.cache_hits = self
-                    .persistent_cache_counters
-                    .cache_hits
-                    .saturating_add(1);
+                self.persistent_cache_counters.cache_hits =
+                    self.persistent_cache_counters.cache_hits.saturating_add(1);
                 // Rust implementation uses fixed 16-byte hashes.
                 track_persistent_cache_ref(
                     &mut self.persistent_cache_bandwidth,
@@ -715,7 +725,7 @@ impl Framebuffer {
     /// Drain and return any pending PersistentCache miss IDs reported during the last decode.
     ///
     /// Also updates protocol counters to reflect the misses and the corresponding queries that will be sent.
-        pub fn drain_pending_persistent_cache_misses(&mut self) -> Vec<[u8; 16]> {
+    pub fn drain_pending_persistent_cache_misses(&mut self) -> Vec<[u8; 16]> {
         if let Some(m) = &self.pending_pcache_misses {
             if let Ok(mut v) = m.lock() {
                 let out = v.clone();
@@ -749,7 +759,6 @@ impl Framebuffer {
         Vec::new()
     }
 
-
     /// Log cache statistics mirroring the C++ viewer, including a cache
     /// summary and per-protocol details for the negotiated cache only.
     pub fn log_cache_stats(&self) {
@@ -766,8 +775,7 @@ impl Framebuffer {
             }
             CacheProtocolNegotiated::Content => {
                 if self.content_cache_bandwidth.alternative_bytes > 0 {
-                    let summary =
-                        self.content_cache_bandwidth.format_summary("ContentCache");
+                    let summary = self.content_cache_bandwidth.format_summary("ContentCache");
                     tracing::info!("Cache summary:");
                     tracing::info!("  {}", summary);
                 }
@@ -783,9 +791,7 @@ impl Framebuffer {
                         let stats = cache.stats();
                         tracing::info!(" ");
                         tracing::info!("Client-side ContentCache statistics:");
-                        tracing::info!(
-                            "  Protocol operations (CachedRect received):",
-                        );
+                        tracing::info!("  Protocol operations (CachedRect received):",);
                         let c = self.content_cache_counters;
                         let pct = if c.cache_lookups > 0 {
                             100.0 * c.cache_hits as f64 / c.cache_lookups as f64
@@ -821,9 +827,7 @@ impl Framebuffer {
                         };
                         tracing::info!(" ");
                         tracing::info!("Client-side PersistentCache statistics:");
-                        tracing::info!(
-                            "  Protocol operations (PersistentCachedRect received):",
-                        );
+                        tracing::info!("  Protocol operations (PersistentCachedRect received):",);
                         tracing::info!(
                             "    Lookups: {}, Hits: {} ({:.1}%)",
                             lookups,
