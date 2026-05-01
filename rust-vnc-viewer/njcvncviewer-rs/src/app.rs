@@ -229,9 +229,7 @@ impl VncViewerApp {
         if !self.ui_state.password_input.is_empty() {
             builder = builder.password(self.ui_state.password_input.clone());
         }
-        let mut client_config = builder
-            .build()
-            .context("Invalid client configuration")?;
+        let mut client_config = builder.build().context("Invalid client configuration")?;
 
         // Apply cache settings from AppConfig
         if self.config.content_cache.enabled && self.config.content_cache.size_mb == 0 {
@@ -864,21 +862,27 @@ impl VncViewerApp {
     /// Set the scale mode
     pub fn set_scale_mode(&mut self, mode: ScaleMode) {
         self.current_scale_mode = mode;
-        // Apply the scale mode by adjusting viewport zoom
-        // This is a simplified implementation
-        match mode {
-            ScaleMode::Native => {
-                self.viewport.reset_zoom();
-            }
-            ScaleMode::Fit => {
-                // Would calculate fit zoom based on window size
-                // For now just use current zoom
-            }
-            ScaleMode::Fill => {
-                // Would calculate fill zoom based on window size
-                // For now just use current zoom
-            }
+        self.apply_scale_mode_to_viewport();
+    }
+
+    fn apply_scale_mode_to_viewport(&mut self) {
+        self.viewport
+            .set_framebuffer_size(self.framebuffer_width, self.framebuffer_height);
+        let state = self.viewport.state().clone();
+        let (fb_w, fb_h) = (
+            self.framebuffer_width as f64,
+            self.framebuffer_height as f64,
+        );
+        let (win_w, win_h) = (state.window_width as f64, state.window_height as f64);
+        if fb_w <= 0.0 || fb_h <= 0.0 || win_w <= 0.0 || win_h <= 0.0 {
+            return;
         }
+        match self.current_scale_mode {
+            ScaleMode::Native => self.viewport.reset_zoom(),
+            ScaleMode::Fit => self.viewport.set_zoom((win_w / fb_w).min(win_h / fb_h)),
+            ScaleMode::Fill => self.viewport.set_zoom((win_w / fb_w).max(win_h / fb_h)),
+        }
+        self.viewport.update();
     }
 
     pub fn ui_state(&self) -> &ui::UiState {
