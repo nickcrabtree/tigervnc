@@ -221,14 +221,15 @@ impl Decoder for CachedRectInitDecoder {
         // The persistent inflater state must be maintained across all rectangles.
 
         // Decode the actual pixel data
-        let decode_result = self.decode_with_actual_encoding(
-            stream,
-            &actual_rect,
-            cached_rect_init.actual_encoding,
-            pixel_format,
-            buffer,
-        )
-        .await;
+        let decode_result = self
+            .decode_with_actual_encoding(
+                stream,
+                &actual_rect,
+                cached_rect_init.actual_encoding,
+                pixel_format,
+                buffer,
+            )
+            .await;
 
         // If decode failed, log the full error chain before propagating
         if let Err(ref e) = decode_result {

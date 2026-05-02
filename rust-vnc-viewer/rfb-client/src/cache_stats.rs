@@ -67,7 +67,11 @@ fn estimate_compressed(uncompressed: u64) -> u64 {
 /// Track a ContentCache reference (CachedRect) operation.
 ///
 /// Wire size: 20 bytes total (12-byte rect header + 8-byte cacheId).
-pub fn track_content_cache_ref(stats: &mut CacheProtocolStats, rect: &Rectangle, pf: &ServerPixelFormat) {
+pub fn track_content_cache_ref(
+    stats: &mut CacheProtocolStats,
+    rect: &Rectangle,
+    pf: &ServerPixelFormat,
+) {
     let bpp_bytes = (pf.bits_per_pixel / 8) as u64;
     let pixels = rect.width as u64 * rect.height as u64;
     let uncompressed = pixels * bpp_bytes;

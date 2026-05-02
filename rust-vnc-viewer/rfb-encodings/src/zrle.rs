@@ -272,13 +272,19 @@ impl Decoder for ZRLEDecoder {
         );
         let mut compressed_data = vec![0u8; compressed_len as usize];
         let read_result = stream.read_bytes(&mut compressed_data).await;
-        tracing::debug!("ZRLE: read_bytes completed, result={}", if read_result.is_ok() { "Ok" } else { "Err" });
+        tracing::debug!(
+            "ZRLE: read_bytes completed, result={}",
+            if read_result.is_ok() { "Ok" } else { "Err" }
+        );
 
         if let Err(ref err) = read_result {
             tracing::error!(
                 "ZRLE: Failed to read {} compressed bytes for rect [{},{} {}x{}]",
                 compressed_len,
-                rect.x, rect.y, rect.width, rect.height
+                rect.x,
+                rect.y,
+                rect.width,
+                rect.height
             );
             tracing::error!("  Buffer had {} bytes available", stream.available());
             tracing::error!("  Tried to read {} bytes", compressed_len);

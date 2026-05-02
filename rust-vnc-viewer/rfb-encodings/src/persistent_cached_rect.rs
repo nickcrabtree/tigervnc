@@ -16,14 +16,20 @@ pub struct PersistentCachedRectDecoder {
 
 impl PersistentCachedRectDecoder {
     pub fn new(cache: Arc<Mutex<PersistentClientCache>>) -> Self {
-        Self { cache, pending_misses: None }
+        Self {
+            cache,
+            pending_misses: None,
+        }
     }
 
     pub fn new_with_miss_reporter(
         cache: Arc<Mutex<PersistentClientCache>>,
         misses: Arc<Mutex<Vec<[u8; 16]>>>,
     ) -> Self {
-        Self { cache, pending_misses: Some(misses) }
+        Self {
+            cache,
+            pending_misses: Some(misses),
+        }
     }
 }
 
@@ -46,10 +52,22 @@ impl Decoder for PersistentCachedRectDecoder {
             .await
             .context("read persistent cache id")?;
         // Offset extension (encoding 102): U16 ox/oy + U16 cachedW/cachedH (network byte order).
-        let ox = stream.read_u16().await.context("read persistent cache ox")?;
-        let oy = stream.read_u16().await.context("read persistent cache oy")?;
-        let cached_w = stream.read_u16().await.context("read persistent cache cachedW")?;
-        let cached_h = stream.read_u16().await.context("read persistent cache cachedH")?;
+        let ox = stream
+            .read_u16()
+            .await
+            .context("read persistent cache ox")?;
+        let oy = stream
+            .read_u16()
+            .await
+            .context("read persistent cache oy")?;
+        let cached_w = stream
+            .read_u16()
+            .await
+            .context("read persistent cache cachedW")?;
+        let cached_h = stream
+            .read_u16()
+            .await
+            .context("read persistent cache cachedH")?;
 
         // Lookup
         let hit = {
@@ -61,29 +79,29 @@ impl Decoder for PersistentCachedRectDecoder {
         };
 
         if let Some(entry) = hit {
-        // Validate cached payload is compatible with destination rectangle.
-        // If not, treat as a cache miss (enqueue id) rather than returning a decode error.
-        let bpp = entry.format.bytes_per_pixel() as usize;
-        let ox = ox as usize;
-        let oy = oy as usize;
-        let cached_w = cached_w as usize;
-        let cached_h = cached_h as usize;
-        let need_w = rect.width as usize;
-        let need_h = rect.height as usize;
-        let req_w = ox.saturating_add(need_w);
-        let req_h = oy.saturating_add(need_h);
-        let need_bytes = req_h
-            .saturating_mul(entry.stride_pixels)
-            .saturating_mul(bpp);
-        let incompatible = entry.width != cached_w as u32
-            || entry.height != cached_h as u32
-            || cached_w < req_w
-            || cached_h < req_h
-            || entry.stride_pixels < req_w
-            || entry.format != *buffer.pixel_format()
-            || entry.pixels.len() < need_bytes;
-        if incompatible {
-            tracing::warn!(
+            // Validate cached payload is compatible with destination rectangle.
+            // If not, treat as a cache miss (enqueue id) rather than returning a decode error.
+            let bpp = entry.format.bytes_per_pixel() as usize;
+            let ox = ox as usize;
+            let oy = oy as usize;
+            let cached_w = cached_w as usize;
+            let cached_h = cached_h as usize;
+            let need_w = rect.width as usize;
+            let need_h = rect.height as usize;
+            let req_w = ox.saturating_add(need_w);
+            let req_h = oy.saturating_add(need_h);
+            let need_bytes = req_h
+                .saturating_mul(entry.stride_pixels)
+                .saturating_mul(bpp);
+            let incompatible = entry.width != cached_w as u32
+                || entry.height != cached_h as u32
+                || cached_w < req_w
+                || cached_h < req_h
+                || entry.stride_pixels < req_w
+                || entry.format != *buffer.pixel_format()
+                || entry.pixels.len() < need_bytes;
+            if incompatible {
+                tracing::warn!(
                 "PersistentCache HIT but incompatible payload: entry={}x{} stride={} bytes={} need={}x{} stride>={} bytes>={} id={:02x?}",
                 entry.width,
                 entry.height,
@@ -95,15 +113,15 @@ impl Decoder for PersistentCachedRectDecoder {
                 need_bytes,
                 &id
             );
-            if let Some(m) = &self.pending_misses {
-                if let Ok(mut v) = m.lock() {
-                    v.push(id);
+                if let Some(m) = &self.pending_misses {
+                    if let Ok(mut v) = m.lock() {
+                        v.push(id);
+                    }
                 }
+                return Ok(());
             }
-            return Ok(());
-        }
 
-        // Blit
+            // Blit
             let dest_rect = Rect::new(
                 rect.x as i32,
                 rect.y as i32,
@@ -138,9 +156,16 @@ impl Decoder for PersistentCachedRectDecoder {
             );
             Ok(())
         } else {
-            tracing::warn!("PersistentCache MISS: rect {}x{} id={:02x?}", rect.width, rect.height, &id);
+            tracing::warn!(
+                "PersistentCache MISS: rect {}x{} id={:02x?}",
+                rect.width,
+                rect.height,
+                &id
+            );
             if let Some(m) = &self.pending_misses {
-                if let Ok(mut v) = m.lock() { v.push(id); }
+                if let Ok(mut v) = m.lock() {
+                    v.push(id);
+                }
             }
             Ok(())
         }
@@ -220,7 +245,11 @@ mod tests {
         let result = decoder
             .decode(&mut stream, &rect, &pixel_format, &mut buf)
             .await;
-        assert!(result.is_ok(), "expected size mismatch to be treated as miss, got: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "expected size mismatch to be treated as miss, got: {:?}",
+            result
+        );
 
         let v = misses.lock().unwrap();
         assert_eq!(v.len(), 1);
@@ -307,7 +336,6 @@ mod tests {
         assert_eq!(v[0], id);
     }
 
-
     // RED test (TDD): PersistentCachedRect offset extension should blit a sub-rectangle.
     // Wire format (per C++): 16-byte CacheKey + U16 ox + U16 oy + U16 cachedW + U16 cachedH.
     #[tokio::test]
@@ -384,13 +412,21 @@ mod tests {
             blue_shift: 0,
         };
 
-        let result = decoder.decode(&mut stream, &rect, &pixel_format, &mut buf).await;
-        assert!(result.is_ok(), "expected offset hit to decode ok, got: {:?}", result);
+        let result = decoder
+            .decode(&mut stream, &rect, &pixel_format, &mut buf)
+            .await;
+        assert!(
+            result.is_ok(),
+            "expected offset hit to decode ok, got: {:?}",
+            result
+        );
 
         // Verify output pixels match cached source at (1,1): 17,18 / 33,34.
         let out_rect = Rect::new(0, 0, 2, 2);
         let mut out_stride = 0usize;
-        let out = buf.get_buffer(out_rect, &mut out_stride).expect("get_buffer");
+        let out = buf
+            .get_buffer(out_rect, &mut out_stride)
+            .expect("get_buffer");
         let out_bpp = buf.pixel_format().bytes_per_pixel() as usize;
         let at = |row: usize, col: usize| -> u8 { out[row * out_stride * out_bpp + col * out_bpp] };
         assert_eq!(at(0, 0), 17);
@@ -401,5 +437,4 @@ mod tests {
         // Should not record a miss on a valid offset hit.
         assert!(misses.lock().unwrap().is_empty());
     }
-
 }

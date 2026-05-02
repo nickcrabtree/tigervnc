@@ -243,7 +243,11 @@ impl KeyMapper {
 
     /// Process a keyboard input, returning a keysym and down state.
     /// May return None if the key should be ignored (e.g., throttled repeat).
-    pub fn process_key(&mut self, state: ElementState, vk: Option<VirtualKeyCode>) -> Option<(u32, bool)> {
+    pub fn process_key(
+        &mut self,
+        state: ElementState,
+        vk: Option<VirtualKeyCode>,
+    ) -> Option<(u32, bool)> {
         let down = matches!(state, ElementState::Pressed);
         let vk = vk?;
 

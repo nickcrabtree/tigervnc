@@ -569,7 +569,8 @@ impl Decoder for TightDecoder {
                 if (comp_ctl & (1 << i)) != 0 {
                     tracing::debug!(
                         "Tight: reset zlib stream {} requested (comp_ctl={:#04x})",
-                        i, comp_ctl
+                        i,
+                        comp_ctl
                     );
                     streams[i] = None; // Reset stream
                 }
@@ -581,7 +582,9 @@ impl Decoder for TightDecoder {
 
         tracing::debug!(
             "Tight: comp_ctl={:#04x} comp_type={:#x} reset_bits={:#x}",
-            comp_ctl, comp_type, comp_ctl & 0x0F
+            comp_ctl,
+            comp_type,
+            comp_ctl & 0x0F
         );
 
         // Handle FILL mode
@@ -709,7 +712,7 @@ impl Decoder for TightDecoder {
 
         // Determine filter and data size
         // For BASIC mode without explicit filter, data is RGB888 (3 bpp)
-        let rgb888_implicit = !explicit_filter;  // Track if RGB888 format is implicit
+        let rgb888_implicit = !explicit_filter; // Track if RGB888 format is implicit
         let (filter_type, data_size, use_palette) = if explicit_filter {
             let filter_id = stream
                 .read_u8()
@@ -735,12 +738,14 @@ impl Decoder for TightDecoder {
             // No explicit filter - implicit COPY in RGB888 format (3 bytes/pixel)
             // Tight protocol: BASIC mode without filter bit always uses RGB888,
             // regardless of negotiated pixel format
-            let data_size = width * height * 3;  // Always RGB888
+            let data_size = width * height * 3; // Always RGB888
             tracing::debug!(
                 "Tight BASIC (no filter/RGB888): width={} height={} data_size={}",
-                width, height, data_size
+                width,
+                height,
+                data_size
             );
-            (TIGHT_FILTER_COPY, data_size, false)  // Not palette mode
+            (TIGHT_FILTER_COPY, data_size, false) // Not palette mode
         };
 
         // Special handling for palette mode
@@ -826,7 +831,9 @@ impl Decoder for TightDecoder {
             let compressed_len = Self::read_compact_length(stream).await?;
             tracing::debug!(
                 "Tight: reading {} compressed bytes for {} uncompressed bytes (stream_id={})",
-                compressed_len, data_size, stream_id
+                compressed_len,
+                data_size,
+                stream_id
             );
             let mut compressed = vec![0u8; compressed_len];
             stream.read_bytes(&mut compressed).await.with_context(|| {

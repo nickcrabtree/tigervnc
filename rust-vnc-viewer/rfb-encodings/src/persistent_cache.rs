@@ -43,28 +43,28 @@ pub struct PersistentClientCache {
     evictions: u64,
 }
 
-    impl PersistentClientCache {
-        pub fn new(max_size_mb: usize) -> Self {
-            Self::new_with_path(max_size_mb, None)
-        }
+impl PersistentClientCache {
+    pub fn new(max_size_mb: usize) -> Self {
+        Self::new_with_path(max_size_mb, None)
+    }
 
-        pub fn new_with_path(max_size_mb: usize, cache_path: Option<PathBuf>) -> Self {
-            let max_bytes = max_size_mb.saturating_mul(1024 * 1024);
-            Self {
-                map: HashMap::new(),
-                max_size_mb,
-                current_bytes: 0,
-                cache_path,
-                arc: ArcCache::new(max_bytes),
-                cache_hits: 0,
-                cache_misses: 0,
-                evictions: 0,
-            }
+    pub fn new_with_path(max_size_mb: usize, cache_path: Option<PathBuf>) -> Self {
+        let max_bytes = max_size_mb.saturating_mul(1024 * 1024);
+        Self {
+            map: HashMap::new(),
+            max_size_mb,
+            current_bytes: 0,
+            cache_path,
+            arc: ArcCache::new(max_bytes),
+            cache_hits: 0,
+            cache_misses: 0,
+            evictions: 0,
         }
+    }
 
-        pub fn cache_path(&self) -> Option<&Path> {
-            self.cache_path.as_deref()
-        }
+    pub fn cache_path(&self) -> Option<&Path> {
+        self.cache_path.as_deref()
+    }
 
     pub fn load_from_disk(&mut self) -> io::Result<usize> {
         let Some(path) = self.cache_path.as_ref() else {
@@ -119,7 +119,9 @@ pub struct PersistentClientCache {
         ids.sort();
 
         for id in ids {
-            let e = self.map.get(&id)
+            let e = self
+                .map
+                .get(&id)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing cache entry"))?;
             w.write_all(&e.id)?;
             Self::write_u32(&mut w, e.width)?;
@@ -228,20 +230,41 @@ pub struct PersistentClientCache {
             let mut pixels = vec![0u8; n];
             r.read_exact(&mut pixels)?;
             out.push(PersistentCachedPixels {
-                id, pixels, format, width, height, stride_pixels, last_used: Instant::now()
+                id,
+                pixels,
+                format,
+                width,
+                height,
+                stride_pixels,
+                last_used: Instant::now(),
             });
         }
         Ok(out)
     }
 
-    fn write_u32<W: Write>(w: &mut W, v: u32) -> io::Result<()> { w.write_all(&v.to_be_bytes()) }
-    fn write_u64<W: Write>(w: &mut W, v: u64) -> io::Result<()> { w.write_all(&v.to_be_bytes()) }
-    fn read_u32<R: Read>(r: &mut R) -> io::Result<u32> { let mut b = [0u8; 4]; r.read_exact(&mut b)?; Ok(u32::from_be_bytes(b)) }
-    fn read_u64<R: Read>(r: &mut R) -> io::Result<u64> { let mut b = [0u8; 8]; r.read_exact(&mut b)?; Ok(u64::from_be_bytes(b)) }
+    fn write_u32<W: Write>(w: &mut W, v: u32) -> io::Result<()> {
+        w.write_all(&v.to_be_bytes())
+    }
+    fn write_u64<W: Write>(w: &mut W, v: u64) -> io::Result<()> {
+        w.write_all(&v.to_be_bytes())
+    }
+    fn read_u32<R: Read>(r: &mut R) -> io::Result<u32> {
+        let mut b = [0u8; 4];
+        r.read_exact(&mut b)?;
+        Ok(u32::from_be_bytes(b))
+    }
+    fn read_u64<R: Read>(r: &mut R) -> io::Result<u64> {
+        let mut b = [0u8; 8];
+        r.read_exact(&mut b)?;
+        Ok(u64::from_be_bytes(b))
+    }
 
     fn write_pf<W: Write>(w: &mut W, pf: &PixelFormat) -> io::Result<()> {
         w.write_all(&[
-            pf.bits_per_pixel, pf.depth, u8::from(pf.big_endian), u8::from(pf.true_color)
+            pf.bits_per_pixel,
+            pf.depth,
+            u8::from(pf.big_endian),
+            u8::from(pf.true_color),
         ])?;
         w.write_all(&pf.red_max.to_be_bytes())?;
         w.write_all(&pf.green_max.to_be_bytes())?;

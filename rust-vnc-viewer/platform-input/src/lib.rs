@@ -220,7 +220,6 @@ mod tests {
         unsafe { std::mem::zeroed() }
     }
 
-
     #[test]
     fn test_mouse_move_generates_pointer() {
         let mut d = InputDispatcher::new();
@@ -267,11 +266,9 @@ mod tests {
 
     #[test]
     fn test_key_mapping_basic() {
-        let mapped = keyboard::map_keyboard_input(
-            ElementState::Pressed,
-            Some(VirtualKeyCode::Return),
-        )
-        .unwrap();
+        let mapped =
+            keyboard::map_keyboard_input(ElementState::Pressed, Some(VirtualKeyCode::Return))
+                .unwrap();
         assert_eq!(mapped, (0xFF0D, true));
     }
 

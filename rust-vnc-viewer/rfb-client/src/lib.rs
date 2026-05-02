@@ -87,12 +87,12 @@ pub mod messages;
 pub mod transport;
 
 // Private implementation modules
+mod cache_stats;
 mod connection;
 mod event_loop;
 mod framebuffer;
 mod protocol;
 mod protocol_trace;
-mod cache_stats;
 
 // Optional CLI support
 #[cfg(feature = "cli")]

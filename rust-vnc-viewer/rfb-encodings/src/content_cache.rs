@@ -379,9 +379,7 @@ impl ContentCache {
         let _ = self.arc.remove_resident(&cache_id);
 
         if let Some(entry) = self.pixels.remove(&cache_id) {
-            self.current_size_bytes = self
-                .current_size_bytes
-                .saturating_sub(entry.memory_size());
+            self.current_size_bytes = self.current_size_bytes.saturating_sub(entry.memory_size());
             Some(entry)
         } else {
             None

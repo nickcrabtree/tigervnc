@@ -355,7 +355,9 @@ mod persistent_cache_eviction_tests {
 
     #[tokio::test]
     async fn test_persistent_cache_eviction_wire_format() {
-        let msg = PersistentCacheEviction { hashes: vec![[0xAAu8; 16], [0xBBu8; 16]] };
+        let msg = PersistentCacheEviction {
+            hashes: vec![[0xAAu8; 16], [0xBBu8; 16]],
+        };
         let mut buf: Vec<u8> = Vec::new();
         let mut out = RfbOutStream::new(&mut buf);
         msg.write_to(&mut out);
@@ -375,7 +377,9 @@ mod persistent_cache_query_tests {
 
     #[tokio::test]
     async fn test_persistent_cache_query_wire_format() {
-        let msg = PersistentCacheQuery { hashes: vec![[0x11u8; 16], [0x22u8; 16]] };
+        let msg = PersistentCacheQuery {
+            hashes: vec![[0x11u8; 16], [0x22u8; 16]],
+        };
         let mut buf: Vec<u8> = Vec::new();
         let mut out = RfbOutStream::new(&mut buf);
         msg.write_to(&mut out);

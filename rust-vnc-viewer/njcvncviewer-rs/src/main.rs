@@ -67,7 +67,6 @@ pub struct AppConfig {
     /// PersistentCache settings (disk-backed cache).
     #[serde(default)]
     pub persistent_cache: PersistentCacheConfig,
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,7 +135,6 @@ pub struct UiConfig {
     /// Statistics refresh rate
     pub stats_refresh_ms: u64,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContentCacheConfig {

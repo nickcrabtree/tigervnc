@@ -31,13 +31,16 @@ pub async fn spawn(
     let pixel_format = conn.server_init.pixel_format.clone();
 
     // Initialize shared framebuffer with server pixel format and optional caches
-    let mut persistent_cache_handle: Option<Arc<Mutex<rfb_encodings::PersistentClientCache>>> = None;
+    let mut persistent_cache_handle: Option<Arc<Mutex<rfb_encodings::PersistentClientCache>>> =
+        None;
     let framebuffer = if config.persistent_cache.enabled && config.content_cache.enabled {
         // Both caches enabled - need custom registry
-        let pcache = Arc::new(Mutex::new(rfb_encodings::PersistentClientCache::new_with_path(
-            config.persistent_cache.size_mb,
-            Some(config.persistent_cache.path.clone()),
-        )));
+        let pcache = Arc::new(Mutex::new(
+            rfb_encodings::PersistentClientCache::new_with_path(
+                config.persistent_cache.size_mb,
+                Some(config.persistent_cache.path.clone()),
+            ),
+        ));
         if let Ok(mut cache) = pcache.lock() {
             match cache.load_from_disk() {
                 Ok(restored) => tracing::info!(
@@ -61,10 +64,12 @@ pub async fn spawn(
             pcache,
         )))
     } else if config.persistent_cache.enabled {
-        let pcache = Arc::new(Mutex::new(rfb_encodings::PersistentClientCache::new_with_path(
-            config.persistent_cache.size_mb,
-            Some(config.persistent_cache.path.clone()),
-        )));
+        let pcache = Arc::new(Mutex::new(
+            rfb_encodings::PersistentClientCache::new_with_path(
+                config.persistent_cache.size_mb,
+                Some(config.persistent_cache.path.clone()),
+            ),
+        ));
         if let Ok(mut cache) = pcache.lock() {
             match cache.load_from_disk() {
                 Ok(restored) => tracing::info!(
@@ -249,13 +254,27 @@ pub async fn spawn(
                                 drop(fb);
                                 if !pc_evictions.is_empty() {
                                     for chunk in pc_evictions.chunks(1000) {
-                                        let _ = protocol::write_persistent_cache_eviction(&mut output, chunk).await;
-                                        tracing::info!("PersistentCacheEviction count={}", chunk.len());
+                                        let _ = protocol::write_persistent_cache_eviction(
+                                            &mut output,
+                                            chunk,
+                                        )
+                                        .await;
+                                        tracing::info!(
+                                            "PersistentCacheEviction count={}",
+                                            chunk.len()
+                                        );
                                     }
                                 }
                                 if !pc_misses.is_empty() {
-                                    let _ = protocol::write_persistent_cache_query(&mut output, &pc_misses).await;
-                                    tracing::info!("PersistentCacheQuery count={}", pc_misses.len());
+                                    let _ = protocol::write_persistent_cache_query(
+                                        &mut output,
+                                        &pc_misses,
+                                    )
+                                    .await;
+                                    tracing::info!(
+                                        "PersistentCacheQuery count={}",
+                                        pc_misses.len()
+                                    );
                                 }
                                 for cache_id in misses {
                                     let _ =
@@ -508,13 +527,27 @@ pub async fn spawn(
                                 drop(fb);
                                 if !pc_evictions.is_empty() {
                                     for chunk in pc_evictions.chunks(1000) {
-                                        let _ = protocol::write_persistent_cache_eviction(&mut output, chunk).await;
-                                        tracing::info!("PersistentCacheEviction count={}", chunk.len());
+                                        let _ = protocol::write_persistent_cache_eviction(
+                                            &mut output,
+                                            chunk,
+                                        )
+                                        .await;
+                                        tracing::info!(
+                                            "PersistentCacheEviction count={}",
+                                            chunk.len()
+                                        );
                                     }
                                 }
                                 if !pc_misses.is_empty() {
-                                    let _ = protocol::write_persistent_cache_query(&mut output, &pc_misses).await;
-                                    tracing::info!("PersistentCacheQuery count={}", pc_misses.len());
+                                    let _ = protocol::write_persistent_cache_query(
+                                        &mut output,
+                                        &pc_misses,
+                                    )
+                                    .await;
+                                    tracing::info!(
+                                        "PersistentCacheQuery count={}",
+                                        pc_misses.len()
+                                    );
                                 }
                                 for cache_id in misses {
                                     let _ =

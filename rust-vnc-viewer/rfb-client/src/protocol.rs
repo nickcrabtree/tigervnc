@@ -329,7 +329,6 @@ pub async fn write_request_cached_data<W: AsyncWrite + Unpin>(
         .map_err(|e| RfbClientError::Transport(e))
 }
 
-
 /// Write PersistentCacheQuery (PersistentCache miss) and flush.
 ///
 /// NOTE: In this fork, message type 254 overlaps ContentCache RequestCachedData.
@@ -338,12 +337,17 @@ pub async fn write_persistent_cache_query<W: AsyncWrite + Unpin>(
     outstream: &mut RfbOutStream<W>,
     hashes: &[[u8; 16]],
 ) -> Result<(), RfbClientError> {
-    let msg = PersistentCacheQuery { hashes: hashes.to_vec() };
+    let msg = PersistentCacheQuery {
+        hashes: hashes.to_vec(),
+    };
     if protocol_trace::enabled() {
         protocol_trace::out_msg("PersistentCacheQuery", &format!("count={}", hashes.len()));
     }
     msg.write_to(outstream);
-    outstream.flush().await.map_err(|e| RfbClientError::Transport(e))
+    outstream
+        .flush()
+        .await
+        .map_err(|e| RfbClientError::Transport(e))
 }
 
 /// Write PersistentCacheEviction (client eviction notification) and flush.
@@ -353,14 +357,18 @@ pub async fn write_persistent_cache_eviction<W: AsyncWrite + Unpin>(
     outstream: &mut RfbOutStream<W>,
     hashes: &[[u8; 16]],
 ) -> Result<(), RfbClientError> {
-    let msg = PersistentCacheEviction { hashes: hashes.to_vec() };
+    let msg = PersistentCacheEviction {
+        hashes: hashes.to_vec(),
+    };
     if protocol_trace::enabled() {
-        protocol_trace::out_msg("PersistentCacheEviction", &format!("count={}", hashes.len()));
+        protocol_trace::out_msg(
+            "PersistentCacheEviction",
+            &format!("count={}", hashes.len()),
+        );
     }
     msg.write_to(outstream);
     outstream.flush().await.map_err(RfbClientError::Transport)
 }
-
 
 /// Enable or disable continuous updates over a specified rectangle and flush.
 pub async fn write_enable_continuous_updates<W: AsyncWrite + Unpin>(
