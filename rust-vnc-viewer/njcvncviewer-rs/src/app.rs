@@ -394,6 +394,7 @@ impl VncViewerApp {
                 info!("Desktop resized to {}x{}", width, height);
                 self.framebuffer_width = width as u32;
                 self.framebuffer_height = height as u32;
+                self.apply_scale_mode_to_viewport();
                 self.framebuffer_texture = None;
                 self.last_framebuffer_version = 0;
                 ctx.request_repaint();
