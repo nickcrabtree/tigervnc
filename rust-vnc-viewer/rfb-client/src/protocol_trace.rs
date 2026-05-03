@@ -81,6 +81,35 @@ pub fn parse_trace_message(line: &str) -> Option<TraceMessage<'_>> {
     })
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct TraceSummary {
+    pub set_encodings: u32,
+    pub framebuffer_update: u32,
+    pub persistent_cache_query: u32,
+    pub persistent_cache_eviction: u32,
+    pub request_cached_data: u32,
+}
+
+pub fn summarise_trace<'a, I>(lines: I) -> TraceSummary
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let mut s = TraceSummary::default();
+    for line in lines {
+        if let Some(msg) = parse_trace_message(line) {
+            match msg.name {
+                "SetEncodings" => s.set_encodings += 1,
+                "FramebufferUpdate" => s.framebuffer_update += 1,
+                "PersistentCacheQuery" => s.persistent_cache_query += 1,
+                "PersistentCacheEviction" => s.persistent_cache_eviction += 1,
+                "RequestCachedData" => s.request_cached_data += 1,
+                _ => {}
+            }
+        }
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +137,42 @@ mod tests {
         );
         assert_eq!(parsed[2].name, "PersistentCacheQuery");
         assert_eq!(parsed[3].fields, "cache_id=42");
+    }
+    #[test]
+    fn summarises_no_cache_trace_without_cache_activity() {
+        let trace = ["OUT SetEncodings n=6", "IN FramebufferUpdate rects=1"];
+        let s = summarise_trace(trace);
+        assert_eq!(
+            (
+                s.set_encodings,
+                s.framebuffer_update,
+                s.persistent_cache_query,
+                s.persistent_cache_eviction,
+                s.request_cached_data
+            ),
+            (1, 1, 0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn summarises_persistent_cache_trace_activity() {
+        let trace = [
+            "OUT SetEncodings n=15",
+            "OUT PersistentCacheQuery count=3",
+            "OUT PersistentCacheEviction count=1",
+            "OUT RequestCachedData cache_id=42",
+            "IN FramebufferUpdate rects=4",
+        ];
+        let s = summarise_trace(trace);
+        assert_eq!(
+            (
+                s.set_encodings,
+                s.framebuffer_update,
+                s.persistent_cache_query,
+                s.persistent_cache_eviction,
+                s.request_cached_data
+            ),
+            (1, 1, 1, 1, 1)
+        );
     }
 }
