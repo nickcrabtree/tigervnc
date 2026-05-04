@@ -90,6 +90,7 @@ pub struct TraceSummary {
     pub request_cached_data: u32,
 }
 
+#[allow(dead_code)]
 pub fn summarise_trace<'a, I>(lines: I) -> TraceSummary
 where
     I: IntoIterator<Item = &'a str>,
