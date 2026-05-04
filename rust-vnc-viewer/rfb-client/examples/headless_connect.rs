@@ -41,7 +41,41 @@ async fn main() -> anyhow::Result<()> {
     info!("Connecting to {}:{}", host, port);
 
     // Create configuration
-    let config = Config::builder().host(&host).port(port).build()?;
+    let mut config = Config::builder().host(&host).port(port).build()?;
+    match env::var("RFB_HEADLESS_CACHE_MODE").as_deref() {
+        Ok("nocache") => {
+            config.content_cache.enabled = false;
+            config.persistent_cache.enabled = false;
+        }
+        Ok("content") => {
+            config.content_cache.enabled = true;
+            config.persistent_cache.enabled = false;
+        }
+        Ok("persistent") => {
+            config.content_cache.enabled = false;
+            config.persistent_cache.enabled = true;
+        }
+        Ok("unified") => {
+            config.content_cache.enabled = true;
+            config.persistent_cache.enabled = true;
+        }
+        Ok(other) => {
+            return Err(anyhow::anyhow!(
+                "invalid RFB_HEADLESS_CACHE_MODE: {}",
+                other
+            ))
+        }
+        Err(_) => {}
+    }
+    if let Ok(path) = env::var("RFB_HEADLESS_PERSISTENT_CACHE_PATH") {
+        config.persistent_cache.path = std::path::PathBuf::from(path);
+    }
+    info!(
+        "Cache mode: content_cache={} persistent_cache={} persistent_cache_path={}",
+        config.content_cache.enabled,
+        config.persistent_cache.enabled,
+        config.persistent_cache.path.display()
+    );
 
     // Build and connect client
     let client = match ClientBuilder::new(config).build().await {
