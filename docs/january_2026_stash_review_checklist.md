@@ -91,11 +91,11 @@ Tick an item only after the decision and notes are updated.
   - Decision: reject / do not merge
   - Notes: Review 013 showed HEAD unchanged from stash base ignoring whitespace; stash content is stale formatter fallout with broken dark-rectangle detector fragments.
 
-- [ ] `tests/e2e/framework.py`
+- [x] `tests/e2e/framework.py`
   - Class: `DIVERGED_NEEDS_REVIEW`
   - Stash status: `M`
-  - Decision: pending
-  - Notes: pending
+  - Decision: reject / do not merge
+  - Notes: Review 014 showed divergent stale framework changes that would remove current sudo and viewer-wrapper support; keep current HEAD.
 
 - [ ] `tests/e2e/run_baseline_rfb_test.py`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
