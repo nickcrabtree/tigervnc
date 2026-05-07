@@ -85,11 +85,11 @@ Tick an item only after the decision and notes are updated.
   - Decision: reject / do not merge
   - Notes: Review 012 showed HEAD unchanged from stash base ignoring whitespace; stash content is stale formatter fallout with broken Python fragments.
 
-- [ ] `tests/e2e/dark_rect_detector.py`
+- [x] `tests/e2e/dark_rect_detector.py`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
   - Stash status: `M`
-  - Decision: pending
-  - Notes: pending
+  - Decision: reject / do not merge
+  - Notes: Review 013 showed HEAD unchanged from stash base ignoring whitespace; stash content is stale formatter fallout with broken dark-rectangle detector fragments.
 
 - [ ] `tests/e2e/framework.py`
   - Class: `DIVERGED_NEEDS_REVIEW`
