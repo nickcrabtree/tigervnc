@@ -13,11 +13,11 @@ Source stash: `stash@{2026-01-27 07:53:18 +0000}`.
 
 Tick an item only after the decision and notes are updated.
 
-- [ ] `CMakeLists.txt`
+- [x] `CMakeLists.txt`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
   - Stash status: `M`
-  - Decision: pending
-  - Notes: pending
+  - Decision: reject / do not merge
+  - Notes: Review 001 showed HEAD unchanged from stash base ignoring whitespace; stash content is stale formatter fallout with incomplete CMake fragments.
 
 - [ ] `cmake/Modules/CMakeMacroLibtoolFile.cmake`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
