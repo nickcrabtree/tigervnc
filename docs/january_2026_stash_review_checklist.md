@@ -37,11 +37,11 @@ Tick an item only after the decision and notes are updated.
   - Decision: reject / do not merge
   - Notes: Review 004 showed divergent stale cache code with malformed/incomplete DecodeManager fragments; keep current HEAD and do not merge this stash version.
 
-- [ ] `common/rfb/GlobalClientPersistentCache.h`
+- [x] `common/rfb/GlobalClientPersistentCache.h`
   - Class: `DIVERGED_NEEDS_REVIEW`
   - Stash status: `M`
-  - Decision: pending
-  - Notes: pending
+  - Decision: reject / do not merge
+  - Notes: Review 005 showed stale/malformed header fragments in the stash and only tiny comment-level HEAD-to-stash differences; keep current HEAD.
 
 - [ ] `docs/CACHE_IMPROVEMENTS_2025-12-05.md`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
