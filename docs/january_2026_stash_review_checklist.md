@@ -43,11 +43,11 @@ Tick an item only after the decision and notes are updated.
   - Decision: reject / do not merge
   - Notes: Review 005 showed stale/malformed header fragments in the stash and only tiny comment-level HEAD-to-stash differences; keep current HEAD.
 
-- [ ] `docs/CACHE_IMPROVEMENTS_2025-12-05.md`
+- [x] `docs/CACHE_IMPROVEMENTS_2025-12-05.md`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
   - Stash status: `M`
-  - Decision: pending
-  - Notes: pending
+  - Decision: merge / preserve
+  - Notes: Review 006 merged the Jan 2026 rectangle-stability documentation addendum from the stash.
 
 - [ ] `docs/LOG_DRIVEN_CACHE_TRACE_TEST_PLAN.md`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`

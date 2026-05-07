@@ -11,21 +11,25 @@ Cache hit rates were extremely low (0-5.6%) due to hash mismatches when lossy en
 ## Changes Implemented
 
 ### 1. Infrastructure (VNCSConnectionST.h/cxx)
+
 - Added `lossyHashCache_`: Map canonical hash → lossy hash
 - Added `viewerConfirmedCache_`: Track IDs viewer has confirmed
 - Added `viewerPendingConfirmation_`: IDs awaiting confirmation
 - Added helper methods: `cacheLossyHash()`, `viewerHasConfirmed()`, `markPending()`, `confirmPendingIds()`, `removePendingId()`
 
 ### 2. Viewer Confirmation Tracking
+
 - `handleRequestCachedData()` now calls `removePendingId()` (viewer doesn't have ID)
 - `writeDataUpdate()` calls `confirmPendingIds()` after successful frame update
 
 ### 3. Lossy Encoding Detection (EncodeManager.cxx)
+
 - Added `isLossyEncoding()`: Checks if encoding is Tight or H264
 - Added `computeLossyHash()`: Placeholder for future encode→decode→hash implementation
 - Track `currentEncodingIsLossy` in `doUpdate()`
 
 ### 4. Seed Mechanism and Lossy Hash Reporting
+
 - **Seeds are ALWAYS sent** (both lossy and lossless encodings) with canonical hash
 - For lossless: Client hash matches canonical hash exactly, no reports needed
 - For lossy: Client detects hash mismatch, stores under lossy hash, reports back via message 247
@@ -35,11 +39,13 @@ Cache hit rates were extremely low (0-5.6%) due to hash mismatches when lossy en
 ## Test Results
 
 ### Before Changes
+
 - `test_cpp_contentcache.py`: 5.6% hit rate ❌
 - `test_cpp_persistentcache.py`: 26.1% hit rate ⚠️
 - Visual corruption tests: Failures with hash mismatches
 
 ### After Changes  
+
 - `test_cpp_contentcache.py`: 3.2% hit rate (still low, needs full lossy hash implementation)
 - `test_cpp_persistentcache.py`: **48.3% hit rate** ✅ (+85% improvement)
 - `test_cache_simple_poc.py`: **33.3% hit rate** ✅
@@ -66,7 +72,8 @@ The remaining TODO items would push hit rates even higher:
 ## Log Evidence
 
 Server logs show seeds being sent and hash reports received:
-```
+
+```text
 EncodeManager: TILING: Seeded bounding-box hash [x,y-w,h] id=... (client will report lossy hash if needed)
 DecodeManager: PersistentCache STORE (lossy): hash mismatch for rect [...]
 DecodeManager: Reported lossy hash to server: canonical=... lossy=...
@@ -90,11 +97,13 @@ VNCSConnST: Stored lossy hash mapping: canonical=... -> lossy=...
 ## Performance Impact
 
 **Bandwidth savings:**
+
 - PersistentCache: **99.8% reduction** for cache hits
 - 47-byte reference vs 50KB+ JPEG data
 - ~1000x bandwidth savings for repeated content
 
 **CPU savings:**
+
 - No client-side decode needed for cache hits
 - Memory blit instead of JPEG decompression
 
@@ -109,9 +118,34 @@ Remaining TODOs for even better performance:
 
 These would push hit rates to 60%+ by allowing cache hits for lossy content from previous sessions.
 
+## Addendum (Jan 2026): Rectangle‑stability updates
+
+Recent work focused on **reducing cache misses caused by changing rectangle boundaries**:
+
+### Implemented
+
+- **Shift‑tolerant cache scan** (server side):
+
+  - Scans the framebuffer in multi‑phase tile grids and emits cached rect references for **client‑known IDs**.
+  - Runs after CopyRect and before normal encoding.
+  - Files: `common/rfb/cache/ShiftTolerantScan.cxx`, `EncodeManager::runShiftTolerantCacheScan()`.
+  - Enabled by default, but requires `pseudoEncodingLastRect`.
+  - Logging is off by default (`CacheScanLogStats=0`).
+
+### Not implemented (yet)
+
+- **Deterministic rectangle selection / stable tiling** (design in `docs/content_and_persistent_cache_tiling_enhancement.md`).
+- **Sub‑rectangle cache references** (design in `docs/SUBREGION_CACHE_DESIGN_UPDATED.md`).
+
+### To continue toward “100% identical screen ⇒ 100% hits”
+
+1. Add a deterministic tiling grid (fixed origin, fixed tile size) to make rectangle boundaries stable.
+2. Extend tiling to seed large cached rectangles (InitCandidate path).
+3. Implement sub‑rect cache references so newly exposed regions can be satisfied from cached content without exact boundary matches.
+
 ## Commit
 
-```
+```text
 commit 75cdfc26
 Add lossy hash infrastructure and fix seed mechanism for lossy encodings
 
