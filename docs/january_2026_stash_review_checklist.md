@@ -127,7 +127,7 @@ Tick an item only after the decision and notes are updated.
   - Decision: pending
   - Notes: pending
 
-- [ ] `tests/e2e/sandbox_all_tests.py`
+- [x] `tests/e2e/sandbox_all_tests.py` — Review 020 — reject / do not merge. Notes: HEAD unchanged from stash base ignoring whitespace; stash side is stale formatter fallout with broken sandbox-all-tests fragments.
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
   - Stash status: `M`
   - Decision: pending
