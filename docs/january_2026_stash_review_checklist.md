@@ -103,11 +103,11 @@ Tick an item only after the decision and notes are updated.
   - Decision: reject / do not merge
   - Notes: Review 015 showed HEAD unchanged from stash base ignoring whitespace; stash content is stale formatter fallout with broken baseline RFB test fragments.
 
-- [ ] `tests/e2e/run_black_box_screenshot_test.py`
+- [x] `tests/e2e/run_black_box_screenshot_test.py`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
   - Stash status: `M`
-  - Decision: pending
-  - Notes: pending
+  - Decision: reject / do not merge
+  - Notes: Review 016 showed HEAD unchanged from stash base ignoring whitespace; stash content is stale formatter fallout with broken black-box screenshot test fragments.
 
 - [ ] `tests/e2e/run_contentcache_test.py`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
