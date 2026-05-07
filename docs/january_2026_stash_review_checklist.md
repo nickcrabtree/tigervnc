@@ -31,11 +31,11 @@ Tick an item only after the decision and notes are updated.
   - Decision: reject / do not merge
   - Notes: Review 003 showed HEAD unchanged from stash base ignoring whitespace; stash content is stale formatter fallout with incomplete CMake fragments.
 
-- [ ] `common/rfb/DecodeManager.cxx`
+- [x] `common/rfb/DecodeManager.cxx`
   - Class: `DIVERGED_NEEDS_REVIEW`
   - Stash status: `M`
-  - Decision: pending
-  - Notes: pending
+  - Decision: reject / do not merge
+  - Notes: Review 004 showed divergent stale cache code with malformed/incomplete DecodeManager fragments; keep current HEAD and do not merge this stash version.
 
 - [ ] `common/rfb/GlobalClientPersistentCache.h`
   - Class: `DIVERGED_NEEDS_REVIEW`
