@@ -67,11 +67,11 @@ Tick an item only after the decision and notes are updated.
   - Decision: merge / preserve
   - Notes: Review 009 merged the Jan 2026 current-status and completion-plan documentation update from the stash.
 
-- [ ] `java/CMakeLists.txt`
+- [x] `java/CMakeLists.txt`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
   - Stash status: `M`
-  - Decision: pending
-  - Notes: pending
+  - Decision: reject / do not merge
+  - Notes: Review 010 showed HEAD unchanged from stash base ignoring whitespace; stash content is stale formatter fallout with incomplete Java CMake fragments.
 
 - [ ] `tests/e2e/capture_slide_screenshots.py`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
