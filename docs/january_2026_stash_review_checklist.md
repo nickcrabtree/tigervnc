@@ -121,7 +121,7 @@ Tick an item only after the decision and notes are updated.
   - Decision: reject / do not merge
   - Notes: Review 018 showed HEAD unchanged from stash base ignoring whitespace; stash content is stale formatter fallout with broken refresh-stability test fragments.
 
-- [ ] `tests/e2e/run_resize_latency_test.py`
+- [x] `tests/e2e/run_resize_latency_test.py` — Review 019 — reject / do not merge. Notes: HEAD unchanged from stash base ignoring whitespace; stash side is stale formatter fallout with broken resize-latency test fragments.
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
   - Stash status: `M`
   - Decision: pending
