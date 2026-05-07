@@ -49,11 +49,11 @@ Tick an item only after the decision and notes are updated.
   - Decision: merge / preserve
   - Notes: Review 006 merged the Jan 2026 rectangle-stability documentation addendum from the stash.
 
-- [ ] `docs/LOG_DRIVEN_CACHE_TRACE_TEST_PLAN.md`
+- [x] `docs/LOG_DRIVEN_CACHE_TRACE_TEST_PLAN.md`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`
   - Stash status: `M`
-  - Decision: pending
-  - Notes: pending
+  - Decision: merge / preserve
+  - Notes: Review 007 merged the Jan 2026 current-status and scan-logging documentation update from the stash.
 
 - [ ] `docs/SUBREGION_CACHE_DESIGN_UPDATED.md`
   - Class: `SEMANTIC_STASH_NOT_IN_HEAD`

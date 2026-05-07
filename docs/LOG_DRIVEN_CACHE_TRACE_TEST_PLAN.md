@@ -1,6 +1,6 @@
 # Log-Driven Cache & Tiling Trace Test Plan
 
-Status: **Design only** (no code changes yet)
+Status: **Partially implemented** (shift‑tolerant scan exists; this plan is still the recommended diagnostic workflow)
 
 Scope: C++ server (`Xnjcvnc`) + C++ viewer (`njcvncviewer`) unified ContentCache/PersistentCache engine and tiling
 
@@ -17,9 +17,12 @@ This fork of TigerVNC unifies the legacy **ContentCache** and the newer **Persis
 Conceptually:
 
 - **ContentCache mode**
+
   - Session-only, no disk I/O.
   - Uses 64-bit IDs and a memory-only ARC cache.
+
 - **PersistentCache mode**
+
   - Disk-backed and cross-session.
   - Uses the same 64-bit IDs on the wire, but also stores content on disk via `GlobalClientPersistentCache`.
 
@@ -43,6 +46,19 @@ The result is a relatively complex pipeline:
 - Cache handling on the client side (DecodeManager + `GlobalClientPersistentCache`).
 - Potential lossy encoders (e.g. Tight JPEG) and subsequent **lossless refresh** logic that can "heal" lossy regions over time.
 
+### 1.1.1 Current implementation status
+
+The server currently implements a **shift‑tolerant cache scan** that can emit cached rects even when damage rects shift or fragment:
+
+- Implementation: `common/rfb/cache/ShiftTolerantScan.cxx`
+- Integration: `EncodeManager::runShiftTolerantCacheScan()` (runs after CopyRect, before encoding).
+- **Enabled by default**, but **requires**:
+
+  - `pseudoEncodingLastRect` (viewer must advertise LastRect)
+  - `EnableShiftTolerantCacheScan = true`
+
+- **Logging is off by default** (`CacheScanLogStats = false`), so you won’t see scan activity unless enabled.
+
 ### 1.2 Existing e2e tests and their limitations
 
 The current e2e suite exercises caches via tests such as:
@@ -61,9 +77,11 @@ These tests are excellent for **aggregate metrics**:
 However, they are not ideal for tightly correlating individual image updates with protocol behavior. Reasons:
 
 - The logs during these tests are very busy:
+
   - Desktop environment noise (clocks, panels, wallpaper changes).
   - Window-manager animations.
   - Background damage and continuous updates.
+
 - They focus on repeated, synthetic workloads (e.g. tiled logos, image churn) rather than a **single, real-world image** whose content we care deeply about.
 
 This makes it hard to answer questions like:
@@ -94,6 +112,19 @@ Goals:
    - How does this change under different encodings and cache modes?
 
 This test is intended as a diagnostic / research tool, not just a go/no-go check.
+
+## 2.3 How to enable scan logging for this test
+
+To make the scan visible in logs:
+
+- Server config (or command‑line params):
+
+  - `CacheScanLogStats=1`
+  - Optional: tune `CacheScanTileSizes`, `CacheScanBudgetUs`, `CacheScanMaxBlocks`, `CacheScanCoverageThresholdPermille`
+
+- Viewer must advertise LastRect (standard TigerVNC viewer does).
+
+When enabled, the server log will include `CACHESCAN pack:` lines with per‑frame stats.
 
 ---
 
@@ -131,11 +162,13 @@ The core idea is a **three-phase run with log snapshots**.
 Once the snapshots are captured:
 
 - `A → B` diff shows what the **initial display** did:
+
   - How many tiles were sent.
   - How many INIT messages were emitted.
   - Which parts of the image caused which cache protocol traffic.
 
 - `B → C` diff shows what the **redisplay** did:
+
   - How many hits/references we got vs new INITs.
   - Whether the cache protocol behaves as expected (high re-use on repetition).
 
@@ -150,12 +183,17 @@ Because the image is known and the environment is intentionally quiet, we gain a
 The test must respect the safety rules encoded in `WARP.md` and the test harness:
 
 - Only use the dedicated test displays:
+
   - `:998`
   - `:999`
+
 - Only use the corresponding ports:
+
   - `6898` (for `:998`)
   - `6899` (for `:999`)
+
 - Never interact with production displays:
+
   - `:1`
   - `:2`
   - `:3`
@@ -177,18 +215,23 @@ Guidelines:
 
 - Prefer **no window manager** if the content scenario can work without it.
 - If a WM is required (to easily spawn an image viewer), use the simplest available, e.g. `openbox`, and configure it minimally:
+
   - No status panels.
   - No compositing.
   - No clock widgets.
   - No animated wallpapers.
+
 - Disable screen savers and DPMS where possible, or keep the test short enough that they do not activate.
 
 The typical e2e pattern is:
 
 - Content display `:998`:
+
   - X/VNC server.
   - Optionally `openbox` as WM.
+
 - Viewer window display `:999`:
+
   - X/VNC server running a minimal desktop, again with `openbox` at most.
 
 ### 3.3 Viewer configuration
@@ -196,10 +239,12 @@ The typical e2e pattern is:
 The test should start `njcvncviewer` with explicit parameters to avoid ambiguity. Example dimensions:
 
 - **Encoding**:
+
   - For initial work, choose a single `PreferredEncoding`, e.g. `ZRLE` or `Tight` with fixed quality.
   - Later, sweep over multiple encodings to test different behaviors.
 
 - **Cache modes**:
+
   - **ContentCache only**:
     - Server: `-EnablePersistentCache=0` (and default/explicit ContentCache parameters).
     - Viewer: `ContentCacheSize=...`, `PersistentCache=0`.
@@ -210,9 +255,11 @@ The test should start `njcvncviewer` with explicit parameters to avoid ambiguity
     - Server and viewer with both encodings enabled; negotiation determines which is actually used.
 
 - **Logging**:
+
   - For the viewer, use `Log=*:stderr:100` to keep a rich trace, but rely primarily on new structured debug lines (see next section) to interpret behavior.
 
 - **PersistentCache path**:
+
   - For tests involving disk persistence, set `PersistentCachePath` inside the test artifacts directory so that it is:
     - Isolated from the user's real cache.
     - Disposable and easy to inspect.
@@ -239,6 +286,7 @@ To achieve this:
 Proposed environment variables:
 
 - `TIGERVNC_CC_TEST_LOG=1`
+
   - When set, enables high-signal cache/tiling test logging on both server and client.
 
 In the future we could split this into server/client-specific vars if necessary, but a single switch is sufficient for initial implementation.
@@ -248,31 +296,33 @@ In the future we could split this into server/client-specific vars if necessary,
 Likely insertion points (**do not implement yet; this is for guidance**):
 
 - `common/rfb/EncodeManager.cxx`:
+
   - Inside `writeRects()` / `writeSubRect()` when determining how a rect is tiled and which encoder is used.
   - Inside `tryPersistentCacheLookup()` (or its unified equivalent) when deciding between INIT vs reference.
 
 - `common/rfb/VNCSConnectionST.cxx`:
+
   - Where targeted refresh is triggered by `handleRequestCachedData`.
 
 Suggested log formats (examples):
 
 - **Tile / rect encoding**:
 
-  ```
+```text
   CCDBG SERVER RECT: rect=[x1,y1-x2,y2] enc=<encoderName> cacheMode=<none|init|hit> cacheId=<u64_or_0>
-  ```
+```
 
 - **Cache init**:
 
-  ```
+```text
   CCDBG SERVER CACHE_INIT: rect=[x1,y1-x2,y2] cacheId=<id>
-  ```
+```
 
 - **Cache hit (reference)**:
 
-  ```
+```text
   CCDBG SERVER CACHE_HIT: rect=[x1,y1-x2,y2] cacheId=<id> savedBytes=<approx>
-  ```
+```
 
 Where:
 
@@ -284,35 +334,38 @@ Where:
 Likely insertion points:
 
 - `common/rfb/CMsgReader.cxx`:
+
   - Already logs for `CachedRect` / `CachedRectInit` / `PersistentCachedRect` / `PersistentCachedRectInit`.
 
 - `common/rfb/DecodeManager.cxx`:
+
   - When processing hits/misses in `handlePersistentCachedRect`.
   - When storing INITs in `storePersistentCachedRect`.
 
 - `common/rfb/CConnection.cxx`:
+
   - Where the negotiated cache protocol is recorded.
 
 Suggested log formats (examples):
 
 - **Client receives INIT**:
 
-  ```
+```text
   CCDBG CLIENT INIT: rect=[x1,y1-x2,y2] cacheId=<id> encoding=<innerEncoding>
-  ```
+```
 
 - **Client receives reference**:
 
-  ```
+```text
   CCDBG CLIENT REF: rect=[x1,y1-x2,y2] cacheId=<id>
-  ```
+```
 
 - **Client cache decision**:
 
-  ```
+```text
   CCDBG CLIENT CACHE_HIT: rect=[x1,y1-x2,y2] cacheId=<id>
   CCDBG CLIENT CACHE_MISS: cacheId=<id> action=RequestCachedData
-  ```
+```
 
 All of these must be emitted **only** when `TIGERVNC_CC_TEST_LOG` is set, to avoid polluting normal logs.
 
@@ -423,6 +476,7 @@ Requirements:
 
 - Use a **lossless** format (PNG preferred) so server-side pixels are well-defined.
 - Resolution should be large enough to make tiling interesting, e.g.:
+
   - 512×512
   - 640×360
   - 800×600
@@ -432,14 +486,17 @@ Requirements:
 The image should be chosen to stress the cache and tiling logic:
 
 - **Constant-colour regions**:
+
   - Large, exactly constant blocks (or at least extremely low variation).
   - Good for verifying that tiles over uniform areas are cheap and easily cached.
 
 - **High-detail regions**:
+
   - Text, gradients, photos, or noise textures.
   - These regions are harder to compress and may not gain much from tiling.
 
 - **Mixed layout**:
+
   - Distinct, easily-referenced regions (e.g. a logo on a flat background, with some detailed sidebars) so we can visually map log-reported rects/tiles to subareas of the image.
 
 A small `README.md` next to the image (e.g. `tests/e2e/fixtures/cache_trace/README.md`) should document:
@@ -458,9 +515,11 @@ Initially, the test should focus on **observational** and **sanity** assertions,
 For a given cache mode (e.g. ContentCache-only or PersistentCache-only):
 
 - **Phase A (idle baseline)**
+
   - There should be **no** `CCDBG` cache INIT/REF entries in `A_server.log` / `A_viewer.log`, or at least a very small, easily explained number (depending on how the viewer initializes).
 
 - **A → B (first display)**
+
   - On the server:
     - Number of `CACHE_INIT`-style events (INITs) for this image’s rectangles should be **> 0**.
   - On the client:
@@ -468,6 +527,7 @@ For a given cache mode (e.g. ContentCache-only or PersistentCache-only):
   - Number of cache references (HITs) may be small or zero on the very first appearance; that’s expected.
 
 - **B → C (redisplay)**
+
   - The number of cache references on redisplay should be **≥** references observed on first display.
   - The number of INITs on redisplay should be **≤** the number on first display (strictly less is ideal if caching is working well).
 
@@ -481,10 +541,15 @@ The test can enforce these by parsing structured log events, e.g.:
 Once the test is in place and stable, future work could:
 
 - Break down behavior by subregion of the image:
+
   - E.g., constant background area vs detailed text area.
+
 - Compare across modes:
+
   - No cache vs ContentCache vs PersistentCache.
+
 - Cross-check with other metrics:
+
   - Bandwidth stats from `EncodeManager`.
   - Viewer-side bandwidth summaries if those are available.
 
@@ -532,6 +597,7 @@ This section summarizes where future code changes are likely to go, **without** 
 ### 9.1 Test harness and scenarios
 
 - **New test file** (suggested):
+
   - `tests/e2e/test_cpp_cache_trace_single_image.py`
   - Responsibilities:
     - Set up artifacts and trackers.
@@ -540,6 +606,7 @@ This section summarizes where future code changes are likely to go, **without** 
     - Parse structured CCDBG lines and make assertions.
 
 - **Scenario helper** (in `tests/e2e/scenarios_static.py` or similar):
+
   - Adds a function to display a single image window on the content display.
   - Might be named something like `tiled_single_image()` or `display_static_image()`.
 
@@ -548,14 +615,17 @@ This section summarizes where future code changes are likely to go, **without** 
 Code-level logging hooks should be added **carefully and minimally** to:
 
 - `common/rfb/EncodeManager.cxx` (server):
+
   - When encoding/tile decisions are made.
   - When cache lookups succeed or miss (INIT vs HIT).
 
 - `common/rfb/DecodeManager.cxx` (client):
+
   - When references/INITs are handled.
   - When hits/misses occur in the client cache.
 
 - `common/rfb/CConnection.cxx` (client):
+
   - For high-level protocol decisions (which cache protocol was negotiated, etc.).
 
 All such logging must be guarded by `TIGERVNC_CC_TEST_LOG`.
@@ -563,9 +633,11 @@ All such logging must be guarded by `TIGERVNC_CC_TEST_LOG`.
 ### 9.3 Fixtures
 
 - A new directory for fixtures:
+
   - `tests/e2e/fixtures/cache_trace/`
 
 - At minimum:
+
   - `realworld_logo.png` (or similar real-world image).
   - `README.md` describing the image and what to look for.
 
@@ -576,11 +648,13 @@ All such logging must be guarded by `TIGERVNC_CC_TEST_LOG`.
 This test is meant to **complement**, not replace, existing e2e tests:
 
 - Existing tests (ContentCache bandwidth, PersistentCache bandwidth, evictions, parity) are focused on:
+
   - Long-running scenarios.
   - Aggregate metrics.
   - Stressing cache sizes and eviction behavior.
 
 - The new test is focused on:
+
   - A single, real-world image.
   - Precise log-level tracing tied to that image.
   - Observing cache/tiling decisions under microscope-like conditions.
