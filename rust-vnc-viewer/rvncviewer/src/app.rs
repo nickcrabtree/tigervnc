@@ -5,17 +5,14 @@ use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
 use crate::args::Args;
-use crate::vnc_connection::{VncConnection, ConnectionStatus};
+use crate::vnc_connection::{ConnectionStatus, VncConnection};
 
-use crate::ui::{
-    connection_dialog::ConnectionDialog,
-    desktop::DesktopWindow,
-    menubar::MenuBar,
-    options_dialog::OptionsDialog,
-    statusbar::StatusBar,
-};
 use crate::display::{enumerate_monitors, MonitorInfo};
 use crate::fullscreen::FullscreenController;
+use crate::ui::{
+    connection_dialog::ConnectionDialog, desktop::DesktopWindow, menubar::MenuBar,
+    options_dialog::OptionsDialog, statusbar::StatusBar,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppState {
@@ -130,11 +127,10 @@ impl VncViewerApp {
 
         // Load configuration
         let config_path = args.config.clone().or_else(|| {
-            directories::UserDirs::new()
-                .and_then(|dirs| {
-                    let home_dir = dirs.home_dir().to_path_buf();
-                    Some(home_dir.join(".config/rvncviewer/config.toml"))
-                })
+            directories::UserDirs::new().and_then(|dirs| {
+                let home_dir = dirs.home_dir().to_path_buf();
+                Some(home_dir.join(".config/rvncviewer/config.toml"))
+            })
         });
 
         let config = if let Some(ref path) = config_path {
@@ -152,7 +148,8 @@ impl VncViewerApp {
             config.scaling_mode = scaling.clone();
         }
         if let Some(encodings) = &args.encodings {
-            config.encoding_preferences = encodings.split(',').map(|s| s.trim().to_string()).collect();
+            config.encoding_preferences =
+                encodings.split(',').map(|s| s.trim().to_string()).collect();
         }
         config.fullscreen = args.fullscreen || config.fullscreen;
         config.view_only = args.view_only || config.view_only;
@@ -174,15 +171,15 @@ impl VncViewerApp {
         fullscreen.set_enabled(config.fullscreen);
 
         // Determine initial state
-        let (state, show_connection_dialog, current_server) = if let Some(server) = args.server.clone() {
-            (AppState::Connecting, false, Some(server))
-        } else {
-            (AppState::Connecting, true, None)
-        };
+        let (state, show_connection_dialog, current_server) =
+            if let Some(server) = args.server.clone() {
+                (AppState::Connecting, false, Some(server))
+            } else {
+                (AppState::Connecting, true, None)
+            };
 
         // Create tokio runtime for async operations
-        let runtime = tokio::runtime::Runtime::new()
-            .expect("Failed to create tokio runtime");
+        let runtime = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
 
         Ok(Self {
             args,
@@ -285,14 +282,20 @@ impl VncViewerApp {
                     // Update desktop window
                     if let Some((width, height)) = self.vnc_connection.framebuffer_size() {
                         if let Some(pixels) = self.vnc_connection.framebuffer_pixels() {
-                            self.desktop_window.update_framebuffer(ctx, width, height, &pixels);
+                            self.desktop_window
+                                .update_framebuffer(ctx, width, height, &pixels);
                         }
                     }
 
                     // Request repaint for next frame
                     ctx.request_repaint();
                 }
-                ServerEvent::Connected { width, height, name, .. } => {
+                ServerEvent::Connected {
+                    width,
+                    height,
+                    name,
+                    ..
+                } => {
                     info!("Server info: {}x{} - {}", width, height, name);
                     self.connection_stats.framebuffer_size = (width as u32, height as u32);
                     self.connection_stats.server_name = name;
@@ -335,28 +338,47 @@ impl VncViewerApp {
 impl App for VncViewerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut Frame) {
         // Handle fullscreen toggle
-        if ctx.input(|i| i.key_pressed(egui::Key::F11) || (i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::F))) {
+        if ctx.input(|i| {
+            i.key_pressed(egui::Key::F11)
+                || (i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::F))
+        }) {
             self.config.fullscreen = !self.config.fullscreen;
             self.fullscreen_pending = true;
         }
 
         // Handle monitor navigation (only when in fullscreen)
         if self.config.fullscreen {
-            if ctx.input(|i| i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::ArrowLeft)) {
+            if ctx.input(|i| {
+                i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::ArrowLeft)
+            }) {
                 self.fullscreen.prev_monitor(&self.monitors);
                 self.fullscreen_pending = true;
-            } else if ctx.input(|i| i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::ArrowRight)) {
+            } else if ctx.input(|i| {
+                i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::ArrowRight)
+            }) {
                 self.fullscreen.next_monitor(&self.monitors);
                 self.fullscreen_pending = true;
-            } else if ctx.input(|i| i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::P)) {
+            } else if ctx
+                .input(|i| i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::P))
+            {
                 self.fullscreen.jump_to_primary(&self.monitors);
                 self.fullscreen_pending = true;
             }
             // Ctrl+Alt+0-9 for direct monitor selection
-            for (digit, key) in [(0, egui::Key::Num0), (1, egui::Key::Num1), (2, egui::Key::Num2),
-                                  (3, egui::Key::Num3), (4, egui::Key::Num4), (5, egui::Key::Num5),
-                                  (6, egui::Key::Num6), (7, egui::Key::Num7), (8, egui::Key::Num8),
-                                  (9, egui::Key::Num9)].iter() {
+            for (digit, key) in [
+                (0, egui::Key::Num0),
+                (1, egui::Key::Num1),
+                (2, egui::Key::Num2),
+                (3, egui::Key::Num3),
+                (4, egui::Key::Num4),
+                (5, egui::Key::Num5),
+                (6, egui::Key::Num6),
+                (7, egui::Key::Num7),
+                (8, egui::Key::Num8),
+                (9, egui::Key::Num9),
+            ]
+            .iter()
+            {
                 if ctx.input(|i| i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(*key)) {
                     self.fullscreen.jump_to_monitor(&self.monitors, *digit);
                     self.fullscreen_pending = true;
@@ -383,7 +405,10 @@ impl App for VncViewerApp {
 
         // Show connection dialog if needed
         if self.show_connection_dialog {
-            if let Some(result) = self.connection_dialog.show(ctx, &mut self.show_connection_dialog) {
+            if let Some(result) = self
+                .connection_dialog
+                .show(ctx, &mut self.show_connection_dialog)
+            {
                 match result {
                     Ok(connection_info) => {
                         info!("Connection attempt: {}", connection_info.server);
@@ -393,7 +418,9 @@ impl App for VncViewerApp {
 
                         // Add to recent servers
                         if !self.config.recent_servers.contains(&connection_info.server) {
-                            self.config.recent_servers.insert(0, connection_info.server.clone());
+                            self.config
+                                .recent_servers
+                                .insert(0, connection_info.server.clone());
                             self.config.recent_servers.truncate(10); // Keep last 10
                         }
 
@@ -403,26 +430,38 @@ impl App for VncViewerApp {
                         let shared = connection_info.shared;
 
                         match self.runtime.block_on(async {
-                            self.vnc_connection.connect(&server, None, password, shared).await
+                            self.vnc_connection
+                                .connect(&server, None, password, shared)
+                                .await
                         }) {
                             Ok(()) => {
-                                if let ConnectionStatus::Connected { width, height, server_name } = self.vnc_connection.status() {
+                                if let ConnectionStatus::Connected {
+                                    width,
+                                    height,
+                                    server_name,
+                                } = self.vnc_connection.status()
+                                {
                                     info!("Successfully connected to {}", server_name);
                                     self.state = AppState::Connected;
                                     self.connection_stats.connected = true;
                                     self.connection_stats.server_name = server_name.clone();
-                                    self.connection_stats.framebuffer_size = (*width as u32, *height as u32);
+                                    self.connection_stats.framebuffer_size =
+                                        (*width as u32, *height as u32);
                                 }
                             }
                             Err(e) => {
                                 warn!("Connection failed: {}", e);
-                                self.state = AppState::Disconnected { reason: format!("Connection failed: {}", e) };
+                                self.state = AppState::Disconnected {
+                                    reason: format!("Connection failed: {}", e),
+                                };
                             }
                         }
                     }
                     Err(e) => {
                         warn!("Connection dialog error: {}", e);
-                        self.state = AppState::Disconnected { reason: e.to_string() };
+                        self.state = AppState::Disconnected {
+                            reason: e.to_string(),
+                        };
                     }
                 }
             }
@@ -430,7 +469,10 @@ impl App for VncViewerApp {
 
         // Show options dialog if needed
         if self.show_options_dialog {
-            if let Some(new_config) = self.options_dialog.show(ctx, &mut self.show_options_dialog, &self.config) {
+            if let Some(new_config) =
+                self.options_dialog
+                    .show(ctx, &mut self.show_options_dialog, &self.config)
+            {
                 self.config = new_config;
                 if let Err(e) = self.save_config() {
                     warn!("Failed to save configuration: {}", e);
@@ -456,14 +498,21 @@ impl App for VncViewerApp {
                 }
                 AppState::Connected => {
                     // Show desktop window
-                    self.desktop_window.show(ui, &self.config, &self.connection_stats);
+                    self.desktop_window.show(
+                        ui,
+                        &self.config,
+                        &self.connection_stats,
+                        Some(&self.vnc_connection),
+                    );
                 }
                 AppState::Disconnected { reason } => {
                     let reason_text = reason.clone();
-                    let reconnect_clicked = ui.centered_and_justified(|ui| {
-                        ui.label(format!("Disconnected: {}", reason_text));
-                        ui.button("Reconnect").clicked()
-                    }).inner;
+                    let reconnect_clicked = ui
+                        .centered_and_justified(|ui| {
+                            ui.label(format!("Disconnected: {}", reason_text));
+                            ui.button("Reconnect").clicked()
+                        })
+                        .inner;
 
                     if reconnect_clicked {
                         self.show_connection_dialog = true;

@@ -2,6 +2,7 @@ use eframe::egui;
 use tracing::{debug, warn};
 
 use crate::app::{AppConfig, ConnectionStats};
+use crate::vnc_connection::VncConnection;
 
 pub struct DesktopWindow {
     // Display state
@@ -43,7 +44,13 @@ impl DesktopWindow {
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, config: &AppConfig, stats: &ConnectionStats) {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        config: &AppConfig,
+        stats: &ConnectionStats,
+        vnc_connection: Option<&VncConnection>,
+    ) {
         // Update FPS calculation
         self.update_fps();
 
@@ -56,7 +63,7 @@ impl DesktopWindow {
         let rect = response.rect;
 
         // Handle input events
-        self.handle_input(&response, rect, config.view_only);
+        self.handle_input(&response, rect, config.view_only, vnc_connection);
 
         // Render the remote desktop
         self.render_desktop(ui, rect, stats);
@@ -106,7 +113,13 @@ impl DesktopWindow {
         }
     }
 
-    fn handle_input(&mut self, response: &egui::Response, rect: egui::Rect, view_only: bool) {
+    fn handle_input(
+        &mut self,
+        response: &egui::Response,
+        rect: egui::Rect,
+        view_only: bool,
+        vnc_connection: Option<&VncConnection>,
+    ) {
         if view_only {
             return; // No input handling in view-only mode
         }
@@ -118,7 +131,7 @@ impl DesktopWindow {
             // Convert to framebuffer coordinates
             if let Some(fb_pos) = self.screen_to_framebuffer(pos, rect) {
                 debug!("Mouse at framebuffer position: {:?}", fb_pos);
-                // TODO: Send mouse position to VNC server
+                self.send_pointer(vnc_connection, fb_pos, 0);
             }
         }
 
@@ -127,7 +140,8 @@ impl DesktopWindow {
             if let Some(pos) = response.interact_pointer_pos() {
                 if let Some(fb_pos) = self.screen_to_framebuffer(pos, rect) {
                     debug!("Left click at framebuffer position: {:?}", fb_pos);
-                    // TODO: Send mouse click to VNC server
+                    self.send_pointer(vnc_connection, fb_pos, 1);
+                    self.send_pointer(vnc_connection, fb_pos, 0);
                 }
             }
         }
@@ -137,7 +151,8 @@ impl DesktopWindow {
             if let Some(pos) = response.interact_pointer_pos() {
                 if let Some(fb_pos) = self.screen_to_framebuffer(pos, rect) {
                     debug!("Right click at framebuffer position: {:?}", fb_pos);
-                    // TODO: Send right mouse click to VNC server
+                    self.send_pointer(vnc_connection, fb_pos, 4);
+                    self.send_pointer(vnc_connection, fb_pos, 0);
                 }
             }
         }
@@ -158,10 +173,27 @@ impl DesktopWindow {
 
         // Handle scroll wheel for zooming
         let scroll_delta = response.ctx.input(|i| i.smooth_scroll_delta);
-        if scroll_delta.y != 0.0 && rect.contains(response.interact_pointer_pos().unwrap_or_default()) {
+        if scroll_delta.y != 0.0
+            && rect.contains(response.interact_pointer_pos().unwrap_or_default())
+        {
             let zoom_factor = if scroll_delta.y > 0.0 { 1.1 } else { 0.9 };
             self.viewport_scale = (self.viewport_scale * zoom_factor).clamp(0.1, 10.0);
             debug!("Zoomed to scale: {:.2}", self.viewport_scale);
+        }
+    }
+
+    fn send_pointer(
+        &self,
+        vnc_connection: Option<&VncConnection>,
+        fb_pos: egui::Pos2,
+        buttons: u8,
+    ) {
+        if let Some(connection) = vnc_connection {
+            let x = fb_pos.x.round().clamp(0.0, u16::MAX as f32) as u16;
+            let y = fb_pos.y.round().clamp(0.0, u16::MAX as f32) as u16;
+            if let Err(err) = connection.send_pointer(x, y, buttons) {
+                warn!("Failed to send pointer event: {}", err);
+            }
         }
     }
 
@@ -176,13 +208,16 @@ impl DesktopWindow {
                 egui::Align2::CENTER_CENTER,
                 "Not connected",
                 egui::FontId::proportional(24.0),
-                egui::Color32::GRAY
+                egui::Color32::GRAY,
             );
             return;
         }
 
         // Create or update display texture
-        if self.display_texture.is_none() && stats.framebuffer_size.0 > 0 && stats.framebuffer_size.1 > 0 {
+        if self.display_texture.is_none()
+            && stats.framebuffer_size.0 > 0
+            && stats.framebuffer_size.1 > 0
+        {
             self.create_display_texture(ui.ctx(), stats.framebuffer_size);
         }
 
@@ -190,7 +225,7 @@ impl DesktopWindow {
         if let Some(texture) = &self.display_texture {
             let fb_size = egui::Vec2::new(
                 stats.framebuffer_size.0 as f32,
-                stats.framebuffer_size.1 as f32
+                stats.framebuffer_size.1 as f32,
             );
 
             // Calculate display rectangle
@@ -201,7 +236,7 @@ impl DesktopWindow {
                 texture.id(),
                 display_rect,
                 egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(1.0, 1.0)),
-                egui::Color32::WHITE
+                egui::Color32::WHITE,
             );
 
             // Draw selection or cursor if needed
@@ -221,17 +256,18 @@ impl DesktopWindow {
             pixels,
         };
 
-        self.display_texture = Some(ctx.load_texture(
-            "desktop",
-            color_image,
-            egui::TextureOptions::LINEAR
-        ));
+        self.display_texture =
+            Some(ctx.load_texture("desktop", color_image, egui::TextureOptions::LINEAR));
 
         self.framebuffer_size = size;
         debug!("Created display texture: {}x{}", size.0, size.1);
     }
 
-    fn calculate_display_rect(&self, available_rect: egui::Rect, fb_size: egui::Vec2) -> egui::Rect {
+    fn calculate_display_rect(
+        &self,
+        available_rect: egui::Rect,
+        fb_size: egui::Vec2,
+    ) -> egui::Rect {
         if self.native_scaling {
             // 1:1 native scaling with panning offset
             let size = fb_size * self.viewport_scale;
@@ -258,8 +294,10 @@ impl DesktopWindow {
             if display_rect.contains(mouse_pos) {
                 // Draw a simple cursor indicator
                 let cursor_size = 2.0;
-                let cursor_rect = egui::Rect::from_center_size(mouse_pos, egui::Vec2::splat(cursor_size));
-                ui.painter().rect_filled(cursor_rect, 0.0, egui::Color32::WHITE);
+                let cursor_rect =
+                    egui::Rect::from_center_size(mouse_pos, egui::Vec2::splat(cursor_size));
+                ui.painter()
+                    .rect_filled(cursor_rect, 0.0, egui::Color32::WHITE);
             }
         }
     }
@@ -267,19 +305,19 @@ impl DesktopWindow {
     fn show_info_overlay(&self, ui: &mut egui::Ui, rect: egui::Rect, stats: &ConnectionStats) {
         let overlay_rect = egui::Rect::from_min_size(
             rect.min + egui::Vec2::new(10.0, 10.0),
-            egui::Vec2::new(300.0, 200.0)
+            egui::Vec2::new(300.0, 200.0),
         );
 
         ui.painter().rect_filled(
             overlay_rect,
             5.0,
-            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200)
+            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200),
         );
 
         ui.painter().rect_stroke(
             overlay_rect,
             5.0,
-            egui::Stroke::new(1.0, egui::Color32::GRAY)
+            egui::Stroke::new(1.0, egui::Color32::GRAY),
         );
 
         let text_pos = overlay_rect.min + egui::Vec2::new(10.0, 10.0);
@@ -288,7 +326,10 @@ impl DesktopWindow {
 
         let info_lines = vec![
             format!("Server: {}", stats.server_name),
-            format!("Resolution: {}x{}", stats.framebuffer_size.0, stats.framebuffer_size.1),
+            format!(
+                "Resolution: {}x{}",
+                stats.framebuffer_size.0, stats.framebuffer_size.1
+            ),
             format!("Encoding: {}", stats.encoding),
             format!("FPS: {:.1}", self.current_fps),
             format!("Latency: {}ms", stats.latency_ms),
@@ -302,7 +343,7 @@ impl DesktopWindow {
                 egui::Align2::LEFT_TOP,
                 line,
                 font_id.clone(),
-                egui::Color32::WHITE
+                egui::Color32::WHITE,
             );
         }
     }
@@ -314,7 +355,11 @@ impl DesktopWindow {
         }
     }
 
-    fn screen_to_framebuffer(&self, screen_pos: egui::Pos2, display_rect: egui::Rect) -> Option<egui::Pos2> {
+    fn screen_to_framebuffer(
+        &self,
+        screen_pos: egui::Pos2,
+        display_rect: egui::Rect,
+    ) -> Option<egui::Pos2> {
         // Convert screen coordinates to framebuffer coordinates
         if !display_rect.contains(screen_pos) {
             return None;
@@ -322,7 +367,7 @@ impl DesktopWindow {
 
         let fb_size = egui::Vec2::new(
             self.framebuffer_size.0 as f32,
-            self.framebuffer_size.1 as f32
+            self.framebuffer_size.1 as f32,
         );
 
         let relative_pos = screen_pos - display_rect.min;
@@ -347,7 +392,13 @@ impl DesktopWindow {
     /// Update the display texture with new framebuffer data
     ///
     /// Expects RGB888 format (3 bytes per pixel) from VNC client
-    pub fn update_framebuffer(&mut self, ctx: &egui::Context, width: u32, height: u32, data: &[u8]) {
+    pub fn update_framebuffer(
+        &mut self,
+        ctx: &egui::Context,
+        width: u32,
+        height: u32,
+        data: &[u8],
+    ) {
         let size = (width, height);
         if size != self.framebuffer_size {
             // Framebuffer size changed, recreate texture
@@ -361,7 +412,11 @@ impl DesktopWindow {
         let expected_bytes = width_usize * height_usize * 3; // RGB888 = 3 bytes per pixel
 
         if data.len() != expected_bytes {
-            warn!("Framebuffer data size mismatch: expected {} (RGB888), got {}", expected_bytes, data.len());
+            warn!(
+                "Framebuffer data size mismatch: expected {} (RGB888), got {}",
+                expected_bytes,
+                data.len()
+            );
             return;
         }
 
@@ -369,7 +424,7 @@ impl DesktopWindow {
         for chunk in data.chunks_exact(3) {
             // Convert RGB888 to RGBA (add full opacity)
             pixels.push(egui::Color32::from_rgba_unmultiplied(
-                chunk[0], chunk[1], chunk[2], 255
+                chunk[0], chunk[1], chunk[2], 255,
             ));
         }
 
@@ -382,11 +437,8 @@ impl DesktopWindow {
         if let Some(texture) = &mut self.display_texture {
             texture.set(color_image, egui::TextureOptions::LINEAR);
         } else {
-            self.display_texture = Some(ctx.load_texture(
-                "desktop",
-                color_image,
-                egui::TextureOptions::LINEAR
-            ));
+            self.display_texture =
+                Some(ctx.load_texture("desktop", color_image, egui::TextureOptions::LINEAR));
         }
 
         debug!("Updated framebuffer texture: {}x{}", size.0, size.1);
