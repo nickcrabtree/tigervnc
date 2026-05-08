@@ -8,6 +8,8 @@ pub struct VncConnection {
     handle: Option<ClientHandle>,
     /// Connection status
     status: ConnectionStatus,
+    /// Whether input events should be suppressed.
+    view_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,6 +30,7 @@ impl VncConnection {
         Self {
             handle: None,
             status: ConnectionStatus::Disconnected,
+            view_only: false,
         }
     }
 
@@ -127,6 +130,11 @@ impl VncConnection {
         self.handle.as_ref()
     }
 
+    /// Enables or disables view-only mode.
+    pub fn set_view_only(&mut self, view_only: bool) {
+        self.view_only = view_only;
+    }
+
     /// Polls for server events without blocking.
     ///
     /// Returns the next event if available, or None if no events are ready.
@@ -136,6 +144,9 @@ impl VncConnection {
 
     /// Sends a key event to the server.
     pub fn send_key(&self, keysym: u32, down: bool) -> Result<()> {
+        if self.view_only {
+            return Ok(());
+        }
         if let Some(handle) = &self.handle {
             handle.send_key_event(keysym, down)?;
         }
@@ -144,6 +155,9 @@ impl VncConnection {
 
     /// Sends a pointer event to the server.
     pub fn send_pointer(&self, x: u16, y: u16, buttons: u8) -> Result<()> {
+        if self.view_only {
+            return Ok(());
+        }
         if let Some(handle) = &self.handle {
             handle.send_pointer_event(x, y, buttons)?;
         }

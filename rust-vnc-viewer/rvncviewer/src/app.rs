@@ -170,6 +170,9 @@ impl VncViewerApp {
         fullscreen.set_target(&monitors, target_monitor_selector.as_deref());
         fullscreen.set_enabled(config.fullscreen);
 
+        let mut vnc_connection = VncConnection::new();
+        vnc_connection.set_view_only(config.view_only);
+
         // Determine initial state
         let (state, show_connection_dialog, current_server) =
             if let Some(server) = args.server.clone() {
@@ -200,7 +203,7 @@ impl VncViewerApp {
             fullscreen,
             monitors,
             target_monitor_selector,
-            vnc_connection: VncConnection::new(),
+            vnc_connection,
             runtime,
         })
     }
@@ -250,7 +253,7 @@ impl VncViewerApp {
             }
             MenuAction::ToggleViewOnly => {
                 self.config.view_only = !self.config.view_only;
-                // TODO: Apply view-only mode to connection
+                self.vnc_connection.set_view_only(self.config.view_only);
             }
             MenuAction::ScalingNative => {
                 self.config.scaling_mode = "native".to_string();
@@ -473,7 +476,9 @@ impl App for VncViewerApp {
                 self.options_dialog
                     .show(ctx, &mut self.show_options_dialog, &self.config)
             {
+                let view_only = new_config.view_only;
                 self.config = new_config;
+                self.vnc_connection.set_view_only(view_only);
                 if let Err(e) = self.save_config() {
                     warn!("Failed to save configuration: {}", e);
                 }
