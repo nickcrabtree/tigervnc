@@ -87,7 +87,12 @@ impl OptionsDialog {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, show: &mut bool, current_config: &AppConfig) -> Option<AppConfig> {
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        show: &mut bool,
+        current_config: &AppConfig,
+    ) -> Option<AppConfig> {
         // Reset state when dialog opens
         if *show && self.state.scaling_mode != current_config.scaling_mode {
             self.state = OptionsState::from(current_config);
@@ -126,7 +131,11 @@ impl OptionsDialog {
                                             "fill" => "Fill window",
                                             _ => mode,
                                         };
-                                        ui.selectable_value(&mut self.state.scaling_mode, mode.clone(), display_text);
+                                        ui.selectable_value(
+                                            &mut self.state.scaling_mode,
+                                            mode.clone(),
+                                            display_text,
+                                        );
                                     }
                                 });
                         });
@@ -144,14 +153,23 @@ impl OptionsDialog {
                         ui.separator();
                         ui.add_space(5.0);
 
-                        ui.checkbox(&mut self.state.auto_reconnect, "Automatically reconnect on disconnection");
+                        ui.checkbox(
+                            &mut self.state.auto_reconnect,
+                            "Automatically reconnect on disconnection",
+                        );
 
                         if self.state.auto_reconnect {
                             ui.horizontal(|ui| {
                                 ui.label("Reconnect delay:");
                                 ui.add_space(10.0);
                                 let mut delay_sec = (self.state.reconnect_delay_ms / 1000) as u32;
-                                if ui.add(egui::Slider::new(&mut delay_sec, 1..=60).suffix(" seconds")).changed() {
+                                if ui
+                                    .add(
+                                        egui::Slider::new(&mut delay_sec, 1..=60)
+                                            .suffix(" seconds"),
+                                    )
+                                    .changed()
+                                {
                                     self.state.reconnect_delay_ms = (delay_sec as u64) * 1000;
                                 }
                             });
@@ -194,7 +212,8 @@ impl OptionsDialog {
                                 }
 
                                 // Move down button
-                                if i < encodings_copy.len() - 1 && ui.small_button("▼").clicked() {
+                                if i < encodings_copy.len() - 1 && ui.small_button("▼").clicked()
+                                {
                                     swap_action = Some((i, i + 1));
                                 }
                             });

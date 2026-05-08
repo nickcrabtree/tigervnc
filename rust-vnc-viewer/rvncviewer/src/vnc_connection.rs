@@ -77,7 +77,10 @@ impl VncConnection {
         });
 
         // Check for initial Connected event
-        if let Ok(event) = handle.events().recv_timeout(std::time::Duration::from_secs(5)) {
+        if let Ok(event) = handle
+            .events()
+            .recv_timeout(std::time::Duration::from_secs(5))
+        {
             if let ServerEvent::Connected {
                 width,
                 height,

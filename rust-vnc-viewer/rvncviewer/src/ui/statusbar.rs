@@ -32,7 +32,10 @@ impl StatusBar {
 
                 if stats.connected {
                     // Framebuffer info
-                    ui.label(format!("{}×{}", stats.framebuffer_size.0, stats.framebuffer_size.1));
+                    ui.label(format!(
+                        "{}×{}",
+                        stats.framebuffer_size.0, stats.framebuffer_size.1
+                    ));
 
                     ui.separator();
 
@@ -58,7 +61,10 @@ impl StatusBar {
                 // Spacer to push the following items to the right
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Toggle details button
-                    if ui.small_button(if self.show_details { "Less" } else { "More" }).clicked() {
+                    if ui
+                        .small_button(if self.show_details { "Less" } else { "More" })
+                        .clicked()
+                    {
                         self.show_details = !self.show_details;
                     }
 

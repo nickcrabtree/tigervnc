@@ -10,8 +10,9 @@ fn init_logging(verbose: bool) -> Result<()> {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| format!("rvncviewer={},rfb_client=info,rfb_display=info", log_level).into())
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                format!("rvncviewer={},rfb_client=info,rfb_display=info", log_level).into()
+            }),
         )
         .with_target(false)
         .with_thread_ids(false)
@@ -28,13 +29,10 @@ fn create_app(args: Args) -> Result<VncViewerApp> {
     // Initialize configuration directory
     let config_dir = match &args.config {
         Some(path) => path.parent().map(|p| p.to_path_buf()),
-        None => {
-            directories::UserDirs::new()
-                .and_then(|dirs| {
-                    let home_dir = dirs.home_dir().to_path_buf();
-                    Some(home_dir.join(".config/rvncviewer"))
-                })
-        }
+        None => directories::UserDirs::new().and_then(|dirs| {
+            let home_dir = dirs.home_dir().to_path_buf();
+            Some(home_dir.join(".config/rvncviewer"))
+        }),
     };
 
     if let Some(dir) = &config_dir {
@@ -128,14 +126,14 @@ fn create_fallback_icon() -> Result<egui::IconData> {
             // Simple design: blue background with white "VNC" text area
             if x >= 4 && x <= 28 && y >= 12 && y <= 20 {
                 // White text area
-                rgba[idx] = 255;     // R
+                rgba[idx] = 255; // R
                 rgba[idx + 1] = 255; // G
                 rgba[idx + 2] = 255; // B
                 rgba[idx + 3] = 255; // A
             } else {
                 // Blue background
-                rgba[idx] = 41;      // R
-                rgba[idx + 1] = 98;  // G
+                rgba[idx] = 41; // R
+                rgba[idx + 1] = 98; // G
                 rgba[idx + 2] = 255; // B
                 rgba[idx + 3] = 255; // A
             }

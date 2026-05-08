@@ -13,8 +13,8 @@ pub struct ConnectionInfo {
     pub view_only: bool,
     pub shared: bool,
     pub encoding_preferences: Vec<String>,
-    pub quality: u8,        // 1-9 for JPEG quality
-    pub compression: u8,    // 1-9 for compression level
+    pub quality: u8,     // 1-9 for JPEG quality
+    pub compression: u8, // 1-9 for compression level
 }
 
 impl Default for ConnectionInfo {
@@ -99,7 +99,7 @@ impl ConnectionDialog {
                         let server_response = ui.add_sized(
                             [250.0, 20.0],
                             egui::TextEdit::singleline(&mut self.server_input)
-                                .hint_text("hostname:display or hostname:port")
+                                .hint_text("hostname:display or hostname:port"),
                         );
 
                         // Focus on server input when dialog opens
@@ -126,7 +126,14 @@ impl ConnectionDialog {
                                 .width(250.0)
                                 .show_ui(ui, |ui| {
                                     for server in &self.recent_servers.clone() {
-                                        if ui.selectable_value(&mut self.server_input, server.clone(), server).clicked() {
+                                        if ui
+                                            .selectable_value(
+                                                &mut self.server_input,
+                                                server.clone(),
+                                                server,
+                                            )
+                                            .clicked()
+                                        {
                                             debug!("Selected recent server: {}", server);
                                         }
                                     }
@@ -165,7 +172,13 @@ impl ConnectionDialog {
                     ui.add_space(5.0);
 
                     // Advanced options toggle
-                    if ui.button(format!("{} Advanced Options", if self.show_advanced { "Hide" } else { "Show" })).clicked() {
+                    if ui
+                        .button(format!(
+                            "{} Advanced Options",
+                            if self.show_advanced { "Hide" } else { "Show" }
+                        ))
+                        .clicked()
+                    {
                         self.show_advanced = !self.show_advanced;
                         debug!("Advanced options toggled: {}", self.show_advanced);
                     }
@@ -184,10 +197,21 @@ impl ConnectionDialog {
                                 .width(120.0)
                                 .show_ui(ui, |ui| {
                                     for encoding in &self.available_encodings.clone() {
-                                        if ui.selectable_value(&mut self.selected_encoding, encoding.clone(), encoding).clicked() {
+                                        if ui
+                                            .selectable_value(
+                                                &mut self.selected_encoding,
+                                                encoding.clone(),
+                                                encoding,
+                                            )
+                                            .clicked()
+                                        {
                                             // Move selected encoding to front of preferences
-                                            self.connection_info.encoding_preferences.retain(|e| e != encoding);
-                                            self.connection_info.encoding_preferences.insert(0, encoding.clone());
+                                            self.connection_info
+                                                .encoding_preferences
+                                                .retain(|e| e != encoding);
+                                            self.connection_info
+                                                .encoding_preferences
+                                                .insert(0, encoding.clone());
                                             debug!("Selected encoding: {}", encoding);
                                         }
                                     }
@@ -200,13 +224,19 @@ impl ConnectionDialog {
                         ui.horizontal(|ui| {
                             ui.label("JPEG Quality:");
                             ui.add_space(5.0);
-                            ui.add(egui::Slider::new(&mut self.connection_info.quality, 1..=9).text("quality"));
+                            ui.add(
+                                egui::Slider::new(&mut self.connection_info.quality, 1..=9)
+                                    .text("quality"),
+                            );
 
                             ui.add_space(20.0);
 
                             ui.label("Compression:");
                             ui.add_space(5.0);
-                            ui.add(egui::Slider::new(&mut self.connection_info.compression, 1..=9).text("level"));
+                            ui.add(
+                                egui::Slider::new(&mut self.connection_info.compression, 1..=9)
+                                    .text("level"),
+                            );
                         });
                     }
 
@@ -244,7 +274,7 @@ impl ConnectionDialog {
         if self.server_input.trim().is_empty() {
             self.validation_errors.insert(
                 "server".to_string(),
-                "Server address is required".to_string()
+                "Server address is required".to_string(),
             );
             return Err(anyhow!("Server address is required"));
         }
@@ -254,7 +284,7 @@ impl ConnectionDialog {
         if let Err(e) = self.parse_server_address(&server) {
             self.validation_errors.insert(
                 "server".to_string(),
-                format!("Invalid server address: {}", e)
+                format!("Invalid server address: {}", e),
             );
             return Err(anyhow!("Invalid server address: {}", e));
         }
@@ -283,7 +313,8 @@ impl ConnectionDialog {
         }
 
         let (hostname, port) = if let Some((host, port_or_display)) = server.rsplit_once(':') {
-            let port_num: u16 = port_or_display.parse()
+            let port_num: u16 = port_or_display
+                .parse()
                 .map_err(|_| anyhow!("Invalid port or display number: {}", port_or_display))?;
 
             let actual_port = if port_num < 100 {
@@ -323,16 +354,34 @@ mod tests {
         let dialog = ConnectionDialog::new(&AppConfig::default());
 
         // Test display format
-        assert_eq!(dialog.parse_server_address("localhost:0").unwrap(), ("localhost".to_string(), 5900));
-        assert_eq!(dialog.parse_server_address("example.com:1").unwrap(), ("example.com".to_string(), 5901));
-        assert_eq!(dialog.parse_server_address("host:99").unwrap(), ("host".to_string(), 5999));
+        assert_eq!(
+            dialog.parse_server_address("localhost:0").unwrap(),
+            ("localhost".to_string(), 5900)
+        );
+        assert_eq!(
+            dialog.parse_server_address("example.com:1").unwrap(),
+            ("example.com".to_string(), 5901)
+        );
+        assert_eq!(
+            dialog.parse_server_address("host:99").unwrap(),
+            ("host".to_string(), 5999)
+        );
 
         // Test port format
-        assert_eq!(dialog.parse_server_address("localhost:5900").unwrap(), ("localhost".to_string(), 5900));
-        assert_eq!(dialog.parse_server_address("example.com:5901").unwrap(), ("example.com".to_string(), 5901));
+        assert_eq!(
+            dialog.parse_server_address("localhost:5900").unwrap(),
+            ("localhost".to_string(), 5900)
+        );
+        assert_eq!(
+            dialog.parse_server_address("example.com:5901").unwrap(),
+            ("example.com".to_string(), 5901)
+        );
 
         // Test default port
-        assert_eq!(dialog.parse_server_address("localhost").unwrap(), ("localhost".to_string(), 5900));
+        assert_eq!(
+            dialog.parse_server_address("localhost").unwrap(),
+            ("localhost".to_string(), 5900)
+        );
 
         // Test invalid addresses
         assert!(dialog.parse_server_address("").is_err());
