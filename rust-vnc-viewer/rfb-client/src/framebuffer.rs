@@ -508,10 +508,18 @@ impl Framebuffer {
                     buffer_after
                 );
 
+                let payload_bytes = buffer_before.saturating_sub(buffer_after) as u64;
                 // Track cache protocol bandwidth and counters based on encoding.
-                self.track_cache_bandwidth(
-                    &rect,
-                    buffer_before.saturating_sub(buffer_after) as u64,
+                self.track_cache_bandwidth(&rect, payload_bytes);
+                tracing::info!(
+                    "CCDBG CLIENT dataRectDone: rect=[{},{}-{}x{}] enc={} bytes={} proto={:?}",
+                    rect.x,
+                    rect.y,
+                    rect.width,
+                    rect.height,
+                    rect.encoding,
+                    payload_bytes,
+                    self.cache_protocol
                 );
 
                 rects_decoded += 1;
@@ -563,10 +571,18 @@ impl Framebuffer {
                     buffer_after
                 );
 
+                let payload_bytes = buffer_before.saturating_sub(buffer_after) as u64;
                 // Track cache protocol bandwidth and counters based on encoding.
-                self.track_cache_bandwidth(
-                    &rect,
-                    buffer_before.saturating_sub(buffer_after) as u64,
+                self.track_cache_bandwidth(&rect, payload_bytes);
+                tracing::info!(
+                    "CCDBG CLIENT dataRectDone: rect=[{},{}-{}x{}] enc={} bytes={} proto={:?}",
+                    rect.x,
+                    rect.y,
+                    rect.width,
+                    rect.height,
+                    rect.encoding,
+                    payload_bytes,
+                    self.cache_protocol
                 );
 
                 rects_decoded += 1;
