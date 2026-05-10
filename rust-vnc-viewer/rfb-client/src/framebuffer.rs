@@ -472,7 +472,7 @@ impl Framebuffer {
                     RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e))
                 })?;
                 tracing::info!(
-                    "FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}",
+                    "CCDBG CLIENT dataRect: rect=[{},{}-{}x{}] enc={}",
                     rect.x,
                     rect.y,
                     rect.width,
@@ -534,7 +534,7 @@ impl Framebuffer {
                     RfbClientError::Protocol(format!("failed to read Rectangle header: {}", e))
                 })?;
                 tracing::info!(
-                    "FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}",
+                    "CCDBG CLIENT dataRect: rect=[{},{}-{}x{}] enc={}",
                     rect.x,
                     rect.y,
                     rect.width,
@@ -676,7 +676,7 @@ impl Framebuffer {
         let mut damage = Vec::with_capacity(rects.len());
         for rect in rects {
             tracing::info!(
-                "FramebufferUpdate rect: x={}, y={}, w={}, h={}, encoding={}",
+                "CCDBG CLIENT dataRect: rect=[{},{}-{}x{}] enc={}",
                 rect.x,
                 rect.y,
                 rect.width,
