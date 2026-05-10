@@ -158,7 +158,7 @@ impl Decoder for CachedRectDecoder {
                 );
                 // Emit a canonical protocol trace line for e2e parser
                 tracing::info!(
-                    "CachedRect: cacheId={} rect=[{},{} {}x{}]",
+                    "CCDBG CLIENT REF: cacheId={} rect=[{},{}-{}x{}]",
                     cached_rect.cache_id,
                     rect.x,
                     rect.y,

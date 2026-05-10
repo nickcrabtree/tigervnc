@@ -185,7 +185,7 @@ impl Decoder for CachedRectInitDecoder {
         );
 
         tracing::info!(
-            "CachedRectInit: cache_id={}, actual_encoding={}, rect={}x{} at ({},{})",
+            "CCDBG CLIENT INIT: cacheId={} encoding={} rect={}x{} at ({},{})",
             cached_rect_init.cache_id,
             cached_rect_init.actual_encoding,
             rect.width,
