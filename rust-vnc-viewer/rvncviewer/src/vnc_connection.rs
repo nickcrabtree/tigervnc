@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rfb_client::{Client, ClientBuilder, ClientHandle, Config, ServerEvent};
+use rfb_client::{ClientBuilder, ClientHandle, Config, ServerEvent};
 use tracing::info;
 
 /// Manages the VNC client connection and event processing.

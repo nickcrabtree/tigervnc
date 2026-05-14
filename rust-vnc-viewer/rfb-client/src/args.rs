@@ -15,7 +15,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
-use crate::config::{Config, ConfigBuilder};
+use crate::config::Config;
 use clap::Parser;
 
 /// VNC client command-line arguments.
