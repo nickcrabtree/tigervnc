@@ -88,6 +88,8 @@ pub struct TraceSummary {
     pub persistent_cache_query: u32,
     pub persistent_cache_eviction: u32,
     pub request_cached_data: u32,
+    pub cache_ref: u32,
+    pub cache_init: u32,
 }
 
 #[allow(dead_code)]
@@ -104,6 +106,8 @@ where
                 "PersistentCacheQuery" => s.persistent_cache_query += 1,
                 "PersistentCacheEviction" => s.persistent_cache_eviction += 1,
                 "RequestCachedData" => s.request_cached_data += 1,
+                "CacheRef" => s.cache_ref += 1,
+                "CacheInit" => s.cache_init += 1,
                 _ => {}
             }
         }
@@ -175,5 +179,31 @@ mod tests {
             ),
             (1, 1, 1, 1, 1)
         );
+    }
+}
+
+
+#[cfg(test)]
+mod m1_cache_trace_tests {
+    use super::*;
+
+    #[test]
+    fn parses_cache_ref_and_cache_init_trace_lines() {
+        let trace = [
+            "IN CacheRef kind=content cache_id=42 x=1 y=2 w=64 h=32 bytes=20",
+            "IN CacheInit kind=content cache_id=42 encoding=ZRLE x=1 y=2 w=64 h=32 bytes=128",
+            "IN CacheRef kind=persistent ref=00112233445566778899aabbccddeeff x=0 y=0 w=16 h=16 bytes=20",
+            "IN CacheInit kind=persistent ref=00112233445566778899aabbccddeeff encoding=ZRLE x=0 y=0 w=16 h=16 bytes=256",
+        ];
+        let parsed: Vec<_> = trace.iter().filter_map(|line| parse_trace_message(line)).collect();
+        assert_eq!(parsed.len(), 4);
+        assert_eq!(parsed[0].direction, "IN");
+        assert_eq!(parsed[0].name, "CacheRef");
+        assert!(parsed[0].fields.contains("kind=content"));
+        assert_eq!(parsed[1].name, "CacheInit");
+        assert!(parsed[1].fields.contains("encoding=ZRLE"));
+        let summary = summarise_trace(trace);
+        assert_eq!(summary.cache_ref, 2);
+        assert_eq!(summary.cache_init, 2);
     }
 }

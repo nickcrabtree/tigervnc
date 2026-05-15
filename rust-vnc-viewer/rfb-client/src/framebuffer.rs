@@ -3,6 +3,7 @@
 //! This module manages the client's framebuffer and provides a registry of
 //! encoding decoders to apply server framebuffer update rectangles.
 
+use crate::protocol_trace;
 use crate::cache_stats::{
     track_content_cache_init, track_content_cache_ref, track_persistent_cache_init,
     track_persistent_cache_ref, CacheProtocolStats,
@@ -135,6 +136,20 @@ pub(crate) enum DecoderEntry {
     PersistentCachedRectSeed(enc::PersistentCachedRectSeedDecoder),
 }
 
+
+fn trace_cache_decode_event(event: &str, kind: &str, id_field: &str, encoding: &str, rect: &rfb_protocol::messages::types::Rectangle) {
+    if !protocol_trace::enabled() {
+        return;
+    }
+    protocol_trace::in_msg(
+        event,
+        &format!(
+            "kind={} {}=unknown encoding={} x={} y={} w={} h={} bytes=unknown",
+            kind, id_field, encoding, rect.x, rect.y, rect.width, rect.height
+        ),
+    );
+}
+
 impl DecoderEntry {
     fn encoding_type(&self) -> i32 {
         match self {
@@ -170,10 +185,22 @@ impl DecoderEntry {
             Self::TightShared(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::ZRLE(d) => d.decode(stream, rect, pixel_format, buffer).await,
             Self::ZRLEShared(d) => d.decode(stream, rect, pixel_format, buffer).await,
-            Self::CachedRect(d) => d.decode(stream, rect, pixel_format, buffer).await,
-            Self::CachedRectInit(d) => d.decode(stream, rect, pixel_format, buffer).await,
-            Self::PersistentCachedRect(d) => d.decode(stream, rect, pixel_format, buffer).await,
-            Self::PersistentCachedRectInit(d) => d.decode(stream, rect, pixel_format, buffer).await,
+            Self::CachedRect(d) => {
+                trace_cache_decode_event("CacheRef", "content", "cache_id", "CachedRect", rect);
+                d.decode(stream, rect, pixel_format, buffer).await
+            }
+            Self::CachedRectInit(d) => {
+                trace_cache_decode_event("CacheInit", "content", "cache_id", "CachedRectInit", rect);
+                d.decode(stream, rect, pixel_format, buffer).await
+            }
+            Self::PersistentCachedRect(d) => {
+                trace_cache_decode_event("CacheRef", "persistent", "ref", "PersistentCachedRect", rect);
+                d.decode(stream, rect, pixel_format, buffer).await
+            }
+            Self::PersistentCachedRectInit(d) => {
+                trace_cache_decode_event("CacheInit", "persistent", "ref", "PersistentCachedRectInit", rect);
+                d.decode(stream, rect, pixel_format, buffer).await
+            }
             Self::PersistentCachedRectSeed(d) => d.decode(stream, rect, pixel_format, buffer).await,
         }
     }
