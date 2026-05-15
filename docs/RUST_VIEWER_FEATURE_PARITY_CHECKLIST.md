@@ -20,8 +20,8 @@ Standing checklist for `rust-vnc-viewer` and `njcvncviewer-rs` feature parity wi
 - [ ] Adapt the log-driven cache trace plan for `njcvncviewer-rs`.
 - [ ] Run no-cache, ContentCache-only, PersistentCache-only, and unified cache scenarios.
 - [ ] Compare Rust with C++ idle, first display, redisplay, refs, INITs, hits, misses, queries, evictions, and bytes.
-- [ ] Ensure Rust logs expose event type, encoding, rect, cache id or ref, bytes, and negotiated protocol.
-- [ ] Add a known-good trace fixture and parser for regression testing.
+- [x] Ensure Rust logs expose event type, encoding, rect, cache id or ref, bytes, and negotiated protocol. (Rust `protocol_trace` and cache/dataRect logs now cover these fields; runtime scenario parity remains tracked separately.)
+- [x] Add a known-good trace fixture and parser for regression testing. (`rfb-client::protocol_trace` includes parser, summariser, fixture, and M1 cache-trace unit coverage.)
 
 ## M2: Remaining parity
 
