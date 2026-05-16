@@ -27,3 +27,36 @@ For automated Rust/C++ VNC viewer testing, copy the existing C++ viewer
 headless test harness pattern and create isolated throwaway VNC servers on
 non-production ports. Do not invent ad-hoc local macOS GUI viewer runs or point
 experiments at the production servers.
+
+## Rust viewer convergence / PersistentCache parity
+
+Current convergence authority:
+- `rust-vnc-viewer/docs/CONVERGENCE_GATES.md` is the current checklist for Rust viewer ↔ C++ reference convergence work.
+- The current Rust PersistentCache implementation is 64-bit cache-ID (`u64`) based. Older references in planning docs to 16-byte hashes, `[u8; 16]`, or hash-wire-format semantics should be treated as historical until rewritten.
+
+Checkpoint commits:
+- Implementation checkpoint: `aaa3e986 rust viewer: unify PersistentCache IDs to u64`.
+- Documentation/checklist checkpoint: `406cfe8d docs: rebaseline Rust viewer convergence gates`.
+
+Gate 2 starting point — C++ reference protocol parity:
+- Start with `tests/e2e/test_cpp_persistentcache.py` and `tests/e2e/test_rust_persistentcache.py` as the smallest comparable C++ vs Rust PersistentCache pair.
+- Useful follow-on harnesses include:
+  - `tests/e2e/test_cpp_cache_back_to_back.py`
+  - `tests/e2e/test_cache_parity.py`
+  - `tests/e2e/test_persistent_cache_bandwidth.py`
+  - `tests/e2e/test_persistent_cache_eviction.py`
+- Known viewer binaries/artifacts:
+  - C++ viewer: `build/vncviewer/njcvncviewer`
+  - Rust viewer artifacts: `rust-vnc-viewer/target/...`, including `njcvncviewer-rs` builds.
+
+Protocol parity evidence to compare:
+- `PersistentCachedRect`
+- `PersistentCachedRectInit`
+- `PersistentCacheQuery`
+- `PersistentCacheEviction`
+- hit/miss counters
+- cache path / disk save-load markers
+- message order, encoding IDs, byte sizes, query batches, and eviction behaviour
+
+Workflow note:
+- Avoid unguarded `grep/find | head` pipelines under `set -euo pipefail`; they can return `rc=141` from SIGPIPE even when the generated output file is useful. Prefer bounded Python filtering, `awk`, `sed -n`, or append `|| true` around intentionally truncated pipelines.
