@@ -1,4 +1,6 @@
 # PersistentCache Protocol - Rust Implementation Guide
+> **2026-05-16 rebaseline:** Rust PersistentCache is now implemented and full-suite verified around **64-bit cache IDs (`u64`)** for PersistentCachedRect, PersistentCachedRectInit, query, eviction, and seed paths. Older references below to 16-byte hashes, `[u8; 16]`, or hash-wire-format semantics are historical context until rewritten. Use `rust-vnc-viewer/docs/CONVERGENCE_GATES.md` as the current checklist.
+
 
 **Date**: 2025-10-24 (Updated: 2025-11-17)  
 **Status**: Design and implementation guidance for Rust VNC viewer  
