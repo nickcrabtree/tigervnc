@@ -110,9 +110,9 @@ pub mod persistent_cached_rect_seed;
 pub use persistent_cached_rect_seed::PersistentCachedRectSeedDecoder;
 
 // PersistentCache encodings
-/// PersistentCachedRect encoding: reference by 16-byte content hash
+/// PersistentCachedRect encoding: reference by 64-bit cache ID
 pub const ENCODING_PERSISTENT_CACHED_RECT: i32 = 102;
-/// PersistentCachedRectInit encoding: include hash + actual encoding + data
+/// PersistentCachedRectInit encoding: include 64-bit cache ID + actual encoding + data
 pub const ENCODING_PERSISTENT_CACHED_RECT_INIT: i32 = 103;
 /// CachedRectSeed encoding: seed PersistentCache from existing framebuffer pixels.
 pub const ENCODING_CACHED_RECT_SEED: i32 = 105;

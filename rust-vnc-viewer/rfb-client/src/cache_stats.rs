@@ -107,14 +107,12 @@ pub fn track_persistent_cache_ref(
     stats: &mut CacheProtocolStats,
     rect: &Rectangle,
     pf: &ServerPixelFormat,
-    hash_len: u64,
 ) {
     let bpp_bytes = (pf.bits_per_pixel / 8) as u64;
     let pixels = rect.width as u64 * rect.height as u64;
     let uncompressed = pixels * bpp_bytes;
-    let overhead = 12u64 + 1 + hash_len;
+    let overhead = 20u64;
     let alt = 16u64 + estimate_compressed(uncompressed);
-
     stats.cached_rect_bytes = stats.cached_rect_bytes.saturating_add(overhead);
     stats.alternative_bytes = stats.alternative_bytes.saturating_add(alt);
     stats.cached_rect_count = stats.cached_rect_count.saturating_add(1);
@@ -124,17 +122,11 @@ pub fn track_persistent_cache_ref(
 ///
 /// `compressed_bytes` should be the size of the encoded payload excluding
 /// the 16-byte hash and 4-byte inner encoding fields.
-pub fn track_persistent_cache_init(
-    stats: &mut CacheProtocolStats,
-    hash_len: u64,
-    compressed_bytes: u64,
-) {
-    // Overhead: 12 header + 1-byte hashLen + hashLen bytes + 4-byte encoding.
-    let overhead = 12u64 + 1 + hash_len + 4;
+pub fn track_persistent_cache_init(stats: &mut CacheProtocolStats, compressed_bytes: u64) {
+    let overhead = 24u64;
     stats.cached_rect_init_bytes = stats
         .cached_rect_init_bytes
         .saturating_add(overhead + compressed_bytes);
-    // Baseline: 12 header + 4 encoding + compressed payload.
     stats.alternative_bytes = stats
         .alternative_bytes
         .saturating_add(16u64 + compressed_bytes);

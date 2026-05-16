@@ -29,14 +29,14 @@ fn pf_rgb888() -> PixelFormat {
 async fn persistent_cache_round_trip() {
     let pf = pf_rgb888();
     let pc = Arc::new(Mutex::new(PersistentClientCache::new(1)));
-    let misses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
+    let misses: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
     let ref_dec = PersistentCachedRectDecoder::new_with_miss_reporter(pc.clone(), misses.clone());
     let init_dec = PersistentCachedRectInitDecoder::new(pc.clone());
 
     // First reference — expect a miss
-    let miss_id = [0x11u8; 16];
+    let miss_id = 0x1111111111111111u64;
     let mut payload = Vec::new();
-    payload.extend_from_slice(&miss_id);
+    payload.extend_from_slice(&miss_id.to_be_bytes());
     payload.extend_from_slice(&0u16.to_be_bytes());
     payload.extend_from_slice(&0u16.to_be_bytes());
     payload.extend_from_slice(&8u16.to_be_bytes());
@@ -67,7 +67,7 @@ async fn persistent_cache_round_trip() {
     let stride_pixels = w as usize;
     let block = vec![0x7Fu8; (h as usize) * stride_pixels * bpp];
     let mut payload2 = Vec::new();
-    payload2.extend_from_slice(&miss_id);
+    payload2.extend_from_slice(&miss_id.to_be_bytes());
     payload2.extend_from_slice(&ENCODING_RAW.to_be_bytes());
     payload2.extend_from_slice(&block);
     let mut stream2 = RfbInStream::new(Cursor::new(payload2));
@@ -85,7 +85,7 @@ async fn persistent_cache_round_trip() {
 
     // Second reference — expect a hit (no new misses)
     let mut payload3 = Vec::new();
-    payload3.extend_from_slice(&miss_id);
+    payload3.extend_from_slice(&miss_id.to_be_bytes());
     payload3.extend_from_slice(&0u16.to_be_bytes());
     payload3.extend_from_slice(&0u16.to_be_bytes());
     payload3.extend_from_slice(&w.to_be_bytes());
@@ -98,7 +98,7 @@ async fn persistent_cache_round_trip() {
     assert!(misses.lock().unwrap().is_empty());
 
     // Trigger eviction and expose ids
-    let second_id = [0x22u8; 16];
+    let second_id = 0x2222222222222222u64;
     let entry = PersistentCachedPixels {
         id: second_id,
         pixels: vec![0xAAu8; (h as usize) * stride_pixels * bpp],
@@ -125,7 +125,7 @@ fn persistent_cache_disk_save_load_round_trip() {
     ));
 
     let entry = PersistentCachedPixels {
-        id: [0x33u8; 16],
+        id: 0x3333333333333333u64,
         pixels: vec![0x55u8; 8 * 8 * 4],
         format: pf.into(),
         width: 8,

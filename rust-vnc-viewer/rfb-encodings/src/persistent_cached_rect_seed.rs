@@ -28,11 +28,7 @@ impl Decoder for PersistentCachedRectSeedDecoder {
         _pixel_format: &PixelFormat,
         buffer: &mut dyn MutablePixelBuffer,
     ) -> Result<()> {
-        let mut id = [0u8; 16];
-        stream
-            .read_bytes(&mut id)
-            .await
-            .context("read CachedRectSeed id")?;
+        let id = stream.read_u64().await.context("read CachedRectSeed id")?;
         let dest_rect = Rect::new(
             rect.x as i32,
             rect.y as i32,

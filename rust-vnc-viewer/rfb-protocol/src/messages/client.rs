@@ -295,7 +295,7 @@ impl RequestCachedData {
     }
 }
 
-/// PersistentCacheQuery message - request init data for missing hashes (PersistentCache protocol).
+/// PersistentCacheQuery message - request init data for missing 64-bit cache IDs (PersistentCache protocol).
 ///
 /// NOTE: In this fork, message type 254 is also used by ContentCache's RequestCachedData.
 /// The negotiated cache protocol determines which wire format is used.
@@ -308,16 +308,15 @@ impl RequestCachedData {
 ///   - 16 bytes: hashBytes
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistentCacheQuery {
-    pub hashes: Vec<[u8; 16]>,
+    pub ids: Vec<u64>,
 }
 
 impl PersistentCacheQuery {
     pub fn write_to<W: AsyncWrite + Unpin>(&self, stream: &mut RfbOutStream<W>) {
         stream.write_u8(254); // msgTypePersistentCacheQuery (overlaps RequestCachedData)
-        stream.write_u16(self.hashes.len() as u16);
-        for h in &self.hashes {
-            stream.write_u8(16); // hashLen
-            stream.write_bytes(h);
+        stream.write_u16(self.ids.len() as u16);
+        for id in &self.ids {
+            stream.write_u64(*id);
         }
     }
 }
@@ -335,16 +334,15 @@ impl PersistentCacheQuery {
 ///   - 16 bytes: hashBytes
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistentCacheEviction {
-    pub hashes: Vec<[u8; 16]>,
+    pub ids: Vec<u64>,
 }
 
 impl PersistentCacheEviction {
     pub fn write_to<W: AsyncWrite + Unpin>(&self, stream: &mut RfbOutStream<W>) {
         stream.write_u8(249); // msgTypePersistentCacheEviction
-        stream.write_u16(self.hashes.len() as u16);
-        for h in &self.hashes {
-            stream.write_u8(16); // hashLen
-            stream.write_bytes(h);
+        stream.write_u16(self.ids.len() as u16);
+        for id in &self.ids {
+            stream.write_u64(*id);
         }
     }
 }
@@ -352,47 +350,49 @@ impl PersistentCacheEviction {
 #[cfg(test)]
 mod persistent_cache_eviction_tests {
     use super::*;
-
     #[tokio::test]
     async fn test_persistent_cache_eviction_wire_format() {
         let msg = PersistentCacheEviction {
-            hashes: vec![[0xAAu8; 16], [0xBBu8; 16]],
+            ids: vec![0xAAAAAAAAAAAAAAAAu64, 0xBBBBBBBBBBBBBBBBu64],
         };
         let mut buf: Vec<u8> = Vec::new();
         let mut out = RfbOutStream::new(&mut buf);
         msg.write_to(&mut out);
         out.flush().await.unwrap();
-
         assert_eq!(buf[0], 249u8);
         assert_eq!(u16::from_be_bytes([buf[1], buf[2]]), 2u16);
-        assert_eq!(buf[3], 16u8);
-        assert_eq!(&buf[4..20], &[0xAAu8; 16]);
-        assert_eq!(buf[20], 16u8);
-        assert_eq!(&buf[21..37], &[0xBBu8; 16]);
+        assert_eq!(
+            u64::from_be_bytes(buf[3..11].try_into().unwrap()),
+            0xAAAAAAAAAAAAAAAAu64
+        );
+        assert_eq!(
+            u64::from_be_bytes(buf[11..19].try_into().unwrap()),
+            0xBBBBBBBBBBBBBBBBu64
+        );
     }
 }
 #[cfg(test)]
 mod persistent_cache_query_tests {
     use super::*;
-
     #[tokio::test]
     async fn test_persistent_cache_query_wire_format() {
         let msg = PersistentCacheQuery {
-            hashes: vec![[0x11u8; 16], [0x22u8; 16]],
+            ids: vec![0x1111111111111111u64, 0x2222222222222222u64],
         };
         let mut buf: Vec<u8> = Vec::new();
         let mut out = RfbOutStream::new(&mut buf);
         msg.write_to(&mut out);
         out.flush().await.unwrap();
-
         assert_eq!(buf[0], 254u8);
         assert_eq!(u16::from_be_bytes([buf[1], buf[2]]), 2u16);
-
-        assert_eq!(buf[3], 16u8);
-        assert_eq!(&buf[4..20], &[0x11u8; 16]);
-
-        assert_eq!(buf[20], 16u8);
-        assert_eq!(&buf[21..37], &[0x22u8; 16]);
+        assert_eq!(
+            u64::from_be_bytes(buf[3..11].try_into().unwrap()),
+            0x1111111111111111u64
+        );
+        assert_eq!(
+            u64::from_be_bytes(buf[11..19].try_into().unwrap()),
+            0x2222222222222222u64
+        );
     }
 }
 

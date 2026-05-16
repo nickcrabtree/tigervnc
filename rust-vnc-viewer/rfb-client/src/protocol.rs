@@ -335,13 +335,11 @@ pub async fn write_request_cached_data<W: AsyncWrite + Unpin>(
 /// The negotiated cache protocol determines which wire format is used.
 pub async fn write_persistent_cache_query<W: AsyncWrite + Unpin>(
     outstream: &mut RfbOutStream<W>,
-    hashes: &[[u8; 16]],
+    ids: &[u64],
 ) -> Result<(), RfbClientError> {
-    let msg = PersistentCacheQuery {
-        hashes: hashes.to_vec(),
-    };
+    let msg = PersistentCacheQuery { ids: ids.to_vec() };
     if protocol_trace::enabled() {
-        protocol_trace::out_msg("PersistentCacheQuery", &format!("count={}", hashes.len()));
+        protocol_trace::out_msg("PersistentCacheQuery", &format!("count={}", ids.len()));
     }
     msg.write_to(outstream);
     outstream
@@ -352,19 +350,14 @@ pub async fn write_persistent_cache_query<W: AsyncWrite + Unpin>(
 
 /// Write PersistentCacheEviction (client eviction notification) and flush.
 ///
-/// Wire format is a dedicated message type (249) carrying a list of 16-byte hashes.
+/// Wire format is a dedicated message type (249) carrying a list of 64-bit cache IDs.
 pub async fn write_persistent_cache_eviction<W: AsyncWrite + Unpin>(
     outstream: &mut RfbOutStream<W>,
-    hashes: &[[u8; 16]],
+    ids: &[u64],
 ) -> Result<(), RfbClientError> {
-    let msg = PersistentCacheEviction {
-        hashes: hashes.to_vec(),
-    };
+    let msg = PersistentCacheEviction { ids: ids.to_vec() };
     if protocol_trace::enabled() {
-        protocol_trace::out_msg(
-            "PersistentCacheEviction",
-            &format!("count={}", hashes.len()),
-        );
+        protocol_trace::out_msg("PersistentCacheEviction", &format!("count={}", ids.len()));
     }
     msg.write_to(outstream);
     outstream.flush().await.map_err(RfbClientError::Transport)

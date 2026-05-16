@@ -182,7 +182,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod m1_cache_trace_tests {
     use super::*;
@@ -195,7 +194,10 @@ mod m1_cache_trace_tests {
             "IN CacheRef kind=persistent ref=00112233445566778899aabbccddeeff x=0 y=0 w=16 h=16 bytes=20",
             "IN CacheInit kind=persistent ref=00112233445566778899aabbccddeeff encoding=ZRLE x=0 y=0 w=16 h=16 bytes=256",
         ];
-        let parsed: Vec<_> = trace.iter().filter_map(|line| parse_trace_message(line)).collect();
+        let parsed: Vec<_> = trace
+            .iter()
+            .filter_map(|line| parse_trace_message(line))
+            .collect();
         assert_eq!(parsed.len(), 4);
         assert_eq!(parsed[0].direction, "IN");
         assert_eq!(parsed[0].name, "CacheRef");

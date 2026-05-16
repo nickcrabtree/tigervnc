@@ -291,9 +291,9 @@ pub const PSEUDO_ENCODING_CONTENT_CACHE: i32 = -320; // 0xFFFFFEC0 (server expec
 pub const PSEUDO_ENCODING_PERSISTENT_CACHE: i32 = -321; // 0xFFFFFEBF
 
 // PersistentCache encoding types (TigerVNC extension)
-/// PersistentCachedRect encoding - reference by 16-byte hash
+/// PersistentCachedRect encoding - reference by 64-bit cache ID
 pub const ENCODING_PERSISTENT_CACHED_RECT: i32 = 102;
-/// PersistentCachedRectInit encoding - include hash + actual encoding + data
+/// PersistentCachedRectInit encoding - include 64-bit cache ID + actual encoding + data
 pub const ENCODING_PERSISTENT_CACHED_RECT_INIT: i32 = 103;
 
 //

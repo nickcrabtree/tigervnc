@@ -3,12 +3,12 @@
 //! This module manages the client's framebuffer and provides a registry of
 //! encoding decoders to apply server framebuffer update rectangles.
 
-use crate::protocol_trace;
 use crate::cache_stats::{
     track_content_cache_init, track_content_cache_ref, track_persistent_cache_init,
     track_persistent_cache_ref, CacheProtocolStats,
 };
 use crate::errors::RfbClientError;
+use crate::protocol_trace;
 use anyhow::Result as AnyResult;
 use rfb_common::Rect;
 use rfb_encodings as enc;
@@ -79,7 +79,7 @@ impl DecoderRegistry {
 
     fn persistent_registry(
         pcache: Arc<Mutex<enc::PersistentClientCache>>,
-        pmisses: Arc<Mutex<Vec<[u8; 16]>>>,
+        pmisses: Arc<Mutex<Vec<u64>>>,
         tight_decoder: Arc<enc::TightDecoder>,
         zrle_decoder: Arc<enc::ZRLEDecoder>,
     ) -> Self {
@@ -136,8 +136,13 @@ pub(crate) enum DecoderEntry {
     PersistentCachedRectSeed(enc::PersistentCachedRectSeedDecoder),
 }
 
-
-fn trace_cache_decode_event(event: &str, kind: &str, id_field: &str, encoding: &str, rect: &rfb_protocol::messages::types::Rectangle) {
+fn trace_cache_decode_event(
+    event: &str,
+    kind: &str,
+    id_field: &str,
+    encoding: &str,
+    rect: &rfb_protocol::messages::types::Rectangle,
+) {
     if !protocol_trace::enabled() {
         return;
     }
@@ -190,15 +195,33 @@ impl DecoderEntry {
                 d.decode(stream, rect, pixel_format, buffer).await
             }
             Self::CachedRectInit(d) => {
-                trace_cache_decode_event("CacheInit", "content", "cache_id", "CachedRectInit", rect);
+                trace_cache_decode_event(
+                    "CacheInit",
+                    "content",
+                    "cache_id",
+                    "CachedRectInit",
+                    rect,
+                );
                 d.decode(stream, rect, pixel_format, buffer).await
             }
             Self::PersistentCachedRect(d) => {
-                trace_cache_decode_event("CacheRef", "persistent", "ref", "PersistentCachedRect", rect);
+                trace_cache_decode_event(
+                    "CacheRef",
+                    "persistent",
+                    "ref",
+                    "PersistentCachedRect",
+                    rect,
+                );
                 d.decode(stream, rect, pixel_format, buffer).await
             }
             Self::PersistentCachedRectInit(d) => {
-                trace_cache_decode_event("CacheInit", "persistent", "ref", "PersistentCachedRectInit", rect);
+                trace_cache_decode_event(
+                    "CacheInit",
+                    "persistent",
+                    "ref",
+                    "PersistentCachedRectInit",
+                    rect,
+                );
                 d.decode(stream, rect, pixel_format, buffer).await
             }
             Self::PersistentCachedRectSeed(d) => d.decode(stream, rect, pixel_format, buffer).await,
@@ -239,8 +262,8 @@ pub struct Framebuffer {
     registry: DecoderRegistry,
     /// Queue of cache IDs that missed during decoding and should be requested.
     pending_misses: Option<Arc<Mutex<Vec<u64>>>>,
-    /// Queue of PersistentCache hashes (16-byte IDs) that missed during decoding.
-    pending_pcache_misses: Option<Arc<Mutex<Vec<[u8; 16]>>>>,
+    /// Queue of PersistentCache 64-bit IDs that missed during decoding.
+    pending_pcache_misses: Option<Arc<Mutex<Vec<u64>>>>,
     /// Optional ContentCache backing the decoder registry.
     content_cache: Option<Arc<Mutex<ContentCache>>>,
     /// Optional PersistentClientCache backing the decoder registry.
@@ -315,7 +338,7 @@ impl Framebuffer {
     ) -> Self {
         let local_format = LocalPixelFormat::rgb888();
         let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
-        let pmisses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
+        let pmisses: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
         let tight_decoder = Arc::new(enc::TightDecoder::default());
         let zrle_decoder = Arc::new(enc::ZRLEDecoder::default());
         let reg = DecoderRegistry::persistent_registry(
@@ -351,7 +374,7 @@ impl Framebuffer {
         let local_format = LocalPixelFormat::rgb888();
         let buffer = ManagedPixelBuffer::new(width as u32, height as u32, local_format);
         let misses: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
-        let pmisses: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
+        let pmisses: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
         let tight_decoder = Arc::new(enc::TightDecoder::default());
         let zrle_decoder = Arc::new(enc::ZRLEDecoder::default());
         let mut reg = DecoderRegistry::content_registry_with_shared_state(
@@ -684,27 +707,22 @@ impl Framebuffer {
                     .saturating_add(1);
                 self.persistent_cache_counters.cache_hits =
                     self.persistent_cache_counters.cache_hits.saturating_add(1);
-                // Rust implementation uses fixed 16-byte hashes.
+                // Unified PersistentCache uses fixed 64-bit IDs.
                 track_persistent_cache_ref(
                     &mut self.persistent_cache_bandwidth,
                     rect,
                     &self.server_pixel_format,
-                    16,
                 );
             }
             enc::ENCODING_PERSISTENT_CACHED_RECT_INIT => {
                 if matches!(self.cache_protocol, CacheProtocolNegotiated::None) {
                     self.cache_protocol = CacheProtocolNegotiated::Persistent;
                 }
-                // payload_bytes includes 16-byte hash + 4-byte inner encoding; subtract these
+                // payload_bytes includes 8-byte cache ID + 4-byte inner encoding; subtract these
                 // to approximate compressedBytes.
-                let overhead = 16u64 + 4;
+                let overhead = 8u64 + 4;
                 let compressed_bytes = payload_bytes.saturating_sub(overhead);
-                track_persistent_cache_init(
-                    &mut self.persistent_cache_bandwidth,
-                    16,
-                    compressed_bytes,
-                );
+                track_persistent_cache_init(&mut self.persistent_cache_bandwidth, compressed_bytes);
             }
             _ => {}
         }
@@ -768,7 +786,7 @@ impl Framebuffer {
     /// Drain and return any pending PersistentCache miss IDs reported during the last decode.
     ///
     /// Also updates protocol counters to reflect the misses and the corresponding queries that will be sent.
-    pub fn drain_pending_persistent_cache_misses(&mut self) -> Vec<[u8; 16]> {
+    pub fn drain_pending_persistent_cache_misses(&mut self) -> Vec<u64> {
         if let Some(m) = &self.pending_pcache_misses {
             if let Ok(mut v) = m.lock() {
                 let out = v.clone();
@@ -793,7 +811,7 @@ impl Framebuffer {
     ///
     /// This clears the internal pending eviction list so callers should send
     /// any returned IDs to the server promptly.
-    pub fn drain_pending_persistent_cache_evictions(&mut self) -> Vec<[u8; 16]> {
+    pub fn drain_pending_persistent_cache_evictions(&mut self) -> Vec<u64> {
         if let Some(pcache) = &self.persistent_cache {
             if let Ok(mut pc) = pcache.lock() {
                 return pc.take_evicted_ids();

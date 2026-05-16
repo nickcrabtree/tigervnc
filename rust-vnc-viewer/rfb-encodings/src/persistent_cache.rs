@@ -1,4 +1,4 @@
-//! PersistentCache - Disk-backable, content-hash addressed cache for rectangles.
+//! PersistentCache - Disk-backable, 64-bit-ID addressed cache for rectangles.
 
 use crate::arc_cache::ArcCache;
 use rfb_pixelbuffer::PixelFormat;
@@ -13,7 +13,7 @@ const PERSISTENT_CACHE_BINARY_MAGIC: &[u8] = b"RVPCACHE-BIN-V2\0";
 
 #[derive(Debug, Clone)]
 pub struct PersistentCachedPixels {
-    pub id: [u8; 16],
+    pub id: u64,
     pub pixels: Vec<u8>,
     pub format: PixelFormat,
     pub width: u32,
@@ -31,12 +31,12 @@ impl PersistentCachedPixels {
 
 #[derive(Debug)]
 pub struct PersistentClientCache {
-    map: HashMap<[u8; 16], PersistentCachedPixels>,
+    map: HashMap<u64, PersistentCachedPixels>,
     max_size_mb: usize,
     current_bytes: usize,
     cache_path: Option<PathBuf>,
     /// ARC eviction core tracking resident and ghost entries by cache ID.
-    arc: ArcCache<[u8; 16]>,
+    arc: ArcCache<u64>,
     /// Aggregate statistics similar to the C++ GlobalClientPersistentCache.
     cache_hits: u64,
     cache_misses: u64,
@@ -115,7 +115,7 @@ impl PersistentClientCache {
         w.write_all(PERSISTENT_CACHE_BINARY_MAGIC)?;
         Self::write_u64(&mut w, self.map.len() as u64)?;
 
-        let mut ids: Vec<[u8; 16]> = self.map.keys().copied().collect();
+        let mut ids: Vec<u64> = self.map.keys().copied().collect();
         ids.sort();
 
         for id in ids {
@@ -123,7 +123,7 @@ impl PersistentClientCache {
                 .map
                 .get(&id)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing cache entry"))?;
-            w.write_all(&e.id)?;
+            Self::write_u64(&mut w, e.id)?;
             Self::write_u32(&mut w, e.width)?;
             Self::write_u32(&mut w, e.height)?;
             Self::write_u64(&mut w, e.stride_pixels as u64)?;
@@ -135,7 +135,7 @@ impl PersistentClientCache {
         w.flush()
     }
 
-    pub fn lookup(&mut self, id: &[u8; 16]) -> Option<&PersistentCachedPixels> {
+    pub fn lookup(&mut self, id: &u64) -> Option<&PersistentCachedPixels> {
         if let Some(entry) = self.map.get(id) {
             // Notify ARC of a resident hit so it can adapt between T1/T2.
             self.arc.on_hit(id);
@@ -200,7 +200,7 @@ impl PersistentClientCache {
         }
     }
 
-    pub fn take_evicted_ids(&mut self) -> Vec<[u8; 16]> {
+    pub fn take_evicted_ids(&mut self) -> Vec<u64> {
         self.arc.take_pending_evictions()
     }
 
@@ -218,8 +218,7 @@ impl PersistentClientCache {
         let count = Self::read_u64(&mut r)? as usize;
         let mut out = Vec::with_capacity(count);
         for _ in 0..count {
-            let mut id = [0u8; 16];
-            r.read_exact(&mut id)?;
+            let id = Self::read_u64(&mut r)?;
             let width = Self::read_u32(&mut r)?;
             let height = Self::read_u32(&mut r)?;
             let stride_pixels = usize::try_from(Self::read_u64(&mut r)?)

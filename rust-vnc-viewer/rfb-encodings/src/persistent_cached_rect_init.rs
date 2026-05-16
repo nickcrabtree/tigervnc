@@ -1,4 +1,4 @@
-//! Decoder for PersistentCachedRectInit (encoding 103): hash + actual encoding + pixel data.
+//! Decoder for PersistentCachedRectInit (encoding 103): 64-bit cache ID + actual encoding + pixel data.
 
 use crate::persistent_cache::{PersistentCachedPixels, PersistentClientCache};
 use crate::ENCODING_PERSISTENT_CACHED_RECT_INIT;
@@ -60,10 +60,9 @@ impl Decoder for PersistentCachedRectInitDecoder {
         pixel_format: &PixelFormat,
         buffer: &mut dyn MutablePixelBuffer,
     ) -> Result<()> {
-        // Read 16-byte id + actual encoding (i32)
-        let mut id = [0u8; 16];
-        stream
-            .read_bytes(&mut id)
+        // Unified cache wire format: 8-byte cache ID + actual encoding (i32).
+        let id = stream
+            .read_u64()
             .await
             .context("read persistent cache id")?;
         let actual = stream
@@ -144,7 +143,7 @@ impl Decoder for PersistentCachedRectInitDecoder {
                 .map_err(|e| anyhow::anyhow!("lock pcache: {}", e))?;
             cache.insert(entry);
             tracing::info!(
-                "PersistentCache STORE: rect {}x{} id={:02x?}",
+                "PersistentCache STORE: rect {}x{} id={:016x}",
                 rect.width,
                 rect.height,
                 &id
