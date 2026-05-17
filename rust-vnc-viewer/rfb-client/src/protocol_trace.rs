@@ -90,6 +90,24 @@ pub struct TraceSummary {
     pub request_cached_data: u32,
     pub cache_ref: u32,
     pub cache_init: u32,
+    pub set_encoding_entries: u64,
+    pub framebuffer_rects: u64,
+    pub query_ids: u64,
+    pub evicted_ids: u64,
+    pub cache_ref_bytes: u64,
+    pub cache_init_bytes: u64,
+}
+
+#[allow(dead_code)]
+fn parse_u64_field(fields: &str, key: &str) -> Option<u64> {
+    fields.split_whitespace().find_map(|field| {
+        let (name, value) = field.split_once('=')?;
+        if name == key {
+            value.parse::<u64>().ok()
+        } else {
+            None
+        }
+    })
 }
 
 #[allow(dead_code)]
@@ -101,13 +119,31 @@ where
     for line in lines {
         if let Some(msg) = parse_trace_message(line) {
             match msg.name {
-                "SetEncodings" => s.set_encodings += 1,
-                "FramebufferUpdate" => s.framebuffer_update += 1,
-                "PersistentCacheQuery" => s.persistent_cache_query += 1,
-                "PersistentCacheEviction" => s.persistent_cache_eviction += 1,
+                "SetEncodings" => {
+                    s.set_encodings += 1;
+                    s.set_encoding_entries += parse_u64_field(msg.fields, "n").unwrap_or(0);
+                }
+                "FramebufferUpdate" => {
+                    s.framebuffer_update += 1;
+                    s.framebuffer_rects += parse_u64_field(msg.fields, "rects").unwrap_or(0);
+                }
+                "PersistentCacheQuery" => {
+                    s.persistent_cache_query += 1;
+                    s.query_ids += parse_u64_field(msg.fields, "count").unwrap_or(0);
+                }
+                "PersistentCacheEviction" => {
+                    s.persistent_cache_eviction += 1;
+                    s.evicted_ids += parse_u64_field(msg.fields, "count").unwrap_or(0);
+                }
                 "RequestCachedData" => s.request_cached_data += 1,
-                "CacheRef" => s.cache_ref += 1,
-                "CacheInit" => s.cache_init += 1,
+                "CacheRef" => {
+                    s.cache_ref += 1;
+                    s.cache_ref_bytes += parse_u64_field(msg.fields, "bytes").unwrap_or(0);
+                }
+                "CacheInit" => {
+                    s.cache_init += 1;
+                    s.cache_init_bytes += parse_u64_field(msg.fields, "bytes").unwrap_or(0);
+                }
                 _ => {}
             }
         }
@@ -153,9 +189,11 @@ mod tests {
                 s.framebuffer_update,
                 s.persistent_cache_query,
                 s.persistent_cache_eviction,
-                s.request_cached_data
+                s.request_cached_data,
+                s.set_encoding_entries,
+                s.framebuffer_rects
             ),
-            (1, 1, 0, 0, 0)
+            (1, 1, 0, 0, 0, 6, 1)
         );
     }
 
@@ -175,9 +213,13 @@ mod tests {
                 s.framebuffer_update,
                 s.persistent_cache_query,
                 s.persistent_cache_eviction,
-                s.request_cached_data
+                s.request_cached_data,
+                s.set_encoding_entries,
+                s.framebuffer_rects,
+                s.query_ids,
+                s.evicted_ids
             ),
-            (1, 1, 1, 1, 1)
+            (1, 1, 1, 1, 1, 15, 4, 3, 1)
         );
     }
 }
@@ -207,5 +249,7 @@ mod m1_cache_trace_tests {
         let summary = summarise_trace(trace);
         assert_eq!(summary.cache_ref, 2);
         assert_eq!(summary.cache_init, 2);
+        assert_eq!(summary.cache_ref_bytes, 40);
+        assert_eq!(summary.cache_init_bytes, 384);
     }
 }
