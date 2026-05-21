@@ -91,6 +91,7 @@ pub struct TraceSummary {
     pub cache_ref: u32,
     pub cache_init: u32,
     pub set_encoding_entries: u64,
+    pub set_encoding_ids: Vec<i32>,
     pub framebuffer_rects: u64,
     pub query_ids: u64,
     pub evicted_ids: u64,
@@ -111,6 +112,26 @@ fn parse_u64_field(fields: &str, key: &str) -> Option<u64> {
 }
 
 #[allow(dead_code)]
+fn parse_i32_list_field(fields: &str, key: &str) -> Vec<i32> {
+    fields
+        .split_whitespace()
+        .find_map(|field| {
+            let (name, value) = field.split_once('=')?;
+            if name == key {
+                Some(
+                    value
+                        .split(',')
+                        .filter_map(|part| part.parse::<i32>().ok())
+                        .collect(),
+                )
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default()
+}
+
+#[allow(dead_code)]
 pub fn summarise_trace<'a, I>(lines: I) -> TraceSummary
 where
     I: IntoIterator<Item = &'a str>,
@@ -122,6 +143,8 @@ where
                 "SetEncodings" => {
                     s.set_encodings += 1;
                     s.set_encoding_entries += parse_u64_field(msg.fields, "n").unwrap_or(0);
+                    s.set_encoding_ids
+                        .extend(parse_i32_list_field(msg.fields, "ids"));
                 }
                 "FramebufferUpdate" => {
                     s.framebuffer_update += 1;
@@ -179,6 +202,16 @@ mod tests {
         assert_eq!(parsed[2].name, "PersistentCacheQuery");
         assert_eq!(parsed[3].fields, "cache_id=42");
     }
+
+    #[test]
+    fn summarises_set_encoding_ids_for_parity() {
+        let trace = ["OUT SetEncodings n=4 ids=-321,-320,102,103"];
+        let s = summarise_trace(trace);
+        assert_eq!(s.set_encodings, 1);
+        assert_eq!(s.set_encoding_entries, 4);
+        assert_eq!(s.set_encoding_ids, vec![-321, -320, 102, 103]);
+    }
+
     #[test]
     fn summarises_no_cache_trace_without_cache_activity() {
         let trace = ["OUT SetEncodings n=6", "IN FramebufferUpdate rects=1"];

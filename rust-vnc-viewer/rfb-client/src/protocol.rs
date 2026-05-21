@@ -207,7 +207,16 @@ pub async fn write_set_encodings<W: AsyncWrite + Unpin>(
 ) -> Result<(), RfbClientError> {
     let msg = msg::SetEncodings { encodings };
     if protocol_trace::enabled() {
-        protocol_trace::out_msg("SetEncodings", &format!("n={}", msg.encodings.len()));
+        let ids = msg
+            .encodings
+            .iter()
+            .map(i32::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        protocol_trace::out_msg(
+            "SetEncodings",
+            &format!("n={} ids={}", msg.encodings.len(), ids),
+        );
     }
     tracing::debug!("Wrote SetEncodings: {:?}", msg.encodings);
     msg.write_to(outstream);
