@@ -64,4 +64,16 @@ Protocol parity evidence to compare:
 
 Workflow note:
 
-- Avoid unguarded `grep/find | head` pipelines under `set -euo pipefail`; they can return `rc=141` from SIGPIPE even when the generated output file is useful. Prefer bounded Python filtering, `awk`, `sed -n`, or append `|| true` around intentionally truncated pipelines.
+- Avoid unguarded `grep/find | head` pipelines under `set -euo pipefail`; they can return `rc=141` from SIGPIPE
+  even when the generated output file is useful. Prefer bounded Python filtering, `awk`, `sed -n`, or append
+  `|| true` around intentionally truncated pipelines.
+
+## Code quality (desloppify)
+
+See [docs/DESLOPPIFY.md](docs/DESLOPPIFY.md) for current scores, dimension breakdown, open issues,
+next steps, and the full workflow for running mechanical checks and subjective review batches.
+
+Desloppify is scoped to `rust-vnc-viewer/` only — the upstream C++ codebase is not tracked.
+
+Current state: overall 22.8 / objective 91.4 / strict 22.8 (target 85.0).
+Objective is above 80 (mechanical quality good). Strict is low because subjective review has not been run.
