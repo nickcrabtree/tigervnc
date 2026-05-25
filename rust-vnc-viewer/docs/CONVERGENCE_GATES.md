@@ -20,6 +20,7 @@
 - [ ] Run Rust viewer against the C++ server with PersistentCache enabled.
 - [ ] Capture Rust and C++ traces for hit, miss/query, init, seed, eviction, and fallback.
 - [ ] Compare message order, encoding IDs, byte sizes, query batches, and eviction behaviour.
+- [ ] Use `rfb-client::protocol_trace::TraceSummary` to count cache events and aggregate negotiated encoding entries, framebuffer rects, query and eviction batch sizes, plus CacheRef/CacheInit byte totals before deeper manual trace review.
 
 ## Gate 3 — Cross-session PersistentCache
 
