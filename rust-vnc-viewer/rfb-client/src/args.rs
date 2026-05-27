@@ -69,6 +69,22 @@ pub struct Args {
     #[arg(short = 's', long)]
     pub shared: bool,
 
+    /// Disable ContentCache protocol advertisement
+    #[arg(long)]
+    pub disable_content_cache: bool,
+
+    /// Enable PersistentCache protocol advertisement and disk-backed cache
+    #[arg(long)]
+    pub enable_persistent_cache: bool,
+
+    /// PersistentCache index path
+    #[arg(long, value_name = "FILE")]
+    pub persistent_cache_path: Option<std::path::PathBuf>,
+
+    /// PersistentCache size in megabytes
+    #[arg(long, value_name = "MB")]
+    pub persistent_cache_size_mb: Option<usize>,
+
     /// Configuration file path (TOML format)
     #[arg(short = 'c', long, value_name = "FILE")]
     pub config: Option<String>,
@@ -162,10 +178,25 @@ impl Config {
         if let Some(password) = args.password {
             builder = builder.password(password);
         }
+        builder = builder.view_only(args.view_only);
+
+        if args.disable_content_cache {
+            builder = builder.content_cache_enabled(false);
+        }
+        if args.enable_persistent_cache {
+            builder = builder.persistent_cache_enabled(true);
+        }
+        if let Some(path) = args.persistent_cache_path {
+            builder = builder.persistent_cache_path(path);
+        }
+        if let Some(size_mb) = args.persistent_cache_size_mb {
+            builder = builder.persistent_cache_size_mb(size_mb);
+        }
+        if let Some(encodings) = args.encodings {
+            builder = builder.encodings(parse_encodings(&encodings)?);
+        }
 
         // TODO: TLS and other advanced settings will be added when those builder methods exist
-        // For now, just build with basic connection settings
-
         builder.build()
     }
 }
@@ -285,10 +316,21 @@ mod tests {
             "--shared",
             "--encodings",
             "tight,zrle",
+            "--enable-persistent-cache",
+            "--persistent-cache-path",
+            "/tmp/rust-pc.index",
+            "--persistent-cache-size-mb",
+            "512",
         ])
         .unwrap();
         assert!(args.tls);
         assert!(args.shared);
+        assert!(args.enable_persistent_cache);
+        assert_eq!(
+            args.persistent_cache_path.as_ref().unwrap(),
+            &std::path::PathBuf::from("/tmp/rust-pc.index")
+        );
+        assert_eq!(args.persistent_cache_size_mb, Some(512));
         assert_eq!(args.encodings.as_ref().unwrap().len(), 2);
     }
 }

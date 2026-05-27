@@ -312,6 +312,11 @@ impl Config {
                 "ContentCache cleanup threshold must be between 0.0 and 1.0".to_string(),
             ));
         }
+        if self.persistent_cache.enabled && self.persistent_cache.size_mb == 0 {
+            return Err(RfbClientError::Config(
+                "PersistentCache size cannot be 0 when enabled".to_string(),
+            ));
+        }
 
         Ok(())
     }
@@ -390,6 +395,48 @@ impl ConfigBuilder {
     #[must_use]
     pub fn password(mut self, password: impl Into<String>) -> Self {
         self.config.connection.password = Some(password.into());
+        self
+    }
+
+    /// Sets view-only mode.
+    #[must_use]
+    pub fn view_only(mut self, view_only: bool) -> Self {
+        self.config.security.view_only = view_only;
+        self
+    }
+
+    /// Replaces the preferred real encodings list.
+    #[must_use]
+    pub fn encodings(mut self, encodings: Vec<i32>) -> Self {
+        self.config.display.encodings = encodings;
+        self
+    }
+
+    /// Enables or disables ContentCache.
+    #[must_use]
+    pub fn content_cache_enabled(mut self, enabled: bool) -> Self {
+        self.config.content_cache.enabled = enabled;
+        self
+    }
+
+    /// Enables or disables PersistentCache.
+    #[must_use]
+    pub fn persistent_cache_enabled(mut self, enabled: bool) -> Self {
+        self.config.persistent_cache.enabled = enabled;
+        self
+    }
+
+    /// Sets the PersistentCache index path.
+    #[must_use]
+    pub fn persistent_cache_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.config.persistent_cache.path = path.into();
+        self
+    }
+
+    /// Sets the PersistentCache size in megabytes.
+    #[must_use]
+    pub fn persistent_cache_size_mb(mut self, size_mb: usize) -> Self {
+        self.config.persistent_cache.size_mb = size_mb;
         self
     }
 
@@ -504,6 +551,28 @@ mod tests {
         assert_eq!(encodings[12], rfb_encodings::ENCODING_RRE);
         assert_eq!(encodings[13], rfb_encodings::ENCODING_COPY_RECT);
         assert_eq!(encodings[14], rfb_encodings::ENCODING_RAW);
+    }
+
+    #[test]
+    fn test_builder_persistent_cache_options() {
+        let config = Config::builder()
+            .host("localhost")
+            .persistent_cache_enabled(true)
+            .persistent_cache_path("/tmp/rust-pc.index")
+            .persistent_cache_size_mb(512)
+            .content_cache_enabled(false)
+            .view_only(true)
+            .build()
+            .unwrap();
+
+        assert!(config.persistent_cache.enabled);
+        assert_eq!(config.persistent_cache.size_mb, 512);
+        assert_eq!(
+            config.persistent_cache.path,
+            PathBuf::from("/tmp/rust-pc.index")
+        );
+        assert!(!config.content_cache.enabled);
+        assert!(config.security.view_only);
     }
 
     #[test]

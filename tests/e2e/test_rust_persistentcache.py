@@ -3,7 +3,7 @@
 
 Mirrors the existing C++ PersistentCache E2E test but launches the Rust viewer
 (njcvncviewer-rs). If no PersistentCache protocol activity is observed in logs,
-this test prints an informational note and exits successfully.
+this test now fails by default if no PersistentCache protocol activity is observed.
 
 Linux only (requires X11 server stack). On macOS, exits successfully with a skip.
 """
@@ -39,10 +39,22 @@ def run_rust_viewer(
     display_for_viewer: int | None = None,
     verbosity: int = 2,
     shared: bool = True,
+    persistent_cache_path: Path | None = None,
+    persistent_cache_size_mb: int = 256,
 ) -> subprocess.Popen:
     cmd: list[str] = [viewer_path]
     if shared:
         cmd.append("--shared")
+    if persistent_cache_path is not None:
+        cmd.extend(
+            [
+                "--enable-persistent-cache",
+                "--persistent-cache-path",
+                str(persistent_cache_path),
+                "--persistent-cache-size-mb",
+                str(persistent_cache_size_mb),
+            ]
+        )
     cmd.extend(["-v"] * max(0, int(verbosity)))
     cmd.append(f"127.0.0.1::{port}")
 
@@ -93,6 +105,12 @@ def main() -> int:
     parser.add_argument("--port-viewer", type=int, default=6899)
     parser.add_argument("--duration", type=int, default=60)
     parser.add_argument("--cache-size", type=int, default=256)
+    parser.add_argument("--persistent-cache-path", type=Path)
+    parser.add_argument(
+        "--allow-no-persistent-markers",
+        action="store_true",
+        help="Compatibility escape hatch: pass without PersistentCache log markers",
+    )
     parser.add_argument("--wm", default="openbox")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
@@ -103,6 +121,7 @@ def main() -> int:
 
     artifacts = ArtifactManager()
     artifacts.create()
+    persistent_cache_path = args.persistent_cache_path or (artifacts.base_dir / "rust-persistentcache.index")
 
     try:
         binaries = preflight_check(verbose=args.verbose)
@@ -184,6 +203,8 @@ def main() -> int:
             display_for_viewer=args.display_viewer,
             verbosity=2,
             shared=True,
+            persistent_cache_path=persistent_cache_path,
+            persistent_cache_size_mb=args.cache_size,
         )
         if viewer_proc.poll() is not None:
             print("")
@@ -216,7 +237,12 @@ def main() -> int:
         print("")
         print(f"PersistentCache marker count: {pcount}")
         if pcount == 0:
-            print("NOTE: No PersistentCache markers observed in Rust viewer log; stability validated only.")
+            print("✗ FAIL: No PersistentCache markers observed in Rust viewer log")
+            print(f" Viewer log: {log_path}")
+            print(f" PersistentCache path: {persistent_cache_path}")
+            if not args.allow_no_persistent_markers:
+                return 1
+            print("NOTE: --allow-no-persistent-markers set; treating marker absence as compatibility pass")
 
         print("")
         print("[6/6] TEST PASSED")
