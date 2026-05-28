@@ -37,7 +37,6 @@ tracing-subscriber = { workspace = true }
 # GUI
 egui = { workspace = true }
 eframe = { workspace = true }
-egui_extras = { workspace = true }
 
 # Clipboard
 arboard = { workspace = true }
@@ -55,7 +54,6 @@ winit = "0.28"
 bitflags = { workspace = true }
 
 # Rendering
-image = { workspace = true }
 pixels = "0.13"
 raw-window-handle = "0.6"
 

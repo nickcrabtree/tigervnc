@@ -18,7 +18,6 @@ pixels = "0.13"
 raw-window-handle = "0.5"
 
 # Image processing for cursors and screenshots
-image = "0.25"
 
 # Error handling
 thiserror = "1"
