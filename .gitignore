@@ -38,3 +38,7 @@ tests/e2e/_runs/
 .DS_Store
 .clang-format
 typescript
+
+# Desloppify state
+.desloppify/
+scorecard.png
