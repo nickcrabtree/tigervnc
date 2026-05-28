@@ -68,6 +68,10 @@ async fn persistent_cache_round_trip() {
     let block = vec![0x7Fu8; (h as usize) * stride_pixels * bpp];
     let mut payload2 = Vec::new();
     payload2.extend_from_slice(&miss_id.to_be_bytes());
+    // PersistentCachedRectInit uses the 16-byte CacheKey wire header used by
+    // the C++ implementation. The Rust cache currently keys on the high 64
+    // bits; keep the low half zero for this synthetic round-trip fixture.
+    payload2.extend_from_slice(&0u64.to_be_bytes());
     payload2.extend_from_slice(&ENCODING_RAW.to_be_bytes());
     payload2.extend_from_slice(&block);
     let mut stream2 = RfbInStream::new(Cursor::new(payload2));
