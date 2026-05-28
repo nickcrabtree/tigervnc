@@ -60,11 +60,40 @@ impl Decoder for PersistentCachedRectInitDecoder {
         pixel_format: &PixelFormat,
         buffer: &mut dyn MutablePixelBuffer,
     ) -> Result<()> {
-        // Unified cache wire format: 8-byte cache ID + actual encoding (i32).
+        // PersistentCache INIT v2 wire format:
+        //   16-byte CacheKey + flags + optional canonical PixelFormat + inner encoding.
+        // Older comments referred to an 8-byte ID, but the server writer emits the
+        // full 16-byte CacheKey. Keep the first 64 bits as the local cache id for
+        // the current Rust cache representation and consume the second half so the
+        // stream remains aligned before parsing flags/encoding.
         let id = stream
             .read_u64()
             .await
-            .context("read persistent cache id")?;
+            .context("read persistent cache key high")?;
+        let _id_low = stream
+            .read_u64()
+            .await
+            .context("read persistent cache key low")?;
+        let flags = stream
+            .read_u8()
+            .await
+            .context("read persistent init flags")?;
+        if flags & 0xFE != 0 {
+            anyhow::bail!("Unsupported PersistentCachedRectInit flags {:#04x}", flags);
+        }
+        if flags & 0x01 != 0 {
+            // native_format flag: the server writes a canonical 16-byte PixelFormat.
+            // The Rust framebuffer path already decodes into the active pixel_format;
+            // consume the field here to keep the following inner encoding aligned.
+            let _pf_hi = stream
+                .read_u64()
+                .await
+                .context("read persistent native PixelFormat high")?;
+            let _pf_lo = stream
+                .read_u64()
+                .await
+                .context("read persistent native PixelFormat low")?;
+        }
         let actual = stream
             .read_i32()
             .await
@@ -143,7 +172,7 @@ impl Decoder for PersistentCachedRectInitDecoder {
                 .map_err(|e| anyhow::anyhow!("lock pcache: {}", e))?;
             cache.insert(entry);
             tracing::info!(
-                "PersistentCache STORE: rect {}x{} id={:016x}",
+                "PersistentCache MISS STORE: rect {}x{} id={:016x}",
                 rect.width,
                 rect.height,
                 &id
