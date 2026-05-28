@@ -46,6 +46,15 @@ struct Args {
     /// Configuration file path
     #[arg(long)]
     config: Option<PathBuf>,
+    /// Enable PersistentCache protocol (-321).
+    #[arg(long, default_value_t = false)]
+    enable_persistent_cache: bool,
+    /// PersistentCache index path.
+    #[arg(long)]
+    persistent_cache_path: Option<PathBuf>,
+    /// PersistentCache size in megabytes.
+    #[arg(long)]
+    persistent_cache_size_mb: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -329,6 +338,15 @@ async fn main() -> Result<()> {
 
     if args.height != 768 {
         config.display.window_height = args.height;
+    }
+    if args.enable_persistent_cache {
+        config.persistent_cache.enabled = true;
+    }
+    if let Some(path) = args.persistent_cache_path {
+        config.persistent_cache.path = path;
+    }
+    if let Some(size_mb) = args.persistent_cache_size_mb {
+        config.persistent_cache.size_mb = size_mb;
     }
 
     let initial_server = args.server.or(config.connection.default_server.clone());
