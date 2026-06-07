@@ -248,23 +248,21 @@ void SMsgWriter::writePersistentCachedRectWithOffset(const core::Rect& r, const 
 }
 
 void SMsgWriter::writePersistentCachedRectInit(const core::Rect& r, const CacheKey& key, int encoding, uint8_t flags,
-                                               const PixelFormat* pf, bool includeFlags) {
-  // Server → client: initial payload plus 16-byte CacheKey, optional flags/PF, and inner encoding.
+                                               const PixelFormat* pf) {
+  // Server → client hard-cutover v2 wire format:
+  //   rect header + 16-byte CacheKey + flags + optional PixelFormat + inner encoding + payload.
+  // Legacy flagless PersistentCachedRectInit is intentionally no longer emitted.
   startRect(r, encodingPersistentCachedRectInit);
   os->writeBytes(key.bytes.data(), 16);
-
-  // v2 header extension: flags + optional PixelFormat when native-format flag is set.
-  if (includeFlags || flags != 0 || pf != nullptr) {
-    os->writeU8(flags);
-    if (flags & 0x01) {
-      // native_format flag set: PixelFormat must be present
-      if (pf != nullptr)
-        pf->write(os);
-      else
-        throw std::logic_error("PersistentCachedRectInit: native_format flag set without PixelFormat");
-    }
+  if (flags & 0xFE)
+    throw std::logic_error("PersistentCachedRectInit: reserved flags set");
+  os->writeU8(flags);
+  if (flags & 0x01) {
+    if (pf != nullptr)
+      pf->write(os);
+    else
+      throw std::logic_error("PersistentCachedRectInit: native_format flag set without PixelFormat");
   }
-
   os->writeS32(encoding);
 }
 

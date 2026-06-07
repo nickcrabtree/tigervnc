@@ -38,11 +38,11 @@ TEST(BandwidthStats, PersistentCacheRefBasic) {
   core::Rect rect(0, 0, 64, 64);
 
   // Unified cache engine: PersistentCache references use the same on-wire
-  // 64-bit ID format as PersistentCache (20 bytes per reference).
+  // 16-byte CacheKey wire format (36 bytes per reference).
   trackPersistentCacheRef(stats, rect, pf);
 
-  // PersistentCachedRect: 20 bytes (12 header + 8 ID)
-  EXPECT_EQ(stats.cachedRectBytes, 20u);
+  // PersistentCachedRect: 36 bytes (12 header + 16 CacheKey + 8 offset fields)
+  EXPECT_EQ(stats.cachedRectBytes, 36u);
   EXPECT_EQ(stats.cachedRectCount, 1u);
 
   // Alternative: 16 bytes of header + full uncompressed payload (pixels * bpp / 8)
@@ -57,12 +57,12 @@ TEST(BandwidthStats, PersistentCacheRefMultiple) {
   rfb::PixelFormat pf(32, 24, false, true, 255, 255, 255, 16, 8, 0);
 
   // Multiple PersistentCache references should accumulate linearly and use
-  // the same accounting as PersistentCache (20 bytes per reference).
+  // the PersistentCache CacheKey accounting (36 bytes per reference).
   trackPersistentCacheRef(stats, core::Rect(0, 0, 64, 64), pf);
   trackPersistentCacheRef(stats, core::Rect(64, 0, 128, 64), pf);
   trackPersistentCacheRef(stats, core::Rect(0, 64, 64, 128), pf);
 
-  EXPECT_EQ(stats.cachedRectBytes, 60u); // 20 * 3
+  EXPECT_EQ(stats.cachedRectBytes, 108u); // 36 * 3
   EXPECT_EQ(stats.cachedRectCount, 3u);
 
   // Each rect: 16 + (64*64*4) = 16 + 16384 = 16400, times 3

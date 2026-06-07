@@ -7,9 +7,12 @@
 
 ## Executive Summary
 
-This document specifies **PersistentCache**, a new RFB protocol extension that enables persistent, hash-based client-side caching. Unlike the existing **ContentCache** protocol (server-assigned IDs), PersistentCache uses content hashes as stable keys, allowing cache entries to survive client restarts and work across different VNC servers.
+This document specifies **PersistentCache**, a new RFB protocol extension that enables persistent, hash-based client-side caching. Unlike the existing **ContentCache** protocol (server-assigned IDs), PersistentCache uses content hashes as stable
+keys, allowing cache entries to survive client restarts and work across different VNC servers.
 
-> Unified cache note (November 2025): In the current experimental fork, the old `rfb::ContentCache` engine has been removed and both ContentCache and PersistentCache protocol messages are served by a single unified cache engine keyed by `ContentKey(width, height, contentHash64)` and a 64-bit ID on the wire. Sections that describe two distinct engines reflect the original design; for this fork, see the "Unified Cache Model" section below and `docs/remove_contentcache_implementation.md`.
+> Unified cache note (November 2025): In the current experimental fork, the old `rfb::ContentCache` engine has been removed and both ContentCache and PersistentCache protocol messages are served by a single unified cache engine keyed by
+  `ContentKey(width, height, contentHash64)` and a 16-byte CacheKey on the wire. Sections that describe two distinct engines reflect the original design; for this fork, see the "Unified Cache Model" section below and
+  `docs/remove_contentcache_implementation.md`.
 
 ## Current implementation note
 
@@ -26,6 +29,7 @@ For future work in this fork, the most important current-state facts are:
 ### Test Results (November 2025)
 
 **C++ Viewer Tests** (128×128 logos, 30s duration):
+
 - **Hit rate**: 100.0% (44 hits, 0 misses)
 - **Bandwidth saved**: 529,676 bytes (~517 KB)
 - **Bandwidth reduction**: 99.7%
@@ -40,8 +44,8 @@ For future work in this fork, the most important current-state facts are:
 > Historical note: the table below describes the older split-protocol model.
 > In the current C++ codebase for this fork, the active cache path is the
 > unified PersistentCache-centred model described above.
-
-> Historical note: The table below describes the original split between ContentCache (session-only) and PersistentCache (cross-session). In the unified implementation used by this fork, both pseudo-encodings are handled by the same 64-bit ID cache engine and differ only in viewer policy (ephemeral vs persistent).
+> Historical note: The table below describes the original split between ContentCache (session-only) and PersistentCache (cross-session). In the unified implementation used by this fork, both pseudo-encodings are handled by the same 64-bit ID cache
+  engine and differ only in viewer policy (ephemeral vs persistent).
 
 || Protocol | Pseudo-Encoding | Key Type | Persistence | Negotiation |
 ||----------|----------------|----------|-------------|-------------|
@@ -56,11 +60,13 @@ For future work in this fork, the most important current-state facts are:
 > background and to explain older documentation and tests.
 
 **Client Behavior:**
+
 - Include `-321` in `SetEncodings` to indicate support for the current unified cache negotiation path
 - Include `-320` only as a compatibility alias for older ContentCache-labelled servers and logs
 - Example: `[..., encodingH264, encodingZRLE, -321, -320]`
 
 **Server Behavior:**
+
 - If client sends `-321` and server supports it: **use the unified PersistentCache-centred path**
 - Else if client sends `-320` and server supports it: **use the compatibility alias / historical ContentCache-labelled path**
 - Else: **no caching**
@@ -82,7 +88,9 @@ For future work in this fork, the most important current-state facts are:
 ## Protocol Constants
 
 ### Pseudo-Encodings
+
 ```cpp
+
 // In common/rfb/encodings.h
 
 // Existing ContentCache
@@ -90,21 +98,28 @@ const int pseudoEncodingContentCache = -320;
 
 // New PersistentCache
 const int pseudoEncodingPersistentCache = -321;
-```
+
+```text
 
 ### Encoding Types
+
 ```cpp
+
 // PersistentCache rectangle encodings
 const int encodingPersistentCachedRect = 102;      // Reference by hash
 const int encodingPersistentCachedRectInit = 103;  // Full data + hash
+
 ```
 
 ### Message Types
+
 ```cpp
+
 // Client-to-server
 const int msgTypePersistentCacheQuery = 254;     // Request missing data
 const int msgTypePersistentCacheHashList = 253;  // Advertise known hashes (optional)
-```
+
+```text
 
 ## Wire Format Specifications
 
@@ -113,7 +128,9 @@ const int msgTypePersistentCacheHashList = 253;  // Advertise known hashes (opti
 **Purpose:** Reference cached content by hash without resending pixels.
 
 **Format:**
-```
+
+```text
+
 ┌─────────────────────────────────────┐
 │ Standard RFB Rectangle Header       │
 ├─────────────────────────────────────┤
@@ -129,9 +146,11 @@ const int msgTypePersistentCacheHashList = 253;  // Advertise known hashes (opti
 │ hashBytes[hashLen]                  │
 │ flags: uint16 (reserved, must be 0) │
 └─────────────────────────────────────┘
-```
+
+```text
 
 **Semantics:**
+
 - Client looks up `hashBytes` in cache
 - On hit: blit cached pixels to framebuffer
 - On miss: queue `msgTypePersistentCacheQuery` for this hash
@@ -141,7 +160,9 @@ const int msgTypePersistentCacheHashList = 253;  // Advertise known hashes (opti
 **Purpose:** Send full rectangle data plus hash for caching.
 
 **Format:**
-```
+
+```text
+
 ┌─────────────────────────────────────┐
 │ Standard RFB Rectangle Header       │
 ├─────────────────────────────────────┤
@@ -160,9 +181,11 @@ const int msgTypePersistentCacheHashList = 253;  // Advertise known hashes (opti
 │ payloadLen: uint32                  │
 │ payloadBytes[payloadLen]            │
 └─────────────────────────────────────┘
-```
+
+```text
 
 **Semantics:**
+
 - Client decodes `payloadBytes` using `innerEncoding`
 - Stores decoded pixels in cache indexed by `hashBytes`
 - Blits to framebuffer
@@ -172,7 +195,9 @@ const int msgTypePersistentCacheHashList = 253;  // Advertise known hashes (opti
 **Purpose:** Request initialization data for missing hashes.
 
 **Format:**
-```
+
+```text
+
 ┌─────────────────────────────────────┐
 │ type: uint8 = 254                   │
 │ count: uint16                       │
@@ -181,9 +206,11 @@ const int msgTypePersistentCacheHashList = 253;  // Advertise known hashes (opti
 │   hashLen: uint8                    │
 │   hashBytes[hashLen]                │
 └─────────────────────────────────────┘
-```
+
+```text
 
 **Semantics:**
+
 - Server responds with `encodingPersistentCachedRectInit` for requested hashes
 - Server may coalesce, rate-limit, or batch responses
 
@@ -192,7 +219,9 @@ const int msgTypePersistentCacheHashList = 253;  // Advertise known hashes (opti
 **Purpose:** Proactively advertise known hashes to reduce misses.
 
 **Format (Simple List):**
-```
+
+```text
+
 ┌─────────────────────────────────────┐
 │ type: uint8 = 253                   │
 │ sequenceId: uint32                  │
@@ -204,9 +233,11 @@ const int msgTypePersistentCacheHashList = 253;  // Advertise known hashes (opti
 │   hashLen: uint8                    │
 │   hashBytes[hashLen]                │
 └─────────────────────────────────────┘
-```
+
+```text
 
 **Semantics:**
+
 - Server records client's hash presence
 - Increases confidence for sending `encodingPersistentCachedRect`
 - Chunking allows large hash lists without blocking
@@ -215,7 +246,8 @@ const int msgTypePersistentCacheHashList = 253;  // Advertise known hashes (opti
 
 ### Initial Connection with PersistentCache
 
-```
+```text
+
 ┌─────────────────────────────────────────────────────────────┐
 │ 1. Client loads persistent cache from disk                  │
 │    ~/.cache/tigervnc/persistentcache.dat                   │
@@ -238,11 +270,13 @@ const int msgTypePersistentCacheHashList = 253;  // Advertise known hashes (opti
 │    Sends chunks of 1,000 hashes each                        │
 │    Server builds lookup table of client's known hashes      │
 └─────────────────────────────────────────────────────────────┘
-```
+
+```text
 
 ### Cache Hit Flow
 
-```
+```text
+
 Server has updated region: 800×600 at (100, 200)
     ↓
 Server computes hash of pixel data: 0xABCD1234...
@@ -259,11 +293,13 @@ Client looks up 0xABCD1234 in cache → HIT!
 Client blits cached pixels to framebuffer
     ↓
 ✅ Zero decode cost, 20 bytes transferred vs ~50KB
-```
+
+```text
 
 ### Cache Miss Flow
 
-```
+```text
+
 Server → Client: encodingPersistentCachedRect
                 hash=0xDEADBEEF...
     ↓
@@ -287,11 +323,13 @@ Client stores in cache: 0xDEADBEEF → pixels
 Client blits to framebuffer
     ↓
 Cache now contains this hash for future hits
-```
+
+```text
 
 ### Cross-Server Cache Hit
 
-```
+```text
+
 Client disconnects from Server A
     ↓
 Client saves cache to disk (preserves all hashes)
@@ -308,13 +346,15 @@ Server B sends: encodingPersistentCachedRect
 Client: "I have this hash from Server A!"
     ↓
 ✅ Cross-server cache hit!
-```
+
+```text
 
 ## Data Structures
 
 ### GlobalClientPersistentCache (Client-Side)
 
 ```cpp
+
 // In common/rfb/GlobalClientPersistentCache.h
 
 class GlobalClientPersistentCache {
@@ -373,11 +413,13 @@ private:
     size_t currentSize_;
     std::string cacheFilePath_;
 };
+
 ```
 
 ### Server-Side State Tracking
 
 ```cpp
+
 // In common/rfb/EncodeManager.h
 
 class EncodeManager {
@@ -395,7 +437,8 @@ public:
     void writeRectWithPersistentCache(const core::Rect& r,
                                      const PixelBuffer* pb);
 };
-```
+
+```text
 
 ## Ordering and Synchronization Semantics
 
@@ -481,6 +524,7 @@ with the C++ ContentCache/PersistentCache behaviour.
 ### Recommended: SHA-256 Truncated to 128 bits
 
 ```cpp
+
 // In common/rfb/ContentHash.h
 
 class ContentHash {
@@ -502,6 +546,7 @@ public:
         return hash;
     }
 };
+
 ```
 
 ### Hash Input Domain
@@ -509,6 +554,7 @@ public:
 **CRITICAL:** Hash must be computed over decoded pixel bytes in row-major order.
 
 ```cpp
+
 // Compute hash for a rectangle
 std::vector<uint8_t> computeRectHash(const PixelBuffer* pb,
                                      const core::Rect& r) {
@@ -535,7 +581,8 @@ std::vector<uint8_t> computeRectHash(const PixelBuffer* pb,
     memcpy(hash.data(), full_hash, 16);
     return hash;
 }
-```
+
+```text
 
 **Note:** This matches the fix from Oct 7 2025 that corrected the stride-in-pixels bug.
 
@@ -546,6 +593,7 @@ std::vector<uint8_t> computeRectHash(const PixelBuffer* pb,
 **Goal:** Add constants and feature flags without breaking existing code.
 
 **Tasks:**
+
 1. Add `pseudoEncodingPersistentCache = -321` to `common/rfb/encodings.h`
 2. Add `encodingPersistentCachedRect = 102` and `encodingPersistentCachedRectInit = 103`
 3. Add message type constants
@@ -559,6 +607,7 @@ std::vector<uint8_t> computeRectHash(const PixelBuffer* pb,
 **Goal:** Implement `GlobalClientPersistentCache` with in-memory storage only.
 
 **Tasks:**
+
 1. Create `common/rfb/GlobalClientPersistentCache.h` and `.cxx`
 2. Implement hash-indexed storage
 3. Implement ARC eviction algorithm
@@ -571,6 +620,7 @@ std::vector<uint8_t> computeRectHash(const PixelBuffer* pb,
 **Goal:** Implement client-side message reading/writing.
 
 **Tasks:**
+
 1. Extend `CMsgReader::readRect()` for new encoding types
 2. Add `CMsgWriter::writeCacheQuery()` and `writeHashList()`
 3. Update `CMsgHandler` interface with new virtual methods
@@ -582,6 +632,7 @@ std::vector<uint8_t> computeRectHash(const PixelBuffer* pb,
 **Goal:** Wire cache into DecodeManager, handle protocol messages.
 
 **Tasks:**
+
 1. Add `GlobalClientPersistentCache*` to `DecodeManager`
 2. Implement handlers for new encodings
 3. Implement query batching and debouncing
@@ -593,6 +644,7 @@ std::vector<uint8_t> computeRectHash(const PixelBuffer* pb,
 **Goal:** Implement server-side message reading/writing.
 
 **Tasks:**
+
 1. Extend `SMsgReader` for client messages
 2. Add `SMsgWriter` methods for new encodings
 3. Update `SMsgHandler` interface
@@ -604,6 +656,7 @@ std::vector<uint8_t> computeRectHash(const PixelBuffer* pb,
 **Goal:** Integrate hash-based encoding into EncodeManager.
 
 **Tasks:**
+
 1. Add hash computation to EncodeManager
 2. Track client's known hashes
 3. Implement sending logic (reference vs init)
@@ -616,6 +669,7 @@ std::vector<uint8_t> computeRectHash(const PixelBuffer* pb,
 **Goal:** Implement cache file I/O.
 
 **Tasks:**
+
 1. Design cache file format
 2. Implement save/load
 3. Add integrity checks
@@ -628,6 +682,7 @@ std::vector<uint8_t> computeRectHash(const PixelBuffer* pb,
 ### Client Parameters
 
 ```cpp
+
 // In vncviewer/parameters.cxx
 
 BoolParameter persistentCache("PersistentCache",
@@ -646,11 +701,13 @@ BoolParameter persistentCachePreferOverContentCache(
     "PersistentCachePreferOverContentCache",
     "Prefer PersistentCache when both are available",
     true);
+
 ```
 
 ### Server Parameters
 
 ```cpp
+
 // In common/rfb/ServerCore.h
 
 BoolParameter persistentCache("PersistentCache",
@@ -660,13 +717,15 @@ BoolParameter persistentCache("PersistentCache",
 IntParameter persistentCacheMinRectSize("PersistentCacheMinRectSize",
     "Minimum rectangle size (pixels) to consider for caching",
     4096);
-```
+
+```text
 
 ## File Format (Cache Persistence)
 
 ### Cache File: `~/.cache/tigervnc/persistentcache/index.dat` (v4 sharded)
 
-```
+```text
+
 ┌────────────────────────────────────────┐
 │ Header (64 bytes)                      │
 ├────────────────────────────────────────┤
@@ -697,19 +756,22 @@ IntParameter persistentCacheMinRectSize("PersistentCacheMinRectSize",
 │ │ canonicalHash:uint64 (NEW v4)      │ │
 │ └────────────────────────────────────┘ │
 └────────────────────────────────────────┘
-```
+
+```text
 
 The payload data itself is stored in separate shard files (`shard_0000.dat`, etc.) to keep the index compact and fast to load.
 ├────────────────────────────────────────┤
 │ SHA-256 of all above data              │
 └────────────────────────────────────────┘
-```
+
+```text
 
 ## Testing Strategy
 
 ### Unit Tests
 
 ```cpp
+
 TEST(PersistentCache, BasicStoreAndRetrieve) {
     GlobalClientPersistentCache cache(10);  // 10 MB
 
@@ -738,11 +800,13 @@ TEST(PersistentCache, Eviction) {
     auto stats = cache.getStats();
     EXPECT_LT(stats.totalBytes, 1024 * 1024);  // Under 1 MB
 }
-```
+
+```text
 
 ### Integration Tests
 
 ```bash
+
 # Test negotiation
 1. Start server with PersistentCache enabled
 2. Connect client with both -321 and -320
@@ -761,7 +825,8 @@ TEST(PersistentCache, Eviction) {
 3. Restart client
 4. Reconnect
 5. Verify immediate cache hits
-```
+
+```text
 
 ## Unified Cache Model (ContentCache + PersistentCache)
 
@@ -769,8 +834,8 @@ In the unified implementation, both ContentCache and PersistentCache are policie
 
 - **Shared engine:** A single ARC-based cache keyed by `ContentKey(width, height, contentHash64)`.
 - **Shared wire format:** All cache references use the PersistentCache 64-bit ID format on the wire:
-  - `CachedRect` / `PersistentCachedRect`: 20-byte reference (12-byte rect header + 8-byte ID).
-  - `CachedRectInit` / `PersistentCachedRectInit`: 24-byte header (12-byte rect header + 8-byte ID + 4-byte inner encoding) plus payload.
+  - `CachedRect` / `PersistentCachedRect`: 36-byte reference (12-byte rect header + 16-byte CacheKey + 8-byte offset fields).
+  - `CachedRectInit` / `PersistentCachedRectInit`: 33-byte v2 header (12-byte rect header + 16-byte CacheKey + 1-byte flags + 4-byte inner encoding) plus payload.
 - **Viewer policies:**
   - When the viewer is configured for **ephemeral mode** (historically "ContentCache"), it uses the unified engine but does not open or modify any on-disk cache files.
   - When the viewer is configured for **persistent mode** (historically "PersistentCache"), it uses the same engine with disk-backed storage enabled.
@@ -830,6 +895,7 @@ These log lines are emitted through the DecodeManager logger and appear alongsid
 **Problem:** If API returns stride in pixels, you must convert to bytes before feeding any buffer into the hash helper. The hash domain is now the canonical 32-bpp RGB pixel stream only; missing bytes means different visual content can alias to the same hash.
 
 **Solution:** Always compute byte lengths as:
+
 - `strideBytes = stridePixels * bytesPerPixel`
 - `totalBytes = height * strideBytes`
 
@@ -908,7 +974,6 @@ unchanged. The daemon simply replaces the current per-process
 per-user service, enhancing durability and multi-viewer robustness while
 preserving the existing PersistentCache protocol semantics.
 
-
 ### Network Savings
 
 - **Cache hit:** 20 bytes (hash reference) vs 50 KB (typical compressed rectangle)
@@ -940,6 +1005,7 @@ preserving the existing PersistentCache protocol semantics.
 **Risk:** Malicious server sends incorrect data with legitimate hash.
 
 **Mitigation:**
+
 - Client validates rectangle dimensions match
 - TLS/SSH tunnel for server authentication
 - Cache isolated per-user (file permissions)
@@ -949,6 +1015,7 @@ preserving the existing PersistentCache protocol semantics.
 **Risk:** Cache grows without bound.
 
 **Mitigation:**
+
 - Hard size limit (default 2 GB)
 - ARC eviction
 - Configurable max age
@@ -967,6 +1034,7 @@ preserving the existing PersistentCache protocol semantics.
 **Completed:** 2025-10-24
 
 **Tasks completed:**
+
 1. ✅ Added `pseudoEncodingPersistentCache = -321` to `common/rfb/encodings.h`
 2. ✅ Added `encodingPersistentCachedRect = 102` and `encodingPersistentCachedRectInit = 103`
 3. ✅ Added message type constants (msgTypePersistentCacheQuery, msgTypePersistentCacheHashList)
@@ -976,6 +1044,7 @@ preserving the existing PersistentCache protocol semantics.
 **Testing:** Compiled successfully, no behavior changes.
 
 **Files modified:**
+
 - `common/rfb/encodings.h`: Lines 39-41, 59
 - `common/rfb/ServerCore.h`: Lines 57-59
 - `common/rfb/ServerCore.cxx`: Lines 120-128
@@ -988,6 +1057,7 @@ preserving the existing PersistentCache protocol semantics.
 **Goal:** Implement `GlobalClientPersistentCache` with in-memory storage only.
 
 **Tasks completed:**
+
 1. ✅ Created `common/rfb/GlobalClientPersistentCache.h` with hash-indexed storage interface
 2. ✅ Created `common/rfb/GlobalClientPersistentCache.cxx` with full ARC eviction implementation
 3. ✅ Implemented `HashVectorHasher` for `std::vector<uint8_t>` keys
@@ -998,13 +1068,16 @@ preserving the existing PersistentCache protocol semantics.
 8. ✅ Verified build succeeds with `make viewer`
 
 **Files created:**
+
 - `common/rfb/GlobalClientPersistentCache.h` (169 lines)
 - `common/rfb/GlobalClientPersistentCache.cxx` (405 lines)
 
 **Files modified:**
+
 - `common/rfb/CMakeLists.txt`: Added GlobalClientPersistentCache.cxx
 
 **Notes:**
+
 - Disk persistence methods (`loadFromDisk()`, `saveToDisk()`) are stubs for Phase 7
 - ARC algorithm adapted from ContentCache with vector<uint8_t> keys instead of uint64_t
 - Unit tests deferred to after protocol integration (Phase 4)
@@ -1016,6 +1089,7 @@ preserving the existing PersistentCache protocol semantics.
 **Goal:** Implement client-side message reading/writing.
 
 **Tasks completed:**
+
 1. ✅ Extended `CMsgReader::readRect()` switch statement to handle `encodingPersistentCachedRect` (102) and `encodingPersistentCachedRectInit` (103)
 2. ✅ Implemented `CMsgReader::readPersistentCachedRect()` - reads variable-length hash + flags
 3. ✅ Implemented `CMsgReader::readPersistentCachedRectInit()` - incremental decode with hash storage
@@ -1030,6 +1104,7 @@ preserving the existing PersistentCache protocol semantics.
 10. ✅ Verified build succeeds with `make viewer`
 
 **Files modified:**
+
 - `common/rfb/CMsgReader.h`: Added method declarations and state variables
 - `common/rfb/CMsgReader.cxx`: Implemented read methods (80 lines added)
 - `common/rfb/CMsgWriter.h`: Added write method declarations
@@ -1038,6 +1113,7 @@ preserving the existing PersistentCache protocol semantics.
 - `common/rfb/msgTypes.h`: Message type constants already present
 
 **Notes:**
+
 - Follows existing ContentCache pattern for incremental decode
 - Uses restore points properly to handle incomplete data
 - Hash list supports chunking for large caches (avoiding message size limits)
@@ -1050,6 +1126,7 @@ preserving the existing PersistentCache protocol semantics.
 **Goal:** Wire cache into DecodeManager, handle protocol messages.
 
 **Tasks completed:**
+
 1. ✅ Added `GlobalClientPersistentCache*` member to `DecodeManager`
 2. ✅ Initialized PersistentCache in DecodeManager constructor (2GB default)
 3. ✅ Implemented `DecodeManager::handlePersistentCachedRect()` - lookup by hash and blit
@@ -1065,18 +1142,21 @@ preserving the existing PersistentCache protocol semantics.
 13. ✅ Verified build succeeds with `make viewer`
 
 **Files modified:**
+
 - `common/rfb/DecodeManager.h`: Added PersistentCache member, stats, and method declarations
 - `common/rfb/DecodeManager.cxx`: Implemented handlers and query batching (83 lines added)
 - `common/rfb/CConnection.h`: Added handler declarations
 - `common/rfb/CConnection.cxx`: Implemented handlers and encoding negotiation
 
 **Key Features:**
+
 - **Query batching**: Caches up to 10 misses before sending query to reduce roundtrips
 - **Automatic flushing**: Queries flushed on frame completion via `flush()`
 - **Statistics**: Tracks cache performance separately from ContentCache
 - **Protocol negotiation**: Client advertises support, server chooses PersistentCache if available
 
 **Notes:**
+
 - Cache initialized with hardcoded 2GB size (TODO: read from parameters)
 - Batching threshold of 10 is tunable for performance
 - Ready for server-side implementation (Phases 5-6)
@@ -1088,6 +1168,7 @@ preserving the existing PersistentCache protocol semantics.
 **Goal:** Implement server-side message reading/writing.
 
 **Tasks completed:**
+
 1. ✅ Extended `SMsgReader` to handle `msgTypePersistentCacheQuery` (254) and `msgTypePersistentCacheHashList` (253)
 2. ✅ Implemented `SMsgReader::readPersistentCacheQuery()` - reads batched hash queries from client
 3. ✅ Implemented `SMsgReader::readPersistentHashList()` - reads chunked hash list advertisements
@@ -1100,6 +1181,7 @@ preserving the existing PersistentCache protocol semantics.
 8. ✅ Verified build succeeds for both viewer and server libraries
 
 **Files modified:**
+
 - `common/rfb/SMsgReader.h`: Added method declarations and vector include
 - `common/rfb/SMsgReader.cxx`: Implemented readPersistentCacheQuery() and readPersistentHashList() (92 lines added)
 - `common/rfb/SMsgWriter.h`: Added method declarations and vector include
@@ -1109,6 +1191,7 @@ preserving the existing PersistentCache protocol semantics.
 - `common/rfb/SConnection.cxx`: Added stub implementations (15 lines added)
 
 **Notes:**
+
 - Wire format correctly handles variable-length hashes with length prefix
 - Hash list supports chunking for large cache inventories
 - Stub implementations allow compilation without breaking existing servers
@@ -1121,6 +1204,7 @@ preserving the existing PersistentCache protocol semantics.
 **Goal:** Integrate hash-based encoding into EncodeManager.
 
 **Tasks completed:**
+
 1. ✅ Created `ContentHash` utility class with SHA-256 hashing (common/rfb/ContentHash.h)
 2. ✅ Added PersistentCache state tracking to EncodeManager (clientKnownHashes_ set)
 3. ✅ Implemented `tryPersistentCacheLookup()` with hash computation using ContentHash::computeRect()
@@ -1132,9 +1216,11 @@ preserving the existing PersistentCache protocol semantics.
 9. ✅ All server and client libraries build successfully
 
 **Files created:**
+
 - `common/rfb/ContentHash.h`: SHA-256 hashing utility with proper stride handling
 
 **Files modified:**
+
 - `common/rfb/EncodeManager.h`: Added PersistentCache state, methods, and statistics
 - `common/rfb/EncodeManager.cxx`: Implemented tryPersistentCacheLookup() and helper methods (59 lines added)
 - `common/rfb/VNCSConnectionST.h`: Added handler declarations and setEncodings override
@@ -1142,6 +1228,7 @@ preserving the existing PersistentCache protocol semantics.
 - `common/rfb/SConnection.cxx`: Added PersistentCache detection logging
 
 **Notes:**
+
 - PersistentCache is preferred when both client and server support it
 - Falls back to ContentCache gracefully when PersistentCache not available
 - Hash computation uses ContentHash::computeRect() with correct stride handling
@@ -1155,6 +1242,7 @@ preserving the existing PersistentCache protocol semantics.
 **Goal:** Implement cache file I/O.
 
 **Tasks completed:**
+
 1. ✅ Implemented cache file format with 64-byte header (magic, version, entry count, timestamps)
 2. ✅ Implemented `loadFromDisk()` with header validation and entry parsing
 3. ✅ Implemented `saveToDisk()` with automatic directory creation
@@ -1166,11 +1254,14 @@ preserving the existing PersistentCache protocol semantics.
 9. ✅ Verified build succeeds with Phase 7 changes
 
 **Files modified:**
+
 - `common/rfb/GlobalClientPersistentCache.cxx`: Implemented loadFromDisk() and saveToDisk() (203 lines added)
 - `common/rfb/DecodeManager.cxx`: Added cache load on startup, save on shutdown (15 lines modified)
 
 **File Format Implementation:**
-```
+
+```text
+
 ┌────────────────────────────────────────┐
 │ Header (64 bytes)                      │
 │  magic: 0x50435643 ("PCVC")           │
@@ -1187,15 +1278,18 @@ preserving the existing PersistentCache protocol semantics.
 └────────────────────────────────────────┘
 │ Checksum (32 bytes, placeholder)       │
 └────────────────────────────────────────┘
-```
+
+```text
 
 **Key Features:**
+
 - **Automatic directory creation**: Creates `~/.cache/tigervnc/` if it doesn't exist
 - **Graceful corruption handling**: Invalid magic/version causes clean restart
 - **Size-aware loading**: Stops loading if max cache size is reached
 - **Cross-session persistence**: Cache survives client restart and works across servers
 
 **Notes:**
+
 - Checksum validation is a placeholder (writes zeros, skips verification on load)
 - Production implementation should add SHA-256 verification
 - Cache is loaded synchronously on startup (may add lazy loading in future)
@@ -1210,6 +1304,7 @@ preserving the existing PersistentCache protocol semantics.
 **Goal:** Enable concurrent VNC viewers on the same machine to coordinate writes to the shared PersistentCache directory and share index updates in real-time.
 
 **Tasks completed:**
+
 1. ✅ Created `CoordinatorProtocol.h` - Wire format, message types (HELLO, WELCOME, WRITE_REQ, WRITE_ACK, INDEX_UPDATE, etc.)
 2. ✅ Created `CacheCoordinator.h` - Abstract interface with Role enum, factory method, callbacks
 3. ✅ Implemented `MasterCoordinator` - Unix domain socket server, accepts slave connections, processes writes, broadcasts updates
@@ -1221,18 +1316,21 @@ preserving the existing PersistentCache protocol semantics.
 9. ✅ Created 7 unit tests covering role detection, IPC, message serialization
 
 **Files created:**
+
 - `common/rfb/cache/CoordinatorProtocol.h` - Message types, wire format structs, serialization helpers
 - `common/rfb/cache/CacheCoordinator.h` - Abstract base class, Master/Slave/Standalone declarations
 - `common/rfb/cache/CacheCoordinator.cxx` - Full implementation (~960 lines)
 - `tests/unit/cachecoordinator.cxx` - Unit tests (7 tests, all passing)
 
 **Files modified:**
+
 - `common/rfb/GlobalClientPersistentCache.h` - Added coordinator member, methods, callbacks
 - `common/rfb/GlobalClientPersistentCache.cxx` - Implemented coordinator integration (~190 lines)
 - `common/rfb/CMakeLists.txt` - Added CacheCoordinator.cxx
 - `tests/unit/CMakeLists.txt` - Added cachecoordinator test
 
 **Architecture:**
+
 - **Master election**: First viewer acquires `coordinator.lock` via `flock()`, becomes master
 - **IPC**: Unix domain socket at `coordinator.sock` in cache directory
 - **Write flow**: Slaves send WRITE_REQ → Master writes to shard → Master sends WRITE_ACK + broadcasts INDEX_UPDATE
@@ -1240,6 +1338,7 @@ preserving the existing PersistentCache protocol semantics.
 - **Control files**: `coordinator.sock`, `coordinator.pid`, `coordinator.lock`
 
 **Key Features:**
+
 - Real-time index sharing between concurrent viewers
 - Entry written by Viewer A immediately available to Viewer B
 - No separate daemon process required

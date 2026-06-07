@@ -59,9 +59,12 @@ The end state is:
 - [x] Remove `ContentCache* contentCache` from `DecodeManager` (ctor, dtor, members).
 - [x] Delete or rewrite `handleCachedRect` to use `GlobalClientPersistentCache` via `ContentKey` (now forwards to `handlePersistentCachedRect`).
 - [x] Delete or rewrite `storeCachedRect` to insert into `GlobalClientPersistentCache` (now forwards to `storePersistentCachedRect`).
-- [x] Introduce any minimal helper in `GlobalClientPersistentCache` needed for ephemeral inserts (e.g. insert-by-ContentKey without disk metadata) **or** adapt `insert(...)` to accept synthetic in-memory-only hashes. (The unified engine already exposes `getByKey(ContentKey)` and uses `ContentKey`/64-bit IDs consistently; no additional helpers are required beyond the existing API.)
-- [x] Collapse ContentCache-specific bandwidth stats into unified cache stats (or clearly separate "ephemeral" vs "persistent" in one struct). (Bandwidth accounting now uses a single `CacheProtocolStats` structure for PersistentCache-style 64-bit IDs; ContentCache is treated as an ephemeral policy on top of this.)
-- [x] Ensure `PersistentCache=0` continues to **avoid disk I/O** (per existing bugfix plan) while still allowing an in-memory cache policy when desired. (Implemented via configuration-gated construction of `GlobalClientPersistentCache` and disk load in `DecodeManager`.)
+- [x] Introduce any minimal helper in `GlobalClientPersistentCache` needed for ephemeral inserts (e.g. insert-by-ContentKey without disk metadata) **or** adapt `insert(...)` to accept synthetic in-memory-only hashes. (The unified engine already
+  exposes `getByKey(ContentKey)` and uses `ContentKey`/64-bit IDs consistently; no additional helpers are required beyond the existing API.)
+- [x] Collapse ContentCache-specific bandwidth stats into unified cache stats (or clearly separate "ephemeral" vs "persistent" in one struct). (Bandwidth accounting now uses a single `CacheProtocolStats` structure for PersistentCache-style 64-bit
+  IDs; ContentCache is treated as an ephemeral policy on top of this.)
+- [x] Ensure `PersistentCache=0` continues to **avoid disk I/O** (per existing bugfix plan) while still allowing an in-memory cache policy when desired. (Implemented via configuration-gated construction of `GlobalClientPersistentCache` and disk load
+  in `DecodeManager`.)
 
 ### 3.2 Server (EncodeManager + SConnection/VNCSConnectionST)
 
@@ -70,21 +73,27 @@ The end state is:
   - [x] Remove ContentCache-specific stats logging (`ContentCache::getStats`, ARC logs).
   - [x] Make `tryContentCacheLookup`/`insertIntoContentCache` no-ops (legacy entry points only). These stubs remain for linkage but are not used by the unified cache path.
 - [x] Simplify `writeSubRect` cache selection to use only the unified 64-bit ID path (PersistentCache lookup), gated by client capability and configuration.
-- [x] Verify that targeted refresh logic (`onCachedRectRef`, `handleRequestCachedData`, `queueCachedInit`, etc.) still works purely from ID→rect mappings without any server-side cache store. (SConnection/VNCSConnectionST now track last-referenced rects and known IDs using 64-bit IDs only, and `EncodeManager` relies solely on the unified `tryPersistentCacheLookup` path.)
+- [x] Verify that targeted refresh logic (`onCachedRectRef`, `handleRequestCachedData`, `queueCachedInit`, etc.) still works purely from ID→rect mappings without any server-side cache store. (SConnection/VNCSConnectionST now track last-referenced
+  rects and known IDs using 64-bit IDs only, and `EncodeManager` relies solely on the unified `tryPersistentCacheLookup` path.)
 - [x] Remove server config parameters that only made sense for `ContentCache` as a separate engine (`EnableContentCache`, `ContentCacheSize`, `ContentCacheMaxAge`, `ContentCacheMinRectSize`).
 
 ### 3.3 Protocol and capability handling
 
 - [x] Decide how to interpret `pseudoEncodingContentCache` vs `pseudoEncodingPersistentCache` under the unified engine:
   - [ ] Option A: Only negotiate `PersistentCache` pseudo-encoding; treat ContentCache as a viewer config only.
-  - [x] Option B: Keep both encodings but handle them with the same encode/decode logic and differentiate policies on the viewer. (Current implementation prefers `pseudoEncodingPersistentCache` when available and falls back to `pseudoEncodingContentCache`, but both map to the same 64-bit ID protocol on the wire.)
-- [x] Ensure `SMsgWriter`/`CMsgReader` use the 64-bit ID PersistentCache wire format for all cache references and inits. (Both CachedRect and PersistentCachedRect now send/receive 64-bit IDs as two U32 values, and all cached INIT messages use the 24-byte header format.)
-- [x] Clean up any remaining uses of full hash vectors in the on-wire path (if any remain after the earlier 64-bit convergence work). (PersistentCache disk/index still tracks full hashes, but the on-wire protocol and server/client handlers no longer send or parse variable-length hash vectors.)
+  - [x] Option B: Keep both encodings but handle them with the same encode/decode logic and differentiate policies on the viewer. (Current implementation prefers `pseudoEncodingPersistentCache` when available and falls back to
+    `pseudoEncodingContentCache`, but both map to the same 64-bit ID protocol on the wire.)
+- [x] Ensure `SMsgWriter`/`CMsgReader` use the 64-bit ID PersistentCache wire format for all cache references and inits. (Both CachedRect and PersistentCachedRect now send/receive 64-bit IDs as two U32 values, and all cached INIT messages use the
+  24-byte header format.)
+- [x] Clean up any remaining uses of full hash vectors in the on-wire path (if any remain after the earlier 64-bit convergence work). (PersistentCache disk/index still tracks full hashes, but the on-wire protocol and server/client handlers no longer
+  send or parse variable-length hash vectors.)
 
 ### 3.4 Tests and documentation
 
-- [x] Update unit tests that directly reference `rfb::ContentCache` internals or stats. (Unit coverage for `GlobalClientPersistentCache` and `DecodeManager` now targets the unified engine; ContentCache-specific unit tests are treated as legacy and are no longer required for the production path.)
-- [x] Update e2e tests under `tests/e2e/` that assume a separate ContentCache protocol vs PersistentCache (especially `test_cpp_contentcache.py` and related scripts). (The C++ ContentCache test now asserts that `PersistentCache=0` produces no PersistentCache initialization events, and the PersistentCache e2e tests consume the unified 64-bit ID protocol.)
+- [x] Update unit tests that directly reference `rfb::ContentCache` internals or stats. (Unit coverage for `GlobalClientPersistentCache` and `DecodeManager` now targets the unified engine; ContentCache-specific unit tests are treated as legacy and
+  are no longer required for the production path.)
+- [x] Update e2e tests under `tests/e2e/` that assume a separate ContentCache protocol vs PersistentCache (especially `test_cpp_contentcache.py` and related scripts). (The C++ ContentCache test now asserts that `PersistentCache=0` produces no
+  PersistentCache initialization events, and the PersistentCache e2e tests consume the unified 64-bit ID protocol.)
 - [x] Add/adjust tests to cover:
   - [x] Unified cache behavior in ephemeral mode (no disk I/O, session-only behavior).
   - [x] Unified cache behavior in persistent mode (disk-backed, cross-session reuse).
@@ -97,7 +106,8 @@ The end state is:
 
 ## 4. Notes and Gotchas
 
-- The original ContentCache bugfix that introduced `ContentKey(width, height, contentHash64)` **must remain intact**. The current PersistentCache implementation already uses `ContentKey` and width/height for in-memory keying; the unified engine should preserve this.
+- The original ContentCache bugfix that introduced `ContentKey(width, height, contentHash64)` **must remain intact**. The current PersistentCache implementation already uses `ContentKey` and width/height for in-memory keying; the unified engine
+  should preserve this.
 - When removing `ContentCache`, be careful to keep any targeted refresh and debug/logging hooks that are still useful for diagnostics (e.g. mapping cache IDs back to last referenced rects, tiling logs, etc.).
 - Tiling logic (`TilingAnalysis`, `TilingIntegration`) is already agnostic to the specific cache backend; it should require minimal or no changes.
 
@@ -107,9 +117,12 @@ The end state is:
 
 - [x] Verified that PersistentCache (`GlobalClientPersistentCache`) already uses `ContentKey(width, height, hash64)` for in-memory keying and that the width/height bugfix is fully applied.
 - [x] Created this tracking document.
-- [x] Viewer-side removal of `ContentCache` for the C++ viewer is complete at the `DecodeManager` layer: all legacy `CachedRect` entry points now delegate to the unified `GlobalClientPersistentCache` engine, with disk I/O gated by the `PersistentCache` parameter.
-- [x] Server-side ContentCache removal is implemented for `EncodeManager` and `ServerCore`: the `rfb` library builds on macOS with only the 64-bit PersistentCache path active. The old `rfb::ContentCache` engine and its helper stubs have been removed from the code, `writeSubRect` only calls `tryPersistentCacheLookup`, tiling diagnostics now use `Server::persistentCacheMinRectSize`, and all server-side `ContentCache*` configuration parameters have been removed.
-- [x] Targeted refresh for cache misses is now driven by 64-bit cache IDs and per-connection rect mappings: `EncodeManager::tryPersistentCacheLookup()` notifies `SConnection::onCachedRectRef()`, `VNCSConnectionST::handleRequestCachedData()` uses `lastCachedRectRef_` and `queueCachedInit()` for precise refreshes, and `VNCServerST::handleRequestCachedData()` provides a conservative full-frame fallback when no mapping is available.
+- [x] Viewer-side removal of `ContentCache` for the C++ viewer is complete at the `DecodeManager` layer: all legacy `CachedRect` entry points now delegate to the unified `GlobalClientPersistentCache` engine, with disk I/O gated by the
+  `PersistentCache` parameter.
+- [x] Server-side ContentCache removal is implemented for `EncodeManager` and `ServerCore`: the `rfb` library builds on macOS with only the 64-bit PersistentCache path active. The old `rfb::ContentCache` engine and its helper stubs have been removed
+  from the code, `writeSubRect` only calls `tryPersistentCacheLookup`, tiling diagnostics now use `Server::persistentCacheMinRectSize`, and all server-side `ContentCache*` configuration parameters have been removed.
+- [x] Targeted refresh for cache misses is now driven by 64-bit cache IDs and per-connection rect mappings: `EncodeManager::tryPersistentCacheLookup()` notifies `SConnection::onCachedRectRef()`, `VNCSConnectionST::handleRequestCachedData()` uses
+  `lastCachedRectRef_` and `queueCachedInit()` for precise refreshes, and `VNCServerST::handleRequestCachedData()` provides a conservative full-frame fallback when no mapping is available.
 - [x] Tests and higher-level docs have been updated to reflect the unified cache engine and to validate targeted refresh and capability behavior.
 
 ## 6. Next Steps for Future Work
@@ -123,7 +136,8 @@ The unification work tracked in this document has been implemented. Any further 
 This section captures concrete decisions made while implementing the unified cache so they do not get lost in commit messages.
 
 1. **Server has no private ContentCache store**  
-   The server no longer keeps a separate in-memory ContentCache structure. All cache references sent to the client are derived from whatever cache engine the server uses for PersistentCache (64-bit IDs keyed by `ContentKey`). Targeted refresh and `RequestCachedData` handling rely solely on ID→rect mappings and do not require a separate cache object.
+   The server no longer keeps a separate in-memory ContentCache structure. All cache references sent to the client are derived from whatever cache engine the server uses for PersistentCache (64-bit IDs keyed by `ContentKey`). Targeted refresh and
+   `RequestCachedData` handling rely solely on ID→rect mappings and do not require a separate cache object.
 
 2. **Viewer owns persistence policy**  
    The same on-wire protocol is used for both ephemeral and persistent modes. The viewer decides, based on `PersistentCache` and related parameters, whether to:
@@ -138,7 +152,8 @@ This section captures concrete decisions made while implementing the unified cac
    Ephemeral in-memory caching may still be implemented as an internal policy if it is ever needed, but it must not touch disk.
 
 4. **ContentCache protocol name is legacy-only**  
-   The `pseudoEncodingContentCache` constant is kept for compatibility and documentation, but the implementation routes both ContentCache and PersistentCache-style encodings through the same 64-bit-ID handlers. Any remaining references to "ContentCache protocol" should be read as "ephemeral cache policy of the unified engine".
+   The `pseudoEncodingContentCache` constant is kept for compatibility and documentation, but the implementation routes both ContentCache and PersistentCache-style encodings through the same 64-bit-ID handlers. Any remaining references to
+   "ContentCache protocol" should be read as "ephemeral cache policy of the unified engine".
 
 5. **Stats are unified but tagged**  
    Bandwidth and hit/miss stats are reported from a single cache accounting path. Where useful, stats may be broken down by policy (ephemeral vs persistent) but they are collected from the same engine implementation.
@@ -150,16 +165,20 @@ This section captures concrete decisions made while implementing the unified cac
 These items should be resolved before declaring the ContentCache removal fully complete:
 
 1. **Encoding negotiation strategy (resolved)**  
-   We have chosen **Option B**: both `pseudoEncodingContentCache` and `pseudoEncodingPersistentCache` continue to be negotiated, but they are handled by the same 64-bit ID cache engine. The viewer policy (ephemeral vs persistent) is determined locally, and the protocol docs (`PERSISTENTCACHE_DESIGN.md`) describe this as the unified model.
+   We have chosen **Option B**: both `pseudoEncodingContentCache` and `pseudoEncodingPersistentCache` continue to be negotiated, but they are handled by the same 64-bit ID cache engine. The viewer policy (ephemeral vs persistent) is determined
+   locally, and the protocol docs (`PERSISTENTCACHE_DESIGN.md`) describe this as the unified model.
 
 2. **Legacy client interoperability (documented)**  
-   This fork targets environments where both viewer and server speak the unified 64-bit ID cache protocol. Older implementations that expect hash-vector PersistentCache messages or a separate ContentCache engine will continue to interoperate at the base RFB level, but cache features may be disabled or behave differently. `PERSISTENTCACHE_DESIGN.md` documents the intended compatibility expectations.
+   This fork targets environments where both viewer and server speak the unified 64-bit ID cache protocol. Older implementations that expect hash-vector PersistentCache messages or a separate ContentCache engine will continue to interoperate at the
+   base RFB level, but cache features may be disabled or behave differently. `PERSISTENTCACHE_DESIGN.md` documents the intended compatibility expectations.
 
 3. **Minimum rectangle size heuristics (accepted as-is)**  
-   Server-side `persistentCacheMinRectSize` now replaces the old `ContentCacheMinRectSize`. The current default has been validated against the e2e workloads and black-box screenshot tests and is accepted as the baseline; further tuning can be treated as normal performance work, not part of ContentCache removal.
+   Server-side `persistentCacheMinRectSize` now replaces the old `ContentCacheMinRectSize`. The current default has been validated against the e2e workloads and black-box screenshot tests and is accepted as the baseline; further tuning can be treated
+   as normal performance work, not part of ContentCache removal.
 
 4. **Debug and tracing hooks (superseded)**  
-   Instead of porting all historical ContentCache logs, the fork now relies on targeted CCDBG-style logging in `EncodeManager`/`CConnection` and the log-driven trace test plan in `docs/LOG_DRIVEN_CACHE_TRACE_TEST_PLAN.md`. Additional diagnostics can be added there without reintroducing the old `rfb::ContentCache` machinery.
+   Instead of porting all historical ContentCache logs, the fork now relies on targeted CCDBG-style logging in `EncodeManager`/`CConnection` and the log-driven trace test plan in `docs/LOG_DRIVEN_CACHE_TRACE_TEST_PLAN.md`. Additional diagnostics can
+   be added there without reintroducing the old `rfb::ContentCache` machinery.
 
 ---
 
@@ -173,3 +192,17 @@ The ContentCache implementation can be considered fully removed (and replaced by
 - [x] Viewer-side configuration cleanly separates "use cache" from "persist cache to disk" and `PersistentCache=0` is honored in all code paths.
 - [ ] E2E tests for both ephemeral and persistent policies pass reliably on CI and no longer assume a separate ContentCache implementation.
 - [x] Cache-focused design docs describe a single engine with multiple policies rather than two distinct cache implementations.
+
+## Hard cutover: PersistentCache v2 CacheKey wire format
+
+As of this cutover, the live C++ PersistentCache wire contract is intentionally
+not backward-compatible with legacy flagless INIT or 8-byte-ID cache messages:
+
+- `PersistentCachedRect`: rectangle header + 16-byte `CacheKey` + offset fields.
+- `PersistentCachedRectInit`: rectangle header + 16-byte `CacheKey` + mandatory
+  v2 flags byte + optional canonical `PixelFormat` + inner encoding + payload.
+- `PersistentCacheQuery`, `PersistentCacheHashList`, `PersistentCacheEviction`,
+  and `PersistentCacheHashReport` use 16-byte `CacheKey` values.
+
+Any remaining `uint64_t`/first-lane usage is transitional internal bookkeeping
+only and must not define the wire protocol or Rust parity target.

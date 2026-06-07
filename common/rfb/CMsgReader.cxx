@@ -933,98 +933,42 @@ bool CMsgReader::readPersistentCachedRect(const core::Rect& r) {
   return true;
 }
 bool CMsgReader::readPersistentCachedRectWithOffset(const core::Rect& r) {
-  // Backwards-compatible entry point. The offset extension is part of
-  // encodingPersistentCachedRect, so both helpers consume the same payload.
+  // Offset extension is part of encodingPersistentCachedRect, so both
+  // entry points consume the same payload.
   return readPersistentCachedRect(r);
 }
 bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r) {
-  // Incremental decode without outer restore point to avoid nesting with decoder
+  // Incremental decode without outer restore point to avoid nesting with decoder.
+  // Hard-cutover v2 only. Legacy flagless PersistentCachedRectInit is no longer accepted.
+  // Wire format after the rectangle header:
+  //   16-byte CacheKey + flags + optional canonical PixelFormat + inner encoding + payload.
   if (!pendingPersistentCacheInitActive) {
-    bool supportsNative = handler->supportsNativeFormatCache();
-
-    // Header: 16-byte CacheKey + [flags + optional PF] + 32-bit innerEncoding
     is->setRestorePoint();
-    if (!is->hasDataOrRestore(16))
+    if (!is->hasDataOrRestore(16 + 1 + 4))
       return false;
+
     uint8_t keyBuf[16];
     is->readBytes(keyBuf, 16);
     pendingPersistentCacheKey = rfb::CacheKey(keyBuf);
 
-    pendingPersistentCacheFlags = 0;
+    pendingPersistentCacheFlags = is->readU8();
+    if (pendingPersistentCacheFlags & 0xFE)
+      throw protocol_error("PersistentCachedRectInit: reserved flags set");
+
     pendingPersistentCacheHasPF = false;
-
-    // If the server doesn't send the native-format flags header (older builds),
-    // attempting to parse it will desynchronise the stream and can later surface
-    // as a bogus framebuffer rectangle (e.g. "Rect too big"). Be defensive:
-    // try the native-format header first, but fall back to legacy if the parsed
-    // inner encoding is not plausible.
-    auto isSaneInnerEncoding = [](int32_t enc) -> bool {
-      switch (enc) {
-      case encodingRaw:
-      case encodingCopyRect:
-      case encodingRRE:
-      case encodingHextile:
-      case encodingTight:
-      case encodingZRLE:
-        return true;
-      default:
+    if (pendingPersistentCacheFlags & 0x01) {
+      if (!handler->supportsNativeFormatCache())
+        throw protocol_error("PersistentCachedRectInit: native_format received without negotiated support");
+      if (!is->hasDataOrRestore(16 + 4))
         return false;
-      }
-    };
-
-    if (supportsNative) {
-      // Try to parse: flags byte, optional canonical PF, then inner encoding.
-      if (!is->hasDataOrRestore(1 + 4))
-        return false;
-
-      uint8_t flags = is->readU8();
-      // Reserved bits must be zero (only bit0 is currently used).
-      if (flags & 0xFE) {
-        // Not a flags byte -> treat as legacy.
-        is->gotoRestorePoint();
-        if (!is->hasDataOrRestore(16 + 4))
-          return false;
-        is->readBytes(keyBuf, 16);
-        pendingPersistentCacheKey = rfb::CacheKey(keyBuf);
-        pendingPersistentCacheFlags = 0;
-        pendingPersistentCacheHasPF = false;
-        pendingPersistentCacheEncoding = is->readS32();
-      } else {
-        pendingPersistentCacheFlags = flags;
-
-        if (pendingPersistentCacheFlags & 0x01) {
-          // native_format flag set: PixelFormat follows
-          if (!is->hasDataOrRestore(16 + 4))
-            return false;
-          pendingPersistentCachePF.read(is);
-          static const PixelFormat canonicalPF(32, 24, false, true, 255, 255, 255, 16, 8, 0);
-          if (pendingPersistentCachePF != canonicalPF)
-            throw protocol_error("PersistentCachedRectInit: non-canonical PixelFormat in native_format");
-          pendingPersistentCacheHasPF = true;
-        }
-
-        int32_t innerEnc = is->readS32();
-        if (!isSaneInnerEncoding(innerEnc)) {
-          // Likely a legacy header (no flags). Roll back and parse legacy.
-          is->gotoRestorePoint();
-          if (!is->hasDataOrRestore(16 + 4))
-            return false;
-          is->readBytes(keyBuf, 16);
-          pendingPersistentCacheKey = rfb::CacheKey(keyBuf);
-          pendingPersistentCacheFlags = 0;
-          pendingPersistentCacheHasPF = false;
-          pendingPersistentCacheEncoding = is->readS32();
-        } else {
-          pendingPersistentCacheEncoding = innerEnc;
-        }
-      }
-    } else {
-      // Legacy v1: no flags or PF, just encoding
-      if (!is->hasDataOrRestore(4))
-        return false;
-      pendingPersistentCacheEncoding = is->readS32();
+      pendingPersistentCachePF.read(is);
+      static const PixelFormat canonicalPF(32, 24, false, true, 255, 255, 255, 16, 8, 0);
+      if (pendingPersistentCachePF != canonicalPF)
+        throw protocol_error("PersistentCachedRectInit: non-canonical PixelFormat in native_format");
+      pendingPersistentCacheHasPF = true;
     }
 
+    pendingPersistentCacheEncoding = is->readS32();
     pendingPersistentCacheInitActive = true;
     is->clearRestorePoint();
   }
@@ -1040,7 +984,6 @@ bool CMsgReader::readPersistentCachedRectInit(const core::Rect& r) {
   bool ret = readRect(r, pendingPersistentCacheEncoding, serverOverride);
   if (ret) {
     handler->storePersistentCachedRect(r, pendingPersistentCacheKey, pendingPersistentCacheEncoding);
-
     pendingPersistentCacheInitActive = false;
     pendingPersistentCacheKey = CacheKey();
     pendingPersistentCacheEncoding = 0;

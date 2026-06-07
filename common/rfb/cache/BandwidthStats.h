@@ -38,12 +38,14 @@ void trackContentCacheRef(CacheProtocolStats& stats, const core::Rect& r, const 
 
 void trackContentCacheInit(CacheProtocolStats& stats, size_t compressedBytes);
 
-// PersistentCache: now uses the same 64-bit ID on the wire as
-// ContentCache. Reference overhead is therefore identical to
-// CachedRect: 20 bytes per rect.
+// PersistentCache uses 16-byte CacheKey on the wire.
+// PersistentCachedRect reference overhead is 36 bytes:
+// 12-byte rect header + 16-byte CacheKey + 8-byte offset fields.
 void trackPersistentCacheRef(CacheProtocolStats& stats, const core::Rect& r, const rfb::PixelFormat& pf);
 
-// PersistentCachedRectInit overhead: 24 bytes (rect header + ID + encoding)
+// PersistentCachedRectInit v2 overhead is 33 bytes:
+// 12-byte rect header + 16-byte CacheKey + 1-byte flags + 4-byte encoding,
+// plus optional 16-byte PixelFormat when native_format is set.
 void trackPersistentCacheInit(CacheProtocolStats& stats, size_t compressedBytes);
 
 } // namespace cache

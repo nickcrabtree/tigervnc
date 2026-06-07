@@ -396,14 +396,12 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
     hit_samples = []
     miss_samples = []
 
-    # Track bandwidth savings. The PersistentCache protocol now uses the
-    # same 64-bit ID wire format and overhead as cache:
-    #   - PersistentCachedRect reference: 20 bytes (12 header + 8 ID)
-    #   - PersistentCachedRectInit: 24 bytes (12 header + 8 ID + 4 encoding)
+    # Track bandwidth savings. The PersistentCache protocol now uses 16-byte CacheKey references:
+    #   - PersistentCachedRect reference: 36 bytes (12 header + 16-byte CacheKey + 8 offset fields)
+    #   - PersistentCachedRectInit v2: 33 bytes (12 header + 16-byte CacheKey + 1 flags + 4 encoding), plus optional 16-byte PixelFormat
     persistent_bytes_saved = 0
-    persistent_bytes_sent_as_ref = 0  # 20 bytes per PersistentCachedRect
-    persistent_bytes_sent_full = 0  # 24-byte header per PersistentCachedRectInit
-
+    persistent_bytes_sent_as_ref = 0  # 36 bytes per PersistentCachedRect
+    persistent_bytes_sent_full = 0  # 33-byte v2 header per PersistentCachedRectInit, excluding optional PixelFormat
     last_was_pc_hit = False  # Track if previous line was a PC HIT (for continuation lines)
 
     with open(log_path, "r", errors="replace") as f:
@@ -425,8 +423,8 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
                 match = re.search(r"saved\s+(\d+)\s+bytes", lower)
                 if match:
                     persistent_bytes_saved += int(match.group(1))
-                    # Unified cache protocol: 20 bytes per PersistentCachedRect reference
-                    persistent_bytes_sent_as_ref += 20
+                    # Unified cache protocol: 36 bytes per PersistentCachedRect reference
+                    persistent_bytes_sent_as_ref += 36
                 last_was_pc_hit = False
             elif "persistentcache" in lower and "miss" in lower:
                 parsed.persistent_misses += 1
@@ -440,8 +438,8 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
                 # the server had to send full data because the client didn't
                 # yet know this ID. This mirrors how CachedRectInit is
                 # interpreted for cache.
-                # Unified cache protocol: 24-byte header per INIT (12 header + 8 ID + 4 encoding)
-                persistent_bytes_sent_full += 24
+                # Unified cache protocol: 33-byte v2 header per INIT (12 header + 16-byte CacheKey + 1 flags + 4 encoding)
+                persistent_bytes_sent_full += 33
                 parsed.persistent_init_count += 1
                 parsed.persistent_misses += 1
                 last_was_pc_hit = False
@@ -463,7 +461,7 @@ def parse_server_log(log_path: Path, verbose: bool = False) -> ParsedLog:
 
     # Calculate PersistentCache bandwidth reduction
     # Without cache: would have sent all as full encodings
-    # With cache: sent some as references (47B) instead of full encodings
+    # With cache: sent some 36-byte references instead of full encodings
     # Reduction = (bytes_saved - ref_overhead) / (bytes_saved) * 100
     if persistent_bytes_saved > 0:
         net_savings = persistent_bytes_saved - persistent_bytes_sent_as_ref

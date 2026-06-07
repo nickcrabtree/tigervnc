@@ -130,9 +130,10 @@ public:
   void writePersistentCachedRectWithOffset(const core::Rect& r, const CacheKey& key, uint16_t ox, uint16_t oy,
                                            uint16_t cachedW, uint16_t cachedH);
 
-  // PersistentCache protocol extension: initial transmission with 16-byte CacheKey
+  // PersistentCache protocol extension: initial transmission with 16-byte CacheKey.
+  // Hard-cutover v2 wire format: 16-byte CacheKey + flags + optional PixelFormat + inner encoding.
   void writePersistentCachedRectInit(const core::Rect& r, const CacheKey& key, int encoding, uint8_t flags = 0,
-                                     const PixelFormat* pf = nullptr, bool includeFlags = false);
+                                     const PixelFormat* pf = nullptr);
 
   // Cache seed: tell client to associate existing framebuffer pixels at rect R
   // with CacheKey. No pixel payload follows - client uses its own framebuffer.
