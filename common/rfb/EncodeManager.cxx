@@ -1480,12 +1480,19 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
       const int damageAreaInContent = damageBboxInContent.area();
       const double coverage = static_cast<double>(damageAreaInContent) / static_cast<double>(contentArea);
 
-      // For very large bordered regions with low coverage, skip cache lookup
-      // unless the client is already known to hold this exact canonical ID.
-      if (contentArea > WholeRectCacheMinArea && coverage < 0.5 && !alreadyKnown) {
+      // For very large bordered regions, avoid whole-region cache replay when
+      // only a tiny fraction of the content is damaged. Even if the client has
+      // seen this canonical ID before, replaying the whole bordered region for
+      // very-low-coverage damage can overwrite unrelated fresh pixels after a
+      // resize or full-frame churn. A lower threshold still keeps normal
+      // reconnect/replay paths hot while blocking the pathological case.
+      const bool veryLowCoverage = contentArea > WholeRectCacheMinArea && coverage < 0.05;
+      const bool lowCoverageUnknown = contentArea > WholeRectCacheMinArea && coverage < 0.5 && !alreadyKnown;
+      if (veryLowCoverage || lowCoverageUnknown) {
         vlog.info("%s BORDERED: Skipping cache lookup for [%d,%d-%d,%d] due to "
-                  "low damage coverage (%.3f)",
-                  strTimestamp(), contentRect.tl.x, contentRect.tl.y, contentRect.br.x, contentRect.br.y, coverage);
+                  "low damage coverage (%.3f, alreadyKnown=%s)",
+                  strTimestamp(), contentRect.tl.x, contentRect.tl.y, contentRect.br.x, contentRect.br.y, coverage,
+                  yesNo(alreadyKnown));
         continue;
       }
 
@@ -1600,12 +1607,12 @@ void EncodeManager::writeRects(const core::Region& changed, const PixelBuffer* p
             bool bboxClientRequested = conn->clientRequestedPersistent(bboxIdForCoverage);
             bboxAlreadyKnown = conn->knowsPersistentId(bboxIdForCoverage) && !bboxClientRequested;
           }
-          if (!bboxAlreadyKnown) {
+          if (bboxCoverage < 0.05 || !bboxAlreadyKnown) {
             attemptBboxHit = false;
             if (isCCDebugEnabled()) {
               vlog.info("TILING: Skipping bbox cache lookup for [%d,%d-%d,%d] "
-                        "due to low damage coverage (%.3f)",
-                        bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y, bboxCoverage);
+                        "due to low damage coverage (%.3f, alreadyKnown=%s)",
+                        bbox.tl.x, bbox.tl.y, bbox.br.x, bbox.br.y, bboxCoverage, yesNo(bboxAlreadyKnown));
             }
           }
         }
