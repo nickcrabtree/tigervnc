@@ -4,7 +4,9 @@
 This test reuses the generic black-box screenshot harness but targets a
 real-world long article (NetWeaver "Going Cookie Free") and exercises a
 window-resize path that has been observed to cause display corruption in
-practice.
+practice. In user terms this targets disk-backed PersistentCache=1, while
+the implementation may log the shared internal PersistentCache engine for
+both ContentCache=1 and PersistentCache=1.
 
 Scenario outline:
 - Start the browser scenario as in test_black_box_screenshot_browser.py,
@@ -49,7 +51,7 @@ def main() -> int:
         "--viewer-resize-factor",
         "2.0",  # grow viewer windows by ~2x
         "--viewer-resize-at-checkpoint",
-        "3",    # resize after checkpoint 3
+        "3",  # resize after checkpoint 3
         *sys.argv[1:],
     ]
 

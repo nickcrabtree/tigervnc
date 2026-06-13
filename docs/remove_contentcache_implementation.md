@@ -1,6 +1,6 @@
 # Remove ContentCache Implementation – Tracking
 
-Status: **In progress**  
+Status: **In progress**
 Owner: experimental fork (server + C++ viewer)
 
 This document tracks the hard cutover from separate ContentCache and PersistentCache implementations to a **single cache protocol/engine** based on 64-bit IDs and `ContentKey` (width, height, hash64).
@@ -8,10 +8,10 @@ This document tracks the hard cutover from separate ContentCache and PersistentC
 The end state is:
 
 - Only one cache implementation on both server and viewer.
-- ContentCache protocol becomes an **ephemeral policy** of the unified cache:
+- User-visible `ContentCache=1` remains the bandwidth-reducing, disk-free cache feature; internally it is an ephemeral policy of the unified cache:
   - Same wire format and IDs as PersistentCache.
   - Viewer does **not** read/write cache state to disk when in "ContentCache mode".
-- PersistentCache remains the same cache engine, but with disk persistence enabled.
+- User-visible `PersistentCache=1` uses the same internal cache engine with disk persistence enabled.
 
 ---
 
@@ -135,27 +135,27 @@ The unification work tracked in this document has been implemented. Any further 
 
 This section captures concrete decisions made while implementing the unified cache so they do not get lost in commit messages.
 
-1. **Server has no private ContentCache store**  
+1. **Server has no private ContentCache store**
    The server no longer keeps a separate in-memory ContentCache structure. All cache references sent to the client are derived from whatever cache engine the server uses for PersistentCache (64-bit IDs keyed by `ContentKey`). Targeted refresh and
    `RequestCachedData` handling rely solely on ID→rect mappings and do not require a separate cache object.
 
-2. **Viewer owns persistence policy**  
-   The same on-wire protocol is used for both ephemeral and persistent modes. The viewer decides, based on `PersistentCache` and related parameters, whether to:
+2. **Viewer owns persistence policy**
+   The same internal wire protocol is used for both user-visible `ContentCache=1` and `PersistentCache=1` modes. The viewer decides, based on `PersistentCache` and related parameters, whether to:
    - allocate a `GlobalClientPersistentCache` instance at all; and
    - back entries with on-disk storage vs keeping them memory-only.
 
-3. **`PersistentCache=0` is authoritative for disk I/O**  
+3. **`PersistentCache=0` is authoritative for disk I/O**
    When `PersistentCache` is false, the viewer must not:
    - open any existing cache files;
    - create new cache files; or
-   - perform background load/save operations.  
+   - perform background load/save operations.
    Ephemeral in-memory caching may still be implemented as an internal policy if it is ever needed, but it must not touch disk.
 
-4. **ContentCache protocol name is legacy-only**  
+4. **ContentCache name remains user-visible**
    The `pseudoEncodingContentCache` constant is kept for compatibility and documentation, but the implementation routes both ContentCache and PersistentCache-style encodings through the same 64-bit-ID handlers. Any remaining references to
    "ContentCache protocol" should be read as "ephemeral cache policy of the unified engine".
 
-5. **Stats are unified but tagged**  
+5. **Stats are unified but tagged**
    Bandwidth and hit/miss stats are reported from a single cache accounting path. Where useful, stats may be broken down by policy (ephemeral vs persistent) but they are collected from the same engine implementation.
 
 ---
@@ -164,19 +164,19 @@ This section captures concrete decisions made while implementing the unified cac
 
 These items should be resolved before declaring the ContentCache removal fully complete:
 
-1. **Encoding negotiation strategy (resolved)**  
+1. **Encoding negotiation strategy (resolved)**
    We have chosen **Option B**: both `pseudoEncodingContentCache` and `pseudoEncodingPersistentCache` continue to be negotiated, but they are handled by the same 64-bit ID cache engine. The viewer policy (ephemeral vs persistent) is determined
    locally, and the protocol docs (`PERSISTENTCACHE_DESIGN.md`) describe this as the unified model.
 
-2. **Legacy client interoperability (documented)**  
+2. **Legacy client interoperability (documented)**
    This fork targets environments where both viewer and server speak the unified 64-bit ID cache protocol. Older implementations that expect hash-vector PersistentCache messages or a separate ContentCache engine will continue to interoperate at the
    base RFB level, but cache features may be disabled or behave differently. `PERSISTENTCACHE_DESIGN.md` documents the intended compatibility expectations.
 
-3. **Minimum rectangle size heuristics (accepted as-is)**  
+3. **Minimum rectangle size heuristics (accepted as-is)**
    Server-side `persistentCacheMinRectSize` now replaces the old `ContentCacheMinRectSize`. The current default has been validated against the e2e workloads and black-box screenshot tests and is accepted as the baseline; further tuning can be treated
    as normal performance work, not part of ContentCache removal.
 
-4. **Debug and tracing hooks (superseded)**  
+4. **Debug and tracing hooks (superseded)**
    Instead of porting all historical ContentCache logs, the fork now relies on targeted CCDBG-style logging in `EncodeManager`/`CConnection` and the log-driven trace test plan in `docs/LOG_DRIVEN_CACHE_TRACE_TEST_PLAN.md`. Additional diagnostics can
    be added there without reintroducing the old `rfb::ContentCache` machinery.
 

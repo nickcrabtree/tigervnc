@@ -9,6 +9,7 @@ The `test_toggle_pictures.py` test validates the **tiling enhancement** describe
 ### Without Tiling Enhancement (Current Baseline)
 
 Today, when a large rectangle is sent:
+
 1. Server decomposes it into many small tiles (64×64 or similar)
 2. Each tile is cached individually
 3. On re-display, **many** cache hits occur (one per tile)
@@ -17,6 +18,7 @@ Today, when a large rectangle is sent:
 ### With Tiling Enhancement (Goal)
 
 With the tiling enhancement:
+
 1. Server hashes the **entire** large rectangle first
 2. Server asks client: "Do you have this large rectangle?"
 3. First time: Client says "no" → server sends pixels normally, then tells client to store the hash
@@ -25,7 +27,7 @@ With the tiling enhancement:
 
 ## Test Flow
 
-```
+```text
 1. Display pictureA (HYDRATION)
    └─ Server: hash entire rectangle
    └─ Client: "no, I don't have it"
@@ -53,6 +55,7 @@ With the tiling enhancement:
 ## Test Materials
 
 The test uses two picture fixtures:
+
 - `pictureA.png`: 1034×800 pixels, 517 KB (827,200 pixels)
 - `pictureB.png`: 1034×800 pixels, 621 KB (635,536 bytes)
 
@@ -95,10 +98,12 @@ python3 test_toggle_pictures.py --verbose
 ### Custom Displays and Ports
 
 The test uses two isolated displays by default:
+
 - Display :998 for VNC server with content
 - Display :999 for VNC viewer window
 
 To use different displays:
+
 ```bash
 python3 test_toggle_pictures.py \
   --display-content 997 --port-content 6897 \
@@ -134,11 +139,13 @@ A test is considered successful if:
 ### Expected Results
 
 **Without Tiling Enhancement (current):**
+
 - Hits per toggle: **>> 1** (many small tile hits)
 - Test will PASS but show a WARNING
 - This is expected baseline behavior
 
 **With Tiling Enhancement (goal):**
+
 - Hits per toggle: **~1** (one large rectangle hit)
 - Test will PASS without warnings
 - This is the target behavior
@@ -149,7 +156,7 @@ A test is considered successful if:
 |---------|-------|----------|
 | Hits per toggle too low (<0.5) | Cache not working at all | Check ContentCache negotiation in logs |
 | Hits per toggle too high (>1.5) | Tiling enhancement not active (WARNING) | Expected until enhancement is implemented |
-| PersistentCache active | Viewer ignoring PersistentCache=0 | Check viewer configuration logic |
+| Disk-backed PersistentCache active | Viewer ignoring PersistentCache=0 for disk-backed state | Check viewer configuration logic |
 | Viewer crash | Segfault or resource exhaustion | Check VNC viewer and server logs |
 
 ## Log Files
@@ -193,7 +200,7 @@ This test is the **primary validation** for the tiling enhancement described in 
 3. **On miss**: Server decomposes and sends pixels normally, then tells client to store the hash
 4. **On hit**: Client says "yes" → 1 CachedRect message for entire rectangle
 
-### Expected Results
+### Tiling Enhancement Expected Results
 
 | Metric | Without Enhancement | With Enhancement |
 |--------|---------------------|------------------|

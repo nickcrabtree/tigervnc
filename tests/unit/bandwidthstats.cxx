@@ -73,10 +73,10 @@ TEST(BandwidthStats, PersistentCacheInit) {
   CacheProtocolStats stats;
 
   // Unified cache engine: PersistentCachedRectInit has the same overhead as
-  // CachedRectInit (24 bytes header + ID + encoding).
+  // PersistentCachedRectInit v2 (33-byte header excluding optional PixelFormat).
   trackPersistentCacheInit(stats, 1024); // 1KB payload
 
-  EXPECT_EQ(stats.cachedRectInitBytes, 24u + 1024u);
+  EXPECT_EQ(stats.cachedRectInitBytes, 33u + 1024u);
   EXPECT_EQ(stats.cachedRectInitCount, 1u);
 }
 
@@ -90,8 +90,8 @@ TEST(BandwidthStats, PersistentCacheMixed) {
   trackPersistentCacheRef(stats, core::Rect(0, 64, 64, 128), pf);
   trackPersistentCacheInit(stats, 512);
 
-  EXPECT_EQ(stats.cachedRectBytes, 60u); // 3 * 20
-  EXPECT_EQ(stats.cachedRectInitBytes, 24u + 512u);
+  EXPECT_EQ(stats.cachedRectBytes, 108u); // 3 * 36
+  EXPECT_EQ(stats.cachedRectInitBytes, 33u + 512u);
   EXPECT_EQ(stats.cachedRectCount, 3u);
   EXPECT_EQ(stats.cachedRectInitCount, 1u);
 }
@@ -145,7 +145,7 @@ TEST(BandwidthStats, SavingsHighHitRatePersistentCache) {
     trackPersistentCacheInit(stats, 800);
   }
 
-  // Refs: 100 * 20 = 2000
+  // Refs: 100 * 36 = 3600
   // Inits: 5 * 824 = 4120
   // Total used: 6120
   // Alternative is estimated compressed, much larger
