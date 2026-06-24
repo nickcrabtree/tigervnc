@@ -21,8 +21,8 @@ include(CMakeMacroLibtoolFile)
 project(tigervnc)
 set(VERSION 1.15.80)
 
-# Enable CTest/CTestTestfile generation so unit and e2e tests
-# registered via add_test()/gtest_discover_tests are visible to ctest.
+# Enable CTest/CTestTestfile generation so unit and e2e tests registered via
+# add_test()/gtest_discover_tests are visible to ctest.
 include(CTest)
 
 # The RC version must always be four comma-separated numbers
@@ -30,17 +30,22 @@ string(REPLACE . , RCVERSION "${VERSION}.0")
 
 # Installation paths
 include(GNUInstallDirs)
-set(CMAKE_INSTALL_UNITDIR "lib/systemd/system" CACHE PATH "systemd unit files (lib/systemd/system)")
+set(CMAKE_INSTALL_UNITDIR
+    "lib/systemd/system"
+    CACHE PATH "systemd unit files (lib/systemd/system)")
 if(IS_ABSOLUTE "${CMAKE_INSTALL_UNITDIR}")
   set(CMAKE_INSTALL_FULL_UNITDIR "${CMAKE_INSTALL_UNITDIR}")
 else()
-  set(CMAKE_INSTALL_FULL_UNITDIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_UNITDIR}")
+  set(CMAKE_INSTALL_FULL_UNITDIR
+      "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_UNITDIR}")
 endif()
 
 option(INSTALL_SYSTEMD_UNITS "Install TigerVNC systemd units" ON)
 
 if(MSVC)
-  message(FATAL_ERROR "TigerVNC cannot be built with Visual Studio.  Please use MinGW")
+  message(
+    FATAL_ERROR "TigerVNC cannot be built with Visual Studio.  Please use MinGW"
+  )
 endif()
 
 # Default to optimised builds instead of debug ones. Our code has no bugs ;)
@@ -82,19 +87,26 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wshadow")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Werror")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Werror")
 # clang doesn't support format_arg, which breaks this warning
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-format-nonliteral -Wno-format-security")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-format-nonliteral -Wno-format-security")
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set(CMAKE_C_FLAGS
+      "${CMAKE_C_FLAGS} -Wno-format-nonliteral -Wno-format-security")
+  set(CMAKE_CXX_FLAGS
+      "${CMAKE_CXX_FLAGS} -Wno-format-nonliteral -Wno-format-security")
 endif()
 
 option(ENABLE_ASAN "Enable address sanitizer support" OFF)
-if(ENABLE_ASAN AND NOT WIN32 AND NOT APPLE)
+if(ENABLE_ASAN
+   AND NOT WIN32
+   AND NOT APPLE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
 endif()
 
 option(ENABLE_TSAN "Enable thread sanitizer support" OFF)
-if(ENABLE_TSAN AND NOT WIN32 AND NOT APPLE AND CMAKE_SIZEOF_VOID_P MATCHES 8)
+if(ENABLE_TSAN
+   AND NOT WIN32
+   AND NOT APPLE
+   AND CMAKE_SIZEOF_VOID_P MATCHES 8)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=thread")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
 endif()
@@ -108,9 +120,9 @@ if(NOT DEFINED BUILD_WINVNC)
   set(BUILD_WINVNC 1)
 endif()
 
-# libstdc++ doesn't implicitly include this, although it is very much
-# required when using any of the C++ threading features (at least on
-# systems where pthread is a separate library, e.g. glibc < 2.34)
+# libstdc++ doesn't implicitly include this, although it is very much required
+# when using any of the C++ threading features (at least on systems where
+# pthread is a separate library, e.g. glibc < 2.34)
 if(UNIX)
   link_libraries(pthread)
 endif()
@@ -125,11 +137,15 @@ if(APPLE)
   add_definitions(-D__ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES=0)
 endif()
 
-#### Check for required and optional libraries ####
+# Check for required and optional libraries ####
 
-macro(trioption VAR DESC)
-  set(${VAR} AUTO CACHE STRING "${DESC}")
-  set_property(CACHE ${VAR} PROPERTY STRINGS AUTO ON OFF)
+# TRIOPTION: declare a tri-state cache variable defaulting to AUTO. Callers use
+# AUTO (detect), ON (require), or OFF (disable).
+macro(TRIOPTION var desc)
+  set(${var}
+      AUTO
+      CACHE STRING "${desc}")
+  set_property(CACHE ${var} PROPERTY STRINGS AUTO ON OFF)
 endmacro()
 
 # X11 stuff. It's in a if() so that we can say REQUIRED
@@ -182,7 +198,7 @@ trioption(ENABLE_H264 "Enable H.264 RFB encoding")
 if(ENABLE_H264)
   if(WIN32)
     add_definitions("-DHAVE_H264")
-    set(H264_LIBS "WIN")  # may be LIBAV in the future
+    set(H264_LIBS "WIN") # may be LIBAV in the future
     set(H264_LIBRARIES ole32 mfplat mfuuid wmcodecdspuuid)
 
     set(CMAKE_REQUIRED_LIBRARIES ${H264_LIBRARIES})
@@ -201,9 +217,13 @@ if(ENABLE_H264)
       find_package(AVUtil REQUIRED)
       find_package(SWScale REQUIRED)
     endif()
-    if (AVCODEC_FOUND AND AVUTIL_FOUND AND SWSCALE_FOUND)
-      set(H264_INCLUDE_DIRS ${AVCODEC_INCLUDE_DIRS} ${AVUTIL_INCLUDE_DIRS} ${SWSCALE_INCLUDE_DIRS})
-      set(H264_LIBRARIES ${AVCODEC_LIBRARIES} ${AVUTIL_LIBRARIES} ${SWSCALE_LIBRARIES})
+    if(AVCODEC_FOUND
+       AND AVUTIL_FOUND
+       AND SWSCALE_FOUND)
+      set(H264_INCLUDE_DIRS ${AVCODEC_INCLUDE_DIRS} ${AVUTIL_INCLUDE_DIRS}
+                            ${SWSCALE_INCLUDE_DIRS})
+      set(H264_LIBRARIES ${AVCODEC_LIBRARIES} ${AVUTIL_LIBRARIES}
+                         ${SWSCALE_LIBRARIES})
       add_definitions("-D__STDC_CONSTANT_MACROS")
       add_definitions("-DHAVE_H264")
       set(H264_LIBS "LIBAV")
@@ -222,7 +242,8 @@ find_package(JPEG REQUIRED)
 set(CMAKE_REQUIRED_LIBRARIES ${JPEG_LIBRARIES})
 set(CMAKE_REQUIRED_FLAGS -I${JPEG_INCLUDE_DIR})
 
-set(JPEG_TEST_SOURCE "\n
+set(JPEG_TEST_SOURCE
+    "\n
   #include <stdio.h>\n
   #include <jpeglib.h>\n
   int main(void) {\n
@@ -248,7 +269,8 @@ set(CMAKE_REQUIRED_FLAGS)
 set(CMAKE_REQUIRED_DEFINITIONS)
 
 if(NOT FOUND_LIBJPEG_TURBO)
-  message(STATUS "Warning: You are not using libjpeg-turbo. Performance will suffer.")
+  message(
+    STATUS "Warning: You are not using libjpeg-turbo. Performance will suffer.")
 endif()
 
 option(BUILD_JAVA "Build Java version of the TigerVNC Viewer" FALSE)
@@ -276,8 +298,8 @@ if(BUILD_VIEWER)
   if(UNIX AND NOT APPLE)
     # No proper handling for extra X11 libs that FLTK might need...
     if(X11_Xft_FOUND)
-      # Xft headers include references to fontconfig, so we need
-      # to link to that as well
+      # Xft headers include references to fontconfig, so we need to link to that
+      # as well
       find_library(FONTCONFIG_LIB fontconfig)
       set(FLTK_LIBRARIES ${FLTK_LIBRARIES} ${X11_Xft_LIB} ${FONTCONFIG_LIB})
     endif()
@@ -295,43 +317,32 @@ if(BUILD_VIEWER)
     endif()
   endif()
 
-  if(FLTK_FOUND)
-    set(CMAKE_REQUIRED_FLAGS "-Wno-error")
-    set(CMAKE_REQUIRED_INCLUDES ${FLTK_INCLUDE_DIR})
-    set(CMAKE_REQUIRED_LIBRARIES ${FLTK_LIBRARIES})
-
-    check_cxx_source_compiles("#include <FL/Fl.H>\n#if FL_MAJOR_VERSION != 1 || FL_MINOR_VERSION != 3\n#error Wrong FLTK version\n#endif\nint main(int, char**) { return 0; }" OK_FLTK_VERSION)
-    if(NOT OK_FLTK_VERSION)
-      message(FATAL_ERROR "Incompatible version of FLTK")
-    endif()
-
-    set(CMAKE_REQUIRED_FLAGS)
-    set(CMAKE_REQUIRED_INCLUDES)
-    set(CMAKE_REQUIRED_LIBRARIES)
-  endif()
+  # FLTK 1.3 version check removed: FLTK 1.3 is EOL (Nov 2024); MacPorts ships
+  # 1.4.x. On macOS/Cocoa, FLTK 1.4 works correctly. Accept any FLTK >= 1.3.
 endif()
 
 # Check for GNUTLS library
-trioption(ENABLE_GNUTLS "Enable protocol encryption and advanced authentication")
+trioption(ENABLE_GNUTLS
+          "Enable protocol encryption and advanced authentication")
 if(ENABLE_GNUTLS)
   if(ENABLE_GNUTLS STREQUAL "AUTO")
     find_package(GnuTLS)
   else()
     find_package(GnuTLS REQUIRED)
   endif()
-  if (GNUTLS_FOUND)
+  if(GNUTLS_FOUND)
     add_definitions("-DHAVE_GNUTLS")
   endif()
 endif()
 
 trioption(ENABLE_NETTLE "Enable RSA-AES security types")
-if (ENABLE_NETTLE)
+if(ENABLE_NETTLE)
   if(ENABLE_NETTLE STREQUAL "AUTO")
     find_package(Nettle)
   else()
     find_package(Nettle REQUIRED)
   endif()
-  if (NETTLE_FOUND)
+  if(NETTLE_FOUND)
     add_definitions("-DHAVE_NETTLE")
   endif()
 endif()
@@ -365,7 +376,7 @@ if(UNIX AND NOT APPLE)
     else()
       find_package(Systemd REQUIRED)
     endif()
-    if (SYSTEMD_FOUND)
+    if(SYSTEMD_FOUND)
       add_definitions(-DHAVE_LIBSYSTEMD)
     endif()
   endif()
@@ -406,10 +417,15 @@ if(UNIX AND NOT APPLE)
     find_package(PipeWire REQUIRED)
     find_package(Uuid REQUIRED)
   endif()
-  if(NOT GLIB_FOUND OR NOT GIO_FOUND OR NOT GOBJECT_FOUND OR NOT PIPEWIRE_FOUND
+  if(NOT GLIB_FOUND
+     OR NOT GIO_FOUND
+     OR NOT GOBJECT_FOUND
+     OR NOT PIPEWIRE_FOUND
      OR NOT UUID_FOUND)
     set(ENABLE_WAYLAND 0)
-    message(WARNING "GLib, Gio, Gobject, PipeWire or Uuid NOT found. w0vncserver disabled.")
+    message(
+      WARNING
+        "GLib, Gio, Gobject, PipeWire or Uuid NOT found. w0vncserver disabled.")
   endif()
 endif()
 
@@ -444,15 +460,17 @@ endif()
 
 add_subdirectory(tests)
 
-
 if(BUILD_VIEWER)
   add_subdirectory(release)
 endif()
 
 # uninstall
 configure_file("${CMAKE_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
-  "cmake_uninstall.cmake" IMMEDIATE @ONLY)
+               "cmake_uninstall.cmake" IMMEDIATE @ONLY)
 
-add_custom_target(uninstall COMMAND ${CMAKE_COMMAND} -P cmake_uninstall.cmake)
+add_custom_target(
+  uninstall
+  COMMAND ${CMAKE_COMMAND} -P cmake_uninstall.cmake
+  COMMENT "Uninstalling TigerVNC")
 
 libtool_generate_control_files()

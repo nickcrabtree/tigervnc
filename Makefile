@@ -69,6 +69,7 @@ server:
 	$(MAKE) -C $(XSERVER_BUILD_DIR) TIGERVNC_SRCDIR=$(CURDIR) TIGERVNC_BUILDDIR=$(CURDIR)/$(BUILD_DIR)
 
 # Rust Viewer: Build the Rust-based njcvncviewer-rs (cargo will rebuild deps as needed)
+# Toolchain is natively aarch64-apple-darwin; cargo produces arm64 binaries by default.
 rust_viewer:
 	@echo "Building Rust VNC viewer (njcvncviewer-rs)..."
 	cargo build --manifest-path rust-vnc-viewer/Cargo.toml --release -p njcvncviewer-rs
