@@ -1438,10 +1438,173 @@ size_t GlobalClientPersistentCache::garbageCollect() {
 
   reclaimed += cleanupOrphanShardsOnDisk();
 
+  // Phase 2: whole-shard deletion only frees shards that are *entirely* cold.
+  // In a steady-state workload, hot and cold entries are interleaved across
+  // shards, so few (if any) shards are fully cold and phase 1 reclaims little.
+  // Compact shards that mix cold and live entries so we can actually drop the
+  // cold bytes; otherwise a cache that has filled to its limit stays pinned
+  // there and re-runs a no-op GC on every cached rect.
+  diskUsage = getDiskUsage();
+  if (diskUsage > target) {
+    reclaimed += compactPartiallyColdShards(diskUsage, target, activeShard);
+  }
+
   if (reclaimed > 0) {
     vlog.info("PersistentCache: GC reclaimed %zuMB", reclaimed / (1024 * 1024));
   }
 
+  return reclaimed;
+}
+
+size_t GlobalClientPersistentCache::compactPartiallyColdShards(size_t& diskUsage, size_t target, uint16_t activeShard) {
+  // Group entries by shard, splitting each shard's entries into live (keep,
+  // relocate) and cold (drop). Skip the active shard; it is open for appending
+  // and is reclaimed naturally as it ages.
+  struct ShardPlan {
+    std::vector<std::vector<uint8_t>> live;
+    std::vector<std::vector<uint8_t>> cold;
+    size_t coldBytes = 0;
+  };
+  std::unordered_map<uint16_t, ShardPlan> plans;
+  for (const auto& kv : indexMap_) {
+    const std::vector<uint8_t>& hash = kv.first;
+    const IndexEntry& idx = kv.second;
+    if (idx.shardId == activeShard)
+      continue;
+    ShardPlan& p = plans[idx.shardId];
+    if (idx.isCold) {
+      p.cold.push_back(hash);
+      p.coldBytes += idx.payloadSize;
+    } else {
+      p.live.push_back(hash);
+    }
+  }
+
+  // Candidates: shards with cold bytes to reclaim that still hold live entries
+  // (fully-cold shards are phase 1's job). Compact the most fragmented first.
+  std::vector<uint16_t> candidates;
+  candidates.reserve(plans.size());
+  for (const auto& kv : plans) {
+    if (kv.second.coldBytes > 0 && !kv.second.live.empty())
+      candidates.push_back(kv.first);
+  }
+  std::sort(candidates.begin(), candidates.end(),
+            [&](uint16_t a, uint16_t b) { return plans[a].coldBytes > plans[b].coldBytes; });
+
+  size_t reclaimed = 0;
+  for (uint16_t shardId : candidates) {
+    if (diskUsage <= target)
+      break;
+    reclaimed += compactShard(shardId, plans[shardId].live, plans[shardId].cold, diskUsage);
+  }
+  return reclaimed;
+}
+
+size_t GlobalClientPersistentCache::compactShard(uint16_t shardId, const std::vector<std::vector<uint8_t>>& liveHashes,
+                                                 const std::vector<std::vector<uint8_t>>& coldHashes,
+                                                 size_t& diskUsage) {
+  const std::string shardPath = getShardPath(shardId);
+
+  // Read every live payload from the existing shard up front. If any read
+  // fails we abort this shard untouched rather than risk losing live data.
+  FILE* in = fopen(shardPath.c_str(), "rb");
+  if (!in) {
+    vlog.error("PersistentCache: GC cannot open shard %u for compaction", shardId);
+    return 0;
+  }
+
+  struct Payload {
+    const std::vector<uint8_t>* hash;
+    std::vector<uint8_t> bytes;
+  };
+  std::vector<Payload> payloads;
+  payloads.reserve(liveHashes.size());
+  for (const auto& hash : liveHashes) {
+    auto it = indexMap_.find(hash);
+    if (it == indexMap_.end())
+      continue;
+    const IndexEntry& idx = it->second;
+    std::vector<uint8_t> bytes(idx.payloadSize);
+    if (fseek(in, idx.payloadOffset, SEEK_SET) != 0 || fread(bytes.data(), 1, idx.payloadSize, in) != idx.payloadSize) {
+      vlog.error("PersistentCache: GC failed to read live entry from shard %u; skipping compaction", shardId);
+      fclose(in);
+      return 0;
+    }
+    payloads.push_back({&hash, std::move(bytes)});
+  }
+  fclose(in);
+
+  size_t oldSize = 0;
+  auto itSz = shardSizes_.find(shardId);
+  if (itSz != shardSizes_.end())
+    oldSize = itSz->second;
+
+  // Write the live payloads to a temp file, then atomically rename it over the
+  // original so a crash mid-compaction cannot corrupt the shard.
+  const std::string tmpPath = shardPath + ".tmp";
+  FILE* out = fopen(tmpPath.c_str(), "wb");
+  if (!out) {
+    vlog.error("PersistentCache: GC cannot open temp shard %s", tmpPath.c_str());
+    return 0;
+  }
+
+  std::vector<uint32_t> newOffsets;
+  newOffsets.reserve(payloads.size());
+  uint32_t offset = 0;
+  bool writeOk = true;
+  for (const auto& p : payloads) {
+    newOffsets.push_back(offset);
+    if (!p.bytes.empty() && fwrite(p.bytes.data(), 1, p.bytes.size(), out) != p.bytes.size()) {
+      writeOk = false;
+      break;
+    }
+    offset += static_cast<uint32_t>(p.bytes.size());
+  }
+  if (writeOk && fflush(out) != 0)
+    writeOk = false;
+  fclose(out);
+  if (!writeOk) {
+    remove(tmpPath.c_str());
+    vlog.error("PersistentCache: GC failed to write compacted shard %u", shardId);
+    return 0;
+  }
+
+  if (rename(tmpPath.c_str(), shardPath.c_str()) != 0) {
+    remove(tmpPath.c_str());
+    vlog.error("PersistentCache: GC failed to replace shard %u: %s", shardId, strerror(errno));
+    return 0;
+  }
+
+  // Commit index changes only after the on-disk shard is in place: update live
+  // entries' offsets and drop the cold entries entirely.
+  for (size_t i = 0; i < payloads.size(); i++) {
+    auto it = indexMap_.find(*payloads[i].hash);
+    if (it != indexMap_.end())
+      it->second.payloadOffset = newOffsets[i];
+  }
+  for (const auto& hash : coldHashes) {
+    auto itKey = hashToKey_.find(hash);
+    if (itKey != hashToKey_.end()) {
+      keyToHash_.erase(itKey->second);
+      hashToKey_.erase(itKey);
+    }
+    indexMap_.erase(hash);
+    coldEntries_.erase(hash);
+    dirtyEntries_.erase(hash);
+    hydrationQueue_.remove(hash);
+  }
+
+  const size_t newSize = offset;
+  shardSizes_[shardId] = newSize;
+  const size_t reclaimed = (oldSize > newSize) ? (oldSize - newSize) : 0;
+  if (diskUsage >= reclaimed)
+    diskUsage -= reclaimed;
+  else
+    diskUsage = 0;
+  indexDirty_ = true;
+
+  vlog.debug("PersistentCache: GC compacted shard %u (%zuKB -> %zuKB), dropped %zu cold entries, reclaimed %zuKB",
+             shardId, oldSize / 1024, newSize / 1024, coldHashes.size(), reclaimed / 1024);
   return reclaimed;
 }
 

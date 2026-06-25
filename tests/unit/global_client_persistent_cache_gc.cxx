@@ -23,7 +23,9 @@
 #include <gtest/gtest.h>
 
 #include <rfb/GlobalClientPersistentCache.h>
+#include <rfb/PixelFormat.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
@@ -70,6 +72,32 @@ static bool fileExists(const std::string& path) {
   return stat(path.c_str(), &st) == 0;
 }
 
+// Build a unique 16-byte protocol hash from a small integer.
+static std::vector<uint8_t> makeHash(uint64_t id) {
+  std::vector<uint8_t> hash(16, 0);
+  // First 8 bytes carry the id (used as the CacheKey identity); fill the
+  // remainder so distinct ids never collide.
+  memcpy(hash.data(), &id, sizeof(id));
+  uint64_t mixed = id * 0x9E3779B97F4A7C15ULL + 0x1234567ULL;
+  memcpy(hash.data() + 8, &mixed, sizeof(mixed));
+  return hash;
+}
+
+// Distinct, verifiable pixel pattern for entry `id`.
+static std::vector<uint8_t> makePixels(uint64_t id, size_t pixelCount) {
+  std::vector<uint8_t> px(pixelCount * 4);
+  uint8_t base = (uint8_t)(id * 7 + 1);
+  for (size_t i = 0; i < px.size(); i++)
+    px[i] = (uint8_t)(base + (uint8_t)i);
+  return px;
+}
+
+static void removeDirRecursive(const std::string& path) {
+  std::string cmd = "rm -rf \"" + path + "\"";
+  int ret = system(cmd.c_str());
+  (void)ret;
+}
+
 } // namespace
 
 TEST(GlobalClientPersistentCache, LoadIndexDeletesOrphanShards) {
@@ -104,4 +132,123 @@ TEST(GlobalClientPersistentCache, LoadIndexDeletesOrphanShards) {
   // Cleanup temp directory.
   remove((cacheDir + "/index.dat").c_str());
   rmdir(cacheDir.c_str());
+}
+
+// Regression test for the "wedged cache" bug.
+//
+// Once the on-disk cache fills to its limit, garbageCollect() must be able to
+// reclaim space. The original implementation only deleted shard files whose
+// entries were *all* cold. In a real workload, hot (recently accessed) and
+// cold (evicted) entries are interleaved across shards, so no shard is ever
+// fully cold and GC reclaimed nothing. The cache then stayed pinned at the
+// limit forever, re-running a no-op GC on every cached rect and crippling the
+// refresh rate.
+//
+// This test builds exactly that state -- every shard contains a mix of hot and
+// cold entries, with total disk usage at the limit -- and asserts that GC
+// reclaims space, brings usage under the limit, preserves the live entries
+// (with correct pixel data after relocation), and drops cold ones.
+TEST(GlobalClientPersistentCache, GcReclaimsPartiallyColdShards) {
+  char tmpl[] = "/tmp/tigervnc_pcache_gc_XXXXXX";
+  char* dir = mkdtemp(tmpl);
+  ASSERT_NE(dir, nullptr);
+  std::string cacheDir(dir);
+
+  // 32bpp little-endian RGBX.
+  rfb::PixelFormat pf(32, 24, false, true, 255, 255, 255, 16, 8, 0);
+
+  // ~128 KiB per entry: 256x128 * 4 bytes.
+  const uint16_t W = 256, H = 128;
+  const size_t pixelCount = (size_t)W * H;
+  const size_t entryBytes = pixelCount * 4;
+
+  // 40 entries of 128 KiB = 5 MiB across 5 shards of 1 MiB (8 entries each).
+  // Memory holds only 16 entries (2 MiB), so sustained inserts evict older
+  // entries to "cold" (still on disk). Disk limit is exactly the working set,
+  // so the cache ends up full.
+  const int kEntries = 40;
+  const int kPerShard = 8;
+  const size_t diskLimit = 5u * 1024 * 1024;
+
+  // One representative live entry pinned hot in every shard. This guarantees no
+  // shard is fully cold (so phase-1 whole-shard deletion cannot help) and gives
+  // us known-good entries to verify survive and stay intact across compaction.
+  const int pinned[] = {0, 8, 16, 24, 32};
+
+  auto insertEntry = [&](rfb::GlobalClientPersistentCache& cache, int i) {
+    std::vector<uint8_t> hash = makeHash(i);
+    std::vector<uint8_t> px = makePixels(i, pixelCount);
+    uint64_t h64;
+    memcpy(&h64, hash.data(), sizeof(h64));
+    cache.insert(h64, h64, hash, px.data(), pf, W, H, W, true); // lossless
+  };
+
+  rfb::GlobalClientPersistentCache cache(/*memMB*/ 2, /*diskMB*/ 5,
+                                         /*shardMB*/ 1, cacheDir);
+
+  // Insert in batches, flushing each batch to disk *before* the next batch
+  // evicts it from memory. An entry is only marked cold once it is on disk, so
+  // this ordering is what produces genuine cold-on-disk entries.
+  int next = 0;
+  for (int batch = 0; batch < kEntries; batch += kPerShard * 2) {
+    int end = std::min(batch + kPerShard * 2, kEntries);
+    for (; next < end; next++)
+      insertEntry(cache, next);
+    ASSERT_GT(cache.flushDirtyEntries(), 0u);
+  }
+  ASSERT_TRUE(cache.saveToDisk());
+
+  // Sustained inserts should have evicted older entries to cold.
+  ASSERT_GT(cache.getColdEntryCount(), 0u) << "setup failed to create cold entries";
+
+  const size_t usageBefore = cache.getDiskUsage();
+  ASSERT_EQ(usageBefore, diskLimit) << "cache should be exactly full";
+
+  // Re-access one entry per shard so each shard keeps a hot entry: no shard is
+  // fully cold, defeating phase-1 whole-shard deletion entirely.
+  for (int i : pinned) {
+    std::vector<uint8_t> hash = makeHash(i);
+    ASSERT_NE(cache.get(hash), nullptr) << "failed to pin entry " << i;
+  }
+
+  // The bug: GC reclaims nothing because no shard is fully cold. The fix
+  // compacts the partially-cold shards instead.
+  const size_t reclaimed = cache.garbageCollect();
+  EXPECT_GT(reclaimed, 0u) << "GC must reclaim space from partially-cold shards";
+  EXPECT_LE(cache.getDiskUsage(), diskLimit) << "GC must bring disk usage back under the limit";
+
+  // Pinned (live) entries must survive GC with their pixels intact.
+  for (int i : pinned) {
+    std::vector<uint8_t> hash = makeHash(i);
+    const rfb::GlobalClientPersistentCache::CachedPixels* e = cache.get(hash);
+    ASSERT_NE(e, nullptr) << "pinned entry " << i << " lost to GC";
+    ASSERT_EQ(e->pixels.size(), entryBytes);
+    std::vector<uint8_t> expected = makePixels(i, pixelCount);
+    EXPECT_EQ(memcmp(e->pixels.data(), expected.data(), entryBytes), 0) << "pinned entry " << i << " corrupted by GC";
+  }
+
+  EXPECT_LT(cache.getAllHashes().size(), (size_t)kEntries) << "GC should have dropped some cold entries";
+
+  ASSERT_TRUE(cache.saveToDisk());
+
+  // Reload from disk and confirm relocated payloads are at their rewritten
+  // offsets (a fresh instance must hydrate them straight from the shard files).
+  {
+    rfb::GlobalClientPersistentCache reloaded(/*memMB*/ 2, /*diskMB*/ 5,
+                                              /*shardMB*/ 1, cacheDir);
+    ASSERT_TRUE(reloaded.loadIndexFromDisk());
+    EXPECT_LE(reloaded.getDiskUsage(), diskLimit);
+
+    for (int i : pinned) {
+      std::vector<uint8_t> hash = makeHash(i);
+      const rfb::GlobalClientPersistentCache::CachedPixels* e = reloaded.get(hash);
+      ASSERT_NE(e, nullptr) << "pinned entry " << i << " missing after reload";
+      ASSERT_EQ(e->pixels.size(), entryBytes);
+      std::vector<uint8_t> expected = makePixels(i, pixelCount);
+      EXPECT_EQ(memcmp(e->pixels.data(), expected.data(), entryBytes), 0)
+          << "pinned entry " << i << " has corrupt pixels after compaction+reload";
+    }
+  }
+
+  removeDirRecursive(cacheDir);
 }

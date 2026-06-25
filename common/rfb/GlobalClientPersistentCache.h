@@ -373,6 +373,21 @@ private:
   // shard files left behind by earlier GC/index rewrites).
   size_t cleanupOrphanShardsOnDisk();
 
+  // GC phase 2: reclaim space from shards that hold a mix of cold and live
+  // entries by rewriting each to contain only its live entries (dropping the
+  // cold ones). Whole-shard deletion (phase 1) cannot free these, so without
+  // compaction a cache that fills to its limit with fragmented cold entries
+  // stays pinned at the limit forever. Updates diskUsage in place and returns
+  // bytes reclaimed.
+  size_t compactPartiallyColdShards(size_t& diskUsage, size_t target, uint16_t activeShard);
+
+  // Rewrite a single shard so it contains only its live entries, relocating
+  // their payloads (and updating their index offsets) and dropping the cold
+  // entries. Returns bytes reclaimed (0 on no-op or on any I/O failure, in
+  // which case the shard is left untouched).
+  size_t compactShard(uint16_t shardId, const std::vector<std::vector<uint8_t>>& liveHashes,
+                      const std::vector<std::vector<uint8_t>>& coldHashes, size_t& diskUsage);
+
   // Helper to get current timestamp
   uint32_t getCurrentTime() const;
 
