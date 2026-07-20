@@ -77,3 +77,10 @@ Desloppify is scoped to `rust-vnc-viewer/` only — the upstream C++ codebase is
 
 Current state: overall 22.8 / objective 91.4 / strict 22.8 (target 85.0).
 Objective is above 80 (mechanical quality good). Strict is low because subjective review has not been run.
+
+## Shared utility scripts
+
+- `~/scripts/fix_markdown_blanks.py` — fixes MD022/MD032 markdownlint violations
+  (missing blank lines around headings and list blocks) in any Markdown file.
+  Code-fence aware and idempotent. Usage: `python ~/scripts/fix_markdown_blanks.py <file.md>`
+  or `--check` to report without modifying.
