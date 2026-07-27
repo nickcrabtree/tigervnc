@@ -460,3 +460,10 @@ Objective is above 80 (mechanical quality good). Strict is low because subjectiv
 - `tests/e2e/README.md`: End-to-end test suite documentation
 - `README.rst`: General TigerVNC documentation
 - `BUILDING.txt`: Detailed build instructions for all platforms
+
+## Shared utility scripts
+
+- `~/scripts/fix_markdown_blanks.py` — fixes MD022/MD032 markdownlint violations
+  (missing blank lines around headings and list blocks) in any Markdown file.
+  Code-fence aware and idempotent. Usage: `python ~/scripts/fix_markdown_blanks.py <file.md>`
+  or `--check` to report without modifying.
