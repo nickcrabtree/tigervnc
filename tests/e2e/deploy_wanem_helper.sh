@@ -110,7 +110,7 @@ if [[ ! -f "\${PY_HELPER}" ]]; then
   echo "ERROR: WAN helper not found at \${PY_HELPER}" >&2
   exit 1
 fi
-exec python3 "\${PY_HELPER}" "$@"
+exec /usr/bin/python3 "\${PY_HELPER}" "\$@"
 EOF
 
 chmod 755 "${WRAPPER_TMP}"
