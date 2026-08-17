@@ -1,5 +1,8 @@
 # Agent Instructions
 
+> **Global rules:** see `~/code/AGENTS.md` for conventions that span all repos
+> and machines. Those apply here too, in addition to anything below.
+
 The bug database for this repository is maintained in `BUGS.md` in the project root.
 
 ## Host Topology and Test Flow
