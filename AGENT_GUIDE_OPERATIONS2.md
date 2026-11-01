@@ -11,8 +11,7 @@ not grant permission. For current quiet-window status consult
 
 ### Key Files
 
-- `common/rfb/session cache.h/cxx`: session cache with ARC (Adaptive Replacement Cache) algorithm
-- `common/rfb/PersistentCache.h/cxx`: PersistentCache with disk persistence
+- `common/rfb/GlobalClientPersistentCache.h/cxx`: unified C++ cache and disk persistence
 - `common/rfb/EncodeManager.cxx`: server-side integration (cache lookups, insertions)
 - `common/rfb/DecodeManager.cxx`: client-side integration (cache retrieval, blitting)
 - `common/rfb/encodings.h`: protocol constants and capability negotiation
@@ -22,8 +21,10 @@ not grant permission. For current quiet-window status consult
 Current convergence authority:
 
 - `rust-vnc-viewer/docs/CONVERGENCE_GATES.md` is the current checklist for Rust viewer ↔ C++ reference convergence work.
-- The current Rust PersistentCache implementation is 64-bit cache-ID (`u64`) based. Older references in planning docs to
-  16-byte hashes, `[u8; 16]`, or hash-wire-format semantics should be treated as historical until rewritten.
+- [docs/CACHE_PROTOCOL_CURRENT.md](docs/CACHE_PROTOCOL_CURRENT.md) is the current wire reference.
+- Rust REF/seed/query/eviction retain u64 IDs; INIT reads 16 wire bytes but keeps only the high lane.
+  C++ has a later 16-byte CacheKey/v2 hard cutover. The May u64 checkpoint does not establish current parity.
+- [docs/CACHE_DOCS_HISTORY.md](docs/CACHE_DOCS_HISTORY.md) classifies historical plans and proposals.
 
 Checkpoint commits:
 
@@ -45,8 +46,9 @@ sizes, query batches, and eviction behaviour.
 
 ## Related Documentation
 
-- `PERSISTENTCACHE_DESIGN.md`: PersistentCache protocol specification
-- `ARC_ALGORITHM.md`: Adaptive Replacement Cache algorithm details
+- [Current cache protocol](docs/CACHE_PROTOCOL_CURRENT.md): source-inspected wire specification
+- [Historical PersistentCache design](docs/PERSISTENTCACHE_DESIGN.md): earlier design and measurements
+- [ARC algorithm](docs/ARC_ALGORITHM.md): Adaptive Replacement Cache algorithm details
 - `tests/e2e/README.md`: End-to-end test suite documentation
 - `README.rst`: General TigerVNC documentation
 - `BUILDING.txt`: Detailed build instructions for all platforms

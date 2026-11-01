@@ -1,53 +1,38 @@
 # TigerVNC Documentation Index
 
-This repository has undergone a documentation cleanup (November 2025) to consolidate implementation documentation and archive interim work. All historical documents remain available in git history.
+## Current cache documentation
 
-## Core Documentation
+Source/status audit: 2026-11-01. Read these before implementing or testing cache changes:
 
-### Project Overview
+- [Current protocol reference](CACHE_PROTOCOL_CURRENT.md): C++ 16-byte CacheKey/v2 wire semantics,
+  byte counts, negotiation, and the Rust u64/mixed-parser boundary.
+- [C++/Rust convergence checklist](../rust-vnc-viewer/docs/CONVERGENCE_GATES.md): delivered source paths,
+  historical test evidence, remaining build/CI, protocol, persistence, pixel and performance gates.
+- [History and coverage map](CACHE_DOCS_HISTORY.md): archived-in-place plans, authoritative proposals,
+  preserved measurements/acceptance criteria and unresolved implementation discrepancies.
+- [Removal tracker](remove_contentcache_implementation.md): C++ unification decisions and incomplete CI acceptance.
+- [ARC algorithm](ARC_ALGORITHM.md): cache replacement algorithm background.
 
-- `README.rst` — Project overview and components
-- `BUILDING.txt` — Build requirements and instructions (CMake + Xorg server setup)
-- `WARP.md` — Developer guidance, test environment, and safety warnings
+The unified C++ engine is present in source. This does **not** mean the later C++ v2 cutover is build/CI-validated
+or that Rust has reached parity. November 2025 “complete/tested” claims and bandwidth figures are historical
+evidence, not current cross-language acceptance. Rust has cache implementations, disk I/O and notification
+plumbing; protocol compatibility remains unresolved.
 
-### Cache Protocol Implementation (Complete)
+## Project and development
 
-- `CONTENTCACHE_DESIGN_IMPLEMENTATION.md` — Historical ContentCache design plus notes on the current unified cache model
-  - Status: ✅ C++ viewer/server now use the unified cache engine; the historical ContentCache scenario maps to the disk-free / session-only policy
-  - Threshold: 2048 pixels
-  - Test: `tests/e2e/test_cpp_contentcache.py` covers the historical ContentCache-named scenario of the unified cache path
-- `PERSISTENTCACHE_DESIGN.md` — PersistentCache protocol and unified cache model (complete, tested)
-  - Status: ✅ C++ implementation complete, 100% hit rate, 99.7% bandwidth reduction
-  - Threshold: 2048 pixels
-  - Test: `tests/e2e/test_cpp_persistentcache.py` passing
-- `ARC_ALGORITHM.md` — Adaptive Replacement Cache algorithm used by the unified cache engine
+- [Project overview](../README.rst)
+- [Build requirements](../BUILDING.txt)
+- [Developer guidance](../WARP.md)
+- [Rust viewer](../rust-vnc-viewer/README.md)
+- [Development and test runner](../AGENT_GUIDE_DEVELOPMENT1.md)
+- [End-to-end testing](../tests/e2e/README.md)
+- [Test quickstart](../tests/e2e/QUICKSTART.md)
 
-### Testing
+## Historical documents
 
-- `tests/e2e/README.md` — End-to-end test suite documentation
-- `tests/e2e/QUICKSTART.md` — Quick start guide for running tests
+The [cache history map](CACHE_DOCS_HISTORY.md) replaces competing cache-plan status claims while preserving
+the original files and anchors. It distinguishes original/refined lazy-refresh and subregion proposals from
+the portions now present in C++.
 
-### Rust Viewer (Pending)
-
-- `rust-vnc-viewer/README.md` — Rust viewer overview
-- `rust-vnc-viewer/PERSISTENTCACHE_IMPLEMENTATION_PLAN.md` — Implementation roadmap
-
-## Archived Documentation
-
-Interim work, debug notes, and completed plans archived to `archive/2025-11-13/`:
-
-- Debug analyses and threshold optimization studies
-- Bug fix documentation (all bugs now resolved)
-- Progress tracking and status documents
-- Implementation guides (superseded by canonical docs)
-- ARC eviction plan and summary (implementation complete)
-
-See `archive/2025-11-13/README.md` for full index of archived content.
-
-## Implementation Status (November 2025)
-
-- ✅ **Unified cache engine**: Complete and tested in C++
-- ✅ **Disk-free / session-only cache policy**: Covered by the historical ContentCache-named C++ tests and docs
-- ✅ **Disk-backed PersistentCache policy**: Complete and tested in C++
-- ✅ **ARC Eviction**: Client-side eviction with server notifications implemented
-- 🚧 **Rust Viewer**: Cache protocol parity with the current unified C++ model pending
+The [2025-11-13 archive](../archive/2025-11-13/README.md) retains earlier debug analyses, threshold studies,
+bug evidence and implementation plans. Dated “resolved” claims do not establish current regression status.

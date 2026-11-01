@@ -1,10 +1,16 @@
 # Rust VNC Viewer
 
-**Desktop-focused** high-performance VNC viewer with mature **ContentCache** support, in-progress **PersistentCache** work, and excellent **fullscreen/multi-monitor** experience.
+**Desktop-focused** high-performance VNC viewer with mature **ContentCache** support, in-progress
+**PersistentCache** work, and excellent **fullscreen/multi-monitor** experience.
 
-Note: This README is the canonical documentation for the Rust viewer. Historical phase/progress reports have been removed to reduce noise. For roadmap and usage, see docs/ROADMAP.md and docs/cli/USAGE.md.
+Note: This README is the canonical documentation for the Rust viewer. Historical phase/progress reports have been
+removed to reduce noise. For roadmap and usage, see docs/ROADMAP.md and docs/cli/USAGE.md.
 
-> **Current cache-status note:** the Rust viewer still reflects an older split ContentCache/PersistentCache design. The current C++ viewer/server code has already moved to a unified cache path centred on PersistentCache negotiation, so Rust cache-parity work should be read in that light.
+> **Cache status (2026-11-01):** Rust retains split paths and mixed u64/16-byte INIT parsing. C++ uses a unified
+> 16-byte CacheKey/v2 wire contract. Interoperability remains unverified. Read the
+> [current protocol](../docs/CACHE_PROTOCOL_CURRENT.md), [single status checklist](docs/CONVERGENCE_GATES.md) and
+> [history map](../docs/CACHE_DOCS_HISTORY.md). Progress percentages and performance figures below are historical
+> project records, not current parity evidence.
 
 ## 🚀 Key Features
 
@@ -46,17 +52,17 @@ cargo run --release
 
 🎆 **Major Milestone: All Standard VNC Encodings Complete!** 🎆
 
-✅ **Phase 9A Complete** - All standard VNC encodings (Tight, ZRLE, Hextile, RRE) with production quality!
-✅ **Phase 8A Complete** - ContentCache protocol for 97-99% bandwidth reduction!
-✅ **Phase 7 Complete** - GUI integration with framebuffer rendering
-✅ **Phase 6 Complete** - Platform input handling (keyboard, mouse, gestures)
+✅ **Phase 9A Complete** - All standard VNC encodings (Tight, ZRLE, Hextile, RRE) with production quality! ✅
+**Phase 8A Complete** - ContentCache protocol for 97-99% bandwidth reduction! ✅ **Phase 7 Complete** - GUI
+integration with framebuffer rendering ✅ **Phase 6 Complete** - Platform input handling (keyboard, mouse,
+gestures)
 
-**Current Status**: Production-ready VNC client for core viewing workflows; cache-parity work with the current C++ unified model remains in progress
-**Last Updated**: 2025-10-24
-**Overall Progress**: ~90% (All standard encodings + ContentCache + GUI complete)
-**Tests**: All workspace unit/integration/doc tests passing
+**Current Status**: Production-ready VNC client for core viewing workflows; cache-parity work with the current C++
+unified model remains in progress **Last Updated**: 2025-10-24 **Overall Progress**: ~90% (All standard encodings +
+ContentCache + GUI complete) **Tests**: All workspace unit/integration/doc tests passing
 
 ### Completed ✅
+
 - [x] **Phase 1-3**: Core protocol libraries (230+ tests)
   - [x] rfb-pixelbuffer: Pixel format handling and buffer management
   - [x] rfb-protocol: RFB messages, I/O streams, handshake
@@ -84,6 +90,7 @@ cargo run --release
   - [x] Full integration with decoder registry
 
 ### Just Completed ✅
+
 - [x] **Phase 9A**: Advanced Encodings (**COMPLETE!**)
   - [x] Tight encoding (JPEG + zlib, most advanced)
   - [x] ZRLE encoding (zlib + RLE with 64x64 tiling)
@@ -92,6 +99,7 @@ cargo run --release
   - [x] 94+ tests passing, production-quality implementation
 
 ### Next Priority 🎯 (Milestone M1/M2)
+
 - [ ] **Fullscreen enhancements** (M1 - HIGH PRIORITY)
   - [x] F11 toggle, CLI `--fullscreen` option
   - [ ] Borderless/exclusive modes with DPI awareness
@@ -102,23 +110,31 @@ cargo run --release
   - [ ] Mixed DPI handling and smooth transitions
 
 ### Recently Completed ✅
+
 - [x] **Phase 9B-Clipboard**: Bidirectional clipboard integration
 
 ## Documentation
 
 ### Current Priorities
+
 - **[docs/ROADMAP.md](docs/ROADMAP.md)** - 🎯 **Prioritized roadmap** with fullscreen/multi-monitor focus
 - **[docs/cli/USAGE.md](docs/cli/USAGE.md)** - 📋 **CLI usage guide** for desktop-focused configuration
-- **[docs/spec/fullscreen-and-multimonitor.md](docs/spec/fullscreen-and-multimonitor.md)** - 🔧 **Technical specification** for M1/M2 features
-- **[docs/SEP/SEP-0001-out-of-scope.md](docs/SEP/SEP-0001-out-of-scope.md)** - 🚫 **Out-of-scope features** (touch, settings UI, screenshots)
+- **[docs/spec/fullscreen-and-multimonitor.md](docs/spec/fullscreen-and-multimonitor.md)** - 🔧 **Technical
+  specification** for M1/M2 features
+- **[docs/SEP/SEP-0001-out-of-scope.md](docs/SEP/SEP-0001-out-of-scope.md)** - 🚫 **Out-of-scope features** (touch,
+  settings UI, screenshots)
 
 ### Implementation Notes
+
 - All standard encodings implemented; ContentCache protocol supported
 - For priorities and next milestones, see docs/ROADMAP.md
 - For CLI usage, see docs/cli/USAGE.md
 
 ### Technical References
-- **[../CONTENTCACHE_DESIGN_IMPLEMENTATION.md](../CONTENTCACHE_DESIGN_IMPLEMENTATION.md)** - C++ ContentCache reference
+
+- **[Current cache protocol](../docs/CACHE_PROTOCOL_CURRENT.md)** - C++ wire semantics and Rust differences
+- **[Cache convergence gates](docs/CONVERGENCE_GATES.md)** - Current delivery and validation checklist
+- **[Historical plans and proposals](../docs/CACHE_DOCS_HISTORY.md)** - Preserved evidence and backlog
 - **[../WARP.md](../WARP.md)** - Build and test environment guide
 
 ## Quick Start
@@ -164,6 +180,7 @@ cargo run -- localhost:999
 ## Performance
 
 With ContentCache protocol enabled:
+
 - **Bandwidth**: 97-99% reduction for repeated content
 - **Latency**: Sub-second page loads vs 10-30 second refreshes
 - **Memory**: 2GB default cache, configurable
@@ -171,7 +188,7 @@ With ContentCache protocol enabled:
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────┐
 │ njcvncviewer-rs (GUI Application)           │
 ├─────────────────────────────────────────────┤
@@ -189,7 +206,8 @@ With ContentCache protocol enabled:
 
 ## Out-of-Scope Features
 
-The following features are **explicitly out-of-scope** for the desktop-focused viewer (see [SEP-0001](docs/SEP/SEP-0001-out-of-scope.md)):
+The following features are **explicitly out-of-scope** for the desktop-focused viewer (see
+[SEP-0001](docs/SEP/SEP-0001-out-of-scope.md)):
 
 - **🚫 Touch/Gesture Support**: Desktop-only; use trackpad scrolling
 - **🚫 Settings UI/Profiles**: Use CLI configuration and environment variables
@@ -198,6 +216,7 @@ The following features are **explicitly out-of-scope** for the desktop-focused v
 ### Alternatives
 
 **Screenshots**: Use native OS tools instead:
+
 ```bash
 # X11: Capture VNC window
 gnome-screenshot --window --file vnc-session.png
@@ -207,6 +226,7 @@ grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.focused?) | .rect | "\(.x),
 ```
 
 **Configuration**: Use command-line flags:
+
 ```bash
 cargo run -- --connect vnc://server:5901 --fullscreen --monitor primary --scale fit
 ```

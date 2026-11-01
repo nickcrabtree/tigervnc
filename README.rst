@@ -21,6 +21,11 @@ Documentation
 
 For a curated and up-to-date documentation index, see `docs/README.md <docs/README.md>`_.
 
+For cache work, start with the `current wire reference <docs/CACHE_PROTOCOL_CURRENT.md>`_
+and `C++/Rust status checklist <rust-vnc-viewer/docs/CONVERGENCE_GATES.md>`_.
+Older designs and measurements are catalogued in the
+`cache history map <docs/CACHE_DOCS_HISTORY.md>`_.
+
 Legal
 =====
 

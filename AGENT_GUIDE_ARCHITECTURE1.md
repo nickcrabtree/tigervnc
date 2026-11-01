@@ -48,14 +48,17 @@ for (int y = 0; y < height; y++) {
 
 ## Cache and PersistentCache Implementation
 
-This fork includes two custom cache protocols providing 63-99% bandwidth reduction for repeated content:
-
-- **session cache**: session-based cache with server-assigned IDs (20-byte references)
-- **PersistentCache**: disk-backed cache with content hashes (47-byte references, survives sessions)
+Start with [current cache wire semantics](docs/CACHE_PROTOCOL_CURRENT.md) and the
+[C++/Rust status checklist](rust-vnc-viewer/docs/CONVERGENCE_GATES.md).
+C++ uses one PersistentCache-centred engine with memory-only or disk-backed viewer policy.
+Rust retains separate paths and mixed wire assumptions; parity remains open.
+The older 63–99% bandwidth measurements are dated evidence in the
+[history map](docs/CACHE_DOCS_HISTORY.md), not current validation.
 
 ### Protocol Overview
 
-- **session cache**: `CachedRect` (20 bytes, server references by cache ID), `CachedRectInit` (20 bytes + encoding, full
-  data + ID for storage)
-- **PersistentCache**: `PersistentCachedRect` (47 bytes, server references by content hash), `PersistentCachedRectInit`
-  (47 bytes + encoding, full data + hash for storage)
+- **C++ REF**: 12-byte rectangle header + 16-byte CacheKey + 8-byte offset/dimensions = 36 bytes.
+- **C++ INIT v2**: header + key + mandatory flags + inner encoding = 33 bytes before pixels;
+  add 16 bytes when canonical PixelFormat is carried. Seed is 28 bytes.
+- **Rust REF/seed**: u64 IDs, 20 bytes including rectangle header. INIT reads 16 key bytes but keeps only
+  the high u64 and uses legacy/v2 heuristics. See the current reference for other message discrepancies.
