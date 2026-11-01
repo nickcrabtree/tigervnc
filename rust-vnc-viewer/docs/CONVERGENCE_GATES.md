@@ -58,6 +58,24 @@ Follow with `test_cpp_cache_back_to_back.py`, `test_cache_parity.py`,
 `test_persistent_cache_bandwidth.py` and `test_persistent_cache_eviction.py` in that directory.
 Use `./run_tests.sh` per the development guide; no tests were run in this prose-only audit.
 
+### 2026-11-01 — Baseline validation attempt
+
+Revision `fc51232225ad71526c3f57ea38a27c9e09a781f2` on quartz, Linux x86_64,
+Debug CMake build; GCC 15.2.0, CMake 4.2.3, cargo/rustc 1.96.0.
+C++ build **failed** (exit 2): `unix/tx/TXButton.h:121:8: error: ‘string’ in namespace ‘std’ does not name a type`;
+the compiler identifies missing `<string>`, followed by undeclared `text` errors at lines 59 and 81.
+Rust workspace/all-targets/all-features **passed** (443 passed, 6 ignored).
+C++ `ctest -R PersistentCache -LE e2e` **passed 30/30**, but used pre-existing binaries
+(the four persistentcache executables date to July 27); this does not validate HEAD.
+All six requested e2e scripts are **blocked/unrun**: `run_tests.sh` cannot select/order
+standalone scripts and always runs the full standalone suite, irrespective of CTest filters.
+No runner or source fixes were made. The first Gate 2 checkbox remains unchecked.
+
+See [per-step results and exact failure evidence](../../docs/CUTOVER_BASELINE_2026-11-01.md).
+Full durable logs: `/ncloud/Nick/tigervnc-evidence/2026-11-01-cutover/`
+(`environment.txt`, `cpp-build.log`, `rust-workspace.log`, `cpp-persistentcache-ctest.log`,
+`cpp-test-binary-times.txt`, `e2e-runner-inspection.log`).
+
 ## Gate 3 — Cross-session PersistentCache
 
 - [ ] Session A populates cache, exits, and saves disk state.
